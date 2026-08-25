@@ -1,93 +1,72 @@
 # Architecture
 
-**Knowledge status:** `DECISION` arquitetural proposta e registrada em ADRs; sistema mestre, identity provider e carga permanecem `OPEN QUESTION`.
+**Knowledge status:** `IMPLEMENTED LOCALLY / CONDITIONAL FOR PRODUCTION` — este documento descreve o código existente em 2026-08-23. Identidade hospitalar, ownership clínico, políticas e infraestrutura produtiva continuam gates externos.
 
 ## 1. Decision summary
 
-`DECISION`: modular monolith, TypeScript, PostgreSQL, S3-compatible storage, SSE and durable outbox. The repository is new; this is a proposed foundation, not a claim that code exists.
+O runtime é um monólito modular Next.js 16 (App Router), TypeScript, com API versionada no mesmo processo. O domínio usa `StateStore`: `MemoryStore` para desenvolvimento/testes e `PostgresStore` para persistência. PostgreSQL mantém hoje um snapshot JSONB autoritativo, audit/outbox/projeções e tabelas operacionais de suporte; essa fronteira está explicitamente marcada como transicional em `runtime_storage_boundaries` e não é apresentada como o modelo relacional clínico final.
 
-### Why modular monolith
+Resultados e auditoria têm invariantes de domínio; outbox, idempotência, claims de upload, rate limit e readiness têm contratos persistentes. A decisão de migrar entidades clínicas para tabelas relacionais completas permanece um gate arquitetural antes de uma carga hospitalar representativa.
 
-- one operational product and small initial team;
-- transactional consistency matters for result release/audit/notification intent;
-- simple deployment and debugging in a hospital;
-- explicit module contracts provide extension without distributed-system overhead;
-- later extraction is possible only where measured boundaries and load justify it.
-
-Microservices, Kafka, CQRS/event sourcing, Kubernetes, GraphQL, Redis and Elasticsearch are not MVP defaults. Each requires a concrete problem, owner, operational budget and ADR.
-
-## 2. Logical architecture
+## 2. Runtime topology
 
 ```mermaid
 flowchart LR
-  Browser[Next.js web] -->|HTTPS session cookie| API[NestJS API]
-  API --> AUTH[Identity module]
-  API --> REG[Registry module]
-  API --> CAT[Catalog module]
-  API --> DIAG[Diagnostics module]
-  API --> LAB[Laboratory module]
-  API --> IMG[Imaging module]
-  API --> RES[Results module]
-  API --> NOTIF[Notifications module]
-  API --> AUDIT[Audit module]
-  API --> OPS[Operations module]
-  AUTH --> DB[(PostgreSQL)]
-  REG --> DB
-  CAT --> DB
-  DIAG --> DB
-  LAB --> DB
-  IMG --> DB
-  RES --> DB
-  NOTIF --> DB
-  AUDIT --> DB
-  DB --> OUTBOX[Transactional outbox worker]
-  RES --> STORE[(S3 / MinIO)]
-  NOTIF --> SSE[SSE publisher]
+  Browser[Next.js web] -->|HTTPS session cookie + CSRF| Route[App Router catch-all API]
+  Route --> App[Application services]
+  App --> Auth[authorization + sessions]
+  App --> Workflow[requests / samples / procedures]
+  App --> Results[versioned results / attachments]
+  App --> Ops[queues / search / timeline / dashboard]
+  App --> Store[(MemoryStore or PostgreSQL)]
+  App --> Blob[(Local private store or S3-compatible adapter)]
+  Store --> Audit[append-only audit + outbox]
+  Audit --> Worker[leased outbox worker / sinks]
+  Route --> SSE[SSE polling + replay/resync]
   SSE --> Browser
 ```
 
-## 3. Deployment topology
+There is no NestJS API in this repository. `src/app/api/v1/[...path]/route.ts` performs transport dispatch, strict body/header validation and envelope handling; `src/server/application/service.ts` composes bounded application modules.
 
-Development: reverse proxy optional → web/API containers → PostgreSQL → MinIO; worker can run in API process or separate same-image process. Production topology, TLS and secrets are documented in `operations/` and must be approved by TI.
+## 3. Code boundaries
 
-No production deployment is implied by this repository. Separate dev/test/staging/prod credentials and databases are mandatory.
-
-## 4. Integration boundaries
-
-| Future system | Boundary now | Future contract |
+| Boundary | Location | Responsibility |
 | --- | --- | --- |
-| ERP/HIS | `ExternalReference`, registry ports | patient/encounter sync with reconciliation |
-| Identity provider | `IdentityProvider` port | OIDC/AD provisioning and logout |
-| EvolutionAPI/WhatsApp | notification channel adapter | signed, consented, acknowledged delivery |
-| PACS/DICOM | imaging attachment/reference port | DICOM study/series IDs, not raw viewer in MVP |
-| Analyzer/LIS | lab accession/result import port | idempotent signed import |
-| External lab | diagnostic service + integration adapter | status/result contract with source provenance |
+| Web | `src/app`, `src/components` | authenticated shell, queues, request/result journeys, loading/error/degraded states |
+| Transport | `src/app/api/v1/[...path]` | route matching, auth/session middleware, CSRF, rate limiting, request parsing, OpenAPI operation identity |
+| Application | `src/server/application/*-service.ts` | request, workflow, result, attachment, management and read use cases |
+| Domain | `src/server/domain` | state models, transitions and store contracts |
+| Security | `src/server/security` | current-actor authorization, password/session policy, distributed rate-limit adapter |
+| Persistence | `src/server/store` + `db/migrations` | memory/Postgres stores, migration ledger, readiness and projections |
+| Files | `src/server/storage` | private local/S3-compatible bytes, checksum/MIME validation, external AV contract |
+| Operations | `src/server/operations`, `scripts` | outbox claim/retry/ownership, SSE, metrics, migration/seed/worker entrypoints |
 
-The Hub remains source of truth for the operational lifecycle it owns, while external clinical/master data ownership is explicit.
+The former 2,800-line application service is split into modules; production source files are bounded below 800 lines. Dependency direction is route → application → domain ports/adapters, with no UI write bypassing the API.
 
-## 5. Data ownership
+## 4. Persistence boundary
 
-| Module | Owns | Reads via |
+PostgreSQL is required for the disposable integration harness and the configured runtime mode. Migrations `001`–`006` create the ledger, snapshot row, audit/outbox projections, outbox claim ownership, distributed rate-limit buckets and `runtime_storage_boundaries`. The latter records the current contract (`StoreState-v1`) and its transitional status so a future relational migration cannot silently change the source of truth.
+
+Clinical release, void/amend, sample lineage and audit/outbox writes are exercised in transactions and reloaded from PostgreSQL. A production decision still requires relational constraints/indexes for the clinical entities, representative `EXPLAIN` evidence and a tested expand/contract migration plan.
+
+## 5. External boundaries
+
+| Concern | Local contract | Production gate |
 | --- | --- | --- |
-| Identity | users, roles, sessions | authorization port |
-| Registry | patients, encounters, admissions, external refs | registry query port |
-| Catalog | services, capabilities, policies, reasons | catalog port |
-| Diagnostics | requests, items, aggregate status | diagnostics port |
-| Laboratory | samples/accessions and recollection | lab port |
-| Imaging | procedures/schedules | imaging port |
-| Results | result versions, components, attachments | result port |
-| Notifications | inbox/delivery/ack/outbox consumption | notification port |
-| Audit | append-only events/timeline projection | audit port |
-| Operations | queue/read projections and metrics | query ports/events |
+| Identity | opaque server session, server-derived role/scope | hospital IdP/ownership, transfer/discharge and delegated authority |
+| Files | private local adapter or S3-compatible adapter | bucket policy, encryption, backup, credentials and residency |
+| Malware | local EICAR/checksum scanner outside production; HTTP scanner adapter | managed scanner endpoint, authentication, SLA and quarantine policy |
+| Rate limit | in-memory only outside production; PostgreSQL fixed-window buckets in production | HA database capacity and operational alerting |
+| Realtime | authorized SSE polling, bounded outbox window, heartbeat and `resync_required` | multi-instance fanout/worker and propagation benchmark |
+| Critical results | release policy gate requires approved configuration | human-owned thresholds, recipient, fallback and escalation policy |
 
-## 6. Architecture fitness
+## 6. Failure behavior
 
-The first fitness checks are dependency direction, no circular imports, no module writing another module’s tables, transaction tests around release/recollection, and measured queue/search latency. Optimize for a small team and hospital reliability, not millions of users.
+- PostgreSQL or schema readiness failure: readiness is false and clinical commands do not claim success.
+- Object storage or scanner failure: upload/release returns a safe retryable error; bytes are not exposed.
+- Outbox worker failure: committed intent remains durable; a message is not completed without its current worker/token lease.
+- SSE disconnect: the UI displays degraded state, reconnects and refetches authorized resources; SSE is never the source of truth.
 
-## 7. Failure boundaries
+## 7. Production posture
 
-- PostgreSQL unavailable: readiness false; no clinical command accepted.
-- Object storage unavailable: draft may remain, release requiring attachment blocked; no fake success.
-- Outbox worker unavailable: state commit remains durable; notification queue visibly pending and alertable.
-- SSE unavailable: API/inbox/polling remain usable; UI shows degraded state.
-- External integration unavailable: request can remain with explicit integration/pendência status; do not invent completion.
+The repository is an executable synthetic MVP, not a hospital deployment. The release checklist in `docs/operations/PRODUCTION_READINESS.md` and the frozen bar in `docs/build/PREMIUM_MVP_V4.md` remain authoritative for external approval.

@@ -45,78 +45,78 @@
       "title": "Prove relational, durable and cross-instance PostgreSQL behavior",
       "stage": "BUILD",
       "priority": "P0",
-      "status": "IN_PROGRESS",
+      "status": "DONE",
       "origin": "GAP-V4-05,GAP-V4-08",
       "dependencies": ["TASK-V4-SEC-001", "TASK-V4-CONTRACT-001"],
       "owner": "data-wave",
-      "acceptance_summary": "V4-DB-01/02/03 pass on a disposable two-store PostgreSQL harness",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", ".agent/audits/TASK-V4-DATA-001-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/gates/implementation-ready-v4-data.json#GATE-IMPLEMENTATION-READY-V4-DATA-001"],
-      "next_action": "Create the fail-closed disposable PostgreSQL harness and execute two-store stale-read RED tests before changing store production behavior"
+      "acceptance_summary": "V4-DB-01/02 pass on a disposable two-store PostgreSQL harness and V4-DB-03 is explicitly bounded by the safe transitional snapshot boundary",
+      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", ".agent/audits/TASK-V4-DATA-001-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/gates/implementation-ready-v4-data.json#GATE-IMPLEMENTATION-READY-V4-DATA-001", ".agent/verification.jsonl#VER-V4-DATA-GREEN-029", ".agent/verification.jsonl#VER-V4-DATA-GREEN-041"],
+      "next_action": "Keep the transitional boundary fail-closed while production planning supplies relational clinical migration, indexes and representative EXPLAIN evidence"
     },
     {
       "id": "TASK-V4-OPS-001",
       "title": "Correct async ownership and production security controls",
       "stage": "BUILD",
       "priority": "P1",
-      "status": "TODO",
+      "status": "DONE",
       "origin": "GAP-V4-10,GAP-V4-11",
       "dependencies": ["TASK-V4-DATA-001"],
       "owner": "operations-security-wave",
-      "acceptance_summary": "V4-OPS-01/02 pass with lease races and fail-closed production adapters",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md"],
-      "next_action": "Write two-worker outbox and production configuration tests"
+      "acceptance_summary": "V4-OPS-01/02 pass with lease races, notification delivery state transitions and fail-closed production adapters",
+      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-REG-GREEN-028", ".agent/verification.jsonl#VER-V4-DATA-GREEN-029", ".agent/verification.jsonl#VER-V4-OPS-GREEN-039", ".agent/verification.jsonl#VER-V4-OPS-GREEN-042"],
+      "next_action": "Bind the local controls to the approved production worker, ingress, object-storage, malware-scanner and secrets topology"
     },
     {
       "id": "TASK-V4-ARCH-001",
       "title": "Extract cohesive application modules and align actual architecture",
       "stage": "BUILD",
       "priority": "P1",
-      "status": "TODO",
+      "status": "DONE",
       "origin": "GAP-V4-12",
       "dependencies": ["TASK-V4-SEC-001", "TASK-V4-CONTRACT-001"],
       "owner": "architecture-wave",
-      "acceptance_summary": "V4-ARCH-01 passes with acyclic modules and no production source file over 800 lines",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md"],
-      "next_action": "Freeze module interfaces and add an architecture fitness test before extraction"
+      "acceptance_summary": "V4-ARCH-01 passes with cohesive application modules, domain dependency fitness checks and no production source file over 800 lines",
+      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", "src/server/architecture-fitness.test.ts", ".agent/verification.jsonl#VER-V4-REG-GREEN-028", ".agent/verification.jsonl#VER-V4-ARCH-GREEN-040", ".agent/verification.jsonl#VER-V4-ARCH-GREEN-043"],
+      "next_action": "Preserve module boundaries and repeat the fitness gate when persistence or integration topology changes"
     },
     {
       "id": "TASK-V4-JOURNEY-001",
       "title": "Complete real Postgres-backed critical browser journeys",
       "stage": "BUILD",
       "priority": "P1",
-      "status": "TODO",
+      "status": "DONE",
       "origin": "GAP-V4-09",
       "dependencies": ["TASK-V4-DATA-001", "TASK-V4-OPS-001", "TASK-V4-ARCH-001"],
       "owner": "journey-wave",
-      "acceptance_summary": "V4-UX-01/02 pass without mocked mutation routes or forced actions",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md"],
-      "next_action": "Map each missing journey to real API prerequisites and write the first failing browser flow"
+      "acceptance_summary": "V4-UX-01/02 pass locally without mocked mutation routes or forced actions, with both synthetic-memory and focused PostgreSQL clinical evidence",
+      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-030", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-031", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-044"],
+      "next_action": "Obtain manual clinical and accessibility acceptance plus representative load evidence before RELEASE_READY"
     },
     {
       "id": "TASK-V4-DOC-001",
       "title": "Reconcile contracts, decisions, traceability and operations evidence",
       "stage": "BUILD",
       "priority": "P1",
-      "status": "TODO",
+      "status": "DONE",
       "origin": "GAP-V4-13,GAP-V4-14",
       "dependencies": ["TASK-V4-DATA-001", "TASK-V4-ARCH-001", "TASK-V4-JOURNEY-001"],
       "owner": "documentation-wave",
-      "acceptance_summary": "V4-DOC-01 and V4-TRACE-01 pass without stale claims or orphan requirements",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md"],
-      "next_action": "Update actual-vs-target contracts as each predecessor closes"
+      "acceptance_summary": "V4-DOC-01 and V4-TRACE-01 pass with generated-contract, traceability, readiness and evidence counts reconciled",
+      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-DOC-GREEN-032", ".agent/verification.jsonl#VER-V4-REG-GREEN-028", ".agent/verification.jsonl#VER-V4-DOC-GREEN-045"],
+      "next_action": "Keep actual-vs-target claims synchronized as external release evidence is supplied"
     },
     {
       "id": "TASK-V4-AUDIT-001",
       "title": "Run full artifact verification and fresh independent criticism",
       "stage": "AUDIT",
       "priority": "P0",
-      "status": "TODO",
+      "status": "VERIFY",
       "origin": "V4-REG-01,V4-CRITIC-01",
       "dependencies": ["TASK-V4-OPS-001", "TASK-V4-JOURNEY-001", "TASK-V4-DOC-001"],
       "owner": "primary-agent-and-independent-critic",
-      "acceptance_summary": "All required local v4 criteria pass and no unresolved CRITICAL/HIGH finding remains",
-      "evidence_refs": [".agent/plans/premium-enterprise-mvp-v4.md", "docs/build/PREMIUM_MVP_V4.md"],
-      "next_action": "Run only after every implementation dependency is in VERIFY"
+      "acceptance_summary": "All required local v4 criteria pass and the final independent critic found no unresolved local CRITICAL/HIGH finding; release conditions remain external",
+      "evidence_refs": [".agent/plans/premium-enterprise-mvp-v4.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/gates/verified-v4-final.json#GATE-VERIFIED-V4-FINAL-001", ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-038", ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046", ".agent/verification.jsonl#VER-V4-CRITIC-GREEN-037"],
+      "next_action": "Keep VERIFIED conditional and resolve the typed external conditions before requesting RELEASE_READY"
     }
   ]
 }

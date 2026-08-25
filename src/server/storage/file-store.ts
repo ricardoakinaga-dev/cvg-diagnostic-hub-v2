@@ -58,7 +58,10 @@ export class LocalFileStore implements FileStore {
 }
 
 export function createFileStoreFromEnv(environment: Partial<NodeJS.ProcessEnv> = process.env): FileStore {
-  if (environment.STORAGE_MODE !== "s3") return new LocalFileStore(environment.STORAGE_ROOT ?? ".data/uploads");
+  if (environment.STORAGE_MODE !== "s3") {
+    if (environment.NODE_ENV === "production") throw new Error("STORAGE_MODE=local não é permitido em produção.");
+    return new LocalFileStore(environment.STORAGE_ROOT ?? ".data/uploads");
+  }
   const config: S3FileStoreConfig = {
     endpoint: required(environment.STORAGE_ENDPOINT, "STORAGE_ENDPOINT"),
     region: environment.STORAGE_REGION ?? "us-east-1",

@@ -1,6 +1,7 @@
 ALTER TABLE outbox_messages
   ADD COLUMN IF NOT EXISTS locked_at timestamptz,
   ADD COLUMN IF NOT EXISTS worker_id text,
+  ADD COLUMN IF NOT EXISTS claim_token text,
   ADD COLUMN IF NOT EXISTS last_error text;
 
 ALTER TABLE outbox_messages DROP CONSTRAINT IF EXISTS outbox_messages_status_check;

@@ -132,6 +132,9 @@ describe("runtime schema readiness", () => {
     audit_append_only_ready: true,
     audit_truncate_guard_ready: true,
     event_projection_ready: true,
+    outbox_claim_ownership_ready: true,
+    rate_limit_schema_ready: true,
+    transitional_storage_boundary_ready: true,
     invalidation_trigger_ready: true
   };
 

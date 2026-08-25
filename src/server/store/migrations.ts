@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "003_runtime_integrity";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "006_transitional_snapshot_boundary";
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
 const MIGRATION_FILENAME = /^\d{3}_[a-z0-9_-]+\.sql$/;
@@ -44,6 +44,9 @@ interface RuntimeSchemaRow {
   readonly audit_append_only_ready: boolean;
   readonly audit_truncate_guard_ready: boolean;
   readonly event_projection_ready: boolean;
+  readonly outbox_claim_ownership_ready: boolean;
+  readonly rate_limit_schema_ready: boolean;
+  readonly transitional_storage_boundary_ready: boolean;
   readonly invalidation_trigger_ready: boolean;
 }
 
@@ -101,9 +104,59 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
   COALESCE((
     SELECT jsonb_array_length(state->'auditEvents') = (SELECT count(*) FROM audit_events)
        AND jsonb_array_length(state->'outbox') = (SELECT count(*) FROM outbox_messages)
+       AND NOT EXISTS (
+         SELECT 1
+           FROM audit_events relational
+          WHERE NOT EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements(state->'auditEvents') snapshot
+             WHERE snapshot->>'id' = relational.id
+          )
+       )
+       AND NOT EXISTS (
+         SELECT 1
+           FROM outbox_messages relational
+          WHERE NOT EXISTS (
+            SELECT 1
+              FROM jsonb_array_elements(state->'outbox') snapshot
+             WHERE snapshot->>'id' = relational.id
+          )
+       )
       FROM cvg_runtime_state
      WHERE id = 1
   ), false) AS event_projection_ready,
+  EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'outbox_messages'
+       AND column_name = 'claim_token'
+  ) AND EXISTS (
+    SELECT 1
+      FROM pg_constraint
+     WHERE conrelid = 'outbox_messages'::regclass
+       AND conname = 'outbox_messages_claim_token_unique'
+  ) AS outbox_claim_ownership_ready,
+  EXISTS (
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'rate_limit_buckets'
+       AND column_name IN ('bucket_key', 'window_started_at', 'request_count')
+     GROUP BY table_name
+    HAVING count(*) = 3
+  ) AS rate_limit_schema_ready,
+  EXISTS (
+    SELECT 1
+      FROM runtime_storage_boundaries
+     WHERE boundary_key = 'runtime-jsonb-snapshot-v1'
+       AND authoritative_store = 'cvg_runtime_state'
+       AND read_mode = 'SNAPSHOT'
+       AND write_mode = 'SNAPSHOT'
+       AND status = 'TRANSITIONAL'
+       AND reconciliation_mode = 'CONTINUOUS'
+       AND contract_version = 'StoreState-v1'
+  ) AS transitional_storage_boundary_ready,
   EXISTS (
     SELECT 1
       FROM pg_trigger
@@ -223,6 +276,9 @@ function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
     || typeof row.audit_append_only_ready !== "boolean"
     || typeof row.audit_truncate_guard_ready !== "boolean"
     || typeof row.event_projection_ready !== "boolean"
+    || typeof row.outbox_claim_ownership_ready !== "boolean"
+    || typeof row.rate_limit_schema_ready !== "boolean"
+    || typeof row.transitional_storage_boundary_ready !== "boolean"
     || typeof row.invalidation_trigger_ready !== "boolean"
   ) return undefined;
   return row as RuntimeSchemaRow;

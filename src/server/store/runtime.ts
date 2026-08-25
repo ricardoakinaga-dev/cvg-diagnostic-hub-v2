@@ -3,6 +3,8 @@ import { createDemoState } from "./fixtures";
 import type { StateStore } from "../domain/models";
 import { PostgresStore } from "./postgres-store";
 import { createFileStoreFromEnv, type FileStore } from "../storage/file-store";
+import { createMalwareScannerFromEnv } from "../storage/malware-scanner";
+import { assertRateLimitConfiguration } from "../security/rate-limit";
 
 declare global {
   var __cvgDiagnosticsStore: StateStore | undefined;
@@ -62,6 +64,8 @@ export async function getRuntimeReadiness(): Promise<{ dataMode: string; storage
   await store.healthcheck?.();
   const storage = getRuntimeFileStore();
   await storage.healthcheck?.();
+  createMalwareScannerFromEnv();
+  assertRateLimitConfiguration();
   return { dataMode, storageMode: process.env.STORAGE_MODE ?? "local" };
 }
 

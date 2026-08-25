@@ -1,21 +1,7 @@
 import type { Permission, RoleCode } from "@cvg/contracts";
+import type { Actor, ScopedResource } from "../domain/models";
 
-export interface Actor {
-  id: string;
-  role: RoleCode;
-  departmentCode: string;
-  managedDepartmentCodes?: ReadonlyArray<string>;
-  patientIds?: ReadonlyArray<string>;
-  serviceCodes?: ReadonlyArray<string>;
-  active?: boolean;
-}
-
-export interface ScopedResource {
-  patientId?: string;
-  departmentCode?: string;
-  serviceCode?: string;
-  ownerId?: string;
-}
+export type { Actor, ScopedResource } from "../domain/models";
 
 const commonRead: Permission[] = [
   "patient.view",
@@ -85,6 +71,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   ],
   VETERINARIAN: [
     ...commonRead,
+    "patient.create",
     "request.create",
     "request.cancel",
     "request.duplicate_override",
@@ -95,6 +82,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   ],
   INPATIENT_TEAM: [
     ...commonRead,
+    "patient.create",
     "request.create",
     "request.cancel",
     "request.duplicate_override",
@@ -165,6 +153,10 @@ export function managerCanAccessDepartment(actor: Pick<Actor, "departmentCode" |
 
 export function hasPermission(role: RoleCode, permission: Permission): boolean {
   return rolePermissions[role].includes(permission);
+}
+
+export function hasPermissionForUser(user: Pick<Actor, "active" | "role">, permission: Permission): boolean {
+  return user.active === true && hasPermission(user.role, permission);
 }
 
 export function canAccessResource(

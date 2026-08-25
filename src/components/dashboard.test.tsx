@@ -190,6 +190,71 @@ describe("Dashboard resilience", () => {
     expect(JSON.parse(createCall?.[1]?.body as string)).toMatchObject({ encounterId: "encounter-thor-2" });
   });
 
+  it("adds a new patient from the request dialog and keeps its encounter selected", async () => {
+    const createdPatient = {
+      patient: { id: "patient-amora", displayName: "Amora", species: "Canino", breed: "Labrador", sex: "Fêmea", ownerLabel: "M. Ribeiro", externalId: "CVG-AMORA", active: true },
+      encounter: { id: "encounter-amora", patientId: "patient-amora", externalId: "ATD-AMORA", type: "OUTPATIENT", status: "OPEN", openedAt: "2026-08-20T14:00:00.000Z" }
+    };
+    const apiFetchMock = mockDashboardResponses((path, init) => {
+      if (path === "/patients" && init?.method === "POST") return Promise.resolve(createdPatient);
+      if (path === "/diagnostic-requests" && init?.method === "POST") return Promise.resolve({ id: "request-amora" });
+      return undefined;
+    });
+
+    render(<Dashboard />);
+    await screen.findByText("Amostra recebida");
+    fireEvent.click(screen.getByRole("button", { name: /Nova solicitação/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Cadastrar paciente/i }));
+
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Amora"), { target: { value: "Amora" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Labrador"), { target: { value: "Labrador" } });
+    fireEvent.change(screen.getByPlaceholderText("Nome para identificação no atendimento"), { target: { value: "M. Ribeiro" } });
+    fireEvent.click(screen.getByRole("button", { name: /^Cadastrar paciente/ }));
+
+    await waitFor(() => expect(screen.getByLabelText("Paciente")).toHaveValue("patient-amora"));
+    expect(screen.getByRole("option", { name: /Amora · Canino · CVG-AMORA/ })).toBeInTheDocument();
+    expect(screen.getByLabelText("Atendimento")).toHaveValue("encounter-amora");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hemograma/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar solicitação/i }));
+
+    await waitFor(() => expect(apiFetchMock.mock.calls.some(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST")).toBe(true));
+    const requestCall = apiFetchMock.mock.calls.find(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST");
+    expect(JSON.parse(requestCall?.[1]?.body as string)).toMatchObject({ patientId: "patient-amora", encounterId: "encounter-amora" });
+  });
+
+  it("requires an explicit reason before overriding a duplicate request warning", async () => {
+    let createAttempts = 0;
+    const apiFetchMock = mockDashboardResponses((path, init) => {
+      if (path === "/patients/patient-thor/encounters") return Promise.resolve(encounters);
+      if (path === "/diagnostic-requests" && init?.method === "POST") {
+        createAttempts += 1;
+        return createAttempts === 1
+          ? Promise.reject(new apiClient.ApiClientError(409, { error: { code: "DUPLICATE_WARNING" } }))
+          : Promise.resolve({ id: "request-overridden" });
+      }
+      return undefined;
+    });
+
+    render(<Dashboard />);
+    await screen.findByText("Amostra recebida");
+    fireEvent.click(screen.getByRole("button", { name: /Nova solicitação/i }));
+    fireEvent.change(await screen.findByLabelText("Paciente"), { target: { value: "patient-thor" } });
+    fireEvent.change(await screen.findByLabelText("Atendimento"), { target: { value: "encounter-thor-2" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hemograma/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar solicitação/i }));
+
+    expect(await screen.findByText(/Já existe um exame ativo compatível/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar duplicidade/ }));
+    expect(await screen.findByText(/Explique por que o exame duplicado/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Motivo para prosseguir com a duplicidade"), { target: { value: "Exame solicitado novamente para confirmar a tendência clínica." } });
+    fireEvent.click(screen.getByRole("button", { name: /Confirmar duplicidade/ }));
+
+    await waitFor(() => expect(createAttempts).toBe(2));
+    const overrideCall = apiFetchMock.mock.calls.filter(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST").at(-1);
+    expect(overrideCall?.[1]?.headers).toMatchObject({ "x-duplicate-override": "true" });
+    expect(JSON.parse(overrideCall?.[1]?.body as string)).toMatchObject({ overrideReason: expect.stringContaining("confirmar") });
+  });
+
   it("submits a request on a LAN origin without crypto.randomUUID", async () => {
     vi.stubGlobal("crypto", { getRandomValues: (bytes: Uint8Array) => { bytes.fill(7); return bytes; } });
     const apiFetchMock = mockDashboardResponses((path, init) => {

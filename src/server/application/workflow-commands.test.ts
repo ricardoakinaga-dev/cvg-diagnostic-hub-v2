@@ -11,7 +11,7 @@ function setup() {
     if (!actor) throw new Error(`missing fixture actor: ${email}`);
     return actor;
   };
-  return { store, service, vet: user("vet@cvg.local"), lab: user("lab@cvg.local"), us: user("us@cvg.local"), manager: user("manager@cvg.local"), admin: user("admin@cvg.local") };
+  return { store, service, vet: user("vet@cvg.local"), lab: user("lab@cvg.local"), rx: user("rx@cvg.local"), us: user("us@cvg.local"), manager: user("manager@cvg.local"), admin: user("admin@cvg.local") };
 }
 
 describe("workflow commands", () => {
@@ -121,5 +121,23 @@ describe("workflow commands", () => {
     const voided = await service.voidResult(laboratoryManager, replacement.result.id, { reason: "Revisão administrativa", expectedVersion: replacement.result.version, idempotencyKey: "result-lifecycle-void" });
     expect(voided.item.status).toBe("RESULT_VOIDED");
     expect(voided.version.status).toBe("VOIDED");
+    const postVoidDraft = await service.createResultDraft(lab, item.id, { narrative: "Resultado substituto após invalidação.", content: { value: 3 }, expectedVersion: voided.item.version, idempotencyKey: "result-lifecycle-post-void-draft" });
+    const postVoidRelease = await service.releaseResult(lab, postVoidDraft.result.id, { expectedVersion: postVoidDraft.result.version, idempotencyKey: "result-lifecycle-post-void-release" });
+    expect(postVoidRelease.item.status).toBe("RESULT_AVAILABLE");
+  });
+
+  it("reopens an imaging replacement draft in the report phase", async () => {
+    const { service, vet, rx } = setup();
+    const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-xray" }] }, { idempotencyKey: "imaging-replacement-request" });
+    const started = await service.startProcedure(rx, request.items[0].id, { expectedVersion: request.items[0].version, idempotencyKey: "imaging-replacement-start" });
+    const performed = await service.markProcedurePerformed(rx, request.items[0].id, { expectedVersion: started.item.version, idempotencyKey: "imaging-replacement-performed" });
+    const draft = await service.createResultDraft(rx, request.items[0].id, { narrative: "Laudo inicial.", content: {}, expectedVersion: performed.item.version, idempotencyKey: "imaging-replacement-draft" });
+    const released = await service.releaseResult(rx, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "imaging-replacement-release" });
+    const voided = await service.voidResult(rx, released.result.id, { reason: "Correção controlada", expectedVersion: released.result.version, idempotencyKey: "imaging-replacement-void" });
+
+    const replacement = await service.createResultDraft(rx, voided.item.id, { narrative: "Laudo substituto.", content: {}, expectedVersion: voided.item.version, idempotencyKey: "imaging-replacement-draft-2" });
+    expect(replacement.item.status).toBe("AWAITING_REPORT");
+    const replacementRelease = await service.releaseResult(rx, replacement.result.id, { expectedVersion: replacement.result.version, idempotencyKey: "imaging-replacement-release-2" });
+    expect(replacementRelease.item.status).toBe("RESULT_AVAILABLE");
   });
 });

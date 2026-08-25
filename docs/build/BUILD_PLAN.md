@@ -2,7 +2,7 @@
 
 **Knowledge status:** `DECISION` de ordem de implementação; o plano foi usado como roteiro e agora registra execução, evidência e pendências.
 
-**Status (20/08/2026):** `MVP LOCAL EXECUTABLE; NOT PRODUCTION READY`  
+**Status (23/08/2026):** `MVP LOCAL EXECUTABLE; NOT PRODUCTION READY`
 **Pré-condição para piloto:** aprovação do PRD/SPEC e resolução dos gates clínicos/operacionais aplicáveis.
 
 **Rodada 95/100:** a barra operacional atual está em [`QUALITY_SCORECARD_95.md`](QUALITY_SCORECARD_95.md), com execução em [`ROADMAP_95.md`](ROADMAP_95.md) e backlog incremental em [`BACKLOG_95.md`](BACKLOG_95.md). O plano original M0–M8 continua sendo a referência de intenção; a rodada 95/100 fecha lacunas do artefato local e não substitui aprovação hospitalar.
@@ -12,14 +12,14 @@
 | Milestone | Status | Evidence | Remaining gate |
 | --- | --- | --- | --- |
 | M0 Foundation | implemented locally | Next 16 app/proxy, contracts, envelope, health, incremental migrations, seed, lint/typecheck/build | CI execution and approved production configuration |
-| M1 Identity/registry | implemented locally | opaque session, scrypt password hash, CSRF, RBAC/scope, patient/encounter/admission reads, safe ADMIN/delegated-MANAGER operational user administration | hospital IdP, ownership, delegated-manager policy approval and transfer/alta policy |
+| M1 Identity/registry | implemented locally | opaque session, scrypt password hash, CSRF, RBAC/scope, patient registration with initial encounter/admission, patient/encounter/admission reads, user account, safe ADMIN/delegated-MANAGER operational user administration | hospital IdP, ownership, delegated-manager policy approval and transfer/alta policy |
 | M2 Requests | implemented | multi-item request, protocol sequence, duplicate warning/override, idempotency, audit/outbox | transfer/alta commands remain policy-gated |
 | M3 Laboratory | implemented | receive, one-sample/many-item, processing, rejection, recollection/replacement, queue | equipment integration and pilot SLA validation |
 | M4 Imaging | implemented | RX direct procedure path, US schedule/reschedule/start/perform, conflict/history | scheduling policy and real modality integration |
 | M5 Results/files | implemented locally | draft edit, release/review/amend/void, immutable versions, checksum/MIME/quarantine/private download, local/S3-compatible factory | external AV, production bucket/credentials and critical policy |
 | M6 Notifications/realtime | implemented locally; conditional | transactional intents, inbox/ack, leased outbox worker, bounded sink, SSE heartbeat/replay/resync/expiry and UI refetch | approved critical fallback/escalation and production broker/worker topology |
 | M7 Operations | implemented locally | scoped search with typed results/filters, cursor lists for requests/timeline, queues/next action, dashboard indicator definitions, bounded metrics and four-route perf smoke | representative hospital load and database query plan review |
-| M8 Hardening | implemented locally; conditional | 119 Vitest tests, 94.97% statement coverage, 80.74% branches, PostgreSQL/restore smoke, 33 browser E2E across desktop/tablet/mobile including the manager control center, delegated manager scope configuration and technical ADMIN landing, explicit accessibility suite 6/6, OpenAPI 49 paths, production perf smoke (400 requests, max p95 434.69 ms), audit/secret scan | object-storage restore, manual accessibility/clinical acceptance, remote CI execution and pilot sign-off |
+| M8 Hardening | implemented locally; conditional | feature-specific registry/API/UI tests, 273 Vitest tests/44 files and 96.13% statement/line coverage, 83.67% branches, disposable PostgreSQL integration 16/16, 39 browser E2E across desktop/tablet/mobile including result/attachment/critical-ack lifecycle, expanded result/notification axe scans and OpenAPI 63 operations/58 paths | relational clinical migration/EXPLAIN, object-storage restore, manual accessibility/clinical acceptance, representative load, remote CI execution and pilot sign-off |
 
 The implementation is a single Next.js modular monolith under `src/` plus `packages/contracts`; the original `apps/*` ownership in the planning notes is a target boundary, not a claim that those directories exist. The runtime intentionally remains synthetic/local and must not be presented as hospital-approved.
 

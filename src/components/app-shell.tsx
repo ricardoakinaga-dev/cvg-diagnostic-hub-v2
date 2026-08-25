@@ -109,10 +109,11 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
             {canAccessManagement && <NavLink href="/admin" active={pathname.startsWith("/admin")} icon="⚙">Administração</NavLink>}
           </>}
           {canAccessClinicalOperations && <NavLink href="/notifications" active={pathname.startsWith("/notifications")} icon="◌">Notificações</NavLink>}
+          <NavLink href="/account" active={pathname.startsWith("/account")} icon="◉">Minha conta</NavLink>
         </nav>
         <div className="sidebar-footer">
           <div className={`live-indicator live-${live}`}><span />{live === "connected" ? "Atualização ao vivo" : live === "degraded" ? "Atualização interrompida" : "Conectando"}</div>
-          <div className="user-card"><span className="avatar">{user.displayName.slice(0, 1)}</span><span className="user-copy"><strong>{user.displayName}</strong><small>{user.role.replaceAll("_", " ")}</small></span><button onClick={logout} className="icon-button" aria-label="Sair">↪</button></div>
+          <div className="user-card"><Link href="/account" className="user-profile-link" aria-label={`Abrir conta de ${user.displayName}`}><span className="avatar">{user.displayName.slice(0, 1)}</span><span className="user-copy"><strong>{user.displayName}</strong><small>{user.role.replaceAll("_", " ")}</small></span></Link><button onClick={() => void logout()} className="icon-button" aria-label="Sair">↪</button></div>
         </div>
       </aside>
       <main className="main-content">

@@ -40,6 +40,7 @@ export type RoleCode = (typeof ROLES)[number];
 
 export type Permission =
   | "patient.view"
+  | "patient.create"
   | "encounter.view"
   | "admission.view"
   | "request.create"

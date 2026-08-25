@@ -1,6 +1,21 @@
 # Data Model
 
-**Knowledge status:** `DECISION` técnica proposta; tipos/campos são contrato de planejamento, não evidência de schema já implantado. Retenção e integrações são `OPEN QUESTION`.
+**Knowledge status:** `DECISION` técnica + `TRANSITIONAL IMPLEMENTATION` (2026-08-23). As tabelas abaixo são o alvo relacional normativo; o runtime atual ainda persiste o agregado `StoreState-v1` em JSONB e projeta auditoria/outbox/apoio. Retenção e integrações são `OPEN QUESTION`.
+
+## 0. Current persistence boundary
+
+`PostgresStore` usa a tabela `runtime_state` como fonte autoritativa temporária para o estado clínico inteiro. A migration `006_transitional_snapshot_boundary.sql` registra em `runtime_storage_boundaries`:
+
+| Campo | Valor atual |
+| --- | --- |
+| boundary | `runtime-jsonb-snapshot-v1` |
+| authoritative source | `cvg_runtime_state` |
+| contract | `StoreState-v1` |
+| status | `TRANSITIONAL` |
+| consistency | `CONTINUOUS` reconciliation |
+| relational projections | audit events, outbox messages, rate-limit buckets |
+
+O contrato impede que essa transição seja confundida com um schema relacional clínico concluído. O harness PostgreSQL prova migration/readiness, reload, transações, uma linhagem de resultado por item, auditoria, outbox e concorrência; ainda faltam FKs/checks/indexes clínicos no banco, `EXPLAIN` com dados representativos e prova de browser contra Postgres.
 
 ## 1. Conventions
 

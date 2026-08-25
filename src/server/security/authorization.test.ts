@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canAccessResource, hasPermission, rolePermissions } from "./authorization";
-import { hasPermissionForUser } from "../domain/models";
+import { canAccessResource, hasPermission, hasPermissionForUser, rolePermissions } from "./authorization";
 
 describe("server authorization", () => {
   it("grants lab operations only to a lab role", () => {

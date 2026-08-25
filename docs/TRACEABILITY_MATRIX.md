@@ -6,14 +6,14 @@ Each row links a user problem (`P-*`) to a PRD requirement, acceptance criterion
 
 The detailed rows retain the normative requirement-planning status used by the original specification. The current implementation state is authoritative in the coverage table above and in `docs/build/BACKLOG_95.md`; this keeps planned acceptance work distinct from local runtime evidence and external release approval.
 
-## 1.1 Current build coverage (20/08/2026)
+## 1.1 Current build coverage (23/08/2026)
 
 | Coverage state | Requirement groups | Evidence/limit |
 | --- | --- | --- |
-| implemented locally | request context/multi-item/protocol/duplicate/cancel; Lab sample/recollection; RX/US workflow; result draft/release/version/view/review/amend/void; patient/encounter context; workflow actions; audit; session/CSRF/RBAC/IDOR; local/S3-compatible attachments; queue/search with typed filters/keyset cursors/timeline/dashboard indicators; leased outbox/SSE; bounded metrics/readiness; versioned catalog and reason administration; scoped ADMIN/delegated-MANAGER collaborator administration with re-authentication, soft deactivation and session revocation; manager control center with request/pending/statistics/navigation surfaces; role-aware technical ADMIN landing | `src/server` and `src/components` tests, API tests, 119 Vitest tests, 94.97% statements/80.74% branches, 33 Playwright E2E runs across desktop/tablet/mobile including manager catalog/reason/access workflows, delegated manager scope configuration and request-detail layout, explicit 6/6 accessibility suite, OpenAPI (49 paths), docs/security validation and real-browser console/network inspection. |
-| conditional | transfer/alta; production identity/ownership and delegated-manager scope; AV/object storage/credentials; representative workload; manual accessibility/clinical acceptance; RPO/RTO/retention; remote CI | Local technical boundary is implemented; target-environment evidence and owner approval remain required. |
+| implemented locally | patient registry with initial encounter/admission, request-flow patient creation, user account area; request context/multi-item/protocol/duplicate/cancel; Lab sample/recollection; RX/US workflow; result draft/release/version/view/review/amend/void; patient/encounter context; workflow actions; audit; session/CSRF/RBAC/IDOR; private local/S3-compatible attachment boundary; queue/search with typed filters/keyset cursors/timeline/dashboard indicators; leased outbox with token ownership; PostgreSQL rate-limit boundary; bounded metrics/readiness; versioned catalog/reason/user administration; manager control center; result UI actions and attachment upload flow | Full Vitest suite: 273 tests/44 files passed; coverage: 96.13% statements/lines, 83.67% branches and 97.11% functions; disposable PostgreSQL harness: 16 tests/2 files passed; full Playwright: 39/39 across Chromium/tablet/mobile, including expanded result/attachment/critical-ack accessibility scans; OpenAPI (63 operations/58 paths). Build/docs/security are separate passing gates recorded in the current verification log. |
+| conditional | PostgreSQL clinical snapshot boundary; transfer/alta; hospital identity/ownership and delegated authority; external AV/object storage/credentials; multi-instance realtime; representative workload; manual clinical/accessibility acceptance; RPO/RTO/retention; remote CI | Local technical boundary is implemented and fail-closed where required; target-environment evidence and owner approval remain required. |
 | gated | critical-result notification/escalation and hospital policy | Runtime requires enable flag plus policy version, approval reference and approval timestamp; thresholds/SLA/fallback still require human OQs. |
-| pending | none within the local technical backlog | External activation gates remain in `BACKLOG_95.md` and `PRODUCTION_READINESS.md`; no production claim is made. |
+| pending | relational clinical migration/EXPLAIN evidence and independent production configuration review | Real-Postgres browser smoke is now green for the current 11 scenarios; relational schema hardening, representative plans and independent production review remain intentionally open in `docs/build/PREMIUM_MVP_V4.md`, `.gauntlet/state.md` and `PRODUCTION_READINESS.md`. |
 
 ## 2. Problem catalogue
 
@@ -29,6 +29,7 @@ The detailed rows retain the normative requirement-planning status used by the o
 | P-008 | Falta de métricas, auditoria, backup e recuperação |
 | P-009 | Core rígido para apenas Lab/RX/US |
 | P-010 | Operação burocrática, telas sem estados/recovery |
+| P-011 | Veterinário não consegue cadastrar um paciente novo dentro da solicitação |
 
 ## 3. Matrix
 
@@ -60,6 +61,7 @@ The detailed rows retain the normative requirement-planning status used by the o
 | P-007 | FR-AUTH-001 | AC-FR-AUTH-001-01 | `PERMISSIONS`, `SECURITY` | BLD-ID-002 | TEST-FR-AUTH-001 RBAC | planned |
 | P-008 | FR-AUD-001 | AC-FR-AUD-001-01 | `DOMAIN_MODEL`, `SECURITY` | BLD-FOUND-002 | TEST-FR-AUD-001 audit | planned |
 | P-007 | FR-DATA-001 | AC-FR-DATA-001-01 | `DOMAIN_MODEL`, `DATA_MODEL` | BLD-REG-001 | TEST-FR-DATA-001 identity | planned |
+| P-011 | FR-REG-001 | AC-FR-REG-001-01 | `API_SPEC`, `PERMISSIONS`, `USER_FLOWS` | BLD-REG-001 | registry unit/API/UI + request-flow integration | implemented locally |
 | P-006 | FR-FILE-001 | AC-FR-FILE-001-01 | `DATA_MODEL`, `SECURITY` | BLD-FILE-001 | TEST-FR-FILE-001 upload | planned |
 | P-009 | FR-ADMIN-001 | AC-FR-ADMIN-001-01 | `PERMISSIONS`, `DATA_MODEL` | BLD-CAT-001 | TEST-FR-ADMIN-001 config | planned |
 | P-007 | NFR-SEC-001 | AC-NFR-SEC-001-01 | `SECURITY`, ADR-005 | BLD-ID-001 | TEST-NFR-SEC-001 session | planned |

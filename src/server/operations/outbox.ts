@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { OutboxMessage, StateStore } from "../domain/models";
+import type { Notification, OutboxMessage, StateStore } from "../domain/models";
 
 export interface PublishedEvent {
   id: string;
@@ -28,6 +28,11 @@ export interface OutboxProcessSummary {
   processed: number;
   retried: number;
   failed: number;
+}
+
+interface ClaimedMessage {
+  message: OutboxMessage;
+  leaseMs: number;
 }
 
 const DEFAULT_LEASE_MS = 30_000;
@@ -81,22 +86,24 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
     if (!claimed) break;
     summary.claimed += 1;
     try {
-      await sink.publish(claimed);
-      await finishMessage(store, claimed.id, (message) => ({ ...message, status: "PROCESSED", lockedAt: undefined, workerId: undefined, lastError: undefined }));
-      summary.processed += 1;
+      await sink.publish(claimed.message);
+      const finished = await finishMessage(store, claimed.message, claimed.leaseMs, (message) => ({ ...message, status: "PROCESSED", lockedAt: undefined, workerId: undefined, claimToken: undefined, lastError: undefined }), now());
+      if (finished) summary.processed += 1;
     } catch (error) {
-      const permanentlyFailed = claimed.attempts >= maxAttempts;
-      const retryDelay = baseDelayMs * (2 ** Math.max(0, claimed.attempts - 1));
+      const permanentlyFailed = claimed.message.attempts >= maxAttempts;
+      const retryDelay = baseDelayMs * (2 ** Math.max(0, claimed.message.attempts - 1));
       const nextAvailableAt = new Date(now().getTime() + Math.min(retryDelay, 15 * 60_000)).toISOString();
       const safeMessage = normalizeError(error);
-      await finishMessage(store, claimed.id, (message) => ({
+      const finished = await finishMessage(store, claimed.message, claimed.leaseMs, (message) => ({
         ...message,
         status: permanentlyFailed ? "FAILED" : "PENDING",
         availableAt: nextAvailableAt,
         lockedAt: undefined,
         workerId: undefined,
+        claimToken: undefined,
         lastError: safeMessage
-      }));
+      }), now());
+      if (!finished) continue;
       if (permanentlyFailed) summary.failed += 1;
       else summary.retried += 1;
     }
@@ -105,7 +112,7 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
   return summary;
 }
 
-async function claimNext(store: StateStore, currentTime: Date, workerId: string, leaseMs: number): Promise<OutboxMessage | undefined> {
+async function claimNext(store: StateStore, currentTime: Date, workerId: string, leaseMs: number): Promise<ClaimedMessage | undefined> {
   const nowIso = currentTime.toISOString();
   const nowMs = currentTime.getTime();
   return store.transaction((state) => {
@@ -116,16 +123,34 @@ async function claimNext(store: StateStore, currentTime: Date, workerId: string,
     });
     if (index < 0) return { state, result: undefined };
     const selected = state.outbox[index];
-    const claimed: OutboxMessage = { ...selected, status: "PROCESSING", attempts: selected.attempts + 1, lockedAt: nowIso, workerId, lastError: undefined };
+    const claimed: OutboxMessage = { ...selected, status: "PROCESSING", attempts: selected.attempts + 1, lockedAt: nowIso, workerId, claimToken: randomUUID(), lastError: undefined };
     const outbox = state.outbox.map((message, messageIndex) => messageIndex === index ? claimed : message);
-    return { state: { ...state, outbox }, result: claimed };
+    return { state: { ...state, outbox }, result: { message: claimed, leaseMs } };
   });
 }
 
-async function finishMessage(store: StateStore, id: string, update: (message: OutboxMessage) => OutboxMessage): Promise<void> {
-  await store.transaction((state) => {
-    const outbox = state.outbox.map((message) => message.id === id ? update(message) : message);
-    return { state: { ...state, outbox }, result: undefined };
+async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs: number, update: (message: OutboxMessage) => OutboxMessage, currentTime: Date): Promise<boolean> {
+  return store.transaction((state) => {
+    const current = state.outbox.find((message) => message.id === claimed.id);
+    const ownsUnexpiredLease = current
+      && current.status === "PROCESSING"
+      && current.workerId === claimed.workerId
+      && current.claimToken === claimed.claimToken
+      && current.lockedAt
+      && Date.parse(current.lockedAt) + leaseMs > currentTime.getTime();
+    if (!ownsUnexpiredLease) return { state, result: false };
+    const updatedMessage = update(claimed);
+    const outbox = state.outbox.map((message) => message.id === claimed.id ? updatedMessage : message);
+    const notificationId = typeof claimed.payload.notificationId === "string" ? claimed.payload.notificationId : undefined;
+    const deliveryNotification = notificationId ? state.notifications.find((notification) => notification.id === notificationId && notification.state === "PENDING") : undefined;
+    const nextNotificationState: Notification["state"] | undefined = updatedMessage.status === "PROCESSED" ? "DELIVERED" : updatedMessage.status === "FAILED" ? "FAILED" : undefined;
+    const notifications = deliveryNotification && nextNotificationState
+      ? state.notifications.map((notification) => notification.id === deliveryNotification.id ? { ...notification, state: nextNotificationState, version: notification.version + 1 } : notification)
+      : state.notifications;
+    const auditEvents = deliveryNotification && nextNotificationState
+      ? [...state.auditEvents, { id: `audit-${claimed.id}-notification-${nextNotificationState.toLowerCase()}`, eventType: nextNotificationState === "DELIVERED" ? "NotificationDelivered" : "NotificationDeliveryFailed", entityType: "Notification", entityId: deliveryNotification.id, previousState: "PENDING", newState: nextNotificationState, correlationId: claimed.correlationId, metadata: { outboxId: claimed.id, channel: "IN_APP" }, occurredAt: currentTime.toISOString() }]
+      : state.auditEvents;
+    return { state: { ...state, outbox, notifications, auditEvents }, result: true };
   });
 }
 

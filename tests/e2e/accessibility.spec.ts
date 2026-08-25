@@ -5,7 +5,7 @@ async function signIn(page: import("@playwright/test").Page): Promise<void> {
   await page.goto("/login");
   await page.getByLabel("E-mail profissional").fill("vet@cvg.local");
   await page.getByLabel("Senha").fill("e2e-local-password-2026");
-  await page.getByRole("button", { name: "Entrar no Hub" }).click({ force: true });
+  await page.getByRole("button", { name: "Entrar no Hub" }).click();
   await expect(page).toHaveURL(/\/$/, { timeout: 15000 });
   await expect(page.getByRole("heading", { name: /Bom dia/ })).toBeVisible({ timeout: 15000 });
 }

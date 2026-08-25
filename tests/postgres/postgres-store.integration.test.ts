@@ -1,6 +1,7 @@
 import type { StoreState } from "../../src/server/domain/models";
 import { describe, expect, it, vi } from "vitest";
 import { createApplicationService } from "../../src/server/application/service";
+import { assertRateLimit, closeRateLimitBackend } from "../../src/server/security/rate-limit";
 import { authenticateRequest, authorizationSnapshotIsCurrent, loginUser, revokeSession } from "../../src/server/security/session";
 import { createDemoState } from "../../src/server/store/fixtures";
 import type { PostgresStore } from "../../src/server/store/postgres-store";
@@ -108,6 +109,58 @@ describe("PostgresStore multi-instance integration", () => {
         initialSequence + 2
       ]);
       expect(durableState.protocolSequence).toBe(initialSequence + 2);
+    });
+  });
+
+  it("keeps one canonical result lineage when two instances create a draft concurrently", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      const first = await database.createStore(createDemoState(TEST_PASSWORD));
+      const second = await database.createStore();
+      const writer = createApplicationService(first);
+      const competingWriter = createApplicationService(second);
+      const requester = first.getState().users.find((user) => user.email === "vet@cvg.local");
+      const actor = first.getState().users.find((user) => user.email === "lab@cvg.local");
+      const competingActor = second.getState().users.find((user) => user.email === "lab@cvg.local");
+      if (!requester || !actor || !competingActor) throw new Error("Synthetic fixture actor is missing.");
+
+      const request = await writer.createRequest(requester, {
+        patientId: "patient-thor",
+        encounterId: "encounter-thor",
+        priority: "ROUTINE",
+        items: [{ serviceId: "service-hemogram" }]
+      }, { idempotencyKey: "postgres-result-lineage-request" });
+      const received = await writer.receiveSample(actor, [request.items[0].id], {
+        accessionCode: "ACC-PG-LINEAGE",
+        sampleType: "EDTA",
+        expectedVersion: request.items[0].version,
+        idempotencyKey: "postgres-result-lineage-receive"
+      });
+      const processing = await writer.startProcessing(actor, request.items[0].id, {
+        expectedVersion: received.items[0].version,
+        idempotencyKey: "postgres-result-lineage-process"
+      });
+      const input = (key: string) => ({
+        narrative: "Resultado concorrente persistido.",
+        content: { value: 7 },
+        expectedVersion: processing.item.version,
+        idempotencyKey: key
+      });
+
+      const attempts = await Promise.allSettled([
+        writer.createResultDraft(actor, request.items[0].id, input("postgres-result-lineage-first")),
+        competingWriter.createResultDraft(competingActor, request.items[0].id, input("postgres-result-lineage-second"))
+      ]);
+
+      expect(attempts.filter((attempt) => attempt.status === "fulfilled")).toHaveLength(1);
+      expect(attempts.filter((attempt) => attempt.status === "rejected")).toHaveLength(1);
+      const durableState = await asFreshReadable(second).readState();
+      const item = durableState.items.find((entry) => entry.id === request.items[0].id);
+      const results = durableState.results.filter((entry) => entry.itemId === request.items[0].id);
+      expect(item?.currentResultId).toBe(results[0]?.id);
+      expect(results).toHaveLength(1);
+      expect(durableState.resultVersions.filter((version) => version.resultId === results[0]?.id)).toHaveLength(1);
+      expect(durableState.auditEvents.filter((event) => event.eventType === "ResultDraftCreated")).toHaveLength(1);
+      expect(durableState.outbox.filter((message) => message.eventType === "ResultDraftCreated")).toHaveLength(0);
     });
   });
 
@@ -224,6 +277,32 @@ describe("PostgresStore multi-instance integration", () => {
     await withDisposablePostgresDatabase(async (database) => {
       await database.createStore(createDemoState(TEST_PASSWORD));
       await expect(database.query("TRUNCATE audit_events")).rejects.toThrow("AUDIT_EVENTS_ARE_APPEND_ONLY");
+      const boundary = await database.query("SELECT boundary_key, authoritative_store, status, reconciliation_mode FROM runtime_storage_boundaries");
+      expect(boundary.rows).toEqual([expect.objectContaining({
+        boundary_key: "runtime-jsonb-snapshot-v1",
+        authoritative_store: "cvg_runtime_state",
+        status: "TRANSITIONAL",
+        reconciliation_mode: "CONTINUOUS"
+      })]);
+    });
+  });
+
+  it("enforces an atomic distributed rate-limit bucket in PostgreSQL", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      await database.createStore(createDemoState(TEST_PASSWORD));
+      vi.stubEnv("DATABASE_URL", database.connectionString());
+      vi.stubEnv("RATE_LIMIT_MODE", "postgres");
+      try {
+        const timestamp = Date.parse("2026-08-23T12:00:00.000Z");
+        await assertRateLimit("integration-rate-limit", 2, 60_000, timestamp);
+        await assertRateLimit("integration-rate-limit", 2, 60_000, timestamp + 1);
+        await expect(assertRateLimit("integration-rate-limit", 2, 60_000, timestamp + 2)).rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
+        const bucket = await database.query("SELECT request_count FROM rate_limit_buckets WHERE bucket_key = $1", ["integration-rate-limit"]);
+        expect(bucket.rows).toEqual([{ request_count: 3 }]);
+      } finally {
+        await closeRateLimitBackend();
+        vi.unstubAllEnvs();
+      }
     });
   });
 });

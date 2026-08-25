@@ -33,6 +33,7 @@ describe("local private file store", () => {
       await store.healthcheck();
       expect(safeStorageKey("tenant/item/report.bin")).toBe("tenant/item/report.bin");
       expect(createFileStoreFromEnv({ STORAGE_MODE: "local", STORAGE_ROOT: path.join(root, "factory") })).toBeInstanceOf(LocalFileStore);
+      expect(() => createFileStoreFromEnv({ NODE_ENV: "production", STORAGE_MODE: "local", STORAGE_ROOT: root })).toThrow(/local.*produção/i);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

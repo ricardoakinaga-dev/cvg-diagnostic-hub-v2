@@ -5,25 +5,35 @@
   "project_profile": "BROWNFIELD",
   "work_mode": "FEATURE",
   "work_mode_overlays": ["REFACTOR", "MIGRATION"],
-  "lifecycle_stage": "BUILD",
-  "active_activity": "IMPLEMENT",
+  "lifecycle_stage": "AUDIT",
+  "active_activity": "VERIFY",
   "engineering_tier": "T3_SYSTEM",
   "risk_level": "HIGH",
   "blast_radius": "SYSTEM",
-  "status": "IN_PROGRESS",
+  "status": "VERIFY",
   "active_execplan": ".agent/plans/premium-enterprise-mvp-v4.md",
-  "active_task": "TASK-V4-DATA-001",
-  "verification_state": "FAIL",
-  "repository_state": "Git main at 7728140, initially clean against origin/main; v4 control-plane changes in progress",
+  "active_task": "TASK-V4-AUDIT-001",
+  "verification_state": "PASS",
+  "repository_state": "Git main at bc74d700f14d0bbb8c068e0448d0df501f1a7ed4; working tree contains 72 implementation, test, documentation and control-plane paths under verification",
   "instruction_scope_refs": ["AGENTS.md", "docs/build/PREMIUM_MVP_V4.md"],
-  "last_gate_record": ".agent/gates/implementation-ready-v4-data.json",
-  "last_event_id": "EVT-V4-019",
-  "state_revision": 13,
-  "next_gate": "VERIFIED",
-  "next_action": "Create the fail-closed disposable PostgreSQL harness and execute two-store stale-read RED regressions before changing store production behavior",
-  "blocked_by": [],
-  "human_approval_required": [
-    "Hospital release decisions listed in docs/build/PREMIUM_MVP_V4.md remain external and do not block local implementation"
+  "last_gate_record": ".agent/gates/verified-v4-final.json",
+  "last_event_id": "EVT-V4-059",
+  "state_revision": 16,
+  "next_gate": "RELEASE_READY",
+  "next_action": "Attach approved external release evidence before any deployment or real-data use",
+  "blocked_by": [
+    "Hospital identity, ownership, transfer and discharge policy",
+    "Critical-result recipient, thresholds, fallback and escalation approval",
+    "Production object storage, malware scanner, secrets, TLS and ingress configuration",
+    "Retention/residency, backup/restore, RPO/RTO and incident ownership",
+    "Relational clinical migration/EXPLAIN, representative load, remote CI, manual acceptance and pilot sign-off"
   ],
-  "updated_at": "2026-08-22T05:27:54Z"
+  "human_approval_required": [
+    "Hospital identity, ownership, transfer and discharge policy",
+    "Delegated-manager authority and department scope",
+    "Critical-result thresholds, fallback and escalation policy",
+    "Production object storage, malware scanner and secrets",
+    "Retention, residency, RPO/RTO, representative load, manual acceptance and pilot sign-off"
+  ],
+  "updated_at": "2026-08-23T19:27:15Z"
 }

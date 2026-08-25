@@ -2,7 +2,7 @@
 
 Central operacional para solicitar, executar, acompanhar, liberar e revisar exames diagnósticos em um hospital veterinário.
 
-> **Status (20/08/2026):** MVP executável em ambiente local, com dados sintéticos, memória ou PostgreSQL 16. Ainda não é uma release aprovada para uso hospitalar.
+> **Status (23/08/2026):** MVP executável em ambiente local, com dados sintéticos, memória ou PostgreSQL 16. Ainda não é uma release aprovada para uso hospitalar.
 
 ## Objetivo
 
@@ -33,7 +33,7 @@ A implementação segue slices verticais: contrato → persistência → API →
 
 ## Executar localmente
 
-Requer Node.js 22+, Docker e npm:
+Requer Node.js 20.9+ e npm. Docker é conveniente, mas o harness também aceita um PostgreSQL 16 descartável local:
 
 ```bash
 npm ci
@@ -41,7 +41,6 @@ cp .env.example .env
 export DATABASE_URL=postgresql://cvg:cvg_dev@localhost:54329/cvg_diagnostics
 export DEMO_PASSWORD="$(openssl rand -base64 32)"
 export ALLOW_SYNTHETIC_SEED=true
-docker compose up -d postgres
 npm run db:migrate
 npm run db:seed
 npm run dev
@@ -71,7 +70,7 @@ npm audit --audit-level=high
 
 Para evidência operacional adicional: `PERF_PASSWORD="$DEMO_PASSWORD" npm run perf:smoke` exige um servidor já iniciado; `ALLOW_DB_RESTORE_SMOKE=true npm run db:restore:smoke` restaura apenas em um banco Docker descartável. O seed sintético é proibido com `NODE_ENV=production` e só executa com `ALLOW_SYNTHETIC_SEED=true`. O `db:smoke` também é destrutivo: exige `ALLOW_DB_SMOKE_RESET=true`, host de loopback e um banco dedicado cujo nome comece por `cvg_smoke` ou `cvg_test`. A integração descartável roda com `ALLOW_POSTGRES_INTEGRATION_TESTS=true`, `POSTGRES_TEST_ADMIN_URL` local e `npm run test:postgres`.
 
-O E2E usa o Chrome disponível no host quando o navegador Playwright empacotado não possui dependências gráficas. Os dados e arquivos locais ficam em `.data/` e não devem receber informação clínica real.
+O E2E usa o Chrome disponível no host quando o navegador Playwright empacotado não possui dependências gráficas; gravação de vídeo fica desligada por padrão para não depender de `ffmpeg`. Os dados e arquivos locais ficam em `.data/` e não devem receber informação clínica real.
 
 ## Validação documental
 
@@ -99,6 +98,6 @@ Ficam fora do MVP: faturamento, estoque, prontuário completo, agenda clínica g
 
 ## Limites atuais e próximos gates
 
-O runtime atual cobre as slices principais de solicitação, Lab, RX/US, resultados versionados, anexos locais/S3-compatible, notificações, filas, busca, timeline, dashboard, RBAC, CSRF, auditoria, outbox com retry/lease, SSE, métricas e PostgreSQL snapshot. A barra local e o status dos gates estão em [`docs/build/QUALITY_SCORECARD_95.md`](docs/build/QUALITY_SCORECARD_95.md), [`docs/build/ROADMAP_95.md`](docs/build/ROADMAP_95.md) e [`docs/build/BACKLOG_95.md`](docs/build/BACKLOG_95.md).
+O runtime atual cobre as slices principais de solicitação, Lab, RX/US, resultados versionados com ações de UI, anexos privados locais/S3-compatible, scanner externo fail-closed, notificações, filas, busca, timeline, dashboard, RBAC, CSRF, auditoria, outbox com retry/lease/ownership, rate limit PostgreSQL, SSE, métricas e PostgreSQL snapshot transitório. A barra local e o status dos gates estão em [`docs/build/PREMIUM_MVP_V4.md`](docs/build/PREMIUM_MVP_V4.md), [`docs/operations/PRODUCTION_READINESS.md`](docs/operations/PRODUCTION_READINESS.md) e [`docs/TRACEABILITY_MATRIX.md`](docs/TRACEABILITY_MATRIX.md).
 
 Antes de qualquer piloto, ainda precisam de decisão/evidência: identidade e ownership no hospital, transferência/alta, política de resultado crítico, fallback de notificação, retenção, RPO/RTO aprovado, varredura AV externa, object storage produtivo/credenciais, workload representativo, inspeção manual de acessibilidade e sign-off. Esses gates estão em [`docs/discovery/OPEN_QUESTIONS.md`](docs/discovery/OPEN_QUESTIONS.md), [`docs/operations/PRODUCTION_READINESS.md`](docs/operations/PRODUCTION_READINESS.md) e no backlog 95/100.

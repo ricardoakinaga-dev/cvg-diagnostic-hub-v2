@@ -15,7 +15,9 @@ export default defineConfig({
     baseURL: process.env.BASE_URL ?? "http://localhost:3000",
     trace: "on-first-retry",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    // The workspace uses the system Chrome; recording requires a separately managed
+    // ffmpeg binary and must not prevent the browser context from starting.
+    video: "off",
     ...(systemChrome ? { launchOptions: { executablePath: systemChrome } } : {}),
     locale: "pt-BR",
     timezoneId: "America/Sao_Paulo"
@@ -28,8 +30,8 @@ export default defineConfig({
     { name: "mobile", use: { ...devices["Pixel 5"] } }
   ],
   webServer: {
-    command: "APP_DATA_MODE=memory DEMO_PASSWORD=e2e-local-password-2026 LOGIN_RATE_LIMIT=100 STORAGE_SCAN_MODE=local npm run dev",
-    url: "http://localhost:3000",
+    command: "APP_DATA_MODE=memory OUTBOX_INLINE_LOCAL=true DEMO_PASSWORD=e2e-local-password-2026 CRITICAL_POLICY_ENABLED=true CRITICAL_POLICY_VERSION=e2e-policy-v1 CRITICAL_POLICY_APPROVAL_REF=e2e-approval-2026 CRITICAL_POLICY_APPROVED_AT=2026-08-20T10:00:00.000Z LOGIN_RATE_LIMIT=100 STORAGE_SCAN_MODE=local npm run dev",
+    url: process.env.BASE_URL ?? "http://localhost:3000",
     reuseExistingServer: !process.env.CI,
     timeout: 120000
   }

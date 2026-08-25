@@ -1,10 +1,18 @@
 # Test Plan
 
-**Knowledge status (20/08/2026):** `DECISION` de estratégia de validação; o MVP local já possui testes unitários, API/integrados, cobertura, PostgreSQL smoke e Playwright. Os cenários abaixo continuam sendo o plano completo para piloto/produção, e os cenários ainda ausentes estão marcados no backlog.
+**Knowledge status (23/08/2026):** `DECISION` de estratégia de validação; o MVP local já possui testes unitários, API/integrados, cobertura, PostgreSQL smoke e Playwright. Os cenários abaixo continuam sendo o plano completo para piloto/produção, e os cenários ainda ausentes estão marcados no backlog.
 
 ## 1. Objectives
 
 Provar comportamento externo, integridade clínica, autorização, recuperação e usabilidade dos journeys críticos. A meta geral de implementação é cobertura ≥80% em código de negócio, mas cobertura não substitui integration/E2E/security.
+
+### Current executable evidence — 23/08/2026
+
+- `npm run test:coverage`: 273/273 tests in 44 files; 96.13% statements/lines, 83.67% branches and 97.11% functions.
+- Disposable PostgreSQL integration: 16/16 tests, including migrations 001–006, fresh reads, outbox ownership and PostgreSQL rate-limit buckets.
+- `npm run test:e2e`: 39/39 across Chromium, tablet and mobile; the matrix includes 6 accessibility checks and the focused result/attachment/critical-ack journey.
+- Focused PostgreSQL-backed clinical browser smoke: 2/2 without route mocking, using synthetic data and an explicitly configured test critical-result policy.
+- Typecheck, lint, production build, OpenAPI (63 operations/58 paths), docs validation, secret scan and high-severity audit pass separately. Patient registry now has focused unit, API-boundary and request-flow UI coverage. This is local evidence only; relational clinical migration/`EXPLAIN`, external infrastructure, manual acceptance and hospital policy gates remain open.
 
 ## 2. Test environments
 

@@ -473,3 +473,92 @@ Verdict is `REJECT` for the historical local-complete claim and `NOT READY` for 
 The next build slice is the RED-first closure of draft confidentiality, exact
 author/service authorization, fail-closed bootstrap and canonical result lineage.
 External hospital and production gates remain blocked and no policy value is invented.
+
+## Round 13 — PostgreSQL-backed MVP closure and evidence reconciliation — 2026-08-23
+
+### Goal and bar
+
+Continue the Quality Bar v4 recovery through the locally authorized implementation
+boundary, execute the real artifact with PostgreSQL, reconcile documentation and
+leave a precise release decision. The bar remains binary for local evidence and
+does not permit synthetic fixtures to close hospital or production gates.
+
+### Implemented slice
+
+- Added durable outbox claim ownership with token/lease verification so stale workers
+  cannot complete or retry a message after another worker takes the lease.
+- Added fail-closed production malware-scanner and distributed PostgreSQL rate-limit
+  adapters, plus migrations for claim ownership, buckets and the explicit transitional
+  snapshot boundary.
+- Split the application service into cohesive request, workflow, result, attachment,
+  management and read modules; no production source file exceeds the 800-line bar.
+- Completed UI actions for recollection/reschedule and result draft/release/amend/void,
+  audit/review and attachment upload with checksum/MIME/scan/finalization controls.
+- Reconciled architecture, UX, data, realtime, traceability, readiness and discovery
+  documents with the actual Next.js/PostgreSQL implementation.
+
+### Fresh evidence
+
+`npm run test:coverage` passed 254/254 tests across 40 files with 96.36% statements/
+lines, 83.00% branches and 97.38% functions. Typecheck, lint, Next production build,
+OpenAPI (62 operations/58 paths), docs (56 files), secret scan, high-severity audit and
+`git diff --check` passed. The disposable PostgreSQL suite passed 16/16 tests in two
+files. Full Playwright passed 33/33 across Chromium/tablet/mobile, including six
+accessibility checks. A clean PostgreSQL-backed browser run passed 11/11 Chromium
+scenarios in 59.9s, including the accessibility flow, manager workflows, contextual
+request creation, patient context, responsive navigation and degraded-resource handling.
+
+### Critique and limitations
+
+The separated critics and targeted adversarial tests drove the security, contract,
+outbox, storage and architecture fixes recorded above. This checkpoint does not claim
+a fresh independent final approval for the entire changed tree. The browser set still
+needs full real-backend result/attachment/critical-notification journeys; the clinical
+JSONB snapshot is explicitly transitional and lacks relational migration/EXPLAIN proof.
+
+### Decision
+
+`CONDITIONAL PASS` for the locally verifiable synthetic MVP boundary. `NOT READY` for
+hospital or production use. Open gates are hospital identity/ownership and transfer or
+discharge policy, delegated-manager authority, critical-result fallback/escalation,
+production object storage/AV/secrets, retention/residency/RPO/RTO, representative load,
+manual clinical/accessibility acceptance, remote CI, pilot sign-off and independent
+production configuration review.
+
+## Round 14 — Final Quality Bar v4 verification and conditional gate — 2026-08-23
+
+### Final local evidence
+
+The source-generated contract was corrected to include the runtime notification states
+`FAILED` and `SUPERSEDED`; the notification documentation and traceability counts were
+then reconciled. The final deterministic control-plane checker passed all 11 checks with
+zero failures, including state, backlog, execution log, verification ledger, authority,
+gate history and lifecycle reconciliation.
+
+Fresh artifact evidence is green: `npm run test:coverage` passed 265/265 tests across 41
+files with 96.28% statements/lines, 83.63% branches and 97.04% functions; typecheck,
+lint and Next production build passed; OpenAPI passed at 62 operations/58 paths; docs
+validation passed 56 required files; secret scan, high-severity dependency audit and
+`git diff --check` passed. The disposable PostgreSQL suite passed 16/16 tests, the full
+synthetic browser matrix passed 39/39, and the final PostgreSQL-backed clinical smoke
+passed 2/2 after the source correction. The final independent read-only critic found no
+unresolved local HIGH finding; its MEDIUM enum/evidence-reconciliation findings were
+closed and retested.
+
+The historical Round 13 counts remain unchanged as historical evidence. Round 14 is the
+current evidence boundary and supersedes those counts for the final decision.
+
+### Decision
+
+The persisted gate `.agent/gates/verified-v4-final.json` is
+`PASS_WITH_CONDITIONS` for `Local synthetic MVP verification only`, with authority
+explicitly confirmed for that scope and explicitly withheld for hospital and production
+release. The local artifact is verified conditionally; `RELEASE_READY` remains blocked.
+
+The remaining blockers are external and non-inferable: hospital identity, ownership,
+transfer/alta and delegated-manager policy; critical-result recipients, thresholds,
+fallback and escalation approval; production storage, malware scanning, secrets, TLS and
+ingress; retention/residency, backup/restore, RPO/RTO and incident ownership; relational
+clinical migration and representative EXPLAIN evidence; representative load, remote CI,
+manual clinical/accessibility acceptance, pilot sign-off and production configuration
+review. No real clinical data or deployment authority is implied by this gate.

@@ -1,6 +1,6 @@
 # Realtime specification
 
-**Knowledge status:** `DECISION` proposta (`SSE`); carga, multi-instância e metas de propagação são `ASSUMPTION`/`OPEN QUESTION` até benchmark.
+**Knowledge status:** `IMPLEMENTED LOCALLY / CONDITIONAL` — SSE autorizado, heartbeat, replay limitado, `Last-Event-ID`, `resync_required`, expiração e polling de fallback existem; multi-instância, carga e meta de propagação ainda são `OPEN QUESTION`.
 
 ## 1. Choice
 
@@ -30,9 +30,9 @@ Payload contains `eventId`, `type`, `occurredAt`, `entityType`, opaque `entityId
 - duplicate events are harmless because UI compares entity/version and refetches;
 - release/review commands never depend on receiving SSE.
 
-## 4. Multi-instance path
+## 4. Current and multi-instance path
 
-MVP may use a single API process with an internal publisher fed after outbox commit. Before horizontal scaling, use PostgreSQL `LISTEN/NOTIFY`, a durable outbox poller or equivalent fanout, and test that an event reaches all authorized instances. Do not introduce Redis by default.
+O endpoint atual lê uma janela limitada do outbox por polling e refaz a checagem de autorização antes de cada envio. Isso é suficiente como sinal de invalidação em um processo e não expõe conteúdo clínico. Não há `LISTEN/NOTIFY` nem fanout multi-instância demonstrado. Antes de escalar horizontalmente, usar um poller/fanout durável baseado no outbox ou PostgreSQL `LISTEN/NOTIFY`, e testar entrega autorizada em todas as instâncias. Redis não é default.
 
 ## 5. Degraded behavior
 

@@ -1,8 +1,23 @@
-import type { ItemState, Permission, Priority, ResultVersionState, RoleCode, WorkflowType } from "@cvg/contracts";
-import { hasPermission } from "../security/authorization";
-import type { Actor } from "../security/authorization";
+import type { ItemState, Priority, ResultVersionState, RoleCode, WorkflowType } from "@cvg/contracts";
 
 export type Timestamp = string;
+
+export interface Actor {
+  id: string;
+  role: RoleCode;
+  departmentCode: string;
+  managedDepartmentCodes?: ReadonlyArray<string>;
+  patientIds?: ReadonlyArray<string>;
+  serviceCodes?: ReadonlyArray<string>;
+  active?: boolean;
+}
+
+export interface ScopedResource {
+  patientId?: string;
+  departmentCode?: string;
+  serviceCode?: string;
+  ownerId?: string;
+}
 
 export interface User extends Actor {
   email: string;
@@ -207,7 +222,7 @@ export interface Notification {
   title: string;
   body: string;
   dedupeKey: string;
-  state: "PENDING" | "DELIVERED" | "SEEN" | "ACKNOWLEDGED" | "ESCALATED";
+  state: "PENDING" | "DELIVERED" | "SEEN" | "ACKNOWLEDGED" | "FAILED" | "SUPERSEDED" | "ESCALATED";
   createdAt: Timestamp;
   acknowledgedAt?: Timestamp;
   acknowledgedBy?: string;
@@ -240,6 +255,7 @@ export interface OutboxMessage {
   correlationId: string;
   lockedAt?: Timestamp;
   workerId?: string;
+  claimToken?: string;
   lastError?: string;
 }
 
@@ -310,8 +326,4 @@ export function userAsActor(user: User): Actor {
     serviceCodes: user.serviceCodes,
     active: user.active
   };
-}
-
-export function hasPermissionForUser(user: User, permission: Permission): boolean {
-  return user.active === true && hasPermission(user.role, permission);
 }

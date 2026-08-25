@@ -257,6 +257,12 @@ export class PostgresStore implements StateStore {
     initialization?: PostgresInitializationOptions
   ): Promise<PostgresStore> {
     const pool = new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX ?? 10), idleTimeoutMillis: 30_000 });
+    if (typeof pool.on === "function") {
+      pool.on("error", () => {
+        // Idle-client failures are surfaced by the next readiness/transaction call;
+        // keep them from becoming process-level unhandled errors during failover.
+      });
+    }
     try {
       const result = await pool.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
       let initialState: StoreState;
@@ -385,8 +391,8 @@ export class PostgresStore implements StateStore {
     const previousOutbox = new Map(before.outbox.map((event) => [event.id, event]));
     for (const message of after.outbox.filter((entry) => !previousOutbox.has(entry.id))) {
       const inserted = await client.query(
-        "INSERT INTO outbox_messages (id, event_type, aggregate_type, aggregate_id, payload, status, attempts, available_at, correlation_id, locked_at, worker_id, last_error) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING RETURNING id",
-        [message.id, message.eventType, message.aggregateType, message.aggregateId, JSON.stringify(message.payload), message.status, message.attempts, message.availableAt, message.correlationId, message.lockedAt ?? null, message.workerId ?? null, message.lastError ?? null]
+        "INSERT INTO outbox_messages (id, event_type, aggregate_type, aggregate_id, payload, status, attempts, available_at, correlation_id, locked_at, worker_id, claim_token, last_error) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING RETURNING id",
+        [message.id, message.eventType, message.aggregateType, message.aggregateId, JSON.stringify(message.payload), message.status, message.attempts, message.availableAt, message.correlationId, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
       );
       if (inserted.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }
@@ -394,8 +400,8 @@ export class PostgresStore implements StateStore {
       const previous = previousOutbox.get(message.id);
       if (!previous || JSON.stringify(previous) === JSON.stringify(message)) continue;
       const updated = await client.query(
-        "UPDATE outbox_messages SET status = $2, attempts = $3, available_at = $4, locked_at = $5, worker_id = $6, last_error = $7 WHERE id = $1",
-        [message.id, message.status, message.attempts, message.availableAt, message.lockedAt ?? null, message.workerId ?? null, message.lastError ?? null]
+        "UPDATE outbox_messages SET status = $2, attempts = $3, available_at = $4, locked_at = $5, worker_id = $6, claim_token = $7, last_error = $8 WHERE id = $1",
+        [message.id, message.status, message.attempts, message.availableAt, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
       );
       if (updated.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }

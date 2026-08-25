@@ -10,6 +10,7 @@ import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
 import type { StoreState, User } from "../../../../server/domain/models";
 import { assertRateLimit } from "../../../../server/security/rate-limit";
+import { createSafeConsoleSink, processOutboxBatch } from "../../../../server/operations/outbox";
 import { incrementGauge, recordHttpRequest, recordReadinessFailure, refreshOperationalMetrics, renderPrometheus, routeMetricLabel } from "../../../../server/observability/metrics";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import {
@@ -56,6 +57,18 @@ const createRequestSchema = z.object({
   items: z.array(z.object({ serviceId: boundedString(1, 100), note: normalizedText(1, 2000).optional() }).strict()).min(1).max(20),
   overrideReason: normalizedText(1, 500).optional()
 }).strict();
+const createPatientSchema = z.object({
+  displayName: normalizedText(2, 120),
+  species: normalizedText(2, 60),
+  breed: normalizedText(2, 120),
+  sex: normalizedText(1, 40),
+  birthDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  ownerLabel: normalizedText(2, 160),
+  externalId: normalizedText(1, 100).optional(),
+  encounterType: z.enum(["INPATIENT", "EMERGENCY", "OUTPATIENT"]),
+  ward: normalizedText(1, 100).optional(),
+  bed: normalizedText(1, 100).optional()
+}).strict();
 
 const loginSchema = z.object({ email: z.string().email().refine((value) => codePointLength(value) <= 320), password: boundedString(1, 200) }).strict();
 const serviceCreateSchema = z.object({
@@ -86,6 +99,17 @@ function correlationFrom(request: Request): string {
 
 function requestId(): string {
   return `req_${randomUUID()}`;
+}
+
+function clientAddressFor(request: Request): string {
+  if (process.env.TRUST_PROXY !== "true") return "local-client";
+  const configuredSecret = process.env.TRUST_PROXY_SHARED_SECRET?.trim();
+  const presentedSecret = request.headers.get("x-cvg-proxy-secret")?.trim();
+  if (!configuredSecret || !presentedSecret || presentedSecret !== configuredSecret) return "untrusted-proxy";
+  const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+  const realIp = request.headers.get("x-real-ip")?.trim();
+  const address = forwarded || realIp;
+  return address && address.length <= 200 ? address : "trusted-proxy";
 }
 
 function responseFor<T>(data: T, correlationId: string, id: string, status = 200, extraMeta?: Record<string, unknown>): NextResponse {
@@ -197,11 +221,9 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     const operation = matchApiOperation(method, path);
     if (!operation) throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
     validateRequestHeaders(request, operation);
-    const clientAddress = process.env.TRUST_PROXY === "true"
-      ? request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "forwarded-client"
-      : "local-client";
+    const clientAddress = clientAddressFor(request);
     const loginRateLimit = positiveInteger(process.env.LOGIN_RATE_LIMIT, 10);
-    assertRateLimit(`${clientAddress}:${operation.operationId}`, operation.operationId === "login" ? loginRateLimit : 240, 60_000);
+    await assertRateLimit(`${clientAddress}:${operation.operationId}`, operation.operationId === "login" ? loginRateLimit : 240, 60_000);
     const isLogin = operation.operationId === "login";
     const isPublic = operation.authentication === "public";
     if (path[0] === "livez" && method === "GET") return responseFor({ status: "ok", service: "cvg-diagnostics-hub" }, correlationId, id);
@@ -214,11 +236,12 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       }
     }
     const store = await getRuntimeStoreAsync();
+    await flushConfiguredLocalOutbox(store);
     const service = createApplicationService(store, { storage: getRuntimeFileStore() });
     if (isPublic && isLogin && method === "POST") {
       const parsed = loginSchema.safeParse(await jsonBody(request));
       if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Informe e-mail e senha válidos.", 400);
-      assertRateLimit(`login-email:${parsed.data.email.trim().toLowerCase()}`, loginRateLimit, 60_000);
+      await assertRateLimit(`login-email:${parsed.data.email.trim().toLowerCase()}`, loginRateLimit, 60_000);
       const login = await loginUser(store, parsed.data.email, parsed.data.password);
       const response = responseFor({ user: publicUser(login.user), expiresAt: login.expiresAt }, correlationId, id);
       for (const cookie of sessionCookies(login)) response.headers.append("set-cookie", cookie);
@@ -227,7 +250,7 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
 
     const actor = await authenticateRequest(store, request, { requireCsrf: operation.csrf });
     if (operation.operationId === "uploadAttachmentContent") {
-      assertRateLimit(`${clientAddress}:${actor.id}:attachment-content`, positiveInteger(process.env.ATTACHMENT_UPLOAD_RATE_LIMIT, 30), 60_000);
+      await assertRateLimit(`${clientAddress}:${actor.id}:attachment-content`, positiveInteger(process.env.ATTACHMENT_UPLOAD_RATE_LIMIT, 30), 60_000);
     }
     if (path[0] === "metrics" && method === "GET") {
       if (!canAccessResource(actor, "health.readiness", {})) throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
@@ -304,6 +327,12 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       const query = new URL(request.url).searchParams.get("q") ?? "";
       if (codePointLength(query) > 200) throw new ApiError("VALIDATION_ERROR", "A busca de pacientes é muito longa.", 400);
       return responseFor(await service.listPatients(actor, query), correlationId, id);
+    }
+    if (path[0] === "patients" && method === "POST" && path.length === 1) {
+      const body = await objectBody(request);
+      const parsed = createPatientSchema.safeParse(body);
+      if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Os dados do paciente são inválidos.", 400);
+      return responseFor(await service.createPatient(actor, parsed.data, commandMeta(request, body, operation)), correlationId, id, 201);
     }
     if (path[0] === "patients" && path.length === 3 && path[2] === "diagnostics" && method === "GET") {
       const search = new URL(request.url).searchParams;
@@ -525,6 +554,11 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
   } catch (error) {
     return errorFor(error, correlationId, id);
   }
+}
+
+async function flushConfiguredLocalOutbox(store: Awaited<ReturnType<typeof getRuntimeStoreAsync>>): Promise<void> {
+  if (process.env.OUTBOX_INLINE_LOCAL !== "true" || process.env.NODE_ENV === "production") return;
+  await processOutboxBatch(store, createSafeConsoleSink(() => undefined), { workerId: `inline_${process.pid}`, batchSize: 100 });
 }
 
 function publicUser(user: { id: string; email: string; displayName: string; role: string; departmentCode: string; timezone: string; managedDepartmentCodes?: ReadonlyArray<string> }) {

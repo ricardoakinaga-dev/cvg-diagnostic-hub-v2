@@ -1,12 +1,19 @@
 # UX user flows and wireflows
 
-**Knowledge status:** `DECISION/PROPOSAL` de interação, ainda sem implementação ou teste de tarefa real.
+**Knowledge status:** `IMPLEMENTED LOCALLY / CONDITIONAL FOR PRODUCTION` — os wireflows abaixo têm implementação em `src/components`, evidência Playwright 39/39 em Chromium/tablet/mobile (incluindo resultado, anexos e acknowledgement crítico) e smoke real com seed sintético em PostgreSQL descartável; aceitação clínica, carga representativa e inspeção manual continuam abertas.
+
+## 0. Current implementation evidence
+
+- `RequestDetail` e `QueueView` usam a mesma `WorkflowAction` e refetch após mutações.
+- Ações implementadas na UI: receber amostra, processamento, agenda, remarcação quando o procedimento expõe sua versão, execução, resultado draft, recoleta e recebimento de substituta.
+- `ResultView` registra visualização, revisão, edição/liberação de draft, emenda, invalidação, anexos com checksum/MIME/scanner e download apenas após release/scan limpo.
+- Loading, partial failure, permission/not-found, retry/reconcile e realtime degradado têm estados visíveis. O E2E executado localmente usa seed sintético em memória ou PostgreSQL descartável; não é evidência de prontuário hospitalar ou teste clínico.
 
 ## 1. Create request
 
 ```mermaid
 flowchart LR
-  A[Paciente/Atendimento contextual] --> B[Buscar serviços]
+  A[Paciente/atendimento ou novo cadastro] --> B[Buscar serviços]
   B --> C[Selecionar um ou mais itens]
   C --> D{Duplicidade?}
   D -- não --> E[Prioridade + observação opcional]
@@ -16,7 +23,17 @@ flowchart LR
   G --> H[Resumo + próxima ação + deep link]
 ```
 
-Primary actions are select, priority and request; context is prefilled. Error/unknown state keeps the user’s typed note locally until server result is known.
+Primary actions are select, priority and request; context is prefilled. If the patient is not in the list, the veterinarian selects `＋ Cadastrar paciente`, completes the patient/tutor fields and chooses the initial encounter type. The returned open encounter is inserted and selected in the same request flow. Error/unknown state keeps the user’s typed note locally until server result is known.
+
+## 1.1 Register patient from the request flow
+
+```text
+Nova solicitação → Paciente → ＋ Cadastrar paciente → patient + encounter form → Cadastrar paciente
+                                                                            ↓
+                                      patient and open encounter selected → choose services → confirm request
+```
+
+The same form is available as `Novo paciente` in `Meus pacientes`. Inpatient registration adds required ward and bed fields. The server owns identifier generation, duplicate protection, scope assignment, audit and the atomic patient/encounter/admission write; the UI never fabricates a patient ID or encounter.
 
 ## 2. Laboratory queue
 

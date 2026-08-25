@@ -367,6 +367,37 @@ describe("versioned API boundary", () => {
     expect(await resync.text()).toContain("event: resync_required");
   });
 
+  it("registers a patient and its initial encounter through the authenticated HTTP boundary", async () => {
+    const auth = await login();
+    const payload = {
+      displayName: "Amora API",
+      species: "Canino",
+      breed: "Border Collie",
+      sex: "Fêmea",
+      ownerLabel: "M. Ribeiro",
+      externalId: "HIS-AMORA-API",
+      encounterType: "OUTPATIENT"
+    };
+    const response = await POST(new Request("http://localhost/api/v1/patients", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: auth.cookie, "x-csrf-token": auth.csrf, "idempotency-key": "api-patient-create" },
+      body: JSON.stringify(payload)
+    }), params(["patients"]));
+    const body = await response.json();
+
+    expect(response.status).toBe(201);
+    expect(body.data.patient).toMatchObject({ displayName: "Amora API", externalId: "HIS-AMORA-API", active: true });
+    expect(body.data.encounter).toMatchObject({ patientId: body.data.patient.id, type: "OUTPATIENT", status: "OPEN" });
+
+    const patients = await GET(new Request("http://localhost/api/v1/patients?q=Amora%20API", { headers: { cookie: auth.cookie } }), params(["patients"]));
+    expect(patients.status).toBe(200);
+    expect((await patients.json()).data).toEqual(expect.arrayContaining([expect.objectContaining({ id: body.data.patient.id, externalId: "HIS-AMORA-API" })]));
+
+    const encounters = await GET(new Request(`http://localhost/api/v1/patients/${body.data.patient.id}/encounters`, { headers: { cookie: auth.cookie } }), params(["patients", body.data.patient.id, "encounters"]));
+    expect(encounters.status).toBe(200);
+    expect((await encounters.json()).data).toEqual([expect.objectContaining({ id: body.data.encounter.id, patientId: body.data.patient.id })]);
+  });
+
   it("rejects missing, malformed, or conflicting optimistic concurrency guards before mutation", async () => {
     const auth = await login();
     const created = await POST(new Request("http://localhost/api/v1/diagnostic-requests", {

@@ -23,7 +23,7 @@ Collections add `meta.nextCursor`, `meta.limit` and stable ordering. Errors foll
 
 - Internal resource IDs: opaque UUIDv7 strings.
 - Human request identifier: `requestCode`.
-- Mutating clinical commands: `Idempotency-Key` and `If-Match`/`expectedVersion` where specified.
+- Mutating clinical commands: `Idempotency-Key` and `If-Match`/`expectedVersion` where specified. Patient registration also requires an idempotency key because it creates a patient and an initial encounter atomically.
 - Auth: secure server session cookie; future OIDC boundary does not expose bearer tokens to local storage. `POST /session/reauth` records a short-lived password reauthentication on the session for sensitive access-management commands.
 
 ### Pagination/filtering
@@ -37,6 +37,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | Endpoint command | Idempotency-Key | Concurrency guard |
 | --- | --- | --- |
 | `POST /diagnostic-requests` | recommended for create; required for duplicate override retry | context/payload hash |
+| `POST /patients` | required | patient + initial encounter transaction |
 | `POST /diagnostic-requests/{id}/cancel`, `POST /diagnostic-items/{id}/cancel`, `POST /diagnostic-items/{id}/reject` | required | `expectedVersion` |
 | `POST /diagnostic-items/{id}/receive-sample`, `/start-processing`, `/request-recollection` | required for recollection; recommended/required by command policy for receive/start | `expectedVersion` |
 | `POST /samples/{id}/receive-replacement` | required | sample/item version |
@@ -54,7 +55,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Patients | `GET /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view |
+| Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}` | scoped view |
 | Diagnostic requests | `POST /diagnostic-requests`, `GET /diagnostic-requests`, `GET /diagnostic-requests/{id}` | create/view scope |
 | Request items | `GET /diagnostic-items/{id}` | item scope |
@@ -76,6 +77,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | Method and path | Required permission(s) | Additional condition/scope |
 | --- | --- | --- |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
+| `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
 | `GET /patients/{id}/diagnostics` | `patient.view`, `diagnostic.timeline.view` | CARE/assigned patient scope; paginated |
 | `GET /patients/{id}/encounters` | `encounter.view` | patient scope; returns only that patient's encounters |
@@ -141,6 +143,25 @@ This table is exhaustive for the planned routes in this document. Any new route 
 
 ## 3. Request commands
 
+### Register patient and initial encounter
+
+`POST /patients`
+
+```json
+{
+  "displayName": "Amora",
+  "species": "Canino",
+  "breed": "Labrador",
+  "sex": "Fêmea",
+  "birthDate": "2022-06-14",
+  "ownerLabel": "M. Ribeiro",
+  "externalId": "HIS-AMORA-001",
+  "encounterType": "OUTPATIENT"
+}
+```
+
+The veterinarian or inpatient team may register a patient from the patient area or directly from the request dialog. The server generates an external identifier when omitted, opens the initial encounter, assigns the patient to the actor's care scope and returns `201`. For `INPATIENT`, `ward` and `bed` are required and an admission is created in the same transaction. Reusing the same idempotency key with the same payload returns the original result; a different payload returns `409 IDEMPOTENCY_KEY_REUSED`.
+
 ### Create request
 
 `POST /diagnostic-requests`
@@ -196,7 +217,7 @@ Schedule conflict returns `409 SCHEDULE_CONFLICT`; previous schedule remains his
 - `POST /results/{id}/void` — only approved exception policy; reason mandatory; returns item `RESULT_VOIDED`, `replacementRequired=true`, affected notification references and current invalidated version.
 - `POST /results/{id}/view` — records view of `versionId`, idempotent per policy.
 - `POST /results/{id}/review` — records review of exact current version; `409 REVIEW_STALE` if changed.
-- `POST /notifications/{id}/acknowledge` — critical/eligible notification acknowledgement.
+- `POST /notifications/{id}/acknowledge` — critical/eligible notification acknowledgement; the server accepts only delivered/seen, current notifications and rejects pending, failed or superseded delivery states.
 
 `PATCH` is never available against a released version. `GET /results/{id}` returns current version plus version/review status according to scope; historical versions require separate permission/route.
 

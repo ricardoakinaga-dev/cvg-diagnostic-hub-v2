@@ -12,11 +12,19 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   CSRF_INVALID: "A sessão de segurança expirou. Atualize a página e tente novamente.",
   IDEMPOTENCY_KEY_REUSED: "Esta operação já foi recebida. Atualize os dados antes de tentar novamente.",
   NOT_FOUND: "O recurso solicitado não está disponível.",
+  CONFLICT: "Este registro já existe ou mudou. Atualize os dados e tente novamente.",
   RATE_LIMITED: "Muitas tentativas em pouco tempo. Aguarde e tente novamente.",
   SCOPE_DENIED: "Você não tem acesso a este recurso.",
   SESSION_EXPIRED: "Sua sessão expirou. Entre novamente para continuar.",
   UNAUTHENTICATED: "Sua sessão não está disponível. Entre novamente para continuar.",
   VALIDATION_ERROR: "Revise os dados informados e tente novamente.",
+  CRITICAL_ACK_REQUIRED: "Confirme a notificação crítica antes de revisar o resultado.",
+  NOTIFICATION_NOT_DELIVERED: "A notificação ainda está sendo entregue. Atualize e tente novamente.",
+  NOTIFICATION_STALE: "O resultado crítico mudou. Abra o contexto atual antes de confirmar.",
+  DUPLICATE_WARNING: "Já existe um exame ativo compatível. Confirme o motivo para prosseguir.",
+  RESULT_RELEASE_BLOCKED: "Finalize ou remova os anexos pendentes antes de liberar o resultado.",
+  SCHEDULE_CONFLICT: "O recurso já está reservado neste intervalo.",
+  STALE_VERSION: "Os dados mudaram enquanto você trabalhava. Atualize a tela antes de continuar.",
 };
 
 export class ApiClientError extends Error {

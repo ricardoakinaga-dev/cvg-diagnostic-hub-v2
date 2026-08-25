@@ -31,7 +31,7 @@ Triggers use canonical events: `ResultReleased`, `RecollectionRequested`, `Diagn
 
 MVP channel: `IN_APP`. Future channels (`PUSH`, `EMAIL`, `WHATSAPP`, `WEBHOOK`) require separate consent, authentication, delivery/receipt semantics and ADR. Notification intent is written to outbox in the same transaction as the event; worker retries with bounded backoff and dedupe key.
 
-Delivery states: `PENDING`, `DELIVERED`, `SEEN`, `ACKNOWLEDGED`, `FAILED`, `EXPIRED`, `ESCALATED`. `DELIVERED` means recorded in inbox, not clinically received. For critical results only `ACKNOWLEDGED` satisfies the communication policy.
+Delivery states: `PENDING`, `DELIVERED`, `SEEN`, `ACKNOWLEDGED`, `FAILED`, `SUPERSEDED`, `ESCALATED`. `DELIVERED` means recorded in inbox, not clinically received. Acknowledgement is accepted only after `DELIVERED`/`SEEN`; `PENDING` and `FAILED` remain operational delivery states, and `SUPERSEDED` cannot be acknowledged. For critical results only `ACKNOWLEDGED` satisfies the communication policy.
 
 ## 5. Critical result rules
 
@@ -40,6 +40,7 @@ Delivery states: `PENDING`, `DELIVERED`, `SEEN`, `ACKNOWLEDGED`, `FAILED`, `EXPI
 - Notification includes patient-safe context, request code/item/service, result version reference and “open result” action; do not put full sensitive content in push/SSE payload.
 - Recipient must acknowledge; reminders/escalations use policy deadline.
 - Correction creates a new notification decision; old acknowledgement remains historical and does not automatically acknowledge the new version.
+- When an unacknowledged critical version is amended or voided, its notification becomes `SUPERSEDED` and the current version requires a new notification decision.
 - Void of a released/reviewed/completed version creates `ResultVoided`, informs affected recipients that the prior version is invalid and points to the replacement/operational action; the void itself is never treated as a successful clinical result.
 - Failure to deliver/acknowledge stays in a manager queue and is visible in dashboard.
 

@@ -19,6 +19,7 @@ The following identifiers are the authorization contract used by the API specifi
 | Permission ID | Action represented | Typical scope |
 | --- | --- | --- |
 | `patient.view` | View patient and identity context | CARE/assigned |
+| `patient.create` | Register patient and open the initial encounter | VETERINARIAN/INPATIENT scope |
 | `encounter.view` | View encounter | CARE/assigned |
 | `admission.view` | View admission/ward context | WARD/CARE |
 | `request.create` | Create diagnostic request | CARE/department |
@@ -75,8 +76,8 @@ The following identifiers are the authorization contract used by the API specifi
 | --- | --- | --- |
 | `ADMIN` | identity and system configuration | technical; no clinical command or patient scope locally |
 | `MANAGER` | operational queues, overrides, delegated configuration and collaborator access | own department plus explicitly managed diagnostic departments; request/item access is department-scoped; an `ADMIN` provisions the delegated department set |
-| `VETERINARIAN` | request, view and review for care scope | assigned patients/encounters/departments |
-| `INPATIENT_TEAM` | request/view/review for admitted patients | assigned ward/department |
+| `VETERINARIAN` | register patient, request, view and review for care scope | assigned patients/encounters/departments |
+| `INPATIENT_TEAM` | register patient, request/view/review for admitted patients | assigned ward/department |
 | `LAB_TECH` | receive/process/recollect/release lab work | Laboratory |
 | `RADIOLOGY_TEAM` | schedule/perform/release RX work | Radiology |
 | `ULTRASOUND_TEAM` | schedule/perform/release US work | Ultrasonography |
@@ -91,6 +92,7 @@ Legend: `✓` allowed within scope and state; `△` allowed only with extra cond
 | Action | ADMIN | MANAGER | VET | INPATIENT | LAB | RADIOLOGY | ULTRASOUND | VIEWER |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Search authorized resources | — (break-glass only) | ✓ assigned scope | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Register patient + initial encounter | — | — | ✓ | ✓ | — | — | — | — |
 | Create diagnostic request | — (break-glass only) | △ | ✓ | ✓ | △ | △ | △ | — |
 | Override duplicate warning | △ | ✓ | △ reason | △ reason | △ | △ | △ | — |
 | View request/item | — (break-glass only) | ✓ assigned department | ✓ care | ✓ ward | ✓ lab | ✓ imaging | ✓ imaging | ✓ assigned |

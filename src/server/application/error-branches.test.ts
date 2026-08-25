@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
+import { InProcessEventBus, processOutboxBatch } from "../operations/outbox";
 
 describe("server-side validation and conflict branches", () => {
   it("rejects malformed request context and unsafe idempotency reuse", async () => {
@@ -98,6 +99,15 @@ describe("server-side validation and conflict branches", () => {
       const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "critical-release-approved" });
       expect(released.version).toMatchObject({ status: "RELEASED", critical: true });
       expect(store.getState().notifications).toContainEqual(expect.objectContaining({ category: "CRITICAL", entityId: released.version.id }));
+      await service.viewResult(vet, released.version.id, { expectedVersion: released.item.version, idempotencyKey: "critical-view" });
+      await expect(service.reviewResult(vet, released.result.id, { versionId: released.version.id, expectedVersion: released.item.version, idempotencyKey: "critical-review-before-ack" })).rejects.toMatchObject({ code: "CRITICAL_ACK_REQUIRED", status: 409 });
+      const criticalNotification = store.getState().notifications.find((notification) => notification.category === "CRITICAL" && notification.entityId === released.version.id);
+      if (!criticalNotification) throw new Error("critical notification missing");
+      await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
+      const deliveredCriticalNotification = store.getState().notifications.find((notification) => notification.id === criticalNotification.id);
+      if (!deliveredCriticalNotification) throw new Error("critical notification delivery missing");
+      await service.acknowledgeNotification(vet, deliveredCriticalNotification.id, { expectedVersion: deliveredCriticalNotification.version, reason: "Confirmei a comunicação crítica.", confirm: true, idempotencyKey: "critical-ack" });
+      await expect(service.reviewResult(vet, released.result.id, { versionId: released.version.id, expectedVersion: released.item.version, idempotencyKey: "critical-review-after-ack" })).resolves.toMatchObject({ item: { status: "REVIEWED" } });
     } finally {
       if (previousPolicyFlag === undefined) delete process.env.CRITICAL_POLICY_ENABLED;
       else process.env.CRITICAL_POLICY_ENABLED = previousPolicyFlag;
@@ -107,6 +117,44 @@ describe("server-side validation and conflict branches", () => {
       else process.env.CRITICAL_POLICY_APPROVAL_REF = previousPolicyApprovalRef;
       if (previousPolicyApprovedAt === undefined) delete process.env.CRITICAL_POLICY_APPROVED_AT;
       else process.env.CRITICAL_POLICY_APPROVED_AT = previousPolicyApprovedAt;
+    }
+  });
+
+  it("supersedes an unacknowledged critical notification when its version is amended", async () => {
+    const store = new MemoryStore(createDemoState());
+    const service = createApplicationService(store);
+    const vet = store.getState().users.find((user) => user.email === "vet@cvg.local");
+    const lab = store.getState().users.find((user) => user.email === "lab@cvg.local");
+    if (!vet || !lab) throw new Error("fixture actors missing");
+    const previous = {
+      enabled: process.env.CRITICAL_POLICY_ENABLED,
+      version: process.env.CRITICAL_POLICY_VERSION,
+      approval: process.env.CRITICAL_POLICY_APPROVAL_REF,
+      approvedAt: process.env.CRITICAL_POLICY_APPROVED_AT
+    };
+    process.env.CRITICAL_POLICY_ENABLED = "true";
+    process.env.CRITICAL_POLICY_VERSION = "policy-stale-test";
+    process.env.CRITICAL_POLICY_APPROVAL_REF = "approval-stale-test";
+    process.env.CRITICAL_POLICY_APPROVED_AT = "2026-08-20T10:00:00.000Z";
+    try {
+      const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "stale-critical-request" });
+      const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-STALE-CRITICAL", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "stale-critical-receive" });
+      const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "stale-critical-start" });
+      const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Crítico antes da emenda.", content: {}, expectedVersion: started.item.version, idempotencyKey: "stale-critical-draft" });
+      const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "stale-critical-release" });
+      await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
+      const notification = store.getState().notifications.find((entry) => entry.category === "CRITICAL" && entry.entityId === released.version.id);
+      if (!notification) throw new Error("critical notification missing");
+      const amended = await service.amendResult(lab, released.result.id, { reason: "Atualização clínica controlada.", narrative: "Nova interpretação após revisão.", content: {}, expectedVersion: released.result.version, idempotencyKey: "stale-critical-amend" });
+      expect(amended.version.status).toBe("DRAFT");
+      const superseded = store.getState().notifications.find((entry) => entry.id === notification.id);
+      expect(superseded).toMatchObject({ state: "SUPERSEDED", version: notification.version + 1 });
+      await expect(service.acknowledgeNotification(vet, notification.id, { expectedVersion: superseded!.version, reason: "Tentativa obsoleta", confirm: true, idempotencyKey: "stale-critical-ack" })).rejects.toMatchObject({ code: "NOTIFICATION_STALE", status: 409 });
+    } finally {
+      if (previous.enabled === undefined) delete process.env.CRITICAL_POLICY_ENABLED; else process.env.CRITICAL_POLICY_ENABLED = previous.enabled;
+      if (previous.version === undefined) delete process.env.CRITICAL_POLICY_VERSION; else process.env.CRITICAL_POLICY_VERSION = previous.version;
+      if (previous.approval === undefined) delete process.env.CRITICAL_POLICY_APPROVAL_REF; else process.env.CRITICAL_POLICY_APPROVAL_REF = previous.approval;
+      if (previous.approvedAt === undefined) delete process.env.CRITICAL_POLICY_APPROVED_AT; else process.env.CRITICAL_POLICY_APPROVED_AT = previous.approvedAt;
     }
   });
 });

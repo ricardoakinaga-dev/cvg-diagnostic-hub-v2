@@ -1,7 +1,7 @@
 # Discovery — CVG Diagnostics Hub
 
-**Status:** `COMPLETE — READY` com perguntas abertas explicitadas  
-**Data:** 2026-08-18  
+**Status:** `COMPLETE — IMPLEMENTED LOCALLY / EXTERNAL GATES OPEN` com perguntas abertas explicitadas
+**Data:** 2026-08-23
 **Classificação:** `FACT`, `ASSUMPTION`, `DECISION`, `OPEN QUESTION`
 
 ## Executive summary
@@ -12,9 +12,11 @@ O problema não é apenas registrar um exame: é tornar visível, em tempo real 
 
 ## Repository reconnaissance
 
-- `FACT`: o diretório de trabalho não possui `.git`, código, package manifest, README, documentação, Docker, CI, migrations, banco, frontend, backend ou testes.
-- `FACT`: não existe arquitetura anterior a preservar nem baseline de comportamento executável.
-- `DECISION`: esta entrega permanece documentação-first; não instalar dependências nem iniciar componentes React antes da coerência Discovery → PRD → SPEC → Build Plan.
+- `FACT`: o repositório é um monólito Next.js 16/TypeScript com `src/app`, `src/components`, `src/server`, `packages/contracts`, `db/migrations`, scripts operacionais, OpenAPI e suítes Vitest/Playwright.
+- `FACT`: o runtime local pode usar `MemoryStore`; o modo PostgreSQL tem migrations/readiness e foi exercitado contra um cluster descartável. O snapshot clínico JSONB é uma fronteira transitória explícita, não o modelo relacional hospitalar final.
+- `FACT`: as jornadas de solicitação, Lab, recoleta, RX/US, resultados versionados, anexos, notificações, auditoria e administração estão implementadas em grau local demonstrável; a UI ainda é sintética e o seed não representa dados hospitalares reais.
+- `DECISION`: Discovery permanece a fonte de problemas, hipóteses e perguntas abertas; a implementação e os limites atuais são detalhados em `docs/architecture`, `docs/build`, `docs/operations` e `docs/TRACEABILITY_MATRIX.md`.
+- `OPEN QUESTION`: identidade/ownership do hospital, transferências/alta, política de críticos, fallback, retenção, residência, RPO/RTO, scanner/storage produtivos e carga representativa continuam gates externos.
 
 ## Problem statement
 

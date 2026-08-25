@@ -1,53 +1,54 @@
 # Components and module contracts
 
-**Knowledge status:** `DECISION` de boundaries para planejamento; nenhum componente de aplicação existe ainda no repositório.
+**Knowledge status:** `IMPLEMENTED LOCALLY / CONDITIONAL FOR PRODUCTION` — os componentes abaixo existem e são exercitados por testes; contratos hospitalares e infraestrutura externa ainda precisam de aprovação.
 
 ## 1. Web application
 
-- App shell/navigation by permission.
-- Query/cache layer that treats SSE as invalidation signal, not truth.
-- Forms with progressive disclosure and schema-generated types.
-- Shared `DiagnosticStatus`, `PriorityBadge`, `SlaIndicator`, `PatientIdentity`, `NotificationRow` and `ErrorState` components.
-- Accessibility primitives for focus, keyboard and live regions.
+`src/app` contém as páginas Next.js e `src/components` contém o shell, dashboards, filas, detalhe de solicitação, ações de workflow e resultado. A UI usa progressive disclosure, controles nomeados, estados de loading/empty/error/partial/degraded e atualiza a verdade por refetch após mutações. A jornada de resultado inclui revisão, edição/liberação de draft, emenda, invalidação, upload verificado e download autorizado.
 
 ## 2. API layers
 
 ```text
-transport/controller
-  → request schema/DTO validation
-  → application command/query handlers
-  → domain rules/value objects
-  → repository ports
-  → PostgreSQL adapters
-  → outbox/audit adapters
+Next catch-all route
+  → operation manifest + strict bounded parsing
+  → session/CSRF/rate limit
+  → application service
+  → authorization + domain transition
+  → StateStore/FileStore/scanner ports
+  → audit/outbox response envelope
 ```
 
-Controllers never make direct table mutations or decide authorization from client input.
+O cliente não escolhe actor, escopo ou estado. Cada mutação recebe `expectedVersion`/`If-Match` quando aplicável e idempotency key; falhas retornam envelope seguro com correlação.
 
-## 3. Internal ports
+## 3. Application modules
 
-| Port | Contract |
-| --- | --- |
-| `PatientContextPort` | resolve patient/encounter/admission + external refs within scope |
-| `DiagnosticCatalogPort` | service capabilities, labels, schema and policy versions |
-| `DiagnosticWorkflowPort` | validate/execute service-specific transitions |
-| `SamplePort` | receive/reject/link/recollection chain |
-| `ProcedurePort` | schedule/perform/reschedule |
-| `ResultPort` | draft/release/amend/view/review |
-| `AuthorizationPort` | actor/action/resource/scope decision |
-| `AuditPort` | append immutable event |
-| `NotificationPort` | create durable intent, inbox and acknowledgement |
-| `FileStoragePort` | presigned upload, finalize, scan, authorized download |
-| `ClockPort` | server time for deterministic tests |
+| Módulo | Arquivo | Responsabilidade |
+| --- | --- | --- |
+| requests | `request-service.ts` | criação contextual, duplicidade, cancelamento e leituras de request |
+| workflows | `workflow-service.ts` | amostra/recoleta, RX/US, agenda, execução e estados |
+| results | `result-service.ts` | draft, release, view/review, amend/void e versionamento |
+| attachments | `attachment-service.ts` | sessão, claim de upload, bytes, scanner, finalize e download privado |
+| management | `management-service.ts` | catálogo, motivos, usuários, escopos delegados e overview |
+| reads | `read-service.ts` | filas, busca, timeline, dashboard, notificações e diagnósticos |
+| shared context | `service-common.ts`, `service-types.ts` | autorização, views, invariantes, auditoria e contratos |
 
-## 4. Shared contracts
+`service.ts` é apenas o agregador dos módulos. O limite de tamanho de fonte é verificado pelo gate arquitetural.
 
-Keep only stable cross-module types in `packages/contracts` when implementation starts: IDs, enums, event envelopes, API error codes and pagination. Do not create a generic “domain” package that owns every rule.
+## 4. Infrastructure adapters
+
+| Adapter | Implementação | Limite |
+| --- | --- | --- |
+| StateStore | `MemoryStore`, `PostgresStore` | Postgres usa snapshot JSONB transitório + projeções e readiness explícita |
+| FileStore | local privado, S3-compatible | local é proibido em `NODE_ENV=production` |
+| MalwareScanner | scanner local controlado, HTTP externo | modo local é proibido em produção; endpoint/chave são obrigatórios |
+| Rate limiter | memória fora de produção, buckets PostgreSQL em produção | backend desconhecido ou indisponível falha fechado |
+| Outbox | claim/lease/retry + token de ownership | conclusão exige worker e claim atuais dentro do lease |
+| Realtime | SSE autorizado com polling/replay/resync | não há `LISTEN/NOTIFY` multi-instância demonstrado ainda |
 
 ## 5. Read models
 
-Queue cards, dashboard counters, notification inbox and search may use query projections/materialized views, but each field must state its source event/timestamp and refresh behavior. They cannot write lifecycle state.
+Queues, dashboard, notification inbox, timeline and search are derived reads. They may be stale during dependency failure and expose that state; they never mutate clinical lifecycle. SSE only signals invalidation and clients refetch through authorization.
 
-## 6. Infrastructure adapters
+## 6. Future integration ports
 
-PostgreSQL repositories, S3 storage, session store, outbox worker, SSE broadcaster and telemetry are replaceable adapters. Local MinIO is for development only; production bucket policy, encryption, retention and lifecycle are separate configuration.
+Identity/IdP, HIS/ERP, LIS/analyzers, PACS/DICOM and external notification channels remain explicit boundaries. Their ownership, contract, retry, consent, retention and pilot acceptance must be decided before enabling them in a hospital environment.

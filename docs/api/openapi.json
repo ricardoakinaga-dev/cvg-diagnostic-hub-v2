@@ -4175,6 +4175,267 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "createPatient",
+        "summary": "Register a patient and initial encounter",
+        "description": "Register a patient and initial encounter. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Patients"
+        ],
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": []
+          }
+        ],
+        "x-required-permissions": [
+          "patient.create"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "\\S"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatientCreate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Resource created",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/createPatientSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, concurrency, or idempotency conflict",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Request media type is not supported",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/patients/{patientId}": {
@@ -16099,6 +16360,102 @@
           }
         }
       },
+      "PatientCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "displayName",
+          "species",
+          "breed",
+          "sex",
+          "ownerLabel",
+          "encounterType"
+        ],
+        "properties": {
+          "displayName": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S[\\s\\S]{0,118}\\S[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 2,
+            "x-normalized-max-length": 120
+          },
+          "species": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S[\\s\\S]{0,58}\\S[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 2,
+            "x-normalized-max-length": 60
+          },
+          "breed": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S[\\s\\S]{0,118}\\S[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 2,
+            "x-normalized-max-length": 120
+          },
+          "sex": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,38}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 40
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "ownerLabel": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S[\\s\\S]{0,158}\\S[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 2,
+            "x-normalized-max-length": 160
+          },
+          "externalId": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,98}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 100
+          },
+          "encounterType": {
+            "type": "string",
+            "enum": [
+              "INPATIENT",
+              "EMERGENCY",
+              "OUTPATIENT"
+            ]
+          },
+          "ward": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,98}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 100
+          },
+          "bed": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,98}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 100
+          }
+        },
+        "x-cross-field-constraints": [
+          "encounterType=INPATIENT requires ward and bed",
+          "ward and bed are only accepted for encounterType=INPATIENT",
+          "externalId is generated when omitted"
+        ]
+      },
       "ManagedUserCreate": {
         "type": "object",
         "additionalProperties": false,
@@ -18074,6 +18431,10 @@
           },
           "service": {
             "$ref": "#/components/schemas/DiagnosticService"
+          },
+          "procedureVersion": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       },
@@ -18748,6 +19109,8 @@
               "DELIVERED",
               "SEEN",
               "ACKNOWLEDGED",
+              "FAILED",
+              "SUPERSEDED",
               "ESCALATED"
             ]
           },
@@ -18970,6 +19333,25 @@
           "$ref": "#/components/schemas/Patient"
         },
         "maxItems": 100
+      },
+      "PatientCreateResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "patient",
+          "encounter"
+        ],
+        "properties": {
+          "patient": {
+            "$ref": "#/components/schemas/Patient"
+          },
+          "encounter": {
+            "$ref": "#/components/schemas/Encounter"
+          },
+          "admission": {
+            "$ref": "#/components/schemas/Admission"
+          }
+        }
       },
       "PatientDiagnostics": {
         "type": "object",
@@ -20381,6 +20763,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/PatientList"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "createPatientSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PatientCreateResult"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

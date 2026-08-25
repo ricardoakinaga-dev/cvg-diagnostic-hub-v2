@@ -16,6 +16,7 @@ export interface PostgresIntegrationEnvironment {
 }
 
 export interface DisposablePostgresDatabase {
+  connectionString(): string;
   createStore(fallbackState?: StoreState): Promise<PostgresStore>;
   closeStore(store: PostgresStore): Promise<void>;
   query(text: string, values?: readonly unknown[]): Promise<{ rows: readonly unknown[]; rowCount: number | null }>;
@@ -112,6 +113,10 @@ async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedD
   const adminPool = new Pool({ connectionString: adminUrl.toString(), max: 1 });
   const connectionString = databaseConnectionString(adminUrl, databaseName);
   const verificationPool = new Pool({ connectionString, max: 1 });
+  // Disposable-cluster teardown intentionally terminates any last backend after
+  // the pools have begun closing. Consume that expected driver-level event so
+  // teardown cannot turn a passing integration run into an unhandled error.
+  for (const pool of [adminPool, verificationPool]) pool.on("error", () => undefined);
   let databaseCreated = false;
   let openStores: readonly PostgresStore[] = [];
 
@@ -140,6 +145,10 @@ async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedD
   }
 
   return {
+    connectionString(): string {
+      return connectionString;
+    },
+
     async createStore(fallbackState?: StoreState): Promise<PostgresStore> {
       const store = fallbackState
         ? await PostgresStore.create(

@@ -60,6 +60,20 @@ const requestSchemas = {
     password: stringSchema(1, 200)
   }, ["email", "password"]),
   ReauthenticationRequest: strictObject({ password: stringSchema(1, 200) }, ["password"]),
+  PatientCreate: {
+    ...strictObject({
+      displayName: normalizedTextSchema(2, 120), species: normalizedTextSchema(2, 60), breed: normalizedTextSchema(2, 120),
+      sex: normalizedTextSchema(1, 40), birthDate: { type: "string", format: "date", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+      ownerLabel: normalizedTextSchema(2, 160), externalId: normalizedTextSchema(1, 100),
+      encounterType: { type: "string", enum: ["INPATIENT", "EMERGENCY", "OUTPATIENT"] },
+      ward: normalizedTextSchema(1, 100), bed: normalizedTextSchema(1, 100)
+    }, ["displayName", "species", "breed", "sex", "ownerLabel", "encounterType"]),
+    "x-cross-field-constraints": [
+      "encounterType=INPATIENT requires ward and bed",
+      "ward and bed are only accepted for encounterType=INPATIENT",
+      "externalId is generated when omitted"
+    ]
+  },
   ManagedUserCreate: {
     ...strictObject({
     email: { type: "string", format: "email", maxLength: 320 }, displayName: normalizedTextSchema(2, 160),
@@ -215,6 +229,7 @@ const diagnosticItemSchema = strictObject({
 const requestItemSchema = strictObject({ ...diagnosticItemSchema.properties, service: schemaReference("DiagnosticService") }, [
   ...diagnosticItemSchema.required, "service"
 ]);
+requestItemSchema.properties.procedureVersion = positiveVersion;
 const requestViewSchema = strictObject({
   ...diagnosticRequestSchema.properties, patient: schemaReference("Patient"), encounter: schemaReference("Encounter"), items: arrayOf(schemaReference("RequestItem"))
 }, [...diagnosticRequestSchema.required, "patient", "encounter", "items"]);
@@ -261,7 +276,7 @@ const notificationSchema = strictObject({
   priority: { type: "string", enum: ["NORMAL", "HIGH", "URGENT"] }, recipientUserId: identifier,
   entityType: { type: "string", enum: ["REQUEST", "ITEM", "RESULT_VERSION", "SAMPLE"] }, entityId: identifier,
   deepLink: stringSchema(1, 500), title: stringSchema(1, 500), body: stringSchema(1, 2000), dedupeKey: stringSchema(1, 500),
-  state: { type: "string", enum: ["PENDING", "DELIVERED", "SEEN", "ACKNOWLEDGED", "ESCALATED"] },
+  state: { type: "string", enum: ["PENDING", "DELIVERED", "SEEN", "ACKNOWLEDGED", "FAILED", "SUPERSEDED", "ESCALATED"] },
   createdAt: timestamp, acknowledgedAt: timestamp, acknowledgedBy: identifier, attempts: nonNegativeInteger, version: positiveVersion
 }, ["id", "category", "priority", "recipientUserId", "entityType", "entityId", "deepLink", "title", "body", "dedupeKey", "state", "createdAt", "attempts", "version"]);
 const auditEventSchema = strictObject({
@@ -308,6 +323,7 @@ const responseDataSchemas = {
   DiagnosticServiceList: arrayOf(schemaReference("DiagnosticService")),
   ReasonCodeList: arrayOf(schemaReference("ReasonCode")),
   PatientList: arrayOf(schemaReference("Patient"), { maxItems: 100 }),
+  PatientCreateResult: strictObject({ patient: schemaReference("Patient"), encounter: schemaReference("Encounter"), admission: schemaReference("Admission") }, ["patient", "encounter"]),
   PatientDiagnostics: strictObject({ patient: schemaReference("Patient"), items: arrayOf(schemaReference("RequestView")), events: arrayOf(schemaReference("AuditEvent")), nextCursor: schemaReference("Cursor"), limit: schemaReference("Limit"), total: nonNegativeInteger }, ["patient", "items", "events", "limit", "total"]),
   EncounterList: arrayOf(schemaReference("Encounter")),
   RequestViewList: arrayOf(schemaReference("RequestView")),
@@ -514,7 +530,7 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  if (API_OPERATIONS.length !== 62 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 58) throw new Error("The audited API surface must remain exactly 62 operations across 58 paths.");
+  if (API_OPERATIONS.length !== 63 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 58) throw new Error("The audited API surface must remain exactly 63 operations across 58 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

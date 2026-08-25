@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
+import { InProcessEventBus, processOutboxBatch } from "../operations/outbox";
 import type { Notification } from "../domain/models";
 
 describe("authorized read models", () => {
@@ -138,6 +139,9 @@ describe("authorized read models", () => {
     await service.requestRecollection(lab, received.sample.id, { reasonCode: "HEMOLYZED", expectedVersion: received.items[0].version, idempotencyKey: "read-model-recollect" });
     expect((await service.listNotifications(actor, "ACTIONABLE")).items).toHaveLength(1);
     expect((await service.listNotifications(actor, "UNREAD")).items).toHaveLength(1);
+    const pendingNotification = (await service.listNotifications(actor)).items[0];
+    await expect(service.acknowledgeNotification(actor, pendingNotification.id, { expectedVersion: pendingNotification.version, reason: "Confirmação prematura", confirm: true, idempotencyKey: "read-model-pending-ack" })).rejects.toMatchObject({ code: "NOTIFICATION_NOT_DELIVERED" });
+    await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
     const notification = (await service.listNotifications(actor)).items[0];
     await expect(service.acknowledgeNotification(actor, notification.id, {} as never)).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REQUIRED" });
     await service.acknowledgeNotification(actor, notification.id, { expectedVersion: notification.version, reason: "Confirmei a recoleta no contexto autorizado.", confirm: true, idempotencyKey: "read-model-ack" });

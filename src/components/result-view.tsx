@@ -8,14 +8,30 @@ import { StatusBadge } from "./status-badge";
 
 interface ResultData {
   result: { id: string; lifecycleStatus: string; needsReReview: boolean; version: number };
-  version: { id: string; sequence: number; status: ResultVersionState; narrative: string; conclusion?: string; authorId: string; createdAt: string; releasedAt?: string; critical: boolean; needsReReview: boolean; content: Record<string, unknown> };
+  version: { id: string; sequence: number; status: ResultVersionState; narrative: string; conclusion?: string; authorId: string; createdAt: string; releasedAt?: string; critical: boolean; needsReReview: boolean; version: number; content: Record<string, unknown> };
   item: { id: string; status: ItemState; version: number; serviceId: string };
   request: { id: string; requestCode: string };
   patient: { displayName: string; species: string; sex: string; externalId: string };
-  service: { name: string; workflowType: WorkflowType };
+  service: { name: string; workflowType: WorkflowType; allowsAttachment?: boolean };
 }
 
 interface Attachment { id: string; safeName: string; detectedMime: string; sizeBytes: number; scanStatus: string; uploadStatus: string }
+interface AttachmentSession { attachment: Attachment; uploadUrl: string; expiresAt: string }
+type EditorMode = "DRAFT" | "AMEND" | "VOID" | undefined;
+
+function sha256Hex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function fileBytes(file: File): Promise<ArrayBuffer> {
+  if (typeof file.arrayBuffer === "function") return file.arrayBuffer();
+  return new Promise<ArrayBuffer>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "object" && reader.result !== null ? resolve(reader.result as ArrayBuffer) : reject(new Error("Não foi possível ler o anexo."));
+    reader.onerror = () => reject(new Error("Não foi possível ler o anexo."));
+    reader.readAsArrayBuffer(file);
+  });
+}
 
 export function ResultView({ resultId }: { resultId: string }) {
   const [data, setData] = useState<ResultData | null>(null);
@@ -24,7 +40,17 @@ export function ResultView({ resultId }: { resultId: string }) {
   const [viewed, setViewed] = useState(false);
   const [reviewed, setReviewed] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [invalidated, setInvalidated] = useState(false);
+  const [editorMode, setEditorMode] = useState<EditorMode>();
+  const [reason, setReason] = useState("");
+  const [narrative, setNarrative] = useState("");
+  const [conclusion, setConclusion] = useState("");
+  const [critical, setCritical] = useState(false);
+  const [releaseCritical, setReleaseCritical] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File>();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -38,8 +64,11 @@ export function ResultView({ resultId }: { resultId: string }) {
     if (versionResponse.status === "fulfilled") setVersions(versionResponse.value);
     if (reportResponse.status === "fulfilled") setAttachments(reportResponse.value.attachments);
     if (resultResponse.status === "rejected") {
+      setData(null);
+      setVersions([]);
+      setAttachments([]);
       setError(getSafeErrorMessage(resultResponse.reason, "Não foi possível carregar o resultado."));
-    } else if (versionResponse.status === "rejected" || reportResponse.status === "rejected") {
+    } else if ((versionResponse.status === "rejected" && resultResponse.value.version.status !== "DRAFT") || reportResponse.status === "rejected") {
       setError("Parte do histórico ou dos anexos está indisponível; os dados visíveis podem estar desatualizados.");
     }
     setLoading(false);
@@ -54,19 +83,130 @@ export function ResultView({ resultId }: { resultId: string }) {
       .catch((cause) => setError(getSafeErrorMessage(cause, "Não foi possível registrar a visualização.")));
   }, [data, resultId, viewed]);
 
-  async function review() {
-    if (!data || !viewed || reviewed) return;
+  function beginEditor(mode: Exclude<EditorMode, undefined>): void {
+    setEditorMode(mode);
+    setReason("");
+    setNarrative(data?.version.narrative ?? "");
+    setConclusion(data?.version.conclusion ?? "");
+    setCritical(data?.version.critical ?? false);
+    setError("");
+  }
+
+  function closeEditor(): void {
+    if (busy) return;
+    setEditorMode(undefined);
+    setReason("");
+    setError("");
+  }
+
+  async function submitEditor(event: React.FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    if (!data || !editorMode || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      if (editorMode === "VOID") {
+        if (!reason.trim()) throw new Error("Informe o motivo da invalidação.");
+        await apiFetch(`/results/${resultId}/void`, { method: "POST", body: JSON.stringify({ reason: reason.trim(), expectedVersion: data.result.version }) });
+        setInvalidated(true);
+        setNotice("Resultado invalidado. Uma nova versão deverá ser registrada.");
+      } else {
+        if (!narrative.trim()) throw new Error("Informe o texto do resultado.");
+        if (editorMode === "AMEND" && !reason.trim()) throw new Error("Informe o motivo da emenda.");
+        const body = { narrative: narrative.trim(), conclusion: conclusion.trim() || undefined, content: data.version.content, ...(editorMode === "AMEND" ? { reason: reason.trim(), critical } : {}), expectedVersion: data.result.version };
+        await apiFetch(editorMode === "AMEND" ? `/results/${resultId}/amend` : `/results/${resultId}/draft`, { method: editorMode === "AMEND" ? "POST" : "PATCH", body: JSON.stringify(body) });
+        setNotice(editorMode === "AMEND" ? "Emenda salva como nova versão em draft." : "Draft atualizado.");
+      }
+      setEditorMode(undefined);
+      await load();
+    } catch (cause) {
+      setError(getSafeErrorMessage(cause, cause instanceof Error ? cause.message : "Não foi possível salvar a alteração."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function releaseDraft(): Promise<void> {
+    if (!data || data.version.status !== "DRAFT" || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await apiFetch(`/results/${resultId}/release`, { method: "POST", body: JSON.stringify({ critical: releaseCritical, expectedVersion: data.result.version }) });
+      setNotice("Resultado liberado e enviado para a fila de revisão.");
+      await load();
+    } catch (cause) {
+      setError(getSafeErrorMessage(cause, "Não foi possível liberar o resultado."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function uploadSelectedFile(): Promise<void> {
+    if (!data || !selectedFile || busy) return;
+    const allowed = new Set(["application/pdf", "image/jpeg", "image/png"]);
+    if (!allowed.has(selectedFile.type)) {
+      setError("Escolha um PDF, JPEG ou PNG.");
+      return;
+    }
+    if (selectedFile.size < 1 || selectedFile.size > 25 * 1024 * 1024) {
+      setError("O anexo deve ter entre 1 byte e 25 MB.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const bytes = await fileBytes(selectedFile);
+      const digest = await globalThis.crypto.subtle.digest("SHA-256", bytes);
+      const session = await apiFetch<AttachmentSession>(`/result-versions/${data.version.id}/attachments/upload-session`, { method: "POST", body: JSON.stringify({ filename: selectedFile.name, mimeType: selectedFile.type, sizeBytes: selectedFile.size, checksum: sha256Hex(digest), expectedVersion: data.version.version }) });
+      const uploadPath = session.uploadUrl.replace(/^\/api\/v1/, "");
+      await apiFetch<{ attachment: Attachment }>(uploadPath, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: bytes as unknown as BodyInit });
+      await apiFetch(`/attachments/${session.attachment.id}/finalize`, { method: "POST", body: JSON.stringify({ expectedVersion: data.version.version }) });
+      setSelectedFile(undefined);
+      setNotice("Anexo enviado, verificado e finalizado.");
+      await load();
+    } catch (cause) {
+      setError(getSafeErrorMessage(cause, cause instanceof Error ? cause.message : "Não foi possível enviar o anexo."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function review(): Promise<void> {
+    if (!data || !viewed || reviewed || data.item.status !== "RESULT_AVAILABLE") return;
+    setBusy(true);
     try {
       await apiFetch(`/results/${resultId}/review`, { method: "POST", body: JSON.stringify({ versionId: data.version.id, expectedVersion: data.item.version }) });
       setReviewed(true);
       await load();
     } catch (cause) {
       setError(getSafeErrorMessage(cause, "Não foi possível registrar a revisão."));
+    } finally {
+      setBusy(false);
     }
   }
 
   if (!data && loading) return <div className="loading-state" role="status">Carregando resultado…</div>;
-  if (!data) return <div className="error-state" role="alert"><strong>Resultado indisponível</strong><span>{error}</span><button className="button button-ghost" onClick={() => void load()}>Tentar novamente</button><Link className="button button-ghost" href="/notifications">Voltar às notificações</Link></div>;
+  if (!data) return <div className="error-state" role="alert"><strong>{invalidated ? "Resultado invalidado" : "Resultado indisponível"}</strong><span>{notice || error}</span><button className="button button-ghost" onClick={() => void load()}>Tentar novamente</button><Link className="button button-ghost" href="/notifications">Voltar às notificações</Link></div>;
 
-  return <div className="result-page"><Link href={`/requests/${data.request.id}`} className="back-link">← Solicitação {data.request.requestCode}</Link><div className="page-heading"><div><p className="eyebrow">{data.service.name} · versão {data.version.sequence}</p><h1>Resultado de <em>{data.patient.displayName}.</em></h1><p className="page-lede">{data.patient.species} · {data.patient.sex} · {data.patient.externalId} · liberado {data.version.releasedAt ? formatRelativeTime(data.version.releasedAt) : "em rascunho"}</p></div><StatusBadge status={data.item.status} /></div>{error && <div className="error-state" role="status"><span>{error}</span><button className="button button-ghost" onClick={() => void load()}>Reconciliar</button></div>}<div className="result-grid"><section className="panel result-content"><div className="panel-heading"><div><p className="eyebrow">Versão atual</p><h2>{data.version.critical ? "Resultado crítico" : "Laudo confirmado"}</h2></div>{data.version.needsReReview && <span className="result-warning">Nova revisão necessária</span>}</div><div className="result-copy"><p>{data.version.narrative}</p>{data.version.conclusion && <div className="result-conclusion"><span>Conclusão</span><strong>{data.version.conclusion}</strong></div>}{Object.keys(data.version.content).length > 0 && <dl className="result-fields">{Object.entries(data.version.content).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl>}</div><div className="result-actions"><span className="result-view-state" role="status">{viewed ? "Visualização registrada" : "Registrando visualização…"}</span>{data.item.status === "RESULT_AVAILABLE" && <button className="button button-primary" onClick={() => void review()} disabled={!viewed || reviewed}>{reviewed ? "Revisão registrada" : "Marcar como revisado"}</button>}</div></section><aside className="result-side"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">Histórico</p><h2>Versões</h2></div><span className="timeline-count">{versions.length}</span></div><ol className="version-list">{versions.map((version) => <li key={version.id} className={version.id === data.version.id ? "version-current" : ""}><strong>Versão {version.sequence}</strong><small>{version.status} · {formatRelativeTime(version.createdAt)}</small></li>)}</ol></section><section className="panel attachment-panel"><div className="panel-heading"><div><p className="eyebrow">Arquivos</p><h2>Anexos</h2></div><span className="timeline-count">{attachments.length}</span></div>{attachments.length === 0 ? <p className="panel-empty-copy">Nenhum anexo nesta versão.</p> : <ul className="attachment-list">{attachments.map((attachment) => <li key={attachment.id}><span><strong>{attachment.safeName}</strong><small>{attachment.detectedMime} · {Math.round(attachment.sizeBytes / 1024)} KB</small></span><span>{attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED" ? "Disponível" : "Indisponível"}</span></li>)}</ul>}</section></aside></div></div>;
+  const isDraft = data.version.status === "DRAFT";
+  const isReleased = data.version.status === "RELEASED";
+  const cleanAttachments = attachments.filter((attachment) => attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED");
+  return <div className="result-page">
+    <Link href={`/requests/${data.request.id}`} className="back-link">← Solicitação {data.request.requestCode}</Link>
+    <div className="page-heading"><div><p className="eyebrow">{data.service.name} · versão {data.version.sequence}</p><h1>Resultado de <em>{data.patient.displayName}.</em></h1><p className="page-lede">{data.patient.species} · {data.patient.sex} · {data.patient.externalId} · {data.version.releasedAt ? `liberado ${formatRelativeTime(data.version.releasedAt)}` : "em rascunho"}</p></div><StatusBadge status={data.item.status} /></div>
+    {error && <div className="error-state" role="alert"><span>{error}</span><button className="button button-ghost" onClick={() => void load()}>Reconciliar</button></div>}
+    {notice && <div className="form-notice" role="status">{notice}</div>}
+    <div className="result-grid">
+      <section className="panel result-content"><div className="panel-heading"><div><p className="eyebrow">Versão atual</p><h2>{data.version.critical ? "Resultado crítico" : isDraft ? "Draft em edição" : "Laudo confirmado"}</h2></div>{data.version.needsReReview && <span className="result-warning">Nova revisão necessária</span>}</div>
+        <div className="result-copy"><p>{data.version.narrative}</p>{data.version.conclusion && <div className="result-conclusion"><span>Conclusão</span><strong>{data.version.conclusion}</strong></div>}{Object.keys(data.version.content).length > 0 && <dl className="result-fields">{Object.entries(data.version.content).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl>}</div>
+        <div className="result-actions"><span className="result-view-state" role="status">{isDraft ? "Draft não liberado" : viewed ? "Visualização registrada" : "Registrando visualização…"}</span><div className="result-command-actions">{isDraft && <><button className="button button-ghost" type="button" onClick={() => beginEditor("DRAFT")}>Editar draft</button><button className="button button-primary" type="button" onClick={() => void releaseDraft()} disabled={busy}>Liberar resultado</button></>}{isReleased && <><button className="button button-ghost" type="button" onClick={() => beginEditor("AMEND")}>Emendar resultado</button><button className="button button-danger-ghost" type="button" onClick={() => beginEditor("VOID")}>Invalidar</button></>}{data.item.status === "RESULT_AVAILABLE" && <button className="button button-primary" type="button" onClick={() => void review()} disabled={!viewed || reviewed || busy}>{reviewed ? "Revisão registrada" : "Marcar como revisado"}</button>}</div></div>
+        {isDraft && <div className="result-support-actions"><label className="checkbox-line"><input type="checkbox" checked={releaseCritical} onChange={(event) => setReleaseCritical(event.target.checked)} /> Liberar como resultado crítico</label>{data.service.allowsAttachment !== false && <div className="attachment-upload"><label htmlFor="result-attachment">Adicionar anexo (PDF, JPEG ou PNG)</label><input id="result-attachment" type="file" accept="application/pdf,image/jpeg,image/png" onChange={(event) => setSelectedFile(event.currentTarget.files?.[0])} /><button className="button button-ghost" type="button" onClick={() => void uploadSelectedFile()} disabled={!selectedFile || busy}>Enviar anexo</button></div>}</div>}
+        {editorMode && <form className="result-editor" onSubmit={(event) => void submitEditor(event)}><h3>{editorMode === "VOID" ? "Invalidar versão liberada" : editorMode === "AMEND" ? "Criar emenda" : "Editar draft"}</h3>{editorMode !== "DRAFT" && <label>Motivo<textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} required placeholder="Explique a alteração para a trilha de auditoria." /></label>}{editorMode !== "VOID" && <><label>Narrativa<textarea value={narrative} onChange={(event) => setNarrative(event.target.value)} rows={5} required /></label><label>Conclusão<textarea value={conclusion} onChange={(event) => setConclusion(event.target.value)} rows={2} /></label>{editorMode === "AMEND" && <label className="checkbox-line"><input type="checkbox" checked={critical} onChange={(event) => setCritical(event.target.checked)} /> Manter como crítico</label>}</>}<div className="workflow-form-actions"><button className="button button-ghost" type="button" onClick={closeEditor}>Cancelar</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Salvando…" : "Confirmar"}</button></div></form>}
+      </section>
+      <aside className="result-side"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">Histórico</p><h2>Versões</h2></div><span className="timeline-count">{versions.length}</span></div><ol className="version-list">{versions.map((version) => <li key={version.id} className={version.id === data.version.id ? "version-current" : ""}><strong>Versão {version.sequence}</strong><small>{version.status} · {formatRelativeTime(version.createdAt)}</small></li>)}</ol></section><section className="panel attachment-panel"><div className="panel-heading"><div><p className="eyebrow">Arquivos</p><h2>Anexos</h2></div><span className="timeline-count">{attachments.length}</span></div>{attachments.length === 0 ? <p className="panel-empty-copy">Nenhum anexo nesta versão.</p> : <ul className="attachment-list">{attachments.map((attachment) => <li key={attachment.id}><span><strong>{attachment.safeName}</strong><small>{attachment.detectedMime} · {Math.round(attachment.sizeBytes / 1024)} KB</small></span>{cleanAttachments.some((entry) => entry.id === attachment.id) && isReleased ? <a className="button button-ghost" href={`/api/v1/attachments/${attachment.id}/download`}>Baixar</a> : <span>{attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED" ? "Disponível após liberação" : "Indisponível"}</span>}</li>)}</ul>}</section></aside>
+    </div>
+  </div>;
 }
