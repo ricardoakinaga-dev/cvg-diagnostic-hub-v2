@@ -14,7 +14,7 @@
   "active_execplan": ".agent/plans/cvg-diagnostic-hub-v2.md",
   "active_task": "TASK-V2-PATIENT-WORKSPACE-001",
   "verification_state": "PASS_WITH_CONDITIONS",
-  "repository_state": "Git main at f06f569625d6c643966a4ef9b181c943eb2aba31; V2 wave 1 and the structured synthetic Hemogram slice are implemented in the working tree, with server release/catalog gates, package/feature boundaries, operational projection and fresh local evidence",
+  "repository_state": "Git main at 0a047c46b9cedb91ac2712f7a0a782bc3b05dfff, tracking origin/main; V2 wave 1 and the structured synthetic Hemogram slice are committed with server release/catalog gates, package/feature boundaries, operational projection and fresh local evidence",
   "instruction_scope_refs": ["AGENTS.md", "docs/v2/QUALITY_BAR.md", "docs/v2/MIGRATION_MAP.md"],
   "last_gate_record": ".agent/gates/v2-laboratory-conditional.json",
   "last_event_id": "EVT-V2-005",
