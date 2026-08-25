@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { InProcessEventBus, processOutboxBatch } from "../operations/outbox";
 
@@ -140,12 +140,12 @@ describe("server-side validation and conflict branches", () => {
       const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "stale-critical-request" });
       const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-STALE-CRITICAL", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "stale-critical-receive" });
       const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "stale-critical-start" });
-      const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Crítico antes da emenda.", content: {}, expectedVersion: started.item.version, idempotencyKey: "stale-critical-draft" });
+      const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Crítico antes da emenda.", content: syntheticHemogramContent("Crítico antes da emenda."), expectedVersion: started.item.version, idempotencyKey: "stale-critical-draft" });
       const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "stale-critical-release" });
       await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
       const notification = store.getState().notifications.find((entry) => entry.category === "CRITICAL" && entry.entityId === released.version.id);
       if (!notification) throw new Error("critical notification missing");
-      const amended = await service.amendResult(lab, released.result.id, { reason: "Atualização clínica controlada.", narrative: "Nova interpretação após revisão.", content: {}, expectedVersion: released.result.version, idempotencyKey: "stale-critical-amend" });
+      const amended = await service.amendResult(lab, released.result.id, { reason: "Atualização clínica controlada.", narrative: "Nova interpretação após revisão.", content: syntheticHemogramContent("Nova interpretação após revisão."), expectedVersion: released.result.version, idempotencyKey: "stale-critical-amend" });
       expect(amended.version.status).toBe("DRAFT");
       const superseded = store.getState().notifications.find((entry) => entry.id === notification.id);
       expect(superseded).toMatchObject({ state: "SUPERSEDED", version: notification.version + 1 });

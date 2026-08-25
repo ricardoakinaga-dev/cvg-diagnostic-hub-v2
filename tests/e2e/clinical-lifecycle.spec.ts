@@ -9,7 +9,7 @@ async function expectNoAxeViolations(page: Page, name: string): Promise<void> {
   expect(results.violations, `${name}: ${results.violations.map((violation) => `${violation.id}: ${violation.help}`).join("; ")}`).toEqual([]);
 }
 
-interface RequestSummary { id: string; patient: { displayName: string }; items: Array<{ service: { name: string } }> }
+interface RequestSummary { id: string; requestCode: string; patient: { displayName: string }; items: Array<{ service: { name: string } }> }
 
 async function readApi<T>(page: Page, path: string): Promise<T> {
   const body = await page.evaluate(async (requestPath) => {
@@ -72,13 +72,14 @@ async function createRequest(page: Page, patientId = "patient-thor", encounterId
   return newRequestId(page, previousIds);
 }
 
-function queueRow(page: Page, requestId: string, serviceName: string) {
-  return page.locator("tbody tr").filter({ hasText: serviceName }).filter({ has: page.locator(`a[href="/requests/${requestId}"]`) });
+async function queueRow(page: Page, requestId: string, serviceName: string) {
+  const request = await readApi<{ requestCode: string }>(page, `/diagnostic-requests/${requestId}`);
+  return page.locator("tbody tr").filter({ hasText: serviceName }).filter({ hasText: request.requestCode });
 }
 
 async function createAndReleaseDraft(page: Page, requestId: string, serviceName: string, narrative: string): Promise<string> {
   await page.goto("/queues");
-  const row = queueRow(page, requestId, serviceName);
+  const row = await queueRow(page, requestId, serviceName);
   await expect(row).toBeVisible({ timeout: 15000 });
 
   if (serviceName === "Hemograma") {
@@ -117,7 +118,46 @@ async function createAndReleaseDraft(page: Page, requestId: string, serviceName:
   return resultId;
 }
 
+async function fillStructuredHemogram(page: Page, narrative: string): Promise<void> {
+  await page.getByRole("button", { name: "Editar draft" }).click();
+  await page.getByLabel("Hemoglobina").fill("12.4");
+  await page.getByLabel("Leucócitos").fill("8.1");
+  await page.getByLabel("Plaquetas").fill("240");
+  await page.getByLabel("Observação técnica").fill("Amostra adequada.");
+  await page.getByLabel("Narrativa").fill(narrative);
+  await page.getByRole("button", { name: "Confirmar", exact: true }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Draft atualizado." })).toBeVisible({ timeout: 15000 });
+}
+
 test.describe("clinical result lifecycle", () => {
+  test("fills and releases a structured hemogram through the laboratory editor", async ({ page }) => {
+    test.setTimeout(120_000);
+
+    await signInAs(page, "vet@cvg.local");
+    const requestId = await createRequest(page, "patient-mel", "encounter-mel");
+    await signOut(page);
+
+    await signInAs(page, "lab@cvg.local");
+    const resultId = await createAndReleaseDraft(page, requestId, "Hemograma", "Hemograma estruturado em preenchimento.");
+    await expect(page.getByRole("region", { name: /Painel laboratorial Hemograma sintético/ })).toBeVisible();
+    await expect(page.getByText("Este draft ainda usa conteúdo legado")).toBeVisible();
+    await fillStructuredHemogram(page, "Hemograma estruturado preenchido pelo setor.");
+    await expect(page.getByText("Faixa pendente de aprovação").first()).toBeVisible();
+    await expect(page.getByText("Não interpretado").first()).toBeVisible();
+
+    const stored = await readApi<{ version: { content: { kind: string; panelCode: string; observations: Array<{ analyteCode: string; value: number | string; flag: string }> } } }>(page, `/results/${resultId}`);
+    expect(stored.version.content).toMatchObject({ kind: "LABORATORY_STRUCTURED", panelCode: "SYNTHETIC_HEMOGRAM" });
+    expect(stored.version.content.observations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ analyteCode: "HEMOGLOBIN", value: 12.4, flag: "UNINTERPRETED" }),
+      expect.objectContaining({ analyteCode: "PLATELETS", value: 240, flag: "UNINTERPRETED" })
+    ]));
+    await expectNoAxeViolations(page, "structured laboratory draft");
+
+    await page.getByRole("button", { name: "Liberar resultado" }).click();
+    await expect(page.getByRole("heading", { name: /Laudo confirmado/ })).toBeVisible({ timeout: 15000 });
+    await signOut(page);
+  });
+
   test("completes lab and radiology results with verified attachment, notification, review, amendment and void", async ({ page }) => {
     test.setTimeout(120_000);
 
@@ -128,6 +168,7 @@ test.describe("clinical result lifecycle", () => {
     await signInAs(page, "lab@cvg.local");
     const labResultId = await createAndReleaseDraft(page, requestId, "Hemograma", "Hemograma sem alterações relevantes para o protocolo.");
     await expectNoAxeViolations(page, "lab result draft");
+    await fillStructuredHemogram(page, "Hemograma sem alterações relevantes para o protocolo.");
     await page.getByRole("button", { name: "Liberar resultado" }).click();
     await expect(page.getByRole("heading", { name: /Laudo confirmado/ })).toBeVisible();
     await expect(page.getByRole("button", { name: "Emendar resultado" })).toBeVisible();
@@ -178,7 +219,7 @@ test.describe("clinical result lifecycle", () => {
     await page.getByRole("button", { name: "Confirmar", exact: true }).click();
     await expect(page.getByRole("alert").filter({ hasText: "Resultado invalidado" })).toBeVisible({ timeout: 15000 });
     await page.goto("/queues");
-    const replacementRow = queueRow(page, requestId, "RX de tórax");
+    const replacementRow = await queueRow(page, requestId, "RX de tórax");
     await expect(replacementRow.getByRole("button", { name: "Registrar resultado" })).toBeVisible({ timeout: 15000 });
     await replacementRow.getByRole("button", { name: "Registrar resultado" }).click();
     await replacementRow.getByLabel("Resultado").fill("Laudo substituto após invalidação controlada.");
@@ -202,6 +243,7 @@ test.describe("clinical result lifecycle", () => {
 
     await signInAs(page, "lab@cvg.local");
     const resultId = await createAndReleaseDraft(page, requestId, "Hemograma", "Resultado crítico sintético para validar confirmação.");
+    await fillStructuredHemogram(page, "Resultado crítico sintético para validar confirmação.");
     await page.getByLabel("Liberar como resultado crítico").check();
     await page.getByRole("button", { name: "Liberar resultado" }).click();
     await expect(page.getByRole("heading", { name: "Resultado crítico" })).toBeVisible({ timeout: 15000 });

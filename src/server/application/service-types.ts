@@ -1,4 +1,4 @@
-import type { ItemState, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ItemState, OperationalContext, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StoreState, User } from "../domain/models";
 
 export interface CommandMeta {
@@ -242,6 +242,47 @@ export interface DashboardWindow {
   asOf: string;
 }
 
+export interface QueueItemView extends DiagnosticItem {
+  requestId: string;
+  requestCode: string;
+  patient: { id: string; displayName: string; species: string; sex: string; externalId: string };
+  service: { id: string; code: string; name: string };
+  overdue: boolean;
+  nextAction: string;
+  operationalContext: OperationalContext;
+  currentOwner: OperationalContext["currentOwner"];
+  blockedBy: OperationalContext["blockedBy"];
+  waitingSince: OperationalContext["waitingSince"];
+  expectedBy: OperationalContext["expectedBy"];
+  escalationLevel: OperationalContext["escalationLevel"];
+  procedureVersion?: number;
+}
+
+export interface DashboardAttentionItem {
+  id: string;
+  requestId: string;
+  requestCode: string;
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  service: { id: string; name: string; workflowType: WorkflowType };
+  departmentCode: string;
+  status: ItemState;
+  priority: Priority;
+  dueAt: string;
+  overdue: boolean;
+  nextAction: string;
+  operationalContext: OperationalContext;
+  deepLink: string;
+}
+
+export interface DashboardDepartment {
+  departmentCode: string;
+  label: string;
+  activeItems: number;
+  overdue: number;
+  attention: number;
+  state: "CLEAR" | "ACTIVE" | "ATTENTION";
+}
+
 export interface DashboardView {
   overdue: number;
   recollections: number;
@@ -251,6 +292,9 @@ export interface DashboardView {
   updatedAt: string;
   window: DashboardWindow;
   indicators: DashboardIndicator[];
+  attention: DashboardAttentionItem[];
+  departments: DashboardDepartment[];
+  dataQuality: { status: "FRESH" | "DEGRADED"; asOf: string; note?: string };
 }
 
 export interface RequestListFilters {

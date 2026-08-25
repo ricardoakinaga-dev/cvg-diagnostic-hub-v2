@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { validateStructuredLaboratoryResult } from "@cvg/domain";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
@@ -95,6 +96,33 @@ const {
   transitionItem,
 } = helpers;
 
+function normalizedResultContent(
+  service: DiagnosticService,
+  content: Record<string, unknown>,
+  options: { requireStructured?: boolean } = {}
+): Record<string, unknown> {
+  const template = service.workflowType === "LABORATORY" && service.resultSchema === "NUMERIC_PANEL"
+    ? service.resultTemplate
+    : undefined;
+  if (!template) return { ...content };
+  if (template.status !== "ACTIVE") {
+    throw new ApiError("RESULT_RELEASE_BLOCKED", "O painel laboratorial não está ativo para este serviço.", 422);
+  }
+  if (content.kind !== "LABORATORY_STRUCTURED") {
+    if (options.requireStructured) {
+      throw new ApiError("RESULT_RELEASE_BLOCKED", "Preencha o painel laboratorial estruturado antes de liberar o resultado.", 422);
+    }
+    // Legacy result content is retained only as a migration draft. It can be
+    // read and replaced, but the release gate below never accepts it.
+    return { ...content };
+  }
+  const validation = validateStructuredLaboratoryResult(template, content);
+  if (!validation.ok) {
+    throw new ApiError("VALIDATION_ERROR", "O resultado estruturado não corresponde ao painel configurado.", 422, { issues: validation.issues });
+  }
+  return validation.value as unknown as Record<string, unknown>;
+}
+
 function supersedeCriticalNotifications(state: StoreState, resultVersionId: string, actorId: string, correlationId: string): StoreState {
   const affected = state.notifications.filter((notification) => notification.category === "CRITICAL" && notification.entityType === "RESULT_VERSION" && notification.entityId === resultVersionId && notification.state !== "ACKNOWLEDGED" && notification.state !== "SUPERSEDED");
   if (affected.length === 0) return state;
@@ -142,6 +170,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         if (previousVersion && previousVersion.status !== "VOIDED") {
           throw new ApiError("INVALID_STATE_TRANSITION", "Já existe um draft ou resultado para este item.", 409);
         }
+        const normalizedContent = normalizedResultContent(service, input.content);
         const versionId = id("result-version");
         const resultId = existingResult?.id ?? id("result");
         const version: ResultVersion = {
@@ -149,7 +178,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
           resultId,
           sequence: (previousVersion?.sequence ?? 0) + 1,
           status: "DRAFT",
-          content: { ...input.content },
+          content: normalizedContent,
           narrative,
           conclusion: input.conclusion?.trim(),
           authorId: currentActor.id,
@@ -204,7 +233,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
           throw new ApiError("INVALID_STATE_TRANSITION", "Somente o draft atual e não liberado pode ser editado.", 409);
         }
         const narrative = requireText(input.narrative, "narrative", MAX_RESULT_NARRATIVE_LENGTH);
-        const updatedVersion: ResultVersion = { ...view.version, content: { ...input.content }, narrative, conclusion: input.conclusion?.trim(), version: view.version.version + 1 };
+        const updatedVersion: ResultVersion = { ...view.version, content: normalizedResultContent(view.service, input.content), narrative, conclusion: input.conclusion?.trim(), version: view.version.version + 1 };
         const updatedResult: Result = { ...result, version: result.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         let nextState = { ...originalState, results: originalState.results.map((entry) => entry.id === result.id ? updatedResult : entry), resultVersions: originalState.resultVersions.map((entry) => entry.id === view.version.id ? updatedVersion : entry) };
@@ -226,6 +255,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         requirePermission(currentActor, "result.release", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
         ensureExpectedVersion(result.version, input.expectedVersion);
         if (view.version.status !== "DRAFT") throw new ApiError("INVALID_STATE_TRANSITION", "Somente um draft pode ser liberado.", 409);
+        const normalizedReleaseContent = normalizedResultContent(view.service, view.version.content, { requireStructured: true });
         const releaseCheckTime = Date.now();
         const blockedAttachments = originalState.attachments.filter((attachment) =>
           attachment.resultVersionId === view.version.id
@@ -275,7 +305,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
           ]
         };
         const releasedAt = now();
-        const releasedVersion: ResultVersion = { ...view.version, status: "RELEASED", releasedAt, releasedBy: currentActor.id, critical: input.critical === true, version: view.version.version + 1 };
+        const releasedVersion: ResultVersion = { ...view.version, content: normalizedReleaseContent, status: "RELEASED", releasedAt, releasedBy: currentActor.id, critical: input.critical === true, version: view.version.version + 1 };
         const releasedResult: Result = { ...result, lifecycleStatus: "RELEASED", currentVersionId: releasedVersion.id, version: result.version + 1 };
         const releasedItem = { ...view.item, status: transitionItem(view.item.status, "RESULT_AVAILABLE", view.item.workflowType), releasedAt, version: view.item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
@@ -305,7 +335,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const reason = requireText(input.reason, "reason", 500);
         const narrative = requireText(input.narrative, "narrative", MAX_RESULT_NARRATIVE_LENGTH);
         const supersededVersion = { ...view.version, status: "SUPERSEDED" as const, version: view.version.version + 1 };
-        const nextVersion: ResultVersion = { id: id("result-version"), resultId: result.id, sequence: view.version.sequence + 1, status: "DRAFT", content: { ...input.content }, narrative, conclusion: input.conclusion?.trim(), authorId: currentActor.id, createdAt: now(), amendmentReason: reason, supersedesId: view.version.id, critical: input.critical === true, needsReReview: true, version: 1 };
+        const nextVersion: ResultVersion = { id: id("result-version"), resultId: result.id, sequence: view.version.sequence + 1, status: "DRAFT", content: normalizedResultContent(view.service, input.content), narrative, conclusion: input.conclusion?.trim(), authorId: currentActor.id, createdAt: now(), amendmentReason: reason, supersedesId: view.version.id, critical: input.critical === true, needsReReview: true, version: 1 };
         const amendedResult = { ...result, currentVersionId: nextVersion.id, lifecycleStatus: "DRAFT" as const, needsReReview: true, version: result.version + 1 };
         const amendedItem = { ...view.item, status: transitionItem(view.item.status, "RESULT_VOIDED", view.item.workflowType), version: view.item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");

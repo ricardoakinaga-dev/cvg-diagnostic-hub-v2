@@ -28,6 +28,18 @@
       ],
       "@cvg/contracts": [
         "./packages/contracts/src/index.ts"
+      ],
+      "@cvg/domain": [
+        "./packages/domain/src/index.ts"
+      ],
+      "@cvg/ui": [
+        "./packages/ui/src/index.tsx"
+      ],
+      "@cvg/services": [
+        "./packages/services/src/index.ts"
+      ],
+      "@cvg/shared-state": [
+        "./packages/shared-state/src/index.ts"
       ]
     }
   },

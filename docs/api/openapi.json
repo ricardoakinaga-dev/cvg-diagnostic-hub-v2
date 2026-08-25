@@ -2885,6 +2885,226 @@
         }
       }
     },
+    "/diagnostic-services/{serviceId}/result-template": {
+      "get": {
+        "operationId": "getResultTemplate",
+        "summary": "Read the configured laboratory result template",
+        "description": "Read the configured laboratory result template. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Catalog"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-permissions": [
+          "service.catalog.view"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "departmentCode must match the actor department or a manager delegated department",
+          "serviceCode must be assigned to executor roles"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "serviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[^/%]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getResultTemplateSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated actor is not authorized",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/diagnostic-services/{serviceId}": {
       "patch": {
         "operationId": "updateDiagnosticService",
@@ -17201,12 +17421,19 @@
             "x-normalized-max-length": 5000
           },
           "content": {
-            "type": "object",
-            "maxProperties": 100,
-            "propertyNames": {
-              "maxLength": 100
-            },
-            "additionalProperties": true
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StructuredLaboratoryResultCommandContent"
+              },
+              {
+                "type": "object",
+                "maxProperties": 100,
+                "propertyNames": {
+                  "maxLength": 100
+                },
+                "additionalProperties": true
+              }
+            ]
           },
           "expectedVersion": {
             "type": "integer",
@@ -17263,12 +17490,19 @@
             "x-normalized-max-length": 5000
           },
           "content": {
-            "type": "object",
-            "maxProperties": 100,
-            "propertyNames": {
-              "maxLength": 100
-            },
-            "additionalProperties": true
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StructuredLaboratoryResultCommandContent"
+              },
+              {
+                "type": "object",
+                "maxProperties": 100,
+                "propertyNames": {
+                  "maxLength": 100
+                },
+                "additionalProperties": true
+              }
+            ]
           },
           "critical": {
             "type": "boolean"
@@ -17988,6 +18222,9 @@
               "NARRATIVE"
             ]
           },
+          "resultTemplate": {
+            "$ref": "#/components/schemas/LaboratoryPanelTemplate"
+          },
           "slaHours": {
             "$ref": "#/components/schemas/SlaHours"
           },
@@ -17996,6 +18233,356 @@
             "minimum": 1
           }
         }
+      },
+      "LaboratoryReferenceRange": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "unitCode",
+          "source"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "NUMERIC",
+              "PENDING_POLICY"
+            ]
+          },
+          "unitCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "low": {
+            "type": "number"
+          },
+          "high": {
+            "type": "number"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "HUMAN_APPROVED",
+              "SYNTHETIC_FIXTURE",
+              "PENDING_HUMAN_POLICY"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "LaboratoryAnalyteDefinition": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "label",
+          "valueType",
+          "unitCode",
+          "required",
+          "displayOrder"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "valueType": {
+            "type": "string",
+            "enum": [
+              "NUMERIC",
+              "QUALITATIVE",
+              "TEXT"
+            ]
+          },
+          "unitCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "displayOrder": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "referenceRange": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "unitCode",
+              "source"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "NUMERIC",
+                  "PENDING_POLICY"
+                ]
+              },
+              "unitCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "low": {
+                "type": "number"
+              },
+              "high": {
+                "type": "number"
+              },
+              "source": {
+                "type": "string",
+                "enum": [
+                  "HUMAN_APPROVED",
+                  "SYNTHETIC_FIXTURE",
+                  "PENDING_HUMAN_POLICY"
+                ]
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
+          },
+          "allowedValues": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200
+            },
+            "maxItems": 100
+          }
+        }
+      },
+      "LaboratoryPanelTemplate": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "code",
+          "name",
+          "version",
+          "schemaVersion",
+          "status",
+          "analytes"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "LABORATORY_PANEL"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "schemaVersion": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "DRAFT",
+              "ACTIVE",
+              "RETIRED"
+            ]
+          },
+          "analytes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LaboratoryAnalyteDefinition"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        }
+      },
+      "LaboratoryObservation": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "analyteCode",
+          "value",
+          "unitCode",
+          "flag",
+          "referenceRange"
+        ],
+        "properties": {
+          "analyteCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "value": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2000
+              }
+            ]
+          },
+          "unitCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "flag": {
+            "type": "string",
+            "enum": [
+              "NORMAL",
+              "LOW",
+              "HIGH",
+              "UNINTERPRETED"
+            ]
+          },
+          "referenceRange": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LaboratoryReferenceRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "StructuredLaboratoryResultContent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "panelCode",
+          "panelVersion",
+          "observations"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "LABORATORY_STRUCTURED"
+          },
+          "panelCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "panelVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LaboratoryObservation"
+            },
+            "maxItems": 100
+          }
+        }
+      },
+      "StructuredLaboratoryResultCommandContent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "panelCode",
+          "panelVersion",
+          "observations"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "LABORATORY_STRUCTURED"
+          },
+          "panelCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "panelVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "observations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "analyteCode",
+                "value",
+                "unitCode"
+              ],
+              "properties": {
+                "analyteCode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 2000
+                    }
+                  ]
+                },
+                "unitCode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                }
+              }
+            },
+            "maxItems": 100
+          }
+        }
+      },
+      "DiagnosticServiceResultTemplate": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/LaboratoryPanelTemplate"
+          },
+          {
+            "type": "null"
+          }
+        ]
       },
       "ReasonCode": {
         "type": "object",
@@ -18862,7 +19449,14 @@
             ]
           },
           "content": {
-            "$ref": "#/components/schemas/JsonObject"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StructuredLaboratoryResultContent"
+              },
+              {
+                "$ref": "#/components/schemas/JsonObject"
+              }
+            ]
           },
           "narrative": {
             "type": "string",
@@ -19743,6 +20337,148 @@
         },
         "maxItems": 100
       },
+      "OperationalOwner": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "label"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "REQUESTING_TEAM",
+              "LABORATORY",
+              "RADIOLOGY",
+              "ULTRASOUND",
+              "DIAGNOSTICS_OPERATIONS",
+              "UNKNOWN"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "OperationalAction": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "label"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "COLLECT_SAMPLE",
+              "SCHEDULE_EXAM",
+              "ROUTE_PATIENT",
+              "START_PROCESSING",
+              "REGISTER_RESULT",
+              "MARK_PERFORMED",
+              "PRODUCE_REPORT",
+              "REVIEW_RESULT",
+              "REGISTER_REPLACEMENT_RESULT",
+              "COLLECT_REPLACEMENT_SAMPLE",
+              "MONITOR_ITEM"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "OperationalBlocker": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "label"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "WAITING_SAMPLE",
+              "WAITING_REPLACEMENT_SAMPLE",
+              "WAITING_SCHEDULE",
+              "WAITING_REPORT"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          }
+        }
+      },
+      "OperationalContext": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "currentOwner",
+          "nextAction",
+          "blockedBy",
+          "waitingSince",
+          "expectedBy",
+          "escalationLevel"
+        ],
+        "properties": {
+          "currentOwner": {
+            "$ref": "#/components/schemas/OperationalOwner"
+          },
+          "nextAction": {
+            "$ref": "#/components/schemas/OperationalAction"
+          },
+          "blockedBy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OperationalBlocker"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waitingSince": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expectedBy": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "escalationLevel": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "WATCH",
+              "ATTENTION",
+              "URGENT"
+            ]
+          }
+        }
+      },
       "QueueItem": {
         "type": "object",
         "additionalProperties": false,
@@ -19763,7 +20499,13 @@
           "patient",
           "service",
           "overdue",
-          "nextAction"
+          "nextAction",
+          "operationalContext",
+          "currentOwner",
+          "blockedBy",
+          "waitingSince",
+          "expectedBy",
+          "escalationLevel"
         ],
         "properties": {
           "id": {
@@ -19969,6 +20711,53 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 200
+          },
+          "operationalContext": {
+            "$ref": "#/components/schemas/OperationalContext"
+          },
+          "currentOwner": {
+            "$ref": "#/components/schemas/OperationalOwner"
+          },
+          "blockedBy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/OperationalBlocker"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "waitingSince": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expectedBy": {
+            "oneOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "escalationLevel": {
+            "type": "string",
+            "enum": [
+              "NONE",
+              "WATCH",
+              "ATTENTION",
+              "URGENT"
+            ]
           }
         }
       },
@@ -20127,6 +20916,198 @@
           }
         }
       },
+      "DashboardAttentionItem": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "requestId",
+          "requestCode",
+          "patient",
+          "service",
+          "departmentCode",
+          "status",
+          "priority",
+          "dueAt",
+          "overdue",
+          "nextAction",
+          "operationalContext",
+          "deepLink"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "requestId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "requestCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "patient": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "displayName",
+              "species",
+              "externalId"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "species": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            }
+          },
+          "service": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "workflowType"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "workflowType": {
+                "type": "string",
+                "enum": [
+                  "LABORATORY",
+                  "RADIOLOGY",
+                  "ULTRASOUND"
+                ]
+              }
+            }
+          },
+          "departmentCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "REQUESTED",
+              "RECEIVED",
+              "IN_PROGRESS",
+              "SCHEDULED",
+              "AWAITING_REPORT",
+              "RESULT_AVAILABLE",
+              "REVIEWED",
+              "COMPLETED",
+              "CANCELLED",
+              "REJECTED",
+              "RECOLLECTION_REQUIRED",
+              "FAILED",
+              "RESULT_VOIDED"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "ROUTINE",
+              "URGENT",
+              "EMERGENCY"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "overdue": {
+            "type": "boolean"
+          },
+          "nextAction": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "operationalContext": {
+            "$ref": "#/components/schemas/OperationalContext"
+          },
+          "deepLink": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "DashboardDepartment": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "departmentCode",
+          "label",
+          "activeItems",
+          "overdue",
+          "attention",
+          "state"
+        ],
+        "properties": {
+          "departmentCode": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "activeItems": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "overdue": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "attention": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "CLEAR",
+              "ACTIVE",
+              "ATTENTION"
+            ]
+          }
+        }
+      },
       "DashboardView": {
         "type": "object",
         "additionalProperties": false,
@@ -20138,7 +21119,10 @@
           "totalActive",
           "updatedAt",
           "window",
-          "indicators"
+          "indicators",
+          "attention",
+          "departments",
+          "dataQuality"
         ],
         "properties": {
           "overdue": {
@@ -20201,6 +21185,46 @@
             },
             "minItems": 5,
             "maxItems": 5
+          },
+          "attention": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardAttentionItem"
+            },
+            "maxItems": 24
+          },
+          "departments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DashboardDepartment"
+            },
+            "maxItems": 20
+          },
+          "dataQuality": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "asOf"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "FRESH",
+                  "DEGRADED"
+                ]
+              },
+              "asOf": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "note": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500
+              }
+            }
           }
         }
       },
@@ -20667,6 +21691,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/DiagnosticServiceList"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "getResultTemplateSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/DiagnosticServiceResultTemplate"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

@@ -1,10 +1,40 @@
 import { createHash } from "node:crypto";
+import type { LaboratoryPanelTemplate } from "@cvg/contracts";
 import type { StoreState, User } from "../domain/models";
 import { hashPassword } from "../security/password";
 
 export { hashPassword } from "../security/password";
 
 const now = "2026-08-19T12:00:00.000Z";
+
+export const syntheticHemogramTemplate: LaboratoryPanelTemplate = {
+  kind: "LABORATORY_PANEL",
+  code: "SYNTHETIC_HEMOGRAM",
+  name: "Hemograma sintético de demonstração",
+  version: 1,
+  schemaVersion: "1.0",
+  status: "ACTIVE",
+  analytes: [
+    { code: "HEMOGLOBIN", label: "Hemoglobina", valueType: "NUMERIC", unitCode: "g/dL", required: true, displayOrder: 1, referenceRange: { kind: "PENDING_POLICY", unitCode: "g/dL", source: "PENDING_HUMAN_POLICY", note: "Faixa dependente de aprovação clínica e população atendida." } },
+    { code: "LEUKOCYTES", label: "Leucócitos", valueType: "NUMERIC", unitCode: "10^9/L", required: true, displayOrder: 2, referenceRange: { kind: "PENDING_POLICY", unitCode: "10^9/L", source: "PENDING_HUMAN_POLICY", note: "Faixa dependente de aprovação clínica e população atendida." } },
+    { code: "PLATELETS", label: "Plaquetas", valueType: "NUMERIC", unitCode: "10^9/L", required: true, displayOrder: 3, referenceRange: { kind: "PENDING_POLICY", unitCode: "10^9/L", source: "PENDING_HUMAN_POLICY", note: "Faixa dependente de aprovação clínica e população atendida." } },
+    { code: "COMMENT", label: "Observação técnica", valueType: "TEXT", unitCode: "TEXT", required: false, displayOrder: 4, referenceRange: { kind: "PENDING_POLICY", unitCode: "TEXT", source: "PENDING_HUMAN_POLICY", note: "Não interpretado clinicamente." } }
+  ]
+};
+
+export function syntheticHemogramContent(comment = "Amostra adequada."): Record<string, unknown> {
+  return {
+    kind: "LABORATORY_STRUCTURED",
+    panelCode: syntheticHemogramTemplate.code,
+    panelVersion: syntheticHemogramTemplate.version,
+    observations: [
+      { analyteCode: "HEMOGLOBIN", value: 12.4, unitCode: "g/dL" },
+      { analyteCode: "LEUKOCYTES", value: 8.1, unitCode: "10^9/L" },
+      { analyteCode: "PLATELETS", value: 240, unitCode: "10^9/L" },
+      { analyteCode: "COMMENT", value: comment, unitCode: "TEXT" }
+    ]
+  };
+}
 
 export function passwordFingerprint(password: string): string {
   return createHash("sha256").update(password).digest("hex");
@@ -80,8 +110,8 @@ export function createDemoState(password?: string): StoreState {
       { id: "admission-thor", encounterId: "encounter-thor", departmentCode: "INPATIENT", ward: "UTI 1", bed: "Box 03", admittedAt: now, version: 1 }
     ],
     services: [
-      { id: "service-hemogram", code: "HEMOGRAM", name: "Hemograma", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, active: true, resultSchema: "NUMERIC_PANEL", slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, version: 1 },
-      { id: "service-crp", code: "CRP", name: "Proteína C reativa", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, active: true, resultSchema: "NUMERIC_PANEL", slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, version: 1 },
+      { id: "service-hemogram", code: "HEMOGRAM", name: "Hemograma", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, active: true, resultSchema: "NUMERIC_PANEL", resultTemplate: syntheticHemogramTemplate, slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, version: 1 },
+      { id: "service-crp", code: "CRP", name: "Proteína C reativa", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, active: true, resultSchema: "NARRATIVE", slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, version: 1 },
       { id: "service-xray", code: "XRAY_THORAX", name: "RX de tórax", category: "IMAGING", departmentCode: "RADIOLOGY", workflowType: "RADIOLOGY", requiresSample: false, requiresSchedule: false, allowsAttachment: true, active: true, resultSchema: "NARRATIVE", slaHours: { ROUTINE: 24, URGENT: 8, EMERGENCY: 4 }, version: 1 },
       { id: "service-ultrasound", code: "ULTRASOUND_ABDOMEN", name: "Ultrassom abdominal", category: "IMAGING", departmentCode: "ULTRASOUND", workflowType: "ULTRASOUND", requiresSample: false, requiresSchedule: true, allowsAttachment: true, active: true, resultSchema: "NARRATIVE", slaHours: { ROUTINE: 48, URGENT: 12, EMERGENCY: 6 }, version: 1 }
     ],

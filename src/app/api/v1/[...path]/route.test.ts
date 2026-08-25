@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 import { getRuntimeStoreAsync, resetRuntimeStore } from "../../../../server/store/runtime";
 import { resetMetrics } from "../../../../server/observability/metrics";
+import { syntheticHemogramContent } from "../../../../server/store/fixtures";
 
 process.env.APP_DATA_MODE = "memory";
 process.env.DEMO_PASSWORD = "api-test-password";
@@ -217,6 +218,13 @@ describe("versioned API boundary", () => {
     const services = await GET(new Request("http://localhost/api/v1/diagnostic-services?includeInactive=true", { headers: { cookie: admin.cookie } }), params(["diagnostic-services"]));
     expect(services.status).toBe(200);
     expect((await services.json()).data[0]).toMatchObject({ code: "HEMOGRAM", active: true, version: 1 });
+
+    const lab = await login("lab@cvg.local");
+    const template = await GET(new Request("http://localhost/api/v1/diagnostic-services/service-hemogram/result-template", { headers: { cookie: lab.cookie } }), params(["diagnostic-services", "service-hemogram", "result-template"]));
+    expect(template.status).toBe(200);
+    expect((await template.json()).data).toMatchObject({ kind: "LABORATORY_PANEL", code: "SYNTHETIC_HEMOGRAM", version: 1 });
+    const crossDepartment = await GET(new Request("http://localhost/api/v1/diagnostic-services/service-xray/result-template", { headers: { cookie: lab.cookie } }), params(["diagnostic-services", "service-xray", "result-template"]));
+    expect(crossDepartment.status).toBe(404);
 
     const reasons = await GET(new Request("http://localhost/api/v1/reason-codes", { headers: { cookie: admin.cookie } }), params(["reason-codes"]));
     expect(reasons.status).toBe(200);
@@ -880,10 +888,51 @@ describe("versioned API boundary", () => {
     expect(response.status).toBe(200);
     expect(body.data.window).toMatchObject({ kind: "CURRENT_STATE", timezone: "America/Sao_Paulo" });
     expect(body.data.window.asOf).toBe(body.data.updatedAt);
+    expect(body.data.dataQuality).toMatchObject({ status: "FRESH", asOf: body.data.updatedAt });
+    expect(body.data.attention).toEqual(expect.any(Array));
+    expect(body.data.departments).toEqual(expect.any(Array));
     expect(body.data.indicators).toEqual(expect.arrayContaining([
       expect.objectContaining({ key: "overdue", definition: expect.any(String), denominator: expect.any(Number), nextAction: expect.any(String) }),
       expect.objectContaining({ key: "critical", definition: expect.any(String), denominator: expect.any(Number), nextAction: expect.any(String) })
     ]));
+  });
+
+  it("keeps the new dashboard and queue projections scoped by department", async () => {
+    const vet = await login();
+    const create = await POST(new Request("http://localhost/api/v1/diagnostic-requests", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie: vet.cookie,
+        "x-csrf-token": vet.csrf,
+        "idempotency-key": "api-operational-scope-projection"
+      },
+      body: JSON.stringify({
+        patientId: "patient-thor",
+        encounterId: "encounter-thor",
+        priority: "URGENT",
+        items: [{ serviceId: "service-hemogram" }, { serviceId: "service-xray" }]
+      })
+    }), params(["diagnostic-requests"]));
+    expect(create.status).toBe(201);
+
+    const lab = await login("lab@cvg.local");
+    const labDashboard = await GET(new Request("http://localhost/api/v1/dashboard", { headers: { cookie: lab.cookie } }), params(["dashboard"]));
+    const labDashboardBody = await labDashboard.json();
+    expect(labDashboard.status).toBe(200);
+    expect(labDashboardBody.data.attention.every((item: { departmentCode: string }) => item.departmentCode === "LABORATORY")).toBe(true);
+
+    const labQueue = await GET(new Request("http://localhost/api/v1/queues/LABORATORY/items", { headers: { cookie: lab.cookie } }), params(["queues", "LABORATORY", "items"]));
+    expect(labQueue.status).toBe(200);
+    expect((await labQueue.json()).data.every((item: { departmentCode: string }) => item.departmentCode === "LABORATORY")).toBe(true);
+
+    const crossDepartmentQueue = await GET(new Request("http://localhost/api/v1/queues/RADIOLOGY/items", { headers: { cookie: lab.cookie } }), params(["queues", "RADIOLOGY", "items"]));
+    expect(crossDepartmentQueue.status).toBe(404);
+    expect((await crossDepartmentQueue.json()).error.code).toBe("SCOPE_DENIED");
+
+    const rx = await login("rx@cvg.local");
+    const rxDashboard = await GET(new Request("http://localhost/api/v1/dashboard", { headers: { cookie: rx.cookie } }), params(["dashboard"]));
+    expect((await rxDashboard.json()).data.attention.every((item: { departmentCode: string }) => item.departmentCode === "RADIOLOGY")).toBe(true);
   });
 
   it("serves a scoped report with attachment metadata after release", async () => {
@@ -923,7 +972,7 @@ describe("versioned API boundary", () => {
     const draft = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/results`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: lab.cookie, "x-csrf-token": lab.csrf, "idempotency-key": "api-report-draft" },
-      body: JSON.stringify({ narrative: "Hemograma dentro do protocolo.", content: {}, expectedVersion: started.data.item.version })
+      body: JSON.stringify({ narrative: "Hemograma dentro do protocolo.", content: syntheticHemogramContent(), expectedVersion: started.data.item.version })
     }), params(["diagnostic-items", itemId, "results"]));
     const draftBody = await draft.json();
     const release = await POST(new Request(`http://localhost/api/v1/results/${draftBody.data.result.id}/release`, {

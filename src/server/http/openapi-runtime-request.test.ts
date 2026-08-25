@@ -7,6 +7,7 @@ import {
   attachmentUploadSchema,
   cancelSchema,
   resultDraftSchema,
+  releaseResultSchema,
   scheduleSchema
 } from "./command-schemas";
 
@@ -141,6 +142,13 @@ describe("OpenAPI request schemas against runtime command parsing", () => {
       priority: "ROUTINE",
       items: [{ serviceId: "service-hemogram", note: "   " }]
     }), "blank request note").toBe(false);
+  });
+
+  it("keeps optional release metadata aligned between runtime and OpenAPI", () => {
+    expect(releaseResultSchema.safeParse({}).success, "runtime optional release metadata").toBe(true);
+    expect(validateRequest("ReleaseResultCommand", {}), "OpenAPI optional release metadata").toBe(true);
+    expect(releaseResultSchema.safeParse({ critical: true }).success).toBe(true);
+    expect(validateRequest("ReleaseResultCommand", { critical: true })).toBe(true);
   });
 
   it("rejects blank normalized text across every administrative and catalog request", () => {

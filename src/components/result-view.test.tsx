@@ -26,6 +26,29 @@ const draft = {
 
 const attachment = { id: "attachment-1", safeName: "laudo.pdf", detectedMime: "application/pdf", sizeBytes: 5, scanStatus: "CLEAN", uploadStatus: "FINALIZED" };
 
+const laboratoryDraft = {
+  ...draft,
+  version: { ...draft.version, narrative: "Resultado inicial.", content: { kind: "LABORATORY_STRUCTURED", panelCode: "SYNTHETIC_HEMOGRAM", panelVersion: 1, observations: [] } },
+  service: {
+    name: "Hemograma",
+    workflowType: "LABORATORY" as const,
+    resultSchema: "NUMERIC_PANEL" as const,
+    allowsAttachment: true,
+    resultTemplate: {
+      kind: "LABORATORY_PANEL" as const,
+      code: "SYNTHETIC_HEMOGRAM",
+      name: "Hemograma sintético de demonstração",
+      version: 1,
+      schemaVersion: "1.0",
+      status: "ACTIVE" as const,
+      analytes: [
+        { code: "HEMOGLOBIN", label: "Hemoglobina", valueType: "NUMERIC" as const, unitCode: "g/dL", required: true, displayOrder: 1, referenceRange: { kind: "PENDING_POLICY" as const, unitCode: "g/dL", source: "PENDING_HUMAN_POLICY" as const, note: "Aguardando aprovação clínica." } },
+        { code: "COMMENT", label: "Observação", valueType: "TEXT" as const, unitCode: "TEXT", required: false, displayOrder: 2, referenceRange: { kind: "PENDING_POLICY" as const, unitCode: "TEXT", source: "PENDING_HUMAN_POLICY" as const, note: "Não aplicável." } }
+      ]
+    }
+  }
+};
+
 function mockReads(data: { result: { id: string }; version: unknown }, calls: Array<[string, RequestInit | undefined]>) {
   return vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
     calls.push([path, init]);
@@ -103,5 +126,34 @@ describe("ResultView clinical lifecycle actions", () => {
     await screen.findByText("Draft em edição");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(calls.some(([path]) => path === "/results/result-1/versions")).toBe(true);
+  });
+
+  it("edits a laboratory panel with typed observations and preserves the pending-policy warning", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    mockReads(laboratoryDraft, calls);
+    render(<ResultView resultId="result-1" />);
+
+    expect(await screen.findByText("Hemograma sintético de demonstração")).toBeInTheDocument();
+    expect(screen.getAllByText("Faixa pendente de aprovação").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "Editar draft" }));
+    fireEvent.change(screen.getByLabelText("Hemoglobina"), { target: { value: "12.4" } });
+    fireEvent.change(screen.getByLabelText("Narrativa"), { target: { value: "Painel preenchido." } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+    await waitFor(() => expect(calls.some(([path]) => path === "/results/result-1/draft")).toBe(true));
+    const update = calls.find(([path]) => path === "/results/result-1/draft");
+    expect(JSON.parse(update?.[1]?.body as string)).toMatchObject({
+      narrative: "Painel preenchido.",
+      content: { kind: "LABORATORY_STRUCTURED", panelCode: "SYNTHETIC_HEMOGRAM", panelVersion: 1, observations: [{ analyteCode: "HEMOGLOBIN", value: 12.4, unitCode: "g/dL" }] }
+    });
+  });
+
+  it("keeps a legacy laboratory draft visibly incomplete and without a release action", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    mockReads({ ...laboratoryDraft, version: { ...laboratoryDraft.version, content: {} } }, calls);
+    render(<ResultView resultId="result-1" />);
+
+    expect(await screen.findByText(/Este draft ainda usa conteúdo legado/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Liberar resultado" })).not.toBeInTheDocument();
   });
 });

@@ -17,6 +17,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   deactivateUser: "ManagedUser",
   updateUserRole: "ManagedUser",
   listDiagnosticServices: "DiagnosticServiceList",
+  getResultTemplate: "DiagnosticServiceResultTemplate",
   createDiagnosticService: "DiagnosticService",
   updateDiagnosticService: "DiagnosticService",
   listReasonCodes: "ReasonCodeList",
@@ -296,6 +297,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/users/{userId}/roles", "updateUserRole", "Update a managed user's role", "Administration", jsonBody("UserRoleUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
 
   read("/diagnostic-services", "listDiagnosticServices", "List diagnostic services", "Catalog", { queryParameters: [{ name: "includeInactive", schema: "Boolean" }] }),
+  read("/diagnostic-services/{serviceId}/result-template", "getResultTemplate", "Read the configured laboratory result template", "Catalog"),
   command("POST", "/diagnostic-services", "createDiagnosticService", "Create a diagnostic service", "Catalog", jsonBody("DiagnosticServiceCreate"), { headers: [IDEMPOTENCY], successStatus: 201 }),
   command("PATCH", "/diagnostic-services/{serviceId}", "updateDiagnosticService", "Update a diagnostic service", "Catalog", jsonBody("DiagnosticServicePatch"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "diagnosticService.version" }),
   read("/reason-codes", "listReasonCodes", "List reason codes", "Catalog"),
@@ -424,6 +426,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
     { when: "includeInactive is false or omitted", allOf: ["service.catalog.view"] },
     { when: "includeInactive is true", allOf: ["service.catalog.manage"] }
   ]),
+  getResultTemplate: authorization(["service.catalog.view"], SERVICE),
   createDiagnosticService: authorization(["service.catalog.manage"], DEPARTMENT),
   updateDiagnosticService: authorization(["service.catalog.manage"], DEPARTMENT),
   listReasonCodes: authorization(["reason_code.manage"], ROLE),
@@ -491,7 +494,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500],
   createUser: [400, 401, 403, 404, 409, 415, 429, 500], deactivateUser: [400, 401, 403, 404, 409, 415, 429, 500],
   updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
-  createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
+  getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
   createPatient: [400, 401, 404, 409, 415, 429, 500], getPatient: [401, 404, 429, 500], getPatientDiagnostics: [400, 401, 404, 429, 500],

@@ -3,7 +3,7 @@ import { GET } from "../../app/api/v1/[...path]/route";
 import { createApplicationService } from "../application/service";
 import { loginUser } from "../security/session";
 import { resetRateLimits } from "../security/rate-limit";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 
 const password = "route-result-security-password";
@@ -40,7 +40,7 @@ async function routeFixture() {
   });
   const draft = await service.createResultDraft(lab, request.items[0].id, {
     narrative: "Draft protegido na rota.",
-    content: {},
+    content: syntheticHemogramContent(),
     expectedVersion: started.item.version,
     idempotencyKey: "route-security-draft"
   });

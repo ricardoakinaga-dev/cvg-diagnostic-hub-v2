@@ -28,8 +28,43 @@ test.describe("operational hub journeys", () => {
   test("authenticates and renders the attention dashboard", async ({ page }) => {
     await signIn(page);
     await expect(page.getByRole("region", { name: "Indicadores de atenção" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Atenção primeiro" })).toBeVisible();
+    await expect(page.getByText("Visão por setor")).toBeVisible();
     await expect(page.getByText("Solicitações em andamento")).toBeVisible();
     await expect(page.getByRole("link", { name: /Central de exames/ })).toBeVisible();
+  });
+
+  test("opens the server-derived operational context without leaving the exam queue", async ({ page }) => {
+    await signIn(page);
+    await page.getByRole("button", { name: /Nova solicitação/ }).click();
+    await page.getByRole("dialog", { name: "Solicitar exames" }).getByLabel("Paciente").selectOption("patient-thor");
+    await page.getByRole("dialog", { name: "Solicitar exames" }).getByLabel("Atendimento").selectOption("encounter-thor");
+    await page.getByRole("dialog", { name: "Solicitar exames" }).getByText("Hemograma", { exact: true }).click();
+    await page.getByRole("button", { name: /Confirmar solicitação/ }).click();
+    await confirmDuplicateIfNeeded(page);
+    await page.getByRole("button", { name: "Sair" }).click();
+    await expect(page).toHaveURL(/\/login/);
+
+    await signInAs(page, "lab@cvg.local", /Bom dia/);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/queues");
+    await expect(page.getByRole("heading", { name: /Central de exames/ })).toBeVisible();
+    const opener = page.getByRole("button", { name: "Abrir contexto de Hemograma" }).first();
+    await opener.click();
+    const drawer = page.getByRole("dialog", { name: "Hemograma" });
+    await expect(drawer).toBeVisible();
+    const closeButton = drawer.getByRole("button", { name: "Fechar contexto" });
+    await expect(closeButton).toBeFocused();
+    await expect(drawer.getByText("Responsável atual")).toBeVisible();
+    await expect(drawer.getByText("Próxima ação")).toBeVisible();
+    await expect(drawer.getByText("Escalonamento operacional")).toBeVisible();
+    await page.keyboard.press("Shift+Tab");
+    await expect(drawer.getByRole("link", { name: /Abrir workspace completo/ })).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(closeButton).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(drawer).toBeHidden();
+    await expect(opener).toBeFocused();
   });
 
   test("renders a useful technical home for an administrator", async ({ page }) => {
@@ -143,11 +178,12 @@ test.describe("operational hub journeys", () => {
     }[testInfo.project.name] ?? { patient: "patient-thor", services: ["Hemograma", "RX de tórax"] };
     await signIn(page);
     await page.getByRole("button", { name: /Nova solicitação/ }).click();
-    await expect(page.getByRole("dialog", { name: "Solicitar exames" })).toBeVisible();
-    await page.getByLabel("Paciente").selectOption(scenario.patient);
-    await page.getByLabel("Atendimento").selectOption(scenario.patient === "patient-thor" ? "encounter-thor" : "encounter-mel");
-    for (const service of scenario.services) await page.getByText(service, { exact: true }).click();
-    await page.getByRole("button", { name: /Confirmar solicitação/ }).click();
+    const requestDialog = page.getByRole("dialog", { name: "Solicitar exames" });
+    await expect(requestDialog).toBeVisible();
+    await requestDialog.getByLabel("Paciente").selectOption(scenario.patient);
+    await requestDialog.getByLabel("Atendimento").selectOption(scenario.patient === "patient-thor" ? "encounter-thor" : "encounter-mel");
+    for (const service of scenario.services) await requestDialog.getByText(service, { exact: true }).click();
+    await requestDialog.getByRole("button", { name: /Confirmar solicitação/ }).click();
     await confirmDuplicateIfNeeded(page);
     await expect(page.getByRole("dialog")).toBeHidden();
     await expect(page.getByText("EX-", { exact: false }).first()).toBeVisible();

@@ -81,7 +81,7 @@ const defaultServiceDraft: ServiceDraft = {
   requiresSample: true,
   requiresSchedule: false,
   allowsAttachment: false,
-  resultSchema: "NUMERIC_PANEL",
+  resultSchema: "NARRATIVE",
   slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }
 };
 

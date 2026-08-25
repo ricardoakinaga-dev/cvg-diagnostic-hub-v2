@@ -8,6 +8,22 @@ const boundedText = (max: number) => z.string().transform((value) => value.trim(
 );
 const boundedDateTime = z.string().max(100).datetime({ offset: true });
 const structuredContent = z.record(z.string().refine((value) => codePointLength(value) <= 100, "content key is too long"), z.unknown()).refine((value) => Object.keys(value).length <= 100, "content has too many fields");
+const structuredLaboratoryObservation = z.object({
+  analyteCode: boundedText(100),
+  value: z.union([z.number().finite(), boundedText(2000)]),
+  unitCode: boundedText(100)
+}).strict();
+const structuredLaboratoryContent = z.object({
+  kind: z.literal("LABORATORY_STRUCTURED"),
+  panelCode: boundedText(100),
+  panelVersion: z.number().int().positive().max(999_999_999),
+  observations: z.array(structuredLaboratoryObservation).max(100)
+}).strict();
+const legacyResultContent = structuredContent.refine(
+  (value) => value.kind !== "LABORATORY_STRUCTURED",
+  "LABORATORY_STRUCTURED content must use the typed laboratory schema"
+);
+const resultContent = z.union([structuredLaboratoryContent, legacyResultContent]);
 
 export const emptyCommandSchema = z.object({ expectedVersion }).strict();
 
@@ -59,7 +75,7 @@ export const scheduleSchema = z.object({
 export const resultDraftSchema = z.object({
   narrative: boundedText(20_000),
   conclusion: boundedText(5_000).optional(),
-  content: structuredContent,
+  content: resultContent,
   expectedVersion
 }).strict();
 
@@ -69,7 +85,7 @@ export const amendResultSchema = z.object({
   reason: boundedText(500),
   narrative: boundedText(20_000),
   conclusion: boundedText(5_000).optional(),
-  content: structuredContent,
+  content: resultContent,
   critical: z.boolean().optional(),
   expectedVersion
 }).strict();

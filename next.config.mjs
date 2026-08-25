@@ -13,7 +13,7 @@ const nextConfig = {
   // explicitly allowlisted. Keep this limited to the local demo host.
   allowedDevOrigins: ["192.168.15.14"],
   turbopack: { root: process.cwd() },
-  transpilePackages: ["@cvg/contracts"],
+  transpilePackages: ["@cvg/contracts", "@cvg/domain", "@cvg/ui", "@cvg/services", "@cvg/shared-state"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];
   }

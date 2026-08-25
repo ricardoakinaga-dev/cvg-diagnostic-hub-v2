@@ -562,3 +562,174 @@ ingress; retention/residency, backup/restore, RPO/RTO and incident ownership; re
 clinical migration and representative EXPLAIN evidence; representative load, remote CI,
 manual clinical/accessibility acceptance, pilot sign-off and production configuration
 review. No real clinical data or deployment authority is implied by this gate.
+
+## Round 15 — V2 official-repository recovery and first-wave bar — 2026-08-25
+
+### Recovered premise
+
+The official V2 URL is now configured as the local `origin` and the V1 repository is
+preserved as `v1`. The official V2 remote was empty during discovery, while the local
+checkout is a functional V1-derived Next.js application with historical V4 evidence.
+V4 records remain historical; they do not prove the V2 master prompt is complete.
+
+### Fresh critique
+
+An independent read-only critic rejected the current artifact against the master V2
+prompt. The major gaps are the absent connected Command Center/Patient Workspace/
+modality workspaces, unstructured laboratory results and missing critical-result
+fallback journey, contextual drawer, and physical `apps/web`/`apps/api` migration.
+The critic also confirmed that Node 18 blocks the ordinary Vitest/build commands;
+Node 22 is available for compatible local verification.
+
+### Frozen V2 bar and plan
+
+The first-wave binary bar is `docs/v2/QUALITY_BAR.md`, the migration DAG is in
+`.agent/plans/cvg-diagnostic-hub-v2.md`, and the current/target map is in
+`docs/v2/MIGRATION_MAP.md`. The first slice is operational context → server read
+model/API → attention-first Command Center → Central de Exames drawer → tests.
+
+### Decision
+
+`BUILDING` toward a V2 conditional local checkpoint. No release, push, hospital use,
+clinical policy approval or completion of the global V2 program is claimed.
+
+## Round 16 — V2 first-wave implementation, independent critique and fixes — 2026-08-25
+
+### Implementation
+
+The first vertical slice was built across the real runtime: `packages/domain` derives
+the operational context; contracts and OpenAPI expose owner/action/blocker/waiting/
+expected-by/escalation; the server read model produces attention and sector
+projections with existing RBAC; the feature-oriented Command Center and Central de
+Exames consume those projections; and `packages/ui`, `packages/services` and
+`packages/shared-state` are runtime-consumed boundaries. The queue drawer preserves
+the queue, provides a deep link, keeps commands server-authorized and exposes
+accessible context.
+
+### Independent critique and remediation
+
+The first fresh read-only critic found four local gaps: active `NONE` items were
+mislabelled as attention; stale dashboard snapshots stayed visually fresh; the
+drawer lacked focus trapping/restoration; and new scope/contract regressions were
+under-specified. The coordinator fixed all four by filtering the server projection,
+marking retained dashboard data `DEGRADED`, adding focus cycle/restoration, and adding
+ordering, cross-department and AJV runtime tests. The critic also confirmed the
+global gaps remain explicit rather than simulated: physical `apps/web`/`apps/api`,
+structured Laboratory, full workspaces, critical fallback and production gates.
+
+### Decision
+
+`FIXED_AND_RETEST_REQUIRED`. The wave was not closed on the critic's first report;
+the full retest and a second independent critique were required.
+
+## Round 17 — V2 first-wave conditional checkpoint — 2026-08-25
+
+### Fresh verification
+
+- Full Vitest coverage: 283 tests across 48 files passed; 89.17% statements,
+  83.93% branches and 96.4% functions.
+- TypeScript, ESLint, Next production build, Redocly/OpenAPI drift (63 operations/
+  58 paths), documentation validation, secret scan and `git diff --check` passed.
+- Served Chromium artifact: 12/12 core-flow and accessibility tests passed,
+  including the attention-first Command Center, real queue drawer, 390px viewport,
+  focus cycle, Escape and focus restoration.
+- Scope/contract evidence includes application and HTTP denial tests for foreign
+  department queues and AJV validation of real dashboard and queue envelopes.
+
+### Final independent critic
+
+A fresh read-only critic reviewed the corrected tree and found no unresolved local
+CRITICAL/HIGH issue. It confirmed the four earlier local findings were corrected and
+classified the wave `PASS_WITH_CONDITIONS`; the critic itself did not run browser or
+long regression commands, so those were run separately by the coordinator and are
+recorded above.
+
+### Remaining limitations
+
+This checkpoint covers only the first operational wave. The repository is still a
+root-hosted V1-derived Next application rather than the target physical monorepo.
+Structured Laboratory panels/analytes/reference ranges/flags, dedicated Radiology
+and Ultrasound workspaces, Patient Workspace, saved views/board/calendar, critical
+result fallback policy, relational clinical migration, representative load, remote
+CI, manual clinical acceptance, production configuration and pilot approval remain
+open. Node 18 is below the documented baseline; verification used the available
+Node 22 runner. No push was made to the official remote.
+
+### Decision
+
+`PASS_WITH_CONDITIONS` for V2 wave 1 local evidence only. `NOT_READY` for the global
+V2 program, hospital use and production release.
+
+## Round 18 — V2 structured Laboratory remediation and retest — 2026-08-25
+
+### Critique and material finding
+
+The independent read-only Laboratory audit initially returned `FAIL_TO_CLOSE`:
+an active Hemogram could reach `RELEASED` with legacy `{}` content because draft
+normalization was conditional on the discriminator and release did not revalidate.
+The same audit identified that numeric services could be created without a panel
+template and that the UI presented a legacy draft as an empty panel.
+
+### Remediation
+
+The release command now requires an active template-backed structured payload and
+normalizes it again immediately before mutation. Legacy content remains available
+only as a migration draft and is visibly marked incomplete; the queue removes its
+immediate Laboratory release action. Catalog creation/update rejects numeric
+services without an active versioned template, the CRP synthetic fixture is
+narrative until its own panel exists, and the new catalog form defaults safely to
+`NARRATIVE`. OpenAPI component references were wired so Redocly has no unused
+Laboratory warnings.
+
+### Fresh verification
+
+- Full Vitest coverage: 292 tests across 49 files; 89.25% statements, 83.94%
+  branches and 96.51% functions.
+- TypeScript, whole-tree ESLint, Next 16 production build, source-generated
+  OpenAPI and Redocly passed; current contract is 64 operations/59 paths.
+- Documentation validator (56 files), secret scan and `git diff --check` passed.
+- Clean Chromium: clinical lifecycle 3/3; core flows plus accessibility 12/12.
+- The pre-remediation critic finding is recorded in the verification ledger;
+  a fresh post-remediation critic is the remaining local audit input.
+
+### Remaining limitations
+
+Sample/accession linkage is not yet persisted on `ResultVersion`; clinical
+thresholds, critical recipients/fallback/escalation, species/population policy,
+relational migration, Patient Workspace, remote CI, representative load and
+manual clinical acceptance remain open. These are not simulated as complete.
+
+### Decision
+
+`FIXED_AND_RETEST_REQUIRED` until the post-remediation read-only critic returns.
+The V2 global program remains `NOT_READY`; no push or hospital/production release
+authority is implied.
+
+## Round 19 — V2 Laboratory conditional closure and Patient Workspace handoff — 2026-08-25
+
+### Final audit integration
+
+The final read-only critic confirmed that the P0 release bypass, the numeric
+catalog guard and the legacy Laboratory UI release action were corrected. Its
+additional claim that OpenAPI required `critical` was checked against the
+generated `ReleaseResultCommand`: the schema has no `required` list, matching
+the optional Zod field. A focused 11-test parity regression now protects that
+contract boundary. The absence of template authoring remains a real next-wave
+limitation and is documented as a fail-closed catalog boundary.
+
+### Final evidence
+
+- Node 22 Vitest: 293 tests across 49 files; 89.25% statements, 83.94% branches
+  and 96.51% functions.
+- TypeScript, whole-tree ESLint, Next 16 production build, OpenAPI generation
+  and drift, Redocly, docs (56 files), secret scan, JSON/JSONL parsing and
+  `git diff --check` passed; OpenAPI is 64 operations/59 paths.
+- Fresh clean Chromium evidence remains 3/3 for the clinical lifecycle and
+  12/12 for core flows plus accessibility.
+
+### Decision
+
+`.agent/gates/v2-laboratory-conditional.json` is
+`PASS_WITH_CONDITIONS` for the synthetic local Hemogram slice only. The gate
+withholds hospital, production and clinical-policy authority. The next planned
+task is `TASK-V2-PATIENT-WORKSPACE-001`; global V2 remains `NOT_READY`.

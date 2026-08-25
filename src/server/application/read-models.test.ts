@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { InProcessEventBus, processOutboxBatch } from "../operations/outbox";
 import type { Notification } from "../domain/models";
@@ -101,6 +101,21 @@ describe("authorized read models", () => {
 
     const queue = await service.listQueue(lab, "LABORATORY", { overdue: false });
     expect(queue[0].requestId).toBe(request.id);
+    expect(queue[0]).toMatchObject({
+      nextAction: "Receber amostra",
+      operationalContext: {
+        currentOwner: { code: "REQUESTING_TEAM" },
+        nextAction: { code: "COLLECT_SAMPLE", label: "Receber amostra" },
+        blockedBy: { code: "WAITING_SAMPLE" },
+        waitingSince: request.items[0].requestedAt,
+        expectedBy: request.items[0].dueAt
+      },
+      currentOwner: { code: "REQUESTING_TEAM" },
+      blockedBy: { code: "WAITING_SAMPLE" },
+      waitingSince: request.items[0].requestedAt,
+      expectedBy: request.items[0].dueAt,
+      escalationLevel: "WATCH"
+    });
     expect((await service.search(lab, request.requestCode)).items[0]?.id).toBe(request.id);
     await expect(service.search(actor, "x")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     expect((await service.timeline(actor, request.id)).items.length).toBeGreaterThan(0);
@@ -113,6 +128,16 @@ describe("authorized read models", () => {
     expect(dashboard.totalActive).toBe(2);
     expect(dashboard.window).toMatchObject({ kind: "CURRENT_STATE", timezone: "America/Sao_Paulo" });
     expect(dashboard.window.asOf).toBe(dashboard.updatedAt);
+    expect(dashboard.attention[0]).toMatchObject({
+      requestId: request.id,
+      patient: { displayName: "Thor" },
+      operationalContext: { nextAction: { code: expect.any(String) }, expectedBy: expect.any(String) },
+      deepLink: expect.stringContaining(`/requests/${request.id}#`)
+    });
+    expect(dashboard.departments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ departmentCode: "LABORATORY", state: expect.any(String) })
+    ]));
+    expect(dashboard.dataQuality).toMatchObject({ status: "FRESH", asOf: dashboard.updatedAt });
     expect(dashboard.indicators.map((indicator) => indicator.key)).toEqual([
       "overdue",
       "recollections",
@@ -170,6 +195,34 @@ describe("authorized read models", () => {
     await expect(service.acknowledgeNotification(manager, foreignNotification.id, { expectedVersion: foreignNotification.version, reason: "Confirmação de teste", confirm: true, idempotencyKey: "manager-foreign-ack" })).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
+  it("keeps attention projection meaningful and server-scoped", async () => {
+    const store = new MemoryStore(createDemoState());
+    const service = createApplicationService(store);
+    const vet = store.getState().users.find((user) => user.email === "vet@cvg.local");
+    const lab = store.getState().users.find((user) => user.email === "lab@cvg.local");
+    const rx = store.getState().users.find((user) => user.email === "rx@cvg.local");
+    if (!vet || !lab || !rx) throw new Error("fixture actors missing");
+
+    await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "attention-routine" });
+    const urgent = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "URGENT", items: [{ serviceId: "service-xray" }] }, { idempotencyKey: "attention-urgent" });
+    const emergency = await service.createRequest(vet, { patientId: "patient-mel", encounterId: "encounter-mel", priority: "EMERGENCY", items: [{ serviceId: "service-ultrasound" }] }, { idempotencyKey: "attention-emergency" });
+    await store.transaction((state) => ({
+      state: {
+        ...state,
+        items: state.items.map((item) => item.id === emergency.items[0].id ? { ...item, dueAt: "2026-08-20T10:00:00.000Z" } : item)
+      },
+      result: undefined
+    }));
+
+    const dashboard = await service.dashboard(vet);
+    expect(dashboard.attention.map((item) => item.operationalContext.escalationLevel)).toEqual(["URGENT", "WATCH"]);
+    expect(dashboard.attention.every((item) => item.operationalContext.escalationLevel !== "NONE")).toBe(true);
+    expect(dashboard.attention.map((item) => item.id)).toEqual([emergency.items[0].id, urgent.items[0].id]);
+    expect((await service.listQueue(lab, "LABORATORY")).every((item) => item.departmentCode === "LABORATORY")).toBe(true);
+    expect((await service.listQueue(rx, "RADIOLOGY")).every((item) => item.departmentCode === "RADIOLOGY")).toBe(true);
+    await expect(service.listQueue(lab, "RADIOLOGY")).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+  });
+
   it("labels each workflow queue with its next server-side action", async () => {
     const store = new MemoryStore(createDemoState());
     const service = createApplicationService(store);
@@ -185,7 +238,7 @@ describe("authorized read models", () => {
     expect((await service.listQueue(lab, "LABORATORY"))[0].nextAction).toBe("Iniciar processamento");
     await service.startProcessing(lab, labRequest.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "action-start" });
     expect((await service.listQueue(lab, "LABORATORY"))[0].nextAction).toBe("Registrar resultado");
-    const draft = await service.createResultDraft(lab, labRequest.items[0].id, { narrative: "Ação", content: {}, expectedVersion: received.items[0].version + 1, idempotencyKey: "action-draft" });
+    const draft = await service.createResultDraft(lab, labRequest.items[0].id, { narrative: "Ação", content: syntheticHemogramContent(), expectedVersion: received.items[0].version + 1, idempotencyKey: "action-draft" });
     await service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "action-release" });
     expect((await service.listQueue(lab, "LABORATORY"))[0].nextAction).toBe("Revisar resultado");
 
@@ -215,7 +268,7 @@ describe("authorized read models", () => {
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "dashboard-new-result-request" });
     const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-DASH-NEW", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "dashboard-new-result-receive" });
     const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "dashboard-new-result-start" });
-    const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Dashboard", content: {}, expectedVersion: started.item.version, idempotencyKey: "dashboard-new-result-draft" });
+    const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Dashboard", content: syntheticHemogramContent(), expectedVersion: started.item.version, idempotencyKey: "dashboard-new-result-draft" });
     const released = await service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "dashboard-new-result-release" });
     const beforeReview = await service.dashboard(vet);
     expect(beforeReview.newResults).toBeGreaterThan(0);

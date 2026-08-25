@@ -7,12 +7,13 @@ import { ApiClientError, apiFetch, createClientUniqueId, formatRelativeTime, get
 import { PriorityBadge, StatusBadge } from "./status-badge";
 import { ManagementDashboard } from "./management-dashboard";
 import { PatientDialog, type CreatedPatientPayload } from "./patient-dialog";
+import { CommandCenterPanel, type CommandCenterData } from "@/features/command-center/command-center-panel";
 
 interface Item { id: string; status: Parameters<typeof StatusBadge>[0]["status"]; priority: Priority; dueAt: string; service: { name: string; code: string }; note?: string }
 interface Request { id: string; requestCode: string; patient: { displayName: string; species: string; sex: string; externalId: string }; priority: Priority; aggregateStatus: string; createdAt: string; items: Item[] }
 interface Service { id: string; name: string; code: string; workflowType: string; category: string; requiresSample: boolean; requiresSchedule: boolean }
 interface Encounter { id: string; patientId: string; externalId: string; type: "INPATIENT" | "EMERGENCY" | "OUTPATIENT"; status: "OPEN" | "CLOSED"; openedAt: string; closedAt?: string }
-interface Stats { overdue: number; recollections: number; newResults: number; critical: number; totalActive: number; updatedAt: string }
+interface Stats extends CommandCenterData { overdue: number; recollections: number; newResults: number; critical: number; totalActive: number; updatedAt: string }
 interface Notification { id: string; category: string; priority: string; title: string; body: string; createdAt: string; state: string; deepLink: string }
 interface SessionUser { displayName: string; role?: string }
 
@@ -156,7 +157,18 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
   }, [search]);
 
   const notifications = notificationsResource.data ?? [];
-  const stats = statsResource.data;
+  const stats = statsResource.data
+    ? statsResource.status === "error"
+      ? {
+        ...statsResource.data,
+        dataQuality: {
+          status: "DEGRADED" as const,
+          asOf: statsResource.data.updatedAt,
+          note: statsResource.error ?? "A leitura mais recente falhou; exibindo o último snapshot confirmado."
+        }
+      }
+      : statsResource.data
+    : null;
   const services = servicesResource.data ?? [];
   const canCreateClinicalRequest = role === undefined || role === "VETERINARIAN" || role === "INPATIENT_TEAM";
   const userName = displayName.split(" ")[1] ?? displayName;
@@ -169,6 +181,7 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
     <div className="dashboard-page">
       <div className="page-heading"><div><p className="eyebrow">{dashboardDateLabel()}</p><h1>Bom dia, <em>{userName}.</em></h1><p className="page-lede">Aqui está o que merece sua atenção agora.</p></div>{canCreateClinicalRequest && <button type="button" className="button button-primary" onClick={() => setShowRequest(true)}><span>＋</span> Nova solicitação</button>}</div>
       <div className="search-bar"><span aria-hidden="true">⌕</span><input aria-label="Buscar no Hub" placeholder="Buscar protocolo, paciente, serviço ou accession…" value={search} onChange={(event) => setSearch(event.target.value)} /><kbd>⌘ K</kbd>{searchResults.length > 0 && <div className="search-popover">{searchResults.map((result) => <Link key={result.id} href={result.deepLink} onClick={() => setSearch("")}><span className="search-icon">↗</span><span><strong>{result.label}</strong><small>{result.patient} · {result.status}</small></span></Link>)}</div>}</div>
+      {stats && <CommandCenterPanel data={stats} />}
       <section className="metric-grid" aria-label="Indicadores de atenção" aria-busy={statsResource.status === "loading"}>
         {!stats && <ResourceFeedback resource={statsResource} label="indicadores" onRetry={loadStats} />}
         {stats && <>

@@ -298,6 +298,9 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       const includeInactive = parseBooleanFilter(new URL(request.url).searchParams.get("includeInactive"), "includeInactive") ?? false;
       return responseFor(await service.listServices(actor, { includeInactive }), correlationId, id);
     }
+    if (path[0] === "diagnostic-services" && path.length === 3 && path[2] === "result-template" && method === "GET") {
+      return responseFor(await service.getResultTemplate(actor, path[1]), correlationId, id);
+    }
     if (path[0] === "diagnostic-services" && path.length === 1 && method === "POST") {
       const body = await objectBody(request);
       const parsed = serviceCreateSchema.safeParse(body);

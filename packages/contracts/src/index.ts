@@ -4,6 +4,128 @@ export type Priority = (typeof PRIORITIES)[number];
 export const WORKFLOW_TYPES = ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] as const;
 export type WorkflowType = (typeof WORKFLOW_TYPES)[number];
 
+export const LABORATORY_VALUE_TYPES = ["NUMERIC", "QUALITATIVE", "TEXT"] as const;
+export type LaboratoryValueType = (typeof LABORATORY_VALUE_TYPES)[number];
+
+export const LABORATORY_PANEL_STATUSES = ["DRAFT", "ACTIVE", "RETIRED"] as const;
+export type LaboratoryPanelStatus = (typeof LABORATORY_PANEL_STATUSES)[number];
+
+export const LABORATORY_REFERENCE_RANGE_KINDS = ["NUMERIC", "PENDING_POLICY"] as const;
+export type LaboratoryReferenceRangeKind = (typeof LABORATORY_REFERENCE_RANGE_KINDS)[number];
+
+export const LABORATORY_REFERENCE_RANGE_SOURCES = ["HUMAN_APPROVED", "SYNTHETIC_FIXTURE", "PENDING_HUMAN_POLICY"] as const;
+export type LaboratoryReferenceRangeSource = (typeof LABORATORY_REFERENCE_RANGE_SOURCES)[number];
+
+export const LABORATORY_FLAGS = ["NORMAL", "LOW", "HIGH", "UNINTERPRETED"] as const;
+export type LaboratoryFlag = (typeof LABORATORY_FLAGS)[number];
+
+export interface LaboratoryReferenceRange {
+  kind: LaboratoryReferenceRangeKind;
+  unitCode: string;
+  low?: number;
+  high?: number;
+  source: LaboratoryReferenceRangeSource;
+  note?: string;
+}
+
+export interface LaboratoryAnalyteDefinition {
+  code: string;
+  label: string;
+  valueType: LaboratoryValueType;
+  unitCode: string;
+  required: boolean;
+  displayOrder: number;
+  referenceRange?: LaboratoryReferenceRange;
+  allowedValues?: string[];
+}
+
+/** Versioned panel definition. Thresholds are configuration, never inferred by the UI. */
+export interface LaboratoryPanelTemplate {
+  kind: "LABORATORY_PANEL";
+  code: string;
+  name: string;
+  version: number;
+  schemaVersion: string;
+  status: LaboratoryPanelStatus;
+  analytes: LaboratoryAnalyteDefinition[];
+}
+
+export interface LaboratoryObservation {
+  analyteCode: string;
+  value: number | string;
+  unitCode: string;
+  flag: LaboratoryFlag;
+  referenceRange: LaboratoryReferenceRange | null;
+}
+
+export interface StructuredLaboratoryResultContent {
+  kind: "LABORATORY_STRUCTURED";
+  panelCode: string;
+  panelVersion: number;
+  observations: LaboratoryObservation[];
+}
+
+export const OPERATIONAL_OWNER_CODES = [
+  "REQUESTING_TEAM",
+  "LABORATORY",
+  "RADIOLOGY",
+  "ULTRASOUND",
+  "DIAGNOSTICS_OPERATIONS",
+  "UNKNOWN"
+] as const;
+export type OperationalOwnerCode = (typeof OPERATIONAL_OWNER_CODES)[number];
+
+export const OPERATIONAL_ACTION_CODES = [
+  "COLLECT_SAMPLE",
+  "SCHEDULE_EXAM",
+  "ROUTE_PATIENT",
+  "START_PROCESSING",
+  "REGISTER_RESULT",
+  "MARK_PERFORMED",
+  "PRODUCE_REPORT",
+  "REVIEW_RESULT",
+  "REGISTER_REPLACEMENT_RESULT",
+  "COLLECT_REPLACEMENT_SAMPLE",
+  "MONITOR_ITEM"
+] as const;
+export type OperationalActionCode = (typeof OPERATIONAL_ACTION_CODES)[number];
+
+export const OPERATIONAL_BLOCKER_CODES = [
+  "WAITING_SAMPLE",
+  "WAITING_REPLACEMENT_SAMPLE",
+  "WAITING_SCHEDULE",
+  "WAITING_REPORT"
+] as const;
+export type OperationalBlockerCode = (typeof OPERATIONAL_BLOCKER_CODES)[number];
+
+export const OPERATIONAL_ESCALATION_LEVELS = ["NONE", "WATCH", "ATTENTION", "URGENT"] as const;
+export type OperationalEscalationLevel = (typeof OPERATIONAL_ESCALATION_LEVELS)[number];
+
+export interface OperationalOwner {
+  code: OperationalOwnerCode;
+  label: string;
+}
+
+export interface OperationalAction {
+  code: OperationalActionCode;
+  label: string;
+}
+
+export interface OperationalBlocker {
+  code: OperationalBlockerCode;
+  label: string;
+}
+
+/** Server-derived work context; it does not replace an approved clinical policy. */
+export interface OperationalContext {
+  currentOwner: OperationalOwner;
+  nextAction: OperationalAction;
+  blockedBy: OperationalBlocker | null;
+  waitingSince: string | null;
+  expectedBy: string | null;
+  escalationLevel: OperationalEscalationLevel;
+}
+
 export const ITEM_STATES = [
   "REQUESTED",
   "RECEIVED",

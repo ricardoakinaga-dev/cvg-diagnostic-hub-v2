@@ -49,6 +49,7 @@ const {
   requireIdempotencyKey,
   validatedSlaHours,
   validateServiceDefinition,
+  validateServiceResultSchema,
   serviceFor,
   requestFor,
   itemFor,
@@ -248,10 +249,20 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         requiresSchedule: service.requiresSchedule,
         allowsAttachment: service.allowsAttachment,
         resultSchema: service.resultSchema,
+        ...(service.resultTemplate ? { resultTemplate: service.resultTemplate } : {}),
         active: service.active,
         slaHours: { ...service.slaHours },
         version: service.version
       }));
+    },
+
+    async getResultTemplate(actor: User, serviceId: string) {
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const service = findOrThrow(state.services.find((entry) => entry.id === serviceId));
+      if (!service.active) throw new ApiError("NOT_FOUND", "O serviço diagnóstico não está disponível.", 404);
+      requirePermission(currentActor, "service.catalog.view", { departmentCode: service.departmentCode, serviceCode: service.code });
+      return service.resultTemplate?.status === "ACTIVE" ? service.resultTemplate : null;
     },
 
     async createDiagnosticService(actor: User, input: DiagnosticServiceCreateInput) {
@@ -265,6 +276,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (!/^[A-Z][A-Z0-9_]{1,59}$/.test(code)) throw new ApiError("VALIDATION_ERROR", "Código de serviço inválido.", 400);
         if (originalState.services.some((service) => service.code === code)) throw new ApiError("CONFLICT", "Código de serviço já utilizado.", 409);
         validateServiceDefinition(input.category, input.workflowType);
+        validateServiceResultSchema(input.category, input.workflowType, input.resultSchema);
         const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
         const service: DiagnosticService = {
@@ -306,6 +318,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const requiresSchedule = input.requiresSchedule ?? service.requiresSchedule;
         const resultSchema = input.resultSchema ?? service.resultSchema;
         validateServiceDefinition(category, workflowType);
+        validateServiceResultSchema(category, workflowType, resultSchema, service.resultTemplate);
         const structuralChanged = category !== service.category || departmentCode !== service.departmentCode || workflowType !== service.workflowType || requiresSample !== service.requiresSample || requiresSchedule !== service.requiresSchedule || resultSchema !== service.resultSchema;
         if (structuralChanged && originalState.items.some((item) => item.serviceId === service.id)) {
           throw new ApiError("CATALOG_IN_USE", "A estrutura deste serviço já está referenciada por solicitações e não pode ser alterada.", 409);

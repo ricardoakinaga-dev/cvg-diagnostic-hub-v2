@@ -15,6 +15,14 @@ function setup() {
 }
 
 describe("versioned catalog administration", () => {
+  it("exposes the active laboratory template only through the scoped catalog read", async () => {
+    const { service, admin, vet } = setup();
+    const template = await service.getResultTemplate(admin, "service-hemogram");
+    expect(template).toMatchObject({ kind: "LABORATORY_PANEL", code: "SYNTHETIC_HEMOGRAM", version: 1 });
+    await expect(service.getResultTemplate(vet, "service-hemogram")).resolves.toMatchObject({ code: "SYNTHETIC_HEMOGRAM" });
+    await expect(service.getResultTemplate(admin, "service-missing")).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
   it("creates and updates a service with permission, optimistic version and audit", async () => {
     const { service, admin, manager, store } = setup();
     const created = await service.createDiagnosticService(admin, {
@@ -49,6 +57,23 @@ describe("versioned catalog administration", () => {
     expect((await service.listServices(admin, { includeInactive: true })).some((entry) => entry.id === created.id && entry.active === false)).toBe(true);
     await expect(service.updateDiagnosticService(admin, created.id, { expectedVersion: managerUpdated.version, idempotencyKey: "catalog-stale" })).rejects.toMatchObject({ code: "STALE_VERSION" });
     expect(store.getState().auditEvents.some((event) => event.eventType === "DiagnosticServiceUpdated")).toBe(true);
+  });
+
+  it("rejects a numeric laboratory service without an active panel template", async () => {
+    const { service, admin } = setup();
+    await expect(service.createDiagnosticService(admin, {
+      code: "CRP_NUMERIC",
+      name: "CRP numérico sem painel",
+      category: "LABORATORY",
+      departmentCode: "LABORATORY",
+      workflowType: "LABORATORY",
+      requiresSample: true,
+      requiresSchedule: false,
+      allowsAttachment: false,
+      resultSchema: "NUMERIC_PANEL",
+      slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 },
+      idempotencyKey: "catalog-numeric-without-template"
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 422 });
   });
 
   it("creates, deactivates and rejects duplicate reason codes", async () => {

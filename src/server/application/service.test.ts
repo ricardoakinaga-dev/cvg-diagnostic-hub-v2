@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 
 function setup() {
@@ -158,25 +158,25 @@ describe("diagnostic application service", () => {
     await service.startProcessing(labActor, item.id, { expectedVersion: 2, idempotencyKey: "start-result" });
     const draft = await service.createResultDraft(labActor, item.id, {
       narrative: "Hemograma dentro dos parâmetros.",
-      content: { hemoglobin: 12.4, correlationId: "clinical-domain-a" },
+      content: syntheticHemogramContent("clinical-domain-a"),
       expectedVersion: 3,
       idempotencyKey: "draft-result"
     });
     await expect(service.createResultDraft(labActor, item.id, {
       narrative: "Hemograma dentro dos parâmetros.",
-      content: { hemoglobin: 12.4, correlationId: "clinical-domain-b" },
+      content: syntheticHemogramContent("clinical-domain-b"),
       expectedVersion: 3,
       idempotencyKey: "draft-result"
     })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED", status: 409 });
     await expect(service.updateResultDraft(actor, draft.result.id, {
       narrative: "Hemograma atualizado dentro dos parâmetros.",
-      content: { hemoglobin: 12.5 },
+      content: syntheticHemogramContent("Atualizado dentro dos parâmetros."),
       expectedVersion: draft.result.version,
       idempotencyKey: "draft-update-denied"
     })).rejects.toMatchObject({ code: "SCOPE_DENIED" });
     const updatedDraft = await service.updateResultDraft(labActor, draft.result.id, {
       narrative: "Hemograma atualizado dentro dos parâmetros.",
-      content: { hemoglobin: 12.5 },
+      content: syntheticHemogramContent("Atualizado dentro dos parâmetros."),
       expectedVersion: draft.result.version,
       idempotencyKey: "draft-update"
     });

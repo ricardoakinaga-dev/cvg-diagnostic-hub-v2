@@ -154,12 +154,12 @@ const requestSchemas = {
   },
   ResultDraftCommand: strictObject({
     narrative: normalizedTextSchema(1, 20000), conclusion: normalizedTextSchema(1, 5000),
-    content: { type: "object", maxProperties: 100, propertyNames: { maxLength: 100 }, additionalProperties: true }, expectedVersion
+    content: { anyOf: [schemaReference("StructuredLaboratoryResultCommandContent"), { type: "object", maxProperties: 100, propertyNames: { maxLength: 100 }, additionalProperties: true }] }, expectedVersion
   }, ["narrative", "content"]),
   ReleaseResultCommand: strictObject({ critical: { type: "boolean" }, expectedVersion }),
   AmendResultCommand: strictObject({
     reason: normalizedTextSchema(1, 500), narrative: normalizedTextSchema(1, 20000), conclusion: normalizedTextSchema(1, 5000),
-    content: { type: "object", maxProperties: 100, propertyNames: { maxLength: 100 }, additionalProperties: true },
+    content: { anyOf: [schemaReference("StructuredLaboratoryResultCommandContent"), { type: "object", maxProperties: 100, propertyNames: { maxLength: 100 }, additionalProperties: true }] },
     critical: { type: "boolean" }, expectedVersion
   }, ["reason", "narrative", "content"]),
   VoidResultCommand: strictObject({ reason: normalizedTextSchema(1, 500), expectedVersion }, ["reason"]),
@@ -203,10 +203,38 @@ const admissionSchema = strictObject({
   id: identifier, encounterId: identifier, departmentCode: stringSchema(1, 60), ward: stringSchema(1, 100), bed: stringSchema(1, 100),
   admittedAt: timestamp, dischargedAt: timestamp, version: positiveVersion
 }, ["id", "encounterId", "departmentCode", "ward", "bed", "admittedAt", "version"]);
+const laboratoryReferenceRangeSchema = strictObject({
+  kind: { type: "string", enum: ["NUMERIC", "PENDING_POLICY"] }, unitCode: stringSchema(1, 100),
+  low: { type: "number" }, high: { type: "number" },
+  source: { type: "string", enum: ["HUMAN_APPROVED", "SYNTHETIC_FIXTURE", "PENDING_HUMAN_POLICY"] }, note: stringSchema(1, 500)
+}, ["kind", "unitCode", "source"]);
+const laboratoryAnalyteDefinitionSchema = strictObject({
+  code: stringSchema(1, 100), label: stringSchema(1, 200), valueType: { type: "string", enum: ["NUMERIC", "QUALITATIVE", "TEXT"] },
+  unitCode: stringSchema(1, 100), required: { type: "boolean" }, displayOrder: { type: "integer", minimum: 0, maximum: 1000 },
+  referenceRange: laboratoryReferenceRangeSchema, allowedValues: arrayOf(stringSchema(1, 200), { maxItems: 100 })
+}, ["code", "label", "valueType", "unitCode", "required", "displayOrder"]);
+const laboratoryPanelTemplateSchema = strictObject({
+  kind: { type: "string", const: "LABORATORY_PANEL" }, code: stringSchema(1, 100), name: stringSchema(1, 200),
+  version: positiveVersion, schemaVersion: stringSchema(1, 40), status: { type: "string", enum: ["DRAFT", "ACTIVE", "RETIRED"] },
+  analytes: arrayOf(schemaReference("LaboratoryAnalyteDefinition"), { minItems: 1, maxItems: 100 })
+}, ["kind", "code", "name", "version", "schemaVersion", "status", "analytes"]);
+const laboratoryObservationSchema = strictObject({
+  analyteCode: stringSchema(1, 100), value: { oneOf: [{ type: "number" }, stringSchema(1, 2000)] }, unitCode: stringSchema(1, 100),
+  flag: { type: "string", enum: ["NORMAL", "LOW", "HIGH", "UNINTERPRETED"] }, referenceRange: { oneOf: [schemaReference("LaboratoryReferenceRange"), { type: "null" }] }
+}, ["analyteCode", "value", "unitCode", "flag", "referenceRange"]);
+const structuredLaboratoryResultSchema = strictObject({
+  kind: { type: "string", const: "LABORATORY_STRUCTURED" }, panelCode: stringSchema(1, 100), panelVersion: positiveVersion,
+  observations: arrayOf(schemaReference("LaboratoryObservation"), { maxItems: 100 })
+}, ["kind", "panelCode", "panelVersion", "observations"]);
+const structuredLaboratoryResultCommandSchema = strictObject({
+  kind: { type: "string", const: "LABORATORY_STRUCTURED" }, panelCode: stringSchema(1, 100), panelVersion: positiveVersion,
+  observations: arrayOf(strictObject({ analyteCode: stringSchema(1, 100), value: { oneOf: [{ type: "number" }, stringSchema(1, 2000)] }, unitCode: stringSchema(1, 100) }, ["analyteCode", "value", "unitCode"]), { maxItems: 100 })
+}, ["kind", "panelCode", "panelVersion", "observations"]);
 const diagnosticServiceSchema = strictObject({
   id: identifier, code: stringSchema(2, 60), name: stringSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
   departmentCode: stringSchema(1, 60), workflowType: workflowSchema, requiresSample: { type: "boolean" }, requiresSchedule: { type: "boolean" },
   allowsAttachment: { type: "boolean" }, active: { type: "boolean" }, resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] },
+  resultTemplate: schemaReference("LaboratoryPanelTemplate"),
   slaHours: schemaReference("SlaHours"), version: positiveVersion
 }, ["id", "code", "name", "category", "departmentCode", "workflowType", "requiresSample", "requiresSchedule", "allowsAttachment", "active", "resultSchema", "slaHours", "version"]);
 const reasonCodeSchema = strictObject({
@@ -257,7 +285,7 @@ const resultSchema = strictObject({
   needsReReview: { type: "boolean" }, version: positiveVersion
 }, ["id", "itemId", "lifecycleStatus", "needsReReview", "version"]);
 const resultVersionSchema = strictObject({
-  id: identifier, resultId: identifier, sequence: positiveVersion, status: resultVersionStateSchema, content: schemaReference("JsonObject"),
+  id: identifier, resultId: identifier, sequence: positiveVersion, status: resultVersionStateSchema, content: { anyOf: [schemaReference("StructuredLaboratoryResultContent"), schemaReference("JsonObject")] },
   narrative: boundedString, conclusion: { type: "string", maxLength: 5000 }, authorId: identifier, createdAt: timestamp, releasedAt: timestamp,
   releasedBy: identifier, amendmentReason: stringSchema(1, 500), supersedesId: identifier, critical: { type: "boolean" },
   needsReReview: { type: "boolean" }, version: positiveVersion
@@ -298,6 +326,13 @@ const responseDataSchemas = {
   Encounter: encounterSchema,
   Admission: admissionSchema,
   DiagnosticService: diagnosticServiceSchema,
+  LaboratoryReferenceRange: laboratoryReferenceRangeSchema,
+  LaboratoryAnalyteDefinition: laboratoryAnalyteDefinitionSchema,
+  LaboratoryPanelTemplate: laboratoryPanelTemplateSchema,
+  LaboratoryObservation: laboratoryObservationSchema,
+  StructuredLaboratoryResultContent: structuredLaboratoryResultSchema,
+  StructuredLaboratoryResultCommandContent: structuredLaboratoryResultCommandSchema,
+  DiagnosticServiceResultTemplate: { oneOf: [schemaReference("LaboratoryPanelTemplate"), { type: "null" }] },
   ReasonCode: reasonCodeSchema,
   DiagnosticRequest: diagnosticRequestSchema,
   DiagnosticItem: diagnosticItemSchema,
@@ -343,13 +378,24 @@ const responseDataSchemas = {
   ReportView: strictObject({ ...resultViewSchema.properties, attachments: arrayOf(schemaReference("PublicAttachment")) }, [...resultViewSchema.required, "attachments"]),
   AuditEventList: arrayOf(schemaReference("AuditEvent"), { maxItems: 100 }),
   NotificationList: arrayOf(schemaReference("Notification"), { maxItems: 100 }),
-  QueueItem: strictObject({ ...diagnosticItemSchema.properties, requestCode: stringSchema(1, 100), patient: strictObject({ id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), sex: stringSchema(1, 40), externalId: stringSchema(1, 100) }, ["id", "displayName", "species", "sex", "externalId"]), service: strictObject({ id: identifier, code: stringSchema(1, 60), name: stringSchema(1, 120) }, ["id", "code", "name"]), overdue: { type: "boolean" }, nextAction: stringSchema(1, 200) }, [...diagnosticItemSchema.required, "requestCode", "patient", "service", "overdue", "nextAction"]),
+  OperationalOwner: strictObject({ code: { type: "string", enum: ["REQUESTING_TEAM", "LABORATORY", "RADIOLOGY", "ULTRASOUND", "DIAGNOSTICS_OPERATIONS", "UNKNOWN"] }, label: stringSchema(1, 200) }, ["code", "label"]),
+  OperationalAction: strictObject({ code: { type: "string", enum: ["COLLECT_SAMPLE", "SCHEDULE_EXAM", "ROUTE_PATIENT", "START_PROCESSING", "REGISTER_RESULT", "MARK_PERFORMED", "PRODUCE_REPORT", "REVIEW_RESULT", "REGISTER_REPLACEMENT_RESULT", "COLLECT_REPLACEMENT_SAMPLE", "MONITOR_ITEM"] }, label: stringSchema(1, 200) }, ["code", "label"]),
+  OperationalBlocker: strictObject({ code: { type: "string", enum: ["WAITING_SAMPLE", "WAITING_REPLACEMENT_SAMPLE", "WAITING_SCHEDULE", "WAITING_REPORT"] }, label: stringSchema(1, 200) }, ["code", "label"]),
+  OperationalContext: strictObject({
+    currentOwner: schemaReference("OperationalOwner"), nextAction: schemaReference("OperationalAction"),
+    blockedBy: { oneOf: [schemaReference("OperationalBlocker"), { type: "null" }] },
+    waitingSince: { oneOf: [timestamp, { type: "null" }] }, expectedBy: { oneOf: [timestamp, { type: "null" }] },
+    escalationLevel: { type: "string", enum: ["NONE", "WATCH", "ATTENTION", "URGENT"] }
+  }, ["currentOwner", "nextAction", "blockedBy", "waitingSince", "expectedBy", "escalationLevel"]),
+  QueueItem: strictObject({ ...diagnosticItemSchema.properties, requestCode: stringSchema(1, 100), patient: strictObject({ id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), sex: stringSchema(1, 40), externalId: stringSchema(1, 100) }, ["id", "displayName", "species", "sex", "externalId"]), service: strictObject({ id: identifier, code: stringSchema(1, 60), name: stringSchema(1, 120) }, ["id", "code", "name"]), overdue: { type: "boolean" }, nextAction: stringSchema(1, 200), operationalContext: schemaReference("OperationalContext"), currentOwner: schemaReference("OperationalOwner"), blockedBy: { oneOf: [schemaReference("OperationalBlocker"), { type: "null" }] }, waitingSince: { oneOf: [timestamp, { type: "null" }] }, expectedBy: { oneOf: [timestamp, { type: "null" }] }, escalationLevel: { type: "string", enum: ["NONE", "WATCH", "ATTENTION", "URGENT"] } }, [...diagnosticItemSchema.required, "requestCode", "patient", "service", "overdue", "nextAction", "operationalContext", "currentOwner", "blockedBy", "waitingSince", "expectedBy", "escalationLevel"]),
   QueueItemList: arrayOf(schemaReference("QueueItem"), { maxItems: 100 }),
   SearchResult: strictObject({ type: { type: "string", enum: ["REQUEST", "ITEM"] }, id: identifier, label: stringSchema(1, 500), patient: stringSchema(1, 200), status: { type: "string", enum: [...itemStates, "PARTIALLY_AVAILABLE", "RESULTS_AVAILABLE"] }, priority: prioritySchema, updatedAt: timestamp, departmentCode: stringSchema(1, 60), deepLink: stringSchema(1, 500) }, ["type", "id", "label", "patient", "status", "priority", "updatedAt", "departmentCode", "deepLink"]),
   SearchResultList: arrayOf(schemaReference("SearchResult"), { maxItems: 100 }),
   TimelineEventList: arrayOf(schemaReference("AuditEvent"), { maxItems: 100 }),
   DashboardIndicator: strictObject({ key: { type: "string", enum: ["overdue", "recollections", "newResults", "critical", "totalActive"] }, label: stringSchema(1, 200), count: nonNegativeInteger, denominator: nonNegativeInteger, denominatorDefinition: stringSchema(1, 500), definition: stringSchema(1, 1000), nextAction: stringSchema(1, 500) }, ["key", "label", "count", "denominator", "denominatorDefinition", "definition", "nextAction"]),
-  DashboardView: strictObject({ overdue: nonNegativeInteger, recollections: nonNegativeInteger, newResults: nonNegativeInteger, critical: nonNegativeInteger, totalActive: nonNegativeInteger, updatedAt: timestamp, window: strictObject({ kind: { type: "string", const: "CURRENT_STATE" }, label: { type: "string", const: "Estado atual" }, timezone: stringSchema(1, 80), asOf: timestamp }, ["kind", "label", "timezone", "asOf"]), indicators: arrayOf(schemaReference("DashboardIndicator"), { minItems: 5, maxItems: 5 }) }, ["overdue", "recollections", "newResults", "critical", "totalActive", "updatedAt", "window", "indicators"]),
+  DashboardAttentionItem: strictObject({ id: identifier, requestId: identifier, requestCode: stringSchema(1, 100), patient: strictObject({ id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), externalId: stringSchema(1, 100) }, ["id", "displayName", "species", "externalId"]), service: strictObject({ id: identifier, name: stringSchema(1, 120), workflowType: { type: "string", enum: ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] } }, ["id", "name", "workflowType"]), departmentCode: stringSchema(1, 60), status: { type: "string", enum: itemStates }, priority: prioritySchema, dueAt: timestamp, overdue: { type: "boolean" }, nextAction: stringSchema(1, 200), operationalContext: schemaReference("OperationalContext"), deepLink: stringSchema(1, 500) }, ["id", "requestId", "requestCode", "patient", "service", "departmentCode", "status", "priority", "dueAt", "overdue", "nextAction", "operationalContext", "deepLink"]),
+  DashboardDepartment: strictObject({ departmentCode: stringSchema(1, 60), label: stringSchema(1, 120), activeItems: nonNegativeInteger, overdue: nonNegativeInteger, attention: nonNegativeInteger, state: { type: "string", enum: ["CLEAR", "ACTIVE", "ATTENTION"] } }, ["departmentCode", "label", "activeItems", "overdue", "attention", "state"]),
+  DashboardView: strictObject({ overdue: nonNegativeInteger, recollections: nonNegativeInteger, newResults: nonNegativeInteger, critical: nonNegativeInteger, totalActive: nonNegativeInteger, updatedAt: timestamp, window: strictObject({ kind: { type: "string", const: "CURRENT_STATE" }, label: { type: "string", const: "Estado atual" }, timezone: stringSchema(1, 80), asOf: timestamp }, ["kind", "label", "timezone", "asOf"]), indicators: arrayOf(schemaReference("DashboardIndicator"), { minItems: 5, maxItems: 5 }), attention: arrayOf(schemaReference("DashboardAttentionItem"), { maxItems: 24 }), departments: arrayOf(schemaReference("DashboardDepartment"), { maxItems: 20 }), dataQuality: strictObject({ status: { type: "string", enum: ["FRESH", "DEGRADED"] }, asOf: timestamp, note: stringSchema(1, 500) }, ["status", "asOf"]) }, ["overdue", "recollections", "newResults", "critical", "totalActive", "updatedAt", "window", "indicators", "attention", "departments", "dataQuality"]),
   ManagementOverview: strictObject({ asOf: timestamp, scope: strictObject({ departments: arrayOf(stringSchema(1, 60)), label: stringSchema(1, 500) }, ["departments", "label"]), summary: strictObject({ totalRequests: nonNegativeInteger, activeItems: nonNegativeInteger, overdue: nonNegativeInteger, recollections: nonNegativeInteger, newResults: nonNegativeInteger, critical: nonNegativeInteger, pendingRequests: nonNegativeInteger, completedToday: nonNegativeInteger }, ["totalRequests", "activeItems", "overdue", "recollections", "newResults", "critical", "pendingRequests", "completedToday"]), departments: arrayOf(strictObject({ departmentCode: stringSchema(1, 60), serviceCount: nonNegativeInteger, totalRequests: nonNegativeInteger, activeItems: nonNegativeInteger, overdue: nonNegativeInteger, pending: nonNegativeInteger }, ["departmentCode", "serviceCount", "totalRequests", "activeItems", "overdue", "pending"])), pending: arrayOf(strictObject({ id: identifier, requestId: identifier, requestCode: stringSchema(1, 100), patient: stringSchema(1, 200), service: stringSchema(1, 120), departmentCode: stringSchema(1, 60), status: { type: "string", enum: itemStates }, priority: prioritySchema, dueAt: timestamp, overdue: { type: "boolean" }, nextAction: stringSchema(1, 500), deepLink: stringSchema(1, 500) }, ["id", "requestId", "requestCode", "patient", "service", "departmentCode", "status", "priority", "dueAt", "overdue", "nextAction", "deepLink"])), recentRequests: arrayOf(strictObject({ id: identifier, requestCode: stringSchema(1, 100), patient: stringSchema(1, 200), aggregateStatus: aggregateStatusSchema, priority: prioritySchema, updatedAt: timestamp, itemCount: nonNegativeInteger, deepLink: stringSchema(1, 500) }, ["id", "requestCode", "patient", "aggregateStatus", "priority", "updatedAt", "itemCount", "deepLink"])) }, ["asOf", "scope", "summary", "departments", "pending", "recentRequests"])
 };
 
@@ -530,7 +576,7 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  if (API_OPERATIONS.length !== 63 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 58) throw new Error("The audited API surface must remain exactly 63 operations across 58 paths.");
+  if (API_OPERATIONS.length !== 64 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 59) throw new Error("The audited API surface must remain exactly 64 operations across 59 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

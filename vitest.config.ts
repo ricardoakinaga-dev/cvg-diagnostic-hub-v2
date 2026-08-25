@@ -7,18 +7,22 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      "@cvg/contracts": path.resolve(__dirname, "packages/contracts/src/index.ts")
+      "@cvg/contracts": path.resolve(__dirname, "packages/contracts/src/index.ts"),
+      "@cvg/domain": path.resolve(__dirname, "packages/domain/src/index.ts"),
+      "@cvg/ui": path.resolve(__dirname, "packages/ui/src/index.tsx"),
+      "@cvg/services": path.resolve(__dirname, "packages/services/src/index.ts"),
+      "@cvg/shared-state": path.resolve(__dirname, "packages/shared-state/src/index.ts")
     }
   },
   test: {
     environment: "node",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx"],
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json", "json-summary"],
-      include: ["src/server/**/*.ts", "src/components/api-client.ts", "src/components/status-badge.tsx"],
+      include: ["src/server/**/*.ts", "src/components/api-client.ts", "src/components/status-badge.tsx", "packages/domain/src/**/*.ts"],
       exclude: [
         "src/**/*.d.ts",
         "src/test/**",

@@ -2,7 +2,9 @@
 
 Central operacional para solicitar, executar, acompanhar, liberar e revisar exames diagnósticos em um hospital veterinário.
 
-> **Status (23/08/2026):** MVP executável em ambiente local, com dados sintéticos, memória ou PostgreSQL 16. Ainda não é uma release aprovada para uso hospitalar.
+> **Status (25/08/2026):** MVP executável em ambiente local, com dados sintéticos, memória ou PostgreSQL 16. As ondas V2 verificadas adicionam Command Center attention-first, contexto operacional estruturado na fila e uma fatia vertical de Laboratório com painel tipado. Ainda não é uma release aprovada para uso hospitalar.
+
+O repositório oficial do V2 é [`ricardoakinaga-dev/cvg-diagnostic-hub-v2`](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2). A linha V1 permanece disponível durante a migração. O mapa atual, a barra congelada e as limitações da onda estão em [`docs/v2/MIGRATION_MAP.md`](docs/v2/MIGRATION_MAP.md) e [`docs/v2/QUALITY_BAR.md`](docs/v2/QUALITY_BAR.md).
 
 ## Objetivo
 
@@ -24,12 +26,14 @@ A implementação segue slices verticais: contrato → persistência → API →
 
 ## Leitura recomendada
 
-1. [`docs/README.md`](docs/README.md) — mapa e convenções da documentação.
-2. [`docs/discovery/DISCOVERY.md`](docs/discovery/DISCOVERY.md) — problema, limites de evidência e contexto.
-3. [`docs/prd/PRD.md`](docs/prd/PRD.md) — produto, MVP e acceptance criteria.
-4. [`docs/spec/SYSTEM_SPEC.md`](docs/spec/SYSTEM_SPEC.md) — contrato técnico consolidado.
-5. [`docs/build/BUILD_PLAN.md`](docs/build/BUILD_PLAN.md) — ordem, status e limites da implementação.
-6. [`docs/TRACEABILITY_MATRIX.md`](docs/TRACEABILITY_MATRIX.md) — prova de ligação entre problema e execução.
+1. [`docs/v2/QUALITY_BAR.md`](docs/v2/QUALITY_BAR.md) — barra binária das ondas V2 e limitações explícitas.
+2. [`docs/v2/MIGRATION_MAP.md`](docs/v2/MIGRATION_MAP.md) — separação entre V1, transição e arquitetura-alvo.
+3. [`docs/v2/LABORATORY_VERTICAL.md`](docs/v2/LABORATORY_VERTICAL.md) — contrato, fluxo e gates da fatia estruturada de Laboratório.
+4. [`docs/README.md`](docs/README.md) — mapa e convenções da documentação.
+5. [`docs/discovery/DISCOVERY.md`](docs/discovery/DISCOVERY.md) — problema, limites de evidência e contexto.
+6. [`docs/prd/PRD.md`](docs/prd/PRD.md) — produto, MVP e acceptance criteria.
+7. [`docs/spec/SYSTEM_SPEC.md`](docs/spec/SYSTEM_SPEC.md) — contrato técnico consolidado.
+8. [`docs/TRACEABILITY_MATRIX.md`](docs/TRACEABILITY_MATRIX.md) — prova de ligação entre problema e execução.
 
 ## Executar localmente
 
@@ -83,6 +87,8 @@ O script verifica a árvore obrigatória, headings mínimos, IDs de requisitos, 
 ## Escopo atual
 
 O MVP proposto cobre o fluxo ponta a ponta para Laboratório, Radiologia/RX e Ultrassonografia, com busca, prioridade, filas setoriais, recoleta, resultados versionados, anexos controlados, timeline derivada de eventos, notificações internas, realtime, RBAC e auditoria.
+
+Na migração V2, as fatias verificadas ainda são deliberadamente menores que o programa clínico completo: domínio e contrato de contexto operacional; read model autorizado; Command Center com atenção e setores; Central de Exames com filtros, estados degradados e drawer acessível; fronteiras reais em `packages/domain`, `packages/ui`, `packages/services` e `packages/shared-state`; e um Hemograma sintético estruturado por analitos, com lifecycle, editor e contrato publicado. A política humana de faixas/criticidade, o cutover obrigatório de conteúdo legado, Patient Workspace completo, módulos físicos `apps/web`/`apps/api`, crítico com fallback e migração relacional continuam no backlog ou dependem de aprovação.
 
 Ficam fora do MVP: faturamento, estoque, prontuário completo, agenda clínica geral, comunicação com tutor, PACS completo, visualizador DICOM avançado, automação direta de analisadores, aplicativo mobile nativo e BI empresarial.
 

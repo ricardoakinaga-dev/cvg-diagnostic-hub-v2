@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
-import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, QueueItemView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
@@ -90,6 +90,7 @@ const {
   calculateDueAt,
   nextRequestState,
   nextActionFor,
+  operationalContextFor,
   deleteStoredObject,
   releaseUploadClaim,
   transitionItem,
@@ -267,7 +268,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       });
     },
 
-    async listQueue(actor: User, departmentCode: string, filters: { status?: ItemState; overdue?: boolean; limit?: number } = {}) {
+    async listQueue(actor: User, departmentCode: string, filters: { status?: ItemState; overdue?: boolean; limit?: number } = {}): Promise<QueueItemView[]> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const normalizedDepartment = departmentCode.trim().toUpperCase();
@@ -275,6 +276,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       requirePermission(currentActor, "queue.view", { departmentCode: normalizedDepartment });
       if (currentActor.role !== "MANAGER" && currentActor.departmentCode !== normalizedDepartment) throw new ApiError("NOT_FOUND", "Fila não encontrada.", 404);
       const currentTime = Date.now();
+      const asOf = new Date(currentTime).toISOString();
       const priorityRank: Record<Priority, number> = { EMERGENCY: 0, URGENT: 1, ROUTINE: 2 };
       const items = state.items
         .filter((item) => item.departmentCode === normalizedDepartment)
@@ -287,7 +289,24 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
         const service = serviceFor(state, item.serviceId);
         const procedure = item.procedureId ? state.procedures.find((entry) => entry.id === item.procedureId) : undefined;
-        return { ...item, ...(procedure ? { procedureVersion: procedure.version } : {}), requestId: request.id, requestCode: request.requestCode, patient: { id: patient.id, displayName: patient.displayName, species: patient.species, sex: patient.sex, externalId: patient.externalId }, service: { id: service.id, code: service.code, name: service.name }, overdue: new Date(item.dueAt).getTime() < currentTime && !["COMPLETED", "CANCELLED", "REJECTED"].includes(item.status), nextAction: nextActionFor(item, service) };
+        const overdue = new Date(item.dueAt).getTime() < currentTime && !["COMPLETED", "CANCELLED", "REJECTED"].includes(item.status);
+        const operationalContext = operationalContextFor(item, service, asOf, request.requestingDepartmentCode);
+        return {
+          ...item,
+          ...(procedure ? { procedureVersion: procedure.version } : {}),
+          requestId: request.id,
+          requestCode: request.requestCode,
+          patient: { id: patient.id, displayName: patient.displayName, species: patient.species, sex: patient.sex, externalId: patient.externalId },
+          service: { id: service.id, code: service.code, name: service.name },
+          overdue,
+          nextAction: operationalContext.nextAction.label,
+          operationalContext,
+          currentOwner: operationalContext.currentOwner,
+          blockedBy: operationalContext.blockedBy,
+          waitingSince: operationalContext.waitingSince,
+          expectedBy: operationalContext.expectedBy,
+          escalationLevel: operationalContext.escalationLevel
+        };
       });
     },
 
@@ -455,8 +474,63 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         denominator: denominators[key],
         ...INDICATOR_DEFINITIONS[key]
       }));
+      const priorityRank: Record<Priority, number> = { EMERGENCY: 0, URGENT: 1, ROUTINE: 2 };
+      const escalationRank: Record<DashboardView["attention"][number]["operationalContext"]["escalationLevel"], number> = { URGENT: 0, ATTENTION: 1, WATCH: 2, NONE: 3 };
+      const attention = activeItems
+        .map((item) => {
+          const request = requestFor(state, item.requestId);
+          const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
+          const service = serviceFor(state, item.serviceId);
+          const operationalContext = operationalContextFor(item, service, asOf, request.requestingDepartmentCode);
+          return {
+            id: item.id,
+            requestId: request.id,
+            requestCode: request.requestCode,
+            patient: { id: patient.id, displayName: patient.displayName, species: patient.species, externalId: patient.externalId },
+            service: { id: service.id, name: service.name, workflowType: service.workflowType },
+            departmentCode: item.departmentCode,
+            status: item.status,
+            priority: item.priority,
+            dueAt: item.dueAt,
+            overdue: Date.parse(item.dueAt) < currentTime,
+            nextAction: operationalContext.nextAction.label,
+            operationalContext,
+            deepLink: `/requests/${request.id}#${item.id}`
+          };
+        })
+        .filter((item) => item.operationalContext.escalationLevel !== "NONE")
+        .sort((left, right) => escalationRank[left.operationalContext.escalationLevel] - escalationRank[right.operationalContext.escalationLevel] || priorityRank[left.priority] - priorityRank[right.priority] || left.dueAt.localeCompare(right.dueAt))
+        .slice(0, 24);
+      const scopedDepartments = currentActor.role === "MANAGER"
+        ? managerDepartmentCodes(currentActor)
+        : Array.from(new Set([currentActor.departmentCode, ...visibleItems.map((item) => item.departmentCode)])).filter(Boolean).sort();
+      const departments = scopedDepartments.map((departmentCode) => {
+        const departmentItems = activeItems.filter((item) => item.departmentCode === departmentCode);
+        const departmentAttention = attention.filter((item) => item.departmentCode === departmentCode && item.operationalContext.escalationLevel !== "NONE").length;
+        const overdueCount = departmentItems.filter((item) => Date.parse(item.dueAt) < currentTime).length;
+        return {
+          departmentCode,
+          label: departmentCode === "LABORATORY" ? "Laboratório" : departmentCode === "RADIOLOGY" ? "Radiologia" : departmentCode === "ULTRASOUND" ? "Ultrassom" : departmentCode,
+          activeItems: departmentItems.length,
+          overdue: overdueCount,
+          attention: departmentAttention,
+          state: overdueCount > 0 || departmentAttention > 0 ? "ATTENTION" as const : departmentItems.length > 0 ? "ACTIVE" as const : "CLEAR" as const
+        };
+      });
       const window: DashboardWindow = { kind: "CURRENT_STATE", label: "Estado atual", timezone: dashboardTimezone(currentActor), asOf };
-      return { overdue, recollections, newResults, critical, totalActive, updatedAt: asOf, window, indicators };
+      return {
+        overdue,
+        recollections,
+        newResults,
+        critical,
+        totalActive,
+        updatedAt: asOf,
+        window,
+        indicators,
+        attention,
+        departments,
+        dataQuality: { status: "FRESH", asOf }
+      };
     },
 
     async managementOverview(actor: User): Promise<ManagementOverview> {

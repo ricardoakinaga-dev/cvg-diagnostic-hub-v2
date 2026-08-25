@@ -188,7 +188,7 @@ export function WorkflowAction({ item, onComplete }: { item: WorkflowActionItem;
         {error && <p className="form-alert" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
         <div className="workflow-form-actions"><button className="button button-ghost" type="button" onClick={() => setOpen(false)}>Cancelar</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Confirmando…" : "Confirmar"}</button></div>
-        {draft && <div className="workflow-draft-actions"><Link className="button button-ghost" href={`/results/${draft.id}`}>Abrir draft</Link><button className="button button-primary" type="button" onClick={() => void releaseDraft()} disabled={busy}>Liberar resultado</button></div>}
+        {draft && <div className="workflow-draft-actions"><Link className="button button-ghost" href={`/results/${draft.id}`}>Abrir draft</Link>{item.workflowType === "LABORATORY" ? <span className="workflow-draft-guidance">Abra o editor para preencher e liberar o painel.</span> : <button className="button button-primary" type="button" onClick={() => void releaseDraft()} disabled={busy}>Liberar resultado</button>}</div>}
       </form>}
     </div>
   );

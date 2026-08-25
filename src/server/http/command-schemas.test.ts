@@ -28,6 +28,24 @@ describe("strict command schemas", () => {
     expect(resultDraftSchema.safeParse({ narrative: "", content: {} }).success).toBe(false);
     expect(resultDraftSchema.safeParse({ narrative: "ok", content: "unsafe" }).success).toBe(false);
     expect(amendResultSchema.safeParse({ reason: "x", narrative: "y", content: {}, critical: "true" }).success).toBe(false);
+    expect(resultDraftSchema.safeParse({
+      narrative: "Painel preenchido.",
+      content: {
+        kind: "LABORATORY_STRUCTURED",
+        panelCode: "SYNTHETIC_HEMOGRAM",
+        panelVersion: 1,
+        observations: [{ analyteCode: "HEMOGLOBIN", value: 12.4, unitCode: "g/dL" }]
+      }
+    }).success).toBe(true);
+    expect(resultDraftSchema.safeParse({
+      narrative: "Painel preenchido.",
+      content: {
+        kind: "LABORATORY_STRUCTURED",
+        panelCode: "SYNTHETIC_HEMOGRAM",
+        panelVersion: 1,
+        observations: [{ analyteCode: "HEMOGLOBIN", value: 12.4, unitCode: "g/dL", flag: "HIGH" }]
+      }
+    }).success).toBe(false);
   });
 
   it("keeps command metadata optional but typed", () => {
@@ -46,6 +64,7 @@ describe("strict command schemas", () => {
     expect(attachmentUploadSchema.safeParse({ ...valid, mimeType: "text/plain" }).success).toBe(false);
     expect(attachmentFinalizeSchema.safeParse({ unexpected: true }).success).toBe(false);
     expect(releaseResultSchema.safeParse({ critical: false }).success).toBe(true);
+    expect(releaseResultSchema.safeParse({}).success).toBe(true);
     expect(voidResultSchema.safeParse({ reason: "Correção", expectedVersion: 1 }).success).toBe(true);
     expect(acknowledgeNotificationSchema.safeParse({}).success).toBe(false);
     expect(acknowledgeNotificationSchema.safeParse({ expectedVersion: 1, reason: "Confirmei o contexto", confirm: true }).success).toBe(true);

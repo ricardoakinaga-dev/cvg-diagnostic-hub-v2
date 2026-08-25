@@ -158,6 +158,7 @@ describe("Dashboard resilience", () => {
     fireEvent(window, new Event("cvg:realtime-updated"));
 
     await waitFor(() => expect(screen.getByText("Dados possivelmente desatualizados")).toBeInTheDocument());
+    expect(screen.getByText("Leitura parcial")).toBeInTheDocument();
     expect(screen.getAllByText("Atualizado há 5 min").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.queryByText("private server detail")).not.toBeInTheDocument();

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 
 function setup() {
@@ -98,7 +98,7 @@ describe("workflow commands", () => {
     const item = request.items[0];
     const received = await service.receiveSample(lab, [item.id], { accessionCode: "ACC-RESULT-1", sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "result-lifecycle-receive" });
     await service.startProcessing(lab, item.id, { expectedVersion: received.items[0].version, idempotencyKey: "result-lifecycle-start" });
-    const draft = await service.createResultDraft(lab, item.id, { narrative: "Resultado inicial.", content: { value: 1 }, expectedVersion: received.items[0].version + 1, idempotencyKey: "result-lifecycle-draft" });
+    const draft = await service.createResultDraft(lab, item.id, { narrative: "Resultado inicial.", content: syntheticHemogramContent("Resultado inicial."), expectedVersion: received.items[0].version + 1, idempotencyKey: "result-lifecycle-draft" });
     const released = await service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "result-lifecycle-release" });
     await service.viewResult(vet, released.version.id, { expectedVersion: released.item.version, idempotencyKey: "result-lifecycle-view" });
     const reviewed = await service.reviewResult(vet, released.result.id, { versionId: released.version.id, expectedVersion: released.item.version, idempotencyKey: "result-lifecycle-review" });
@@ -112,7 +112,7 @@ describe("workflow commands", () => {
     const completed = await service.completeItem(laboratoryManager, item.id, { expectedVersion: reviewed.item.version, idempotencyKey: "result-lifecycle-complete" });
     expect(completed.item.status).toBe("COMPLETED");
 
-    const amended = await service.amendResult(lab, released.result.id, { reason: "Correção de unidade", narrative: "Resultado corrigido.", content: { value: 2 }, expectedVersion: reviewed.result.version, idempotencyKey: "result-lifecycle-amend" });
+    const amended = await service.amendResult(lab, released.result.id, { reason: "Correção de unidade", narrative: "Resultado corrigido.", content: syntheticHemogramContent("Resultado corrigido."), expectedVersion: reviewed.result.version, idempotencyKey: "result-lifecycle-amend" });
     expect(amended.version.status).toBe("DRAFT");
     expect(amended.item.status).toBe("RESULT_VOIDED");
     expect(amended.previousVersion.status).toBe("SUPERSEDED");
@@ -121,9 +121,54 @@ describe("workflow commands", () => {
     const voided = await service.voidResult(laboratoryManager, replacement.result.id, { reason: "Revisão administrativa", expectedVersion: replacement.result.version, idempotencyKey: "result-lifecycle-void" });
     expect(voided.item.status).toBe("RESULT_VOIDED");
     expect(voided.version.status).toBe("VOIDED");
-    const postVoidDraft = await service.createResultDraft(lab, item.id, { narrative: "Resultado substituto após invalidação.", content: { value: 3 }, expectedVersion: voided.item.version, idempotencyKey: "result-lifecycle-post-void-draft" });
+    const postVoidDraft = await service.createResultDraft(lab, item.id, { narrative: "Resultado substituto após invalidação.", content: syntheticHemogramContent("Resultado substituto após invalidação."), expectedVersion: voided.item.version, idempotencyKey: "result-lifecycle-post-void-draft" });
     const postVoidRelease = await service.releaseResult(lab, postVoidDraft.result.id, { expectedVersion: postVoidDraft.result.version, idempotencyKey: "result-lifecycle-post-void-release" });
     expect(postVoidRelease.item.status).toBe("RESULT_AVAILABLE");
+  });
+
+  it("blocks a legacy laboratory draft at the release gate", async () => {
+    const { service, vet, lab, store } = setup();
+    const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "legacy-release-request" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-LEGACY-RELEASE", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "legacy-release-receive" });
+    const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "legacy-release-start" });
+    const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Draft legado em migração.", content: {}, expectedVersion: started.item.version, idempotencyKey: "legacy-release-draft" });
+
+    await expect(service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "legacy-release-attempt" })).rejects.toMatchObject({ code: "RESULT_RELEASE_BLOCKED", status: 422 });
+    expect(store.getState().resultVersions.find((version) => version.id === draft.version.id)).toMatchObject({ status: "DRAFT", content: {} });
+  });
+
+  it("validates, snapshots and releases a structured hemogram without inventing clinical thresholds", async () => {
+    const { service, vet, lab, store } = setup();
+    const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "structured-lab-request" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-STRUCTURED-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "structured-lab-receive" });
+    const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "structured-lab-start" });
+    const incomplete = {
+      kind: "LABORATORY_STRUCTURED" as const,
+      panelCode: "SYNTHETIC_HEMOGRAM",
+      panelVersion: 1,
+      observations: [{ analyteCode: "HEMOGLOBIN", value: 12.4, unitCode: "g/dL" }]
+    };
+    await expect(service.createResultDraft(lab, request.items[0].id, { narrative: "Painel incompleto.", content: incomplete, expectedVersion: started.item.version, idempotencyKey: "structured-lab-invalid" })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 422 });
+    expect(store.getState().results).toHaveLength(0);
+
+    const content = {
+      ...incomplete,
+      observations: [
+        { analyteCode: "HEMOGLOBIN", value: 12.4, unitCode: "g/dL" },
+        { analyteCode: "LEUKOCYTES", value: 8.1, unitCode: "10^9/L" },
+        { analyteCode: "PLATELETS", value: 240, unitCode: "10^9/L" },
+        { analyteCode: "COMMENT", value: "Amostra adequada", unitCode: "TEXT" }
+      ]
+    };
+    const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Hemograma estruturado.", content, expectedVersion: started.item.version, idempotencyKey: "structured-lab-draft" });
+    expect(draft.version.content).toMatchObject({ kind: "LABORATORY_STRUCTURED", panelCode: "SYNTHETIC_HEMOGRAM", panelVersion: 1 });
+    const normalizedContent = draft.version.content as { observations: Array<Record<string, unknown>> };
+    expect(normalizedContent.observations[0]).toMatchObject({ analyteCode: "HEMOGLOBIN", value: 12.4, flag: "UNINTERPRETED", referenceRange: { source: "PENDING_HUMAN_POLICY" } });
+    const released = await service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "structured-lab-release" });
+    expect(released.version.status).toBe("RELEASED");
+    expect(released.version.content).toMatchObject({ kind: "LABORATORY_STRUCTURED" });
+    const releasedContent = released.version.content as { observations: Array<Record<string, unknown>> };
+    expect(releasedContent.observations).toEqual(expect.arrayContaining([expect.objectContaining({ analyteCode: "PLATELETS", flag: "UNINTERPRETED" })]));
   });
 
   it("reopens an imaging replacement draft in the report phase", async () => {

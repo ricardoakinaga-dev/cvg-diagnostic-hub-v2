@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { User } from "../domain/models";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { createApplicationService } from "./service";
 
@@ -59,7 +59,7 @@ async function createHemogramDraft(context: ReturnType<typeof setup>) {
   const { request, item } = await prepareHemogramItem(context);
   const draft = await context.service.createResultDraft(context.lab, request.items[0].id, {
     narrative: "Resultado clínico ainda não liberado.",
-    content: { hemoglobin: 12.4 },
+    content: syntheticHemogramContent(),
     expectedVersion: item.version,
     idempotencyKey: `security-draft-${crypto.randomUUID()}`
   });
@@ -123,7 +123,7 @@ describe("clinical result access security", () => {
     const amended = await context.service.amendResult(context.lab, released.result.id, {
       reason: "Correção ainda não liberada",
       narrative: "Versão corrigida em elaboração.",
-      content: { hemoglobin: 12.5 },
+      content: syntheticHemogramContent("Correção ainda não liberada."),
       expectedVersion: released.result.version,
       idempotencyKey: "security-amend-draft"
     });
@@ -340,7 +340,7 @@ describe("result draft write security", () => {
 
     const replacement = await context.service.createResultDraft(context.lab, voided.item.id, {
       narrative: "Resultado substituto em elaboração.",
-      content: { hemoglobin: 12.6 },
+      content: syntheticHemogramContent("Resultado substituto em elaboração."),
       expectedVersion: voided.item.version,
       idempotencyKey: "security-replacement-draft"
     });

@@ -1,4 +1,4 @@
-import type { ItemState, Priority, ResultVersionState, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ItemState, LaboratoryPanelTemplate, Priority, ResultVersionState, RoleCode, WorkflowType } from "@cvg/contracts";
 
 export type Timestamp = string;
 
@@ -88,6 +88,7 @@ export interface DiagnosticService {
   allowsAttachment: boolean;
   active: boolean;
   resultSchema: "NUMERIC_PANEL" | "NARRATIVE";
+  resultTemplate?: LaboratoryPanelTemplate;
   slaHours: Record<Priority, number>;
   version: number;
 }

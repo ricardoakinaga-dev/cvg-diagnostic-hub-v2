@@ -383,6 +383,18 @@ export function validateServiceDefinition(category: DiagnosticService["category"
   if (!valid) throw new ApiError("VALIDATION_ERROR", "Categoria e workflow do serviço não são compatíveis.", 400);
 }
 
+export function validateServiceResultSchema(
+  category: DiagnosticService["category"],
+  workflowType: WorkflowType,
+  resultSchema: DiagnosticService["resultSchema"],
+  resultTemplate?: DiagnosticService["resultTemplate"]
+): void {
+  if (resultSchema !== "NUMERIC_PANEL") return;
+  if (category !== "LABORATORY" || workflowType !== "LABORATORY" || resultTemplate?.status !== "ACTIVE") {
+    throw new ApiError("VALIDATION_ERROR", "Um painel numérico exige um template laboratorial ativo e versionado.", 422);
+  }
+}
+
 export function serviceFor(state: StoreState, serviceId: string): DiagnosticService {
   return findOrThrow(state.services.find((service) => service.id === serviceId && service.active), "NOT_FOUND", "Serviço diagnóstico indisponível.");
 }
@@ -778,15 +790,4 @@ export function nextRequestState(state: StoreState, request: DiagnosticRequest, 
 }
 
 
-export function nextActionFor(item: DiagnosticItem, service: DiagnosticService): string {
-  if (item.status === "REQUESTED" && service.requiresSample) return "Receber amostra";
-  if (item.status === "REQUESTED" && service.requiresSchedule) return "Agendar exame";
-  if (item.status === "REQUESTED") return "Encaminhar paciente";
-  if (item.status === "RECEIVED") return "Iniciar processamento";
-  if (item.status === "IN_PROGRESS") return service.workflowType === "LABORATORY" ? "Registrar resultado" : "Marcar exame realizado";
-  if (item.status === "AWAITING_REPORT") return "Produzir laudo";
-  if (item.status === "RESULT_AVAILABLE") return "Revisar resultado";
-  if (item.status === "RESULT_VOIDED") return "Registrar resultado substituto";
-  if (item.status === "RECOLLECTION_REQUIRED") return "Aguardar nova coleta";
-  return "Acompanhar item";
-}
+export { operationalContextFor, nextActionFor } from "./operational-context";

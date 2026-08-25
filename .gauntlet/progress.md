@@ -1,5 +1,35 @@
 # Gauntlet Progress
 
+## Current V2 checkpoint — 2026-08-25
+
+- Goal: build the first executable V2 vertical slice while preserving V1 and
+  establishing a real migration boundary.
+- Phase: DISCOVER → DEFINE_BAR → BUILD → RUN → INSPECT → CRITIQUE → FIX → RETEST
+- Current round: 17 (wave 1 fixes, independent criticism and full retest)
+- Frozen bar: [`docs/v2/QUALITY_BAR.md`](../docs/v2/QUALITY_BAR.md)
+- ExecPlan: [`.agent/plans/cvg-diagnostic-hub-v2.md`](../.agent/plans/cvg-diagnostic-hub-v2.md)
+- Migration map: [`docs/v2/MIGRATION_MAP.md`](../docs/v2/MIGRATION_MAP.md)
+- Implemented: structured server-derived operational context; attention-filtered
+  Command Center; scoped sector projection; dense queue filters; accessible
+  contextual drawer; real `domain`, `ui`, `services` and `shared-state` package
+  boundaries; stale/degraded dashboard labeling.
+- Fresh evidence: 283 tests across 48 files; 89.17% statements, 83.93% branches
+  and 96.4% functions; typecheck/lint/build/OpenAPI/docs/secret scan/diff pass;
+  Chromium core plus accessibility 12/12, including the 390px drawer focus
+  journey.
+- Independent critic: no unresolved local CRITICAL/HIGH finding after fixes;
+  the coordinator retested the browser after the critic's read-only pass.
+- Decision: `PASS_WITH_CONDITIONS` for V2 wave 1 only. The global V2 program,
+  hospital use and production release remain `NOT READY`.
+
+## Round 15 — V2 official-repository recovery and first-wave bar — 2026-08-25
+
+- The official V2 origin and preserved V1 remote were established; the V2 remote
+  was empty during discovery, so the checkout remains a transition base.
+- The migration map, first-wave quality bar and executable plan were frozen before
+  implementation. The initial independent critique rejected the global V2 scope,
+  which became the explicit backlog and limitation boundary for this wave.
+
 - Goal: Elevar o CVG Diagnostics Hub do estado local atual para uma entrega local/produtiva com scorecard alvo de 95/100 por dimensão; criar plano, roadmap e backlog; implementar melhorias seguras; validar o artefato real; manter gates clínicos/operacionais explícitos.
 - Phase: DISCOVER → DEFINE_BAR → BUILD → RUN → INSPECT → CRITIQUE → FIX → RETEST
 - Current round: 12 (Quality Bar v4 recovery and critical-gap closure)
@@ -104,3 +134,32 @@ Local implementation evidence is green at the synthetic boundary, but the releas
 - Fixes during critique: scoped manager fixtures, UI role filtering, catalog-code client validation, and version-keyed collaborator rows so server-side deactivation immediately renders `Desativado` after reload.
 - Critic status: fresh local read-only audit completed; non-independent because no callable independent reviewer/subagent was available in this harness. Final verdict is `CONDITIONAL PASS` for local synthetic scope only.
 - Remaining external gates: hospital IdP/ownership and delegated-manager approval, transfer/alta, critical-result policy/fallback, production AV/object storage/credentials, retention/RPO/RTO, representative workload, manual clinical/accessibility acceptance, remote CI and pilot sign-off.
+
+## Round 18 — V2 structured Laboratory remediation and retest — 2026-08-25
+
+- Independent pre-remediation criticism found a P0: an active Hemogram could be
+  released with legacy `{}` content through the queue/lifecycle path.
+- Remediation closed the local bypass: release revalidates structured content,
+  legacy drafts are migration-only and visibly incomplete, the Laboratory queue
+  no longer offers immediate release, and new numeric catalog services require an
+  active versioned panel template. The CRP fixture is narrative until its own
+  approved panel exists.
+- Fresh local evidence: 292 tests in 49 files passed with 89.25% statements,
+  83.94% branches and 96.51% functions; typecheck, ESLint, Next build, OpenAPI
+  64/59, Redocly, docs, secret scan and diff check passed; clinical Chromium
+  3/3 and core/accessibility Chromium 12/12 passed on clean servers.
+- The final read-only critic is being run against the remediated tree. The slice
+  remains conditional and the global V2 remains `NOT_READY`; no push was made.
+
+## Round 19 — V2 Laboratory conditional closure and Patient Workspace handoff — 2026-08-25
+
+- Final read-only criticism confirmed the release/catalog/UI remediations. The
+  alleged OpenAPI `critical` mismatch was false: generated OpenAPI and Zod both
+  keep the field optional, and 11 focused parity tests now lock the behavior.
+- Final local evidence: 293 tests/49 files; 89.25% statements, 83.94% branches,
+  96.51% functions; typecheck/lint/build/OpenAPI 64/59/Redocly/docs 56/secret
+  scan/JSON parse/diff checks green; browser evidence 3/3 and 12/12.
+- Decision: `PASS_WITH_CONDITIONS` for the synthetic Laboratory slice only;
+  template authoring, clinical policy, sample/accession lineage, relational
+  persistence, Patient Workspace, CI/load/manual acceptance and production
+  controls remain open. No push was made.
