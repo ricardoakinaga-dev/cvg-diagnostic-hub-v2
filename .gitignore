@@ -1,5 +1,8 @@
 node_modules/
 .next/
+.next-e2e-*/
+.next-*/
+.next-visual-baseline/
 coverage/
 playwright-report/
 test-results/
@@ -11,3 +14,4 @@ test-results/
 *.log
 *.tsbuildinfo
 next-env.d.ts
+.writer.lock

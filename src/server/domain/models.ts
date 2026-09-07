@@ -73,6 +73,9 @@ export interface Admission {
   bed: string;
   admittedAt: Timestamp;
   dischargedAt?: Timestamp;
+  responsibleUserId?: string;
+  contextEffectiveAt?: Timestamp;
+  updatedAt?: Timestamp;
   version: number;
 }
 
@@ -171,6 +174,7 @@ export interface ProcedureSchedule {
   reason?: string;
   actorId: string;
   createdAt: Timestamp;
+  version: number;
 }
 
 export interface Procedure {
@@ -244,12 +248,72 @@ export interface AuditEvent {
   occurredAt: Timestamp;
 }
 
+export type OutboxConsumerType = "DOMAIN_EVENT" | "NOTIFICATION_DELIVERY";
+
+export const OUTBOX_NOTIFICATION_ROUTING_KEY = "notification.in_app";
+
+export interface OutboxEnvelope {
+  consumerType: OutboxConsumerType;
+  routingKey: string;
+}
+
+const NOTIFICATION_INTENT_EVENT_TYPES = new Set([
+  "ResultReleased",
+  "ResultVoided",
+  "RecollectionRequested"
+]);
+
+/**
+ * Returns the durable route for a new or legacy outbox message. Legacy rows
+ * may omit both fields because the envelope was added after the snapshot
+ * projection; their route is still derived from the immutable event type and
+ * payload before a relational projection is written.
+ */
+export function outboxEnvelopeFor(
+  eventType: string,
+  payload: Record<string, unknown>,
+  consumerType?: unknown,
+  routingKey?: unknown
+): OutboxEnvelope {
+  const hasNotificationId = typeof payload.notificationId === "string" && payload.notificationId.trim().length > 0;
+  const inferredConsumerType: OutboxConsumerType = NOTIFICATION_INTENT_EVENT_TYPES.has(eventType) || hasNotificationId
+    ? "NOTIFICATION_DELIVERY"
+    : "DOMAIN_EVENT";
+  const normalizedConsumerType = consumerType === undefined
+    ? inferredConsumerType
+    : consumerType;
+  if (normalizedConsumerType !== "DOMAIN_EVENT" && normalizedConsumerType !== "NOTIFICATION_DELIVERY") {
+    throw new Error(`OUTBOX_CONSUMER_TYPE_INVALID:${String(normalizedConsumerType)}`);
+  }
+
+  const expectedRoutingKey = normalizedConsumerType === "NOTIFICATION_DELIVERY"
+    ? OUTBOX_NOTIFICATION_ROUTING_KEY
+    : `domain.${eventType}`;
+  const normalizedRoutingKey = routingKey === undefined ? expectedRoutingKey : routingKey;
+  if (typeof normalizedRoutingKey !== "string" || normalizedRoutingKey.trim() !== normalizedRoutingKey || !normalizedRoutingKey) {
+    throw new Error("OUTBOX_ROUTING_KEY_INVALID");
+  }
+  if (normalizedConsumerType === "NOTIFICATION_DELIVERY" && normalizedRoutingKey !== OUTBOX_NOTIFICATION_ROUTING_KEY) {
+    throw new Error(`OUTBOX_ROUTE_MISMATCH:${normalizedConsumerType}:${normalizedRoutingKey}`);
+  }
+  if (normalizedConsumerType === "DOMAIN_EVENT" && normalizedRoutingKey !== expectedRoutingKey) {
+    throw new Error(`OUTBOX_ROUTE_MISMATCH:${normalizedConsumerType}:${normalizedRoutingKey}`);
+  }
+
+  return {
+    consumerType: normalizedConsumerType,
+    routingKey: normalizedRoutingKey
+  };
+}
+
 export interface OutboxMessage {
   id: string;
   eventType: string;
   aggregateType: string;
   aggregateId: string;
   payload: Record<string, unknown>;
+  consumerType: OutboxConsumerType;
+  routingKey: string;
   status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED";
   attempts: number;
   availableAt: Timestamp;

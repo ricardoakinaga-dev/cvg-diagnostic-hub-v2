@@ -2,7 +2,9 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
+import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { Icon } from "./ui-icons";
 
 export function LoginForm() {
   const router = useRouter();
@@ -30,7 +32,7 @@ export function LoginForm() {
           <label>E-mail profissional<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nome@hospital.com" autoComplete="username" required /></label>
           <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Sua senha" autoComplete="current-password" required /></label>
           {error && <div className="form-alert" role="alert">{error}</div>}
-          <button className="button button-primary button-wide" type="submit" disabled={submitting}>{submitting ? "Entrando…" : "Entrar no Hub"}<span aria-hidden="true">→</span></button>
+          <ActionButton className="button-wide" type="submit" state={submitting ? "pending" : "idle"} icon={<Icon name="arrow-right" size={15} />}>{submitting ? "Entrando…" : "Entrar no Hub"}</ActionButton>
         </form>
         <p className="login-footnote">Acesso individual · atividade auditada · dados protegidos</p>
       </section>

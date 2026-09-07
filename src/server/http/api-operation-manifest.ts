@@ -30,6 +30,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   listPatientEncounters: "EncounterList",
   getEncounter: "Encounter",
   getAdmission: "Admission",
+  updateAdmissionContext: "AdmissionContextCommandResult",
   listDiagnosticRequests: "RequestViewList",
   createDiagnosticRequest: "RequestView",
   getDiagnosticRequest: "RequestView",
@@ -114,6 +115,7 @@ export type ApiAuthorizationCondition =
   | "departmentCode must match the actor department or a manager delegated department"
   | "serviceCode must be assigned to executor roles"
   | "draft ownerId must equal the actor id"
+  | "executor actors may amend or void only their own released result; managers use department-scoped policy"
   | "includeInactive=true substitutes service.catalog.manage for service.catalog.view"
   | "MANAGER catalog visibility is limited to delegated departments"
   | "x-duplicate-override=true additionally requires request.duplicate_override"
@@ -125,7 +127,8 @@ export type ApiAuthorizationCondition =
   | "delegated MANAGER only creates operational-role targets in managed departments"
   | "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department"
   | "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments"
-  | "download is limited to released or superseded results and a finalized CLEAN attachment";
+  | "download is limited to released or superseded results and a finalized CLEAN attachment"
+  | "current and destination departments must remain inside manager delegation and responsibility never grants patient scope";
 
 export type ApiConditionalPermissionPredicate =
   | "includeInactive is false or omitted"
@@ -311,6 +314,11 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/patients/{patientId}/encounters", "listPatientEncounters", "List a patient's encounters", "Patients"),
   read("/encounters/{encounterId}", "getEncounter", "Read an encounter", "Patients"),
   read("/admissions/{admissionId}", "getAdmission", "Read an admission", "Patients"),
+  command("POST", "/admissions/{admissionId}/context", "updateAdmissionContext", "Apply an approved admission context transition", "Patients", jsonBody("AdmissionContextCommand"), {
+    headers: [IDEMPOTENCY_REQUIRED, IF_MATCH],
+    concurrencyResource: "admission.version",
+    errorStatuses: [400, 401, 403, 404, 409, 415, 422, 429, 500, 503]
+  }),
 
   read("/diagnostic-requests", "listDiagnosticRequests", "List diagnostic requests", "Diagnostics", { queryParameters: [
     { name: "status", schema: "ItemState" }, { name: "departmentCode", schema: "DepartmentCode" },
@@ -366,7 +374,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/audit-events", "listAuditEvents", "List audit events", "Operations", { queryParameters: pagination }),
   read("/notifications", "listNotifications", "List notifications", "Operations", { queryParameters: [{ name: "filter", schema: "NotificationFilter" }, ...pagination] }),
   command("POST", "/notifications/{notificationId}/acknowledge", "acknowledgeNotification", "Acknowledge a notification", "Operations", jsonBody("NotificationAcknowledge"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "notification.version" }),
-  read("/queues/{departmentCode}/items", "listQueueItems", "List department queue items", "Operations", { queryParameters: [{ name: "status", schema: "ItemState" }, { name: "overdue", schema: "Boolean" }, { name: "limit", schema: "Limit" }] }),
+  read("/queues/{departmentCode}/items", "listQueueItems", "List department queue items", "Operations", { queryParameters: [{ name: "status", schema: "ItemState" }, { name: "overdue", schema: "Boolean" }, ...pagination] }),
   read("/search", "searchDiagnostics", "Search diagnostic requests and items", "Operations", { queryParameters: [
     { name: "q", required: true, schema: "SearchQuery" }, { name: "types", schema: "SearchTypes" },
     { name: "status", schema: "ItemState" }, { name: "department", schema: "DepartmentCode" },
@@ -393,6 +401,7 @@ const REQUEST = [...ROLE, "request access is limited to patient scope, executor 
 const DEPARTMENT = [...ROLE, "departmentCode must match the actor department or a manager delegated department"] as const;
 const SERVICE = [...DEPARTMENT, "serviceCode must be assigned to executor roles"] as const;
 const OWNER = [...SERVICE, "draft ownerId must equal the actor id"] as const;
+const RESULT_MUTATION = [...SERVICE, "executor actors may amend or void only their own released result; managers use department-scoped policy"] as const;
 const RESULT_SCOPE = [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"] as const;
 
 const authorization = (
@@ -439,6 +448,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   listPatientEncounters: authorization(["encounter.view"], PATIENT),
   getEncounter: authorization(["encounter.view"], PATIENT),
   getAdmission: authorization(["admission.view"], PATIENT),
+  updateAdmissionContext: authorization(["admission.context.manage"], [...PATIENT, "current and destination departments must remain inside manager delegation and responsibility never grants patient scope"]),
   listDiagnosticRequests: authorization(["request.list"], REQUEST),
   createDiagnosticRequest: authorization(["request.create"], [...PATIENT, "x-duplicate-override=true additionally requires request.duplicate_override"], false, [
     { when: "x-duplicate-override is true", allOf: ["request.duplicate_override"] }
@@ -469,8 +479,8 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   listResultVersions: authorization(["result.history.view"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
   updateResultDraft: authorization(["result.draft.edit_own"], OWNER),
   releaseResult: authorization(["result.release"], SERVICE),
-  amendResult: authorization(["result.amend"], SERVICE),
-  voidResult: authorization(["result.void"], SERVICE),
+  amendResult: authorization(["result.amend"], RESULT_MUTATION),
+  voidResult: authorization(["result.void"], RESULT_MUTATION),
   viewResult: authorization(["result.view", "result.view.record"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
   reviewResult: authorization(["result.review"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
   getReport: authorization(["attachment.view"], [...RESULT_SCOPE, "the result state selects result.view or result.draft.edit_own and attachment.view is always required"], false, [
@@ -499,6 +509,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
   createPatient: [400, 401, 404, 409, 415, 429, 500], getPatient: [401, 404, 429, 500], getPatientDiagnostics: [400, 401, 404, 429, 500],
   listPatientEncounters: [401, 404, 429, 500], getEncounter: [401, 404, 429, 500], getAdmission: [401, 404, 429, 500],
+  updateAdmissionContext: [400, 401, 403, 404, 409, 415, 422, 429, 500, 503],
   listDiagnosticRequests: [400, 401, 404, 429, 500], createDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],
   getDiagnosticRequest: [401, 404, 429, 500], cancelDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],
   getDiagnosticItem: [401, 404, 429, 500], receiveDiagnosticItemSample: [400, 401, 403, 404, 409, 415, 429, 500],

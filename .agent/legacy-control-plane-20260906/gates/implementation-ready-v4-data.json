@@ -1,0 +1,76 @@
+{
+  "record_id": "GATE-IMPLEMENTATION-READY-V4-DATA-001",
+  "timestamp": "2026-08-22T05:27:52Z",
+  "gate_id": "IMPLEMENTATION_READY",
+  "scope": "Relational, durable and cross-instance PostgreSQL behavior local implementation",
+  "scope_ref": "TASK-V4-DATA-001",
+  "version": 1,
+  "criteria": [
+    {
+      "id": "IR-001",
+      "description": "The cross-instance security and durability defect, authorized outcome and acceptance bar are explicit and traceable",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/audits/TASK-V4-DATA-001-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/plans/premium-enterprise-mvp-v4.md"
+      ],
+      "confidence": "HIGH",
+      "limitations": "This gate authorizes local implementation and disposable synthetic PostgreSQL tests; it does not assert V4-DB-01/02/03 already pass"
+    },
+    {
+      "id": "IR-002",
+      "description": "Store semantics, two-instance harness safety, migration direction, attachment consistency risks and executable sequencing are frozen",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/audits/TASK-V4-DATA-001-BASELINE.md",
+        ".agent/plans/premium-enterprise-mvp-v4.md",
+        ".agent/backlog.json"
+      ],
+      "confidence": "HIGH",
+      "limitations": "JSONB remains a transitional adapter in this slice; normalization and destructive migration are explicitly excluded"
+    },
+    {
+      "id": "IR-003",
+      "description": "RED-first verification, safe cleanup, rollback, security controls and authority boundaries are defined before material data edits",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/plans/premium-enterprise-mvp-v4.md",
+        ".agent/authority.jsonl#AUTH-V4-DATA-001"
+      ],
+      "confidence": "HIGH",
+      "limitations": "The harness must fail closed without its dedicated loopback admin URL and may never reuse or reset DATABASE_URL"
+    }
+  ],
+  "evidence": [
+    ".agent/audits/TASK-V4-DATA-001-BASELINE.md",
+    "docs/build/PREMIUM_MVP_V4.md",
+    ".agent/plans/premium-enterprise-mvp-v4.md",
+    ".agent/backlog.json"
+  ],
+  "confidence": "HIGH",
+  "gaps": [],
+  "conditions": [],
+  "authority": {
+    "required": true,
+    "state": "CONFIRMED",
+    "actor": "Workspace owner (user)",
+    "scope": "Relational, durable and cross-instance PostgreSQL behavior local implementation",
+    "decision": "Proceed with RED-first local store, migration, disposable PostgreSQL and attachment-consistency implementation within the frozen external boundary",
+    "evidence_ref": ".agent/authority.jsonl#AUTH-V4-DATA-001",
+    "expires_or_revalidates": "Revalidate on production database access, real data, destructive migration, external infrastructure or risk escalation"
+  },
+  "residual_risk": "HIGH",
+  "decision": "PASS",
+  "next_action": "Create the fail-closed disposable PostgreSQL harness and execute two-store stale-read RED regressions before production store changes",
+  "revalidation_triggers": [
+    "production database, real clinical data or external infrastructure access",
+    "destructive or normalization migration",
+    "material expansion beyond V4-DB-01/02/03",
+    "new CRITICAL risk or cross-system blast radius"
+  ],
+  "supersedes": null
+}

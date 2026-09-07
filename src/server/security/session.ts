@@ -11,6 +11,13 @@ function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
+function sameScope(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
+  const normalize = (values: readonly string[] | undefined) => [...new Set(values ?? [])].sort();
+  const normalizedLeft = normalize(left);
+  const normalizedRight = normalize(right);
+  return normalizedLeft.length === normalizedRight.length && normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
 function parseCookies(request: Request): Record<string, string> {
   const header = request.headers.get("cookie") ?? "";
   return Object.fromEntries(
@@ -82,6 +89,9 @@ export function authorizationSnapshotIsCurrent(state: StoreState, actor: User): 
     && current.version === actor.version
     && current.role === actor.role
     && current.departmentCode === actor.departmentCode
+    && sameScope(current.patientIds, actor.patientIds)
+    && sameScope(current.serviceCodes, actor.serviceCodes)
+    && sameScope(current.managedDepartmentCodes, actor.managedDepartmentCodes)
     && session
     && !session.revokedAt
     && new Date(session.expiresAt).getTime() > Date.now()

@@ -1,0 +1,23 @@
+
+> cvg-diagnostics-hub@0.1.0 validate:traceability
+> node scripts/validate-traceability.mjs
+
+Traceability validation FAILED with 16 issue(s).
+CODE_REFERENCE_MISSING (line 67): FR-OPS-002, AC-FR-OPS-002-01: code must contain a repository file link/path; an ID or status alone is not evidence.
+COMMAND_NOT_LOCAL_OR_MISSING (line 67): FR-OPS-002, AC-FR-OPS-002-01: command must be a non-placeholder local command (npm/node/tsx/vitest/tsc/eslint/bash/sh/git).
+EVIDENCE_REFERENCE_MISSING (line 67): FR-OPS-002, AC-FR-OPS-002-01: evidence must contain a repository file link/path; an ID or status alone is not evidence.
+TEST_REFERENCE_MISSING (line 67): FR-OPS-002, AC-FR-OPS-002-01: test must contain a repository file link/path; an ID or status alone is not evidence.
+CODE_REFERENCE_MISSING (line 83): NFR-PERF-001, AC-NFR-PERF-001-01: code must contain a repository file link/path; an ID or status alone is not evidence.
+COMMAND_NOT_LOCAL_OR_MISSING (line 83): NFR-PERF-001, AC-NFR-PERF-001-01: command must be a non-placeholder local command (npm/node/tsx/vitest/tsc/eslint/bash/sh/git).
+EVIDENCE_REFERENCE_MISSING (line 83): NFR-PERF-001, AC-NFR-PERF-001-01: evidence must contain a repository file link/path; an ID or status alone is not evidence.
+TEST_REFERENCE_MISSING (line 83): NFR-PERF-001, AC-NFR-PERF-001-01: test must contain a repository file link/path; an ID or status alone is not evidence.
+CODE_REFERENCE_MISSING (line 84): NFR-PERF-002, AC-NFR-PERF-002-01: code must contain a repository file link/path; an ID or status alone is not evidence.
+COMMAND_NOT_LOCAL_OR_MISSING (line 84): NFR-PERF-002, AC-NFR-PERF-002-01: command must be a non-placeholder local command (npm/node/tsx/vitest/tsc/eslint/bash/sh/git).
+EVIDENCE_REFERENCE_MISSING (line 84): NFR-PERF-002, AC-NFR-PERF-002-01: evidence must contain a repository file link/path; an ID or status alone is not evidence.
+TEST_REFERENCE_MISSING (line 84): NFR-PERF-002, AC-NFR-PERF-002-01: test must contain a repository file link/path; an ID or status alone is not evidence.
+CODE_REFERENCE_MISSING (line 88): NFR-OPS-001, AC-NFR-OPS-001-01: code must contain a repository file link/path; an ID or status alone is not evidence.
+COMMAND_NOT_LOCAL_OR_MISSING (line 88): NFR-OPS-001, AC-NFR-OPS-001-01: command must be a non-placeholder local command (npm/node/tsx/vitest/tsc/eslint/bash/sh/git).
+EVIDENCE_REFERENCE_MISSING (line 88): NFR-OPS-001, AC-NFR-OPS-001-01: evidence must contain a repository file link/path; an ID or status alone is not evidence.
+TEST_REFERENCE_MISSING (line 88): NFR-OPS-001, AC-NFR-OPS-001-01: test must contain a repository file link/path; an ID or status alone is not evidence.
+
+Exit code: 1

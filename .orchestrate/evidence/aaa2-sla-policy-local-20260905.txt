@@ -1,0 +1,36 @@
+AAA2-029 — bounded local SLA policy mechanism — 2026-09-05
+
+Verdict: IMPLEMENTED / PARTIAL. This packet proves a local deterministic policy mechanism. It does not close AAA2-029, approve D-04, or authorize hospital/production use.
+
+Artifact
+- src/server/application/sla-policy.ts
+- src/server/application/sla-policy.test.ts
+- src/server/application/service-common.ts delegates the existing calculateDueAt path to the compatibility policy clock.
+
+Current executable evidence (Node 22)
+- Command: npx --yes node@22 ./node_modules/vitest/vitest.mjs run src/server/application/sla-policy.test.ts src/server/application/service.test.ts
+- Result: PASS — 2 files, 20 tests. Fourteen focused policy tests cover the explicit legacy fallback, fractional-hour compatibility, pending-policy rejection, materialized calendar gaps and invalid definitions, exhausted calendars, pause/resume and invalid transitions, overdue derivation, start-event mismatch and version binding. Six application-service tests include persisted slaStartedAt, dueAt and slaPolicyVersion on request creation.
+- Command: `npx vitest run src/server/application/sla-policy.test.ts src/server/application/service.test.ts`
+- Result: PASS in the consolidated local working tree; this exact command is the traceability matrix command signature.
+- Command: npx --yes node@22 ./node_modules/typescript/bin/tsc --noEmit
+- Result: PASS.
+- Command: npx --yes node@22 ./node_modules/eslint/bin/eslint.js src/server/application/sla-policy.ts src/server/application/sla-policy.test.ts src/server/application/service-common.ts
+- Result: PASS.
+- Command: npx --yes node@22 ./node_modules/vitest/vitest.mjs run --coverage
+- Result: PASS — 59 files, 489 tests; 92.61% statements/lines, 85.35% branches and 95.19% functions in the integrated shared worktree. The new sla-policy.ts module is 100% statements/lines/functions and 97.77% branches.
+
+Behavior and authority boundary
+- The existing service.slaHours behavior remains available only as LEGACY_SERVICE_FALLBACK: REQUESTED start, CONTINUOUS calendar, DISALLOWED pause, service version preserved, and reason D04_NOT_APPROVED exposed in the policy object.
+- CONFIGURED_POLICY fails closed unless approval status is APPROVED with a non-empty reference and valid approval timestamp.
+- Explicit calendar windows are absolute instants plus their source IANA timezone. This layer does not invent recurring shifts, weekends, holidays or DST interpretations; an authorized configuration boundary must materialize those windows.
+- A clock binds policy id, version and source at start. Pause/resume can run only when that same approved policy explicitly selects EXCLUDE_PAUSED_TIME. Overdue is derived from the running clock and does not mutate a clinical state.
+
+Known limits / remaining AAA2-029 work
+- D-04 is OPEN. No start event, pause reason, sector calendar, holiday, priority-change rule, timezone rule, duplicate window or human protocol is approved.
+- Configured policy storage, administration, effective-date selection, item-level persistence of policy id/source/calendar/pause history, audit events, API commands and migration columns are not implemented.
+- The current request path intentionally continues the compatible legacy service-hours fallback; it does not select CONFIGURED_POLICY.
+- There is no durable overdue worker/event, restart/idempotency proof, live PostgreSQL exercise, representative corpus, hospital acceptance or independent final approval for AAA2-029.
+- The source calendar must resolve DST/local-time ambiguity before emitting absolute windows; that configuration/compiler boundary remains unimplemented.
+
+Largest next gap
+- Obtain D-04 examples and approval, then implement versioned policy persistence/selection and transactional pause/resume/overdue events against PostgreSQL without changing historical clocks.

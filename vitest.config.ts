@@ -19,25 +19,35 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx", "packages/**/*.test.ts", "packages/**/*.test.tsx"],
+    // Keep the broad G4 aggregate deterministic across local and CI runs.
+    // Some suites mutate process-wide fakes and coverage is merged per file;
+    // serial execution prevents scheduling from changing the denominator.
+    fileParallelism: false,
+    maxWorkers: 1,
+    minWorkers: 1,
+    sequence: {
+      concurrent: false,
+      hooks: "list",
+      setupFiles: "list",
+      shuffle: false
+    },
     coverage: {
       provider: "v8",
       reporter: ["text", "html", "json", "json-summary"],
-      include: ["src/server/**/*.ts", "src/components/api-client.ts", "src/components/status-badge.tsx", "packages/domain/src/**/*.ts"],
+      // G4 measures executable product behavior across app, domain, runtime,
+      // persistence and UI. Only type-only seams and test infrastructure are
+      // excluded; generated/test files are not part of the product surface.
+      include: ["src/**/*.ts", "src/**/*.tsx", "packages/**/*.ts", "packages/**/*.tsx"],
       exclude: [
         "src/**/*.d.ts",
         "src/test/**",
-        "src/app/**",
-        "src/server/domain/models.ts",
-        "src/server/store/postgres-store.ts",
-        "src/server/store/runtime.ts",
-        "src/components/app-shell.tsx",
-        "src/components/dashboard.tsx",
-        "src/components/login-form.tsx",
-        "src/components/notifications-view.tsx",
-        "src/components/queue-view.tsx",
-        "src/components/request-detail.tsx"
+        "**/*.test.*",
+        "src/server/application/service-context.ts",
+        "src/server/application/service-types.ts",
+        "src/server/storage/file-store-contract.ts",
+        "src/server/store/relational/clinical-core-contracts.ts"
       ],
-      thresholds: { lines: 80, functions: 80, branches: 80, statements: 80 }
+      thresholds: { lines: 90, functions: 90, branches: 85, statements: 90 }
     }
   }
 });

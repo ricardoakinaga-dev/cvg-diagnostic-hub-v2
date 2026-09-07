@@ -1,0 +1,7 @@
+{
+  "fresh_context": true,
+  "filesystem_isolation": "shared-workspace; critics constrained read-only by task contract",
+  "max_concurrency": 1,
+  "wait_supported": true,
+  "notes": "Subagents are available for bounded fresh-context criticism, but the workspace is shared; the lead remains the only writer of code and durable control-plane state. External hospital, production and CI systems are unavailable in this run."
+}

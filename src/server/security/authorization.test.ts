@@ -29,11 +29,61 @@ describe("server authorization", () => {
     expect(hasPermission("VETERINARIAN", "attachment.download")).toBe(true);
   });
 
+  it("enforces a laboratory technician's service scope", () => {
+    const labTechnician = {
+      id: "user-lab",
+      role: "LAB_TECH" as const,
+      departmentCode: "LABORATORY",
+      serviceCodes: ["HEMOGRAM"],
+      active: true
+    };
+
+    expect(canAccessResource(labTechnician, "sample.receive", {
+      departmentCode: "LABORATORY",
+      serviceCode: "HEMOGRAM"
+    })).toBe(true);
+    expect(canAccessResource(labTechnician, "sample.receive", {
+      departmentCode: "LABORATORY",
+      serviceCode: "CRP"
+    })).toBe(false);
+  });
+
+  it("fails closed when optional role scope metadata is absent", () => {
+    const labTechnicianWithoutServiceScope = {
+      id: "user-lab",
+      role: "LAB_TECH" as const,
+      departmentCode: "LABORATORY",
+      active: true
+    };
+    const managerWithoutDelegatedDepartments = {
+      id: "user-manager",
+      role: "MANAGER" as const,
+      departmentCode: "INPATIENT",
+      active: true
+    };
+
+    expect(canAccessResource(labTechnicianWithoutServiceScope, "sample.receive", {
+      departmentCode: "LABORATORY",
+      serviceCode: "HEMOGRAM"
+    })).toBe(false);
+    expect(canAccessResource(managerWithoutDelegatedDepartments, "request.view", {
+      departmentCode: "INPATIENT"
+    })).toBe(true);
+    expect(canAccessResource(managerWithoutDelegatedDepartments, "request.view", {
+      patientId: "patient-1"
+    })).toBe(false);
+  });
+
   it("uses the role matrix instead of treating every permission as granted", () => {
     const viewer = { role: "VIEWER", active: true } as Parameters<typeof hasPermissionForUser>[0];
     expect(hasPermissionForUser(viewer, "sample.receive")).toBe(false);
     expect(hasPermissionForUser(viewer, "request.view")).toBe(true);
     expect(hasPermissionForUser({ ...viewer, active: false }, "request.view")).toBe(false);
+  });
+
+  it("rejects an active actor when the requested action is absent from the role matrix", () => {
+    const viewer = { id: "viewer", role: "VIEWER" as const, departmentCode: "INPATIENT", active: true };
+    expect(canAccessResource(viewer, "sample.receive", {})).toBe(false);
   });
 
   it("keeps technical administrators out of clinical commands and patient scope", () => {

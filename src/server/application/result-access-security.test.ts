@@ -31,7 +31,8 @@ function setup() {
     service,
     vet: requiredUser(users, "vet@cvg.local"),
     lab: requiredUser(users, "lab@cvg.local"),
-    peerLab: requiredUser(users, "lab-peer@cvg.local")
+    peerLab: requiredUser(users, "lab-peer@cvg.local"),
+    manager: requiredUser(users, "manager@cvg.local")
   };
 }
 
@@ -64,6 +65,47 @@ async function createHemogramDraft(context: ReturnType<typeof setup>) {
     idempotencyKey: `security-draft-${crypto.randomUUID()}`
   });
   return { request, item, draft };
+}
+
+async function createManagerMultiSectorDraft(context: ReturnType<typeof setup>) {
+  const request = await context.service.createRequest(context.manager, {
+    patientId: "patient-thor",
+    encounterId: "encounter-thor",
+    priority: "ROUTINE",
+    items: [{ serviceId: "service-hemogram" }, { serviceId: "service-ultrasound" }]
+  }, { idempotencyKey: `security-manager-multi-sector-${crypto.randomUUID()}` });
+  const hemogramItem = request.items.find((item) => item.serviceId === "service-hemogram");
+  if (!hemogramItem) throw new Error("missing manager hemogram item");
+  const received = await context.service.receiveSample(context.manager, [hemogramItem.id], {
+    accessionCode: `ACC-${crypto.randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
+    sampleType: "EDTA",
+    expectedVersion: hemogramItem.version,
+    idempotencyKey: `security-manager-receive-${crypto.randomUUID()}`
+  });
+  const started = await context.service.startProcessing(context.manager, hemogramItem.id, {
+    expectedVersion: received.items[0].version,
+    idempotencyKey: `security-manager-start-${crypto.randomUUID()}`
+  });
+  const draft = await context.service.createResultDraft(context.manager, hemogramItem.id, {
+    narrative: "Resultado gerencial multi-setor.",
+    content: syntheticHemogramContent("Resultado gerencial multi-setor."),
+    expectedVersion: started.item.version,
+    idempotencyKey: `security-manager-draft-${crypto.randomUUID()}`
+  });
+  return { request, hemogramItem, draft };
+}
+
+async function narrowManagerToLaboratory(context: ReturnType<typeof setup>): Promise<User> {
+  await context.store.transaction((state) => ({
+    state: {
+      ...state,
+      users: state.users.map((user) => user.id === context.manager.id
+        ? { ...user, managedDepartmentCodes: ["LABORATORY"] }
+        : user)
+    },
+    result: undefined
+  }));
+  return requiredUser(context.store.getState().users, "manager@cvg.local");
 }
 
 async function rejectionFrom(operation: () => Promise<unknown>): Promise<unknown> {
@@ -169,6 +211,47 @@ describe("clinical result access security", () => {
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
   });
 
+  it("only exposes clean finalized attachments in a released report", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const released = await context.service.releaseResult(context.lab, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-release-attachment-boundary"
+    });
+    const baseAttachment = {
+      resultVersionId: released.version.id,
+      safeName: "laudo.pdf",
+      storageKey: "private/result/laudo.pdf",
+      detectedMime: "application/pdf",
+      sizeBytes: 2048,
+      checksum: "b".repeat(64),
+      scanStatus: "CLEAN" as const,
+      uploadStatus: "FINALIZED" as const,
+      createdBy: context.lab.id,
+      createdAt: new Date().toISOString()
+    };
+    await context.store.transaction((state) => ({
+      state: {
+        ...state,
+        attachments: [
+          ...state.attachments,
+          { ...baseAttachment, id: "attachment-report-clean" },
+          { ...baseAttachment, id: "attachment-report-pending", safeName: "pending.pdf", scanStatus: "PENDING", uploadStatus: "UPLOADED" },
+          { ...baseAttachment, id: "attachment-report-quarantined", safeName: "quarantined.pdf", scanStatus: "QUARANTINED" }
+        ]
+      },
+      result: undefined
+    }));
+
+    const report = await context.service.getReport(context.vet, released.result.id);
+
+    expect(report.attachments).toEqual([expect.objectContaining({ id: "attachment-report-clean", scanStatus: "CLEAN", uploadStatus: "FINALIZED" })]);
+    expect(report.attachments).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "attachment-report-pending" }),
+      expect.objectContaining({ id: "attachment-report-quarantined" })
+    ]));
+  });
+
   it("allows only the exact draft author to read the current draft and audits that access", async () => {
     const context = setup();
     const { draft } = await createHemogramDraft(context);
@@ -234,6 +317,28 @@ describe("result draft write security", () => {
     })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
   });
 
+  it("rechecks draft scope before replaying a previously successful edit", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const input = {
+      narrative: "Edição idempotente autorizada.",
+      content: syntheticHemogramContent("Edição idempotente autorizada."),
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-draft-replay-after-revocation"
+    };
+    await context.service.updateResultDraft(context.lab, draft.result.id, input);
+    await context.store.transaction((state) => ({
+      state: {
+        ...state,
+        users: state.users.map((user) => user.id === context.lab.id ? { ...user, serviceCodes: [] } : user)
+      },
+      result: undefined
+    }));
+    const revokedLab = requiredUser(context.store.getState().users, "lab@cvg.local");
+
+    await expect(context.service.updateResultDraft(revokedLab, draft.result.id, input)).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+  });
+
   it("denies amend when the result service is outside the LAB_TECH serviceCodes", async () => {
     const context = setup();
     const { draft } = await createHemogramDraft(context);
@@ -274,6 +379,153 @@ describe("result draft write security", () => {
       expectedVersion: released.result.version,
       idempotencyKey: "security-out-of-service-void"
     })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+  });
+
+  it("denies a same-service peer from amending another technician's released result", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const released = await context.service.releaseResult(context.lab, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-peer-amend-release"
+    });
+    const before = context.store.getState();
+
+    await expect(context.service.amendResult(context.peerLab, released.result.id, {
+      reason: "Emenda indevida por colega",
+      narrative: "Tentativa de alterar resultado alheio.",
+      content: syntheticHemogramContent("Tentativa de alteração indevida."),
+      expectedVersion: released.result.version,
+      idempotencyKey: "security-peer-amend"
+    })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+
+    const after = context.store.getState();
+    expect(after.results).toEqual(before.results);
+    expect(after.resultVersions).toEqual(before.resultVersions);
+    expect(after.auditEvents).toEqual(before.auditEvents);
+    expect(after.outbox).toEqual(before.outbox);
+  });
+
+  it("denies a same-service peer from releasing another technician's draft", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const before = context.store.getState();
+
+    await expect(context.service.releaseResult(context.peerLab, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-peer-release"
+    })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+
+    const after = context.store.getState();
+    expect(after.results).toEqual(before.results);
+    expect(after.resultVersions).toEqual(before.resultVersions);
+    expect(after.auditEvents).toEqual(before.auditEvents);
+    expect(after.outbox).toEqual(before.outbox);
+  });
+
+  it("revalidates scope before replaying a previously successful release", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const input = {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-release-replay-after-revocation"
+    };
+    await context.service.releaseResult(context.lab, draft.result.id, input);
+    await context.store.transaction((state) => ({
+      state: {
+        ...state,
+        users: state.users.map((user) => user.id === context.lab.id ? { ...user, serviceCodes: [] } : user)
+      },
+      result: undefined
+    }));
+    const revokedLab = requiredUser(context.store.getState().users, "lab@cvg.local");
+
+    await expect(context.service.releaseResult(revokedLab, draft.result.id, input)).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+  });
+
+  it("reprojects a successful release replay after a manager loses one delegated department", async () => {
+    const context = setup();
+    const { draft } = await createManagerMultiSectorDraft(context);
+    const input = {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-manager-release-projection-replay"
+    };
+    const first = await context.service.releaseResult(context.manager, draft.result.id, input);
+    expect(first.request.items).toHaveLength(2);
+
+    const narrowedManager = await narrowManagerToLaboratory(context);
+    const replay = await context.service.releaseResult(narrowedManager, draft.result.id, input);
+
+    expect(replay.request.itemIds).toEqual([first.item.id]);
+    expect(replay.request.items).toEqual([expect.objectContaining({ id: first.item.id, serviceId: "service-hemogram" })]);
+    expect(replay.request.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ serviceId: "service-ultrasound" })]));
+  });
+
+  it("reprojects a successful amendment replay after a manager loses one delegated department", async () => {
+    const context = setup();
+    const { draft } = await createManagerMultiSectorDraft(context);
+    const released = await context.service.releaseResult(context.manager, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-manager-amend-release"
+    });
+    const input = {
+      reason: "Correção gerencial",
+      narrative: "Resultado corrigido.",
+      content: syntheticHemogramContent("Resultado corrigido."),
+      expectedVersion: released.result.version,
+      idempotencyKey: "security-manager-amend-projection-replay"
+    };
+    const first = await context.service.amendResult(context.manager, released.result.id, input);
+    expect(first.request.items).toHaveLength(2);
+
+    const narrowedManager = await narrowManagerToLaboratory(context);
+    const replay = await context.service.amendResult(narrowedManager, released.result.id, input);
+
+    expect(replay.request.itemIds).toEqual([first.item.id]);
+    expect(replay.request.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ serviceId: "service-ultrasound" })]));
+  });
+
+  it("reprojects a successful void replay after a manager loses one delegated department", async () => {
+    const context = setup();
+    const { draft } = await createManagerMultiSectorDraft(context);
+    const released = await context.service.releaseResult(context.manager, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-manager-void-release"
+    });
+    const input = {
+      reason: "Invalidação gerencial",
+      expectedVersion: released.result.version,
+      idempotencyKey: "security-manager-void-projection-replay"
+    };
+    const first = await context.service.voidResult(context.manager, released.result.id, input);
+    expect(first.request.items).toHaveLength(2);
+
+    const narrowedManager = await narrowManagerToLaboratory(context);
+    const replay = await context.service.voidResult(narrowedManager, released.result.id, input);
+
+    expect(replay.request.itemIds).toEqual([first.item.id]);
+    expect(replay.request.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ serviceId: "service-ultrasound" })]));
+  });
+
+  it("denies a same-service peer from voiding another technician's released result", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const released = await context.service.releaseResult(context.lab, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "security-peer-void-release"
+    });
+    const before = context.store.getState();
+
+    await expect(context.service.voidResult(context.peerLab, released.result.id, {
+      reason: "Invalidação indevida por colega",
+      expectedVersion: released.result.version,
+      idempotencyKey: "security-peer-void"
+    })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+
+    const after = context.store.getState();
+    expect(after.results).toEqual(before.results);
+    expect(after.resultVersions).toEqual(before.resultVersions);
+    expect(after.auditEvents).toEqual(before.auditEvents);
+    expect(after.outbox).toEqual(before.outbox);
   });
 
   it("rejects a second active draft and preserves the original result lineage", async () => {

@@ -1,0 +1,14 @@
+docs/api/openapi.json
+docs/v2/PATIENT_WORKSPACE.md
+scripts/validate-openapi.mjs
+src/app/api/v1/[...path]/route.test.ts
+src/app/globals.css
+src/app/icon.svg
+src/app/layout.tsx
+src/components/patient-diagnostics.test.tsx
+src/components/patient-diagnostics.tsx
+src/server/application/patient-workspace.test.ts
+src/server/application/request-service.ts
+src/server/application/service-types.ts
+src/server/http/openapi-runtime-response.test.ts
+tests/e2e/core-flows.spec.ts

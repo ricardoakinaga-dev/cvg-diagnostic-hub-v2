@@ -77,6 +77,8 @@ Audit result release/amend/void/review, sample rejection/recollection, permissio
 - pinned/reviewed images, least-privileged containers and non-root process where feasible;
 - rotate credentials and document emergency revocation.
 
-## 10. Security gates
+## 10. Evidence and security gates
+
+The executable negative-control inventory is [`KNOWN_BAD_CONTROL_MATRIX.md`](KNOWN_BAD_CONTROL_MATRIX.md); the current adversarial supplement is [`ADVERSARIAL_REVIEW_SUPPLEMENT_2026-09-07.md`](ADVERSARIAL_REVIEW_SUPPLEMENT_2026-09-07.md). These artifacts report local evidence and residual gates; neither is a pentest, legal opinion or production approval.
 
 Before pilot: threat-model review, dependency scan, auth/RBAC/IDOR tests, upload abuse tests, SQLi/XSS/CSRF checks, header/TLS review, audit verification, backup encryption/restore and incident/runbook rehearsal.

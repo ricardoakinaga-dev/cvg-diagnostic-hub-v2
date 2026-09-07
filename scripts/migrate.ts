@@ -1,7 +1,12 @@
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Pool } from "pg";
-import { applyMigrations } from "../src/server/store/migrations";
+import {
+  applyMigrations,
+  readMigrationSet,
+  RUNTIME_MIGRATION_VERSIONS,
+  validateRuntimeMigrationSet
+} from "../src/server/store/migrations";
 
 interface RunMigrationsOptions {
   readonly connectionString: string;
@@ -10,6 +15,8 @@ interface RunMigrationsOptions {
 }
 
 export async function runMigrations(options: RunMigrationsOptions): Promise<void> {
+  const migrationDirectory = options.migrationDirectory ?? path.resolve(process.cwd(), "db/migrations");
+  validateRuntimeMigrationSet(await readMigrationSet(migrationDirectory, RUNTIME_MIGRATION_VERSIONS));
   const pool = new Pool({ connectionString: options.connectionString });
   try {
     const client = await pool.connect();
@@ -17,7 +24,7 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<void
       await applyMigrations(
         { query: (text, values) => client.query(text, values) },
         {
-          migrationDirectory: options.migrationDirectory ?? path.resolve(process.cwd(), "db/migrations"),
+          migrationDirectory,
           logger: options.logger
         }
       );

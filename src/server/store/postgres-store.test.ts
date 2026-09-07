@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { StoreState } from "../domain/models";
+import type { DiagnosticItem, DiagnosticRequest, StoreState } from "../domain/models";
 import { createDemoState } from "./fixtures";
 
 const pool = vi.hoisted(() => ({
@@ -18,7 +18,9 @@ const readyRuntimeSchema = {
   audit_truncate_guard_ready: true,
   event_projection_ready: true,
   outbox_claim_ownership_ready: true,
+  outbox_routing_ready: true,
   rate_limit_schema_ready: true,
+  relational_clinical_core_ready: true,
   transitional_storage_boundary_ready: true,
   invalidation_trigger_ready: true
 };
@@ -129,7 +131,7 @@ describe("PostgresStore fresh reads", () => {
 
   it("rejects removal of an audit event from the transactional snapshot", async () => {
     const base = createDemoState("postgres-audit-password");
-    const initial = {
+    const initial: StoreState = {
       ...base,
       auditEvents: [{
         id: "audit-existing",
@@ -175,7 +177,7 @@ describe("PostgresStore fresh reads", () => {
       metadata: { retained: true },
       occurredAt: "2026-08-22T00:00:00.000Z"
     };
-    const initial = {
+    const initial: StoreState = {
       ...base,
       protocolSequence: 9,
       auditEvents: [existingAuditEvent],
@@ -185,6 +187,8 @@ describe("PostgresStore fresh reads", () => {
         aggregateType: "DiagnosticRequest",
         aggregateId: "request-before-reset",
         payload: {},
+        consumerType: "DOMAIN_EVENT",
+        routingKey: "domain.RequestCreated",
         status: "PENDING" as const,
         attempts: 0,
         availableAt: "2026-08-22T00:00:00.000Z",
@@ -313,5 +317,231 @@ describe("PostgresStore fresh reads", () => {
       expect.anything()
     );
     expect(pool.end).toHaveBeenCalledOnce();
+  });
+});
+
+/** Unit-level store tests use mocked clients; live coverage is in tests/postgres/. */
+describe("PostgresStore relational clinical core seam (static/mocked)", () => {
+  beforeEach(() => {
+    pool.connect.mockReset();
+    pool.end.mockReset().mockResolvedValue(undefined);
+    pool.query.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function relationalRequest(): DiagnosticRequest {
+    return {
+      id: "request-with-hyphen",
+      requestCode: "EX-260904-0001",
+      patientId: "patient-with-hyphen",
+      encounterId: "encounter-with-hyphen",
+      requesterId: "user-with-hyphen",
+      requestingDepartmentCode: "INPATIENT",
+      priority: "ROUTINE",
+      aggregateStatus: "REQUESTED",
+      itemIds: ["item-with-hyphen"],
+      createdAt: "2026-09-04T12:00:00.000Z",
+      updatedAt: "2026-09-04T12:00:00.000Z",
+      version: 1
+    };
+  }
+
+  function relationalItem(): DiagnosticItem {
+    return {
+      id: "item-with-hyphen",
+      requestId: "request-with-hyphen",
+      serviceId: "service-with-hyphen",
+      departmentCode: "LABORATORY",
+      workflowType: "LABORATORY",
+      priority: "ROUTINE",
+      status: "REQUESTED",
+      requestedAt: "2026-09-04T12:00:00.000Z",
+      slaStartedAt: "2026-09-04T12:00:00.000Z",
+      dueAt: "2026-09-04T20:00:00.000Z",
+      slaPolicyVersion: 1,
+      version: 1
+    };
+  }
+
+  function readyAdapterRow(overrides: Record<string, boolean> = {}) {
+    return {
+      marker_ready: true,
+      tables_ready: true,
+      write_shape_ready: true,
+      constraints_ready: true,
+      ...overrides
+    };
+  }
+
+  it("requires explicit opt-in and joins relational writes to the existing transaction", async () => {
+    const initial = createDemoState("postgres-relational-seam-password");
+    const request = relationalRequest();
+    const item = relationalItem();
+    const client = {
+      query: vi.fn(async (text: string, _values?: readonly unknown[]) => {
+        if (text.includes("FOR UPDATE")) return row(initial, "1");
+        if (text.startsWith("UPDATE cvg_runtime_state")) return { rowCount: 1, rows: [{ version: "2" }] };
+        return { rowCount: 1, rows: [{ id: "relational-row", version: 2 }] };
+      }),
+      release: vi.fn()
+    };
+    pool.query
+      .mockResolvedValueOnce(row(initial, "1"))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.createWithRelationalClinicalCore(
+      "postgres://test.invalid/cvg_test_relational_seam"
+    );
+
+    await store.transaction((state) => ({
+      state: { ...state, requests: [request], items: [item] },
+      result: undefined
+    }));
+
+    expect(client.query.mock.calls.map(([text]) => String(text))).toEqual([
+      "BEGIN",
+      expect.stringContaining("SELECT state, version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
+      "SET CONSTRAINTS ALL DEFERRED",
+      expect.stringContaining("INSERT INTO diagnostic_requests"),
+      expect.stringContaining("INSERT INTO diagnostic_request_items"),
+      expect.stringContaining("UPDATE cvg_runtime_state"),
+      "COMMIT"
+    ]);
+    expect(client.query.mock.calls.find(([text]) => String(text).startsWith("INSERT INTO diagnostic_requests"))?.[1]?.[0])
+      .toBe("request-with-hyphen");
+    expect(client.query.mock.calls.find(([text]) => String(text).startsWith("INSERT INTO diagnostic_request_items"))?.[1]?.[0])
+      .toBe("item-with-hyphen");
+    await store.close();
+  });
+
+  it("closes the pool when the opt-in relational readiness contract is incomplete", async () => {
+    const initial = createDemoState("postgres-relational-not-ready-password");
+    pool.query
+      .mockResolvedValueOnce(row(initial, "1"))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow({ tables_ready: false })] });
+
+    await expect(PostgresStore.createWithRelationalClinicalCore(
+      "postgres://test.invalid/cvg_test_relational_not_ready"
+    )).rejects.toThrow("POSTGRES_RELATIONAL_CLINICAL_CORE_NOT_READY");
+    expect(pool.end).toHaveBeenCalledOnce();
+  });
+
+  it("exposes the relational request read seam only after opt-in readiness", async () => {
+    const initial = createDemoState("postgres-relational-read-password");
+    const relationalAggregate = {
+      request: { id: "request-with-hyphen" },
+      items: [],
+      samples: [],
+      sampleItemLinks: [],
+      procedures: [],
+      schedules: [],
+      results: [],
+      resultVersions: [],
+      attachments: [],
+      notifications: []
+    };
+    pool.query
+      .mockResolvedValueOnce(row(initial, "1"))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ aggregate: relationalAggregate }] });
+    const store = await PostgresStore.createWithRelationalClinicalCore(
+      "postgres://test.invalid/cvg_test_relational_read"
+    );
+
+    await expect(store.readRelationalClinicalRequest("request-with-hyphen")).resolves.toEqual(relationalAggregate);
+    expect(pool.query).toHaveBeenNthCalledWith(
+      4,
+      expect.stringContaining("FROM diagnostic_requests request_row"),
+      ["request-with-hyphen"]
+    );
+    await store.close();
+  });
+
+  it("provides a repeatable dual-read reconciliation report without changing JSONB authority", async () => {
+    const base = createDemoState("postgres-relational-reconcile-password");
+    const request: DiagnosticRequest = {
+      id: "request-with-hyphen",
+      requestCode: "EX-260904-0001",
+      patientId: "patient-with-hyphen",
+      encounterId: "encounter-with-hyphen",
+      requesterId: "user-with-hyphen",
+      requestingDepartmentCode: "INPATIENT",
+      priority: "ROUTINE",
+      aggregateStatus: "REQUESTED",
+      itemIds: [],
+      createdAt: "2026-09-04T12:00:00.000Z",
+      updatedAt: "2026-09-04T12:00:00.000Z",
+      version: 1
+    };
+    const initial = { ...base, requests: [request] };
+    const relationalAggregate = {
+      request: { id: request.id },
+      items: [], samples: [], sampleItemLinks: [], procedures: [], schedules: [], results: [], resultVersions: [], attachments: [], notifications: []
+    };
+    const client = {
+      query: vi.fn(async (text: string) => {
+        if (text.includes("SELECT state, version FROM cvg_runtime_state WHERE id = 1")) return row(initial, "1");
+        if (text.includes("FROM diagnostic_requests request_row")) return { rowCount: 1, rows: [{ aggregate: relationalAggregate }] };
+        return { rowCount: 1, rows: [{ id: "relational-row", version: 2 }] };
+      }),
+      release: vi.fn()
+    };
+    pool.query
+      .mockResolvedValueOnce(row(initial, "1"))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.createWithRelationalClinicalCore(
+      "postgres://test.invalid/cvg_test_relational_reconcile"
+    );
+
+    const report = await store.reconcileRelationalClinicalRequest(request.id);
+    expect(report.sourceAuthority).toBe("SNAPSHOT");
+    expect(report.targetAuthority).toBe("RELATIONAL");
+    expect(report.mismatches).toEqual(expect.arrayContaining([
+      expect.objectContaining({ entity: "diagnostic_requests", field: "request_code" })
+    ]));
+    expect(client.query).toHaveBeenNthCalledWith(1, "BEGIN");
+    expect(client.query).toHaveBeenNthCalledWith(2, "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+    expect(client.query).toHaveBeenCalledWith("COMMIT");
+    expect(store.getState()).toEqual(initial);
+    await store.close();
+  });
+
+  it("rolls back the JSON snapshot when a relational write fails", async () => {
+    const initial = createDemoState("postgres-relational-rollback-password");
+    const request = relationalRequest();
+    const item = relationalItem();
+    const client = {
+      query: vi.fn(async (text: string, _values?: readonly unknown[]) => {
+        if (text.includes("FOR UPDATE")) return row(initial, "1");
+        if (text.startsWith("INSERT INTO diagnostic_requests")) throw new Error("foreign key violation");
+        return { rowCount: 1, rows: [{ id: "relational-row", version: 2 }] };
+      }),
+      release: vi.fn()
+    };
+    pool.query
+      .mockResolvedValueOnce(row(initial, "1"))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.createWithRelationalClinicalCore(
+      "postgres://test.invalid/cvg_test_relational_rollback"
+    );
+
+    await expect(store.transaction((state) => ({
+      state: { ...state, requests: [request], items: [item] },
+      result: undefined
+    }))).rejects.toThrow("foreign key violation");
+    expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(client.query).not.toHaveBeenCalledWith(expect.stringContaining("UPDATE cvg_runtime_state"), expect.anything());
+    expect(store.getState()).toEqual(initial);
+    await store.close();
   });
 });

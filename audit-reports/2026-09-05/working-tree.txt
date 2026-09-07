@@ -1,0 +1,44 @@
+ M .agent/state.json
+ M .github/workflows/ci.yml
+ M docs/README.md
+ M docs/TRACEABILITY_MATRIX.md
+ M docs/operations/BACKUP_RESTORE.md
+ M docs/operations/OBSERVABILITY.md
+ M docs/operations/PRODUCTION_READINESS.md
+ M docs/operations/RELEASE_CHECKLIST.md
+ M docs/testing/TEST_PLAN.md
+ M docs/ux/USER_FLOWS.md
+ M docs/v2/MIGRATION_MAP.md
+ M package-lock.json
+ M playwright.config.ts
+ M scripts/outbox-worker.ts
+ M src/app/api/v1/[...path]/route.test.ts
+ M src/app/api/v1/[...path]/route.ts
+ M src/server/architecture-fitness.test.ts
+ M src/server/observability/metrics.test.ts
+ M src/server/observability/metrics.ts
+ M src/server/operations/outbox.test.ts
+ M src/server/operations/outbox.ts
+ M src/server/store/migrations.test.ts
+ M src/server/store/migrations.ts
+ M src/server/store/postgres-store.test.ts
+ M src/server/store/postgres-store.ts
+ M tests/e2e/accessibility.spec.ts
+ M tests/e2e/clinical-lifecycle.spec.ts
+ M tests/e2e/core-flows.spec.ts
+ M vitest.postgres.config.ts
+?? .orchestrate/
+?? audit-reports/
+?? db/migrations/007_relational_clinical_core.sql
+?? docs/PROJECT_STATUS_REPORT.md
+?? docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md
+?? docs/build/STATE_OF_ART_BACKLOG.md
+?? docs/build/STATE_OF_ART_QUALITY_BAR.md
+?? docs/build/STATE_OF_ART_ROADMAP.md
+?? scripts/validate-traceability.mjs
+?? scripts/validate-traceability.test.mjs
+?? src/server/observability/realtime-stream.ts
+?? src/server/observability/realtime.test.ts
+?? src/server/observability/realtime.ts
+?? src/server/store/relational/
+?? tests/e2e/support/

@@ -1,6 +1,6 @@
 import { DeleteObjectCommand, GetObjectCommand, HeadBucketCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { safeStorageKey } from "./storage-key";
-import type { FileStore } from "./file-store";
+import type { FileStore } from "./file-store-contract";
 
 export interface S3FileStoreConfig {
   endpoint: string;

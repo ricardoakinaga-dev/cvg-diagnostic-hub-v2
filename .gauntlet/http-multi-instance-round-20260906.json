@@ -1,0 +1,109 @@
+{
+  "base_fingerprint": "026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+  "workstream": "HTTP multi-instance PostgreSQL session and realtime boundary",
+  "bar_ids": ["AAA-04", "AAA-05", "AAA-10", "AAA-12"],
+  "gap": "The repository had PostgreSQL pool and LISTEN/NOTIFY evidence, but no public HTTP proof spanning two independently started application processes.",
+  "hypothesis": "Two independent Next processes sharing one disposable PostgreSQL can authenticate the same session across processes and deliver a committed, scope-filtered outbox event to an SSE stream through LISTEN/NOTIFY without putting clinical data in the notification payload.",
+  "expected_value": "This closes the largest locally actionable gap between service-level multi-instance tests and the public HTTP/SSE boundary while preserving the distinction between synthetic evidence and production acceptance.",
+  "estimated_cost": "One disposable PostgreSQL cluster, two bounded Next development child processes, one focused test, the full PostgreSQL regression suite, lint/type checks, documentation reconciliation and one fresh critic attempt.",
+  "change": {
+    "summary": "Integrate the two-process HTTP test harness, cross-instance session/SSE scenario and conditional evidence into the current candidate.",
+    "files": [
+      "tests/support/next-http-test-server.ts",
+      "tests/postgres/http-multi-instance.integration.test.ts",
+      ".orchestrate/evidence/aaa3-http-multi-instance-20260906.md",
+      ".orchestrate/evidence/aaa3-http-multi-instance-run-20260906.txt",
+      "docs/testing/POSTGRES_INTEGRATION.md",
+      "docs/spec/REALTIME.md",
+      "docs/testing/TEST_PLAN.md",
+      "docs/operations/PRODUCTION_READINESS.md",
+      "docs/operations/RELEASE_CHECKLIST.md",
+      "docs/build/AAA_2_ROADMAP.md",
+      "docs/build/AAA_2_BACKLOG.md",
+      "docs/TRACEABILITY_MATRIX.md"
+    ]
+  },
+  "evidence": [
+    {
+      "criterion_ids": ["AAA-04", "AAA-05", "AAA-10", "AAA-12"],
+      "command": "ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://postgres@127.0.0.1:55458/postgres npm run test:postgres -- --run tests/postgres/http-multi-instance.integration.test.ts --reporter=verbose",
+      "environment": "Disposable PostgreSQL 16.15 on loopback; two Next.js 16.3.0 development processes; Node 22; synthetic fixture; distinct ports, dist directories, storage roots and application names.",
+      "status": "PASS",
+      "exit_code": 0,
+      "outcome": "Dedicated HTTP scenario passed 1/1 in 2.826s; login A/session B, pg_stat_activity LISTEN proof, no-clinical-payload probe, mutation A and authorized SSE event B all passed.",
+      "started_at": "2026-09-06T06:21:30Z",
+      "ended_at": "2026-09-06T06:21:34Z",
+      "artifact_fingerprint": "026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+      "executed": true,
+      "producer": "primary-agent",
+      "independence": "I0",
+      "raw_result_sha256": "b03ac3037125c57300b745a823a934f9eb4efcac4a6c27f65cbc63e63096b0f7",
+      "artifacts": [
+        {"path": "tests/postgres/http-multi-instance.integration.test.ts", "type": "source", "producer": "primary-agent"},
+        {"path": "tests/support/next-http-test-server.ts", "type": "source", "producer": "primary-agent"},
+        {"path": ".orchestrate/evidence/aaa3-http-multi-instance-20260906.md", "type": "evidence", "producer": "primary-agent"},
+        {"path": ".orchestrate/evidence/aaa3-http-multi-instance-run-20260906.txt", "type": "raw-result", "producer": "primary-agent"}
+      ]
+    },
+    {
+      "criterion_ids": ["AAA-04", "AAA-05", "AAA-10", "AAA-12"],
+      "command": "ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://postgres@127.0.0.1:55459/postgres npm run test:postgres -- --run --reporter=dot",
+      "environment": "Fresh disposable PostgreSQL 16.15 cluster on loopback; complete Vitest PostgreSQL integration configuration; cluster stopped after execution and pre-existing 5432 listener untouched.",
+      "status": "PASS",
+      "exit_code": 0,
+      "outcome": "Full PostgreSQL suite passed 5 files and 23/23 tests in 11.34s.",
+      "started_at": "2026-09-06T06:22:10Z",
+      "ended_at": "2026-09-06T06:22:22Z",
+      "artifact_fingerprint": "026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+      "executed": true,
+      "producer": "primary-agent",
+      "independence": "I0",
+      "raw_result_sha256": "b03ac3037125c57300b745a823a934f9eb4efcac4a6c27f65cbc63e63096b0f7",
+      "artifacts": [
+        {"path": ".orchestrate/evidence/aaa3-http-multi-instance-run-20260906.txt", "type": "raw-result", "producer": "primary-agent"},
+        {"path": ".orchestrate/evidence/aaa3-http-multi-instance-20260906.md", "type": "evidence", "producer": "primary-agent"}
+      ]
+    },
+    {
+      "criterion_ids": ["AAA-04", "AAA-05", "AAA-10", "AAA-12"],
+      "command": "Fresh read-only critic against the sealed HTTP packet and fingerprint 026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+      "environment": "Independent context; no filesystem mutation; critic was given the packet, source paths and explicit local-vs-production limits.",
+      "status": "BLOCKED",
+      "exit_code": 124,
+      "outcome": "No report arrived in three 30-second wait windows; agent was closed and no approval inferred. Mutation sentinel is clean because the artifact fingerprint remained unchanged.",
+      "started_at": "2026-09-06T06:36:10Z",
+      "ended_at": "2026-09-06T06:37:40Z",
+      "artifact_fingerprint": "026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+      "executed": true,
+      "producer": "fresh-critic-timeout",
+      "independence": "I1",
+      "raw_result_sha256": "b03ac3037125c57300b745a823a934f9eb4efcac4a6c27f65cbc63e63096b0f7",
+      "artifacts": [
+        {"path": ".orchestrate/evidence/aaa3-http-multi-instance-20260906.md", "type": "sealed-packet", "producer": "primary-agent"}
+      ]
+    }
+  ],
+  "retest": "npm run typecheck; npm run lint; npm run validate:docs; git diff --check; full PostgreSQL suite 23/23; JSON/control-plane parse and engineering-framework checker.",
+  "critic": {
+    "critic_id": "fresh-http-multi-instance-critic-timeout-20260906",
+    "decision": "BLOCKED",
+    "independence": "I1",
+    "mechanism": "Fresh non-inherited context with a sealed packet and explicit read-only/no-mutation instruction.",
+    "fork_turns": "none",
+    "sealed_packet": true,
+    "mutation_clean": true,
+    "pre_fingerprint": "026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+    "post_fingerprint": "026f38e00868c0a476d3b9324f58c3b41081aa0b95fa5482133321fe03071dec",
+    "largest_gap": "The independent critic did not produce a report within 90 seconds; target next-start/production, reconnect/replay, representative-load, cutover and human gates remain open."
+  },
+  "resource_usage": {
+    "agent_peak": 1,
+    "agent_depth_peak": 1,
+    "tool_calls": 12,
+    "retries": 0,
+    "tokens": 0,
+    "elapsed_seconds": 180,
+    "retry_attempts": {"deterministic": 0, "flaky": 0, "network": 0}
+  },
+  "next_gap": "Fresh independent review and target-equivalent next-start validation of multi-instance session/realtime behavior, followed by representative load, reconnect/replay, relational cutover, operations and human policy gates."
+}

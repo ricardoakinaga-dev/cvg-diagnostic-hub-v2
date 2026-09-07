@@ -4,6 +4,7 @@ import type { AnySchema } from "ajv";
 import addFormats from "ajv-formats";
 import { describe, expect, it } from "vitest";
 import {
+  admissionContextSchema,
   attachmentUploadSchema,
   cancelSchema,
   resultDraftSchema,
@@ -149,6 +150,23 @@ describe("OpenAPI request schemas against runtime command parsing", () => {
     expect(validateRequest("ReleaseResultCommand", {}), "OpenAPI optional release metadata").toBe(true);
     expect(releaseResultSchema.safeParse({ critical: true }).success).toBe(true);
     expect(validateRequest("ReleaseResultCommand", { critical: true })).toBe(true);
+  });
+
+  it("keeps admission context variants aligned and fail-closed against overposting", () => {
+    const effectiveAt = "2026-09-05T12:00:00.000Z";
+    const cases = [
+      { action: "BED_CHANGE", effectiveAt, reason: "Leito aprovado", ward: "UTI 2", bed: "Box 04" },
+      { action: "DISCHARGE", effectiveAt, reason: "Alta aprovada" },
+      { action: "RESPONSIBILITY_CHANGE", effectiveAt, reason: "Escala aprovada", responsibleUserId: "user-vet" }
+    ];
+    for (const value of cases) {
+      expect(admissionContextSchema.safeParse(value).success, `${value.action} runtime`).toBe(true);
+      expect(validateRequest("AdmissionContextCommand", value), `${value.action} OpenAPI`).toBe(true);
+    }
+
+    const overposted = { action: "DISCHARGE", effectiveAt, reason: "Alta aprovada", ward: "indevido" };
+    expect(admissionContextSchema.safeParse(overposted).success, "overposted runtime").toBe(false);
+    expect(validateRequest("AdmissionContextCommand", overposted), "overposted OpenAPI").toBe(false);
   });
 
   it("rejects blank normalized text across every administrative and catalog request", () => {

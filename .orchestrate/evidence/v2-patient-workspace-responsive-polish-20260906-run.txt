@@ -1,0 +1,16 @@
+SUPERSEDED: authoritative post-critique evidence is .orchestrate/evidence/v2-patient-workspace-current-20260906.md and .orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json. This historical run is retained unchanged below.
+
+2026-09-06T10:06:05Z — visual-polish run
+scope=/patients/{patientId}/diagnostics
+fallback=Playwright; Browser/IAB unavailable
+viewports=1440x1000,834x1194,375x812 CSS px
+focused_render=3/3; no horizontal overflow; no console errors
+component_unit=7/7
+typecheck=PASS
+lint=PASS
+full_e2e=51/51; retries=0; fail-on-flaky-tests
+accessibility=6/6; retries=0; fail-on-flaky-tests
+contrast=PASS; #62717A on white 5.05, paper 4.69, muted surface 4.55; #8EAAA9 on navy 4.64
+token_audit=WARN; heuristic raw style declarations/near duplicates remain
+independent_visual_critic=NOT_RUN; no fresh report within bounded worker window
+verdict=REVIEW REQUIRED; local conditional evidence only; no AAA/release claim

@@ -1,13 +1,18 @@
 import { randomUUID } from "node:crypto";
-import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { Pool } from "pg";
 import type { StoreState } from "../../src/server/domain/models";
-import { applyMigrations } from "../../src/server/store/migrations";
-import { PostgresStore } from "../../src/server/store/postgres-store";
+import {
+  applyMigrations,
+  readMigrationSet,
+  RUNTIME_MIGRATION_VERSIONS,
+  validateRuntimeMigrationSet
+} from "../../src/server/store/migrations";
+import { PostgresStore, type PostgresRelationalClinicalCoreReadiness } from "../../src/server/store/postgres-store";
+import { RelationalClinicalCoreAdapter } from "../../src/server/store/relational/clinical-core-adapter";
+import type { RelationalClinicalCoreRuntime } from "../../src/server/store/relational/clinical-core-contracts";
 
 const DATABASE_NAME_PATTERN = /^cvg_test_[1-9][0-9]*_[a-f0-9]{32}$/;
-const MIGRATION_FILE_PATTERN = /^\d+_[a-z0-9_-]+\.sql$/;
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 export interface PostgresIntegrationEnvironment {
@@ -18,6 +23,11 @@ export interface PostgresIntegrationEnvironment {
 export interface DisposablePostgresDatabase {
   connectionString(): string;
   createStore(fallbackState?: StoreState): Promise<PostgresStore>;
+  createRelationalStore(
+    fallbackState: StoreState,
+    adapter?: RelationalClinicalCoreRuntime,
+    relationalReadiness?: PostgresRelationalClinicalCoreReadiness
+  ): Promise<PostgresStore>;
   closeStore(store: PostgresStore): Promise<void>;
   query(text: string, values?: readonly unknown[]): Promise<{ rows: readonly unknown[]; rowCount: number | null }>;
 }
@@ -77,12 +87,7 @@ function databaseConnectionString(adminUrl: URL, databaseName: string): string {
 
 async function applyRealMigrations(connectionString: string): Promise<void> {
   const migrationDirectory = path.resolve(process.cwd(), "db/migrations");
-  const migrationFiles = (await readdir(migrationDirectory))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort((left, right) => left.localeCompare(right));
-  if (migrationFiles.length === 0 || migrationFiles.some((filename) => !MIGRATION_FILE_PATTERN.test(filename))) {
-    throw new Error("The PostgreSQL integration harness requires a valid, non-empty migration set.");
-  }
+  validateRuntimeMigrationSet(await readMigrationSet(migrationDirectory, RUNTIME_MIGRATION_VERSIONS));
 
   const migrationPool = new Pool({ connectionString, max: 1 });
   try {
@@ -157,6 +162,21 @@ async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedD
             { authorization: "ALLOW_POSTGRES_INTEGRATION_TESTS" }
           )
         : await PostgresStore.create(connectionString);
+      openStores = [...openStores, store];
+      return store;
+    },
+
+    async createRelationalStore(
+      fallbackState: StoreState,
+      adapter: RelationalClinicalCoreRuntime = new RelationalClinicalCoreAdapter(),
+      relationalReadiness: PostgresRelationalClinicalCoreReadiness = "STRICT"
+    ): Promise<PostgresStore> {
+      const store = await PostgresStore.createWithRelationalClinicalCore(connectionString, {
+        fallbackState,
+        adapter,
+        relationalReadiness,
+        initialization: { authorization: "ALLOW_POSTGRES_INTEGRATION_TESTS" }
+      });
       openStores = [...openStores, store];
       return store;
     },

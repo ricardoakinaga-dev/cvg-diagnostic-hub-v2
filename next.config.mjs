@@ -9,9 +9,16 @@ const securityHeaders = [
 const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  // Keep framework development chrome out of application screenshots and local
+  // visual review; it is not part of the product surface.
+  devIndicators: false,
+  // The Playwright harness starts one disposable dev server per project.
+  // Keep their compiler locks and artifacts separate while preserving the
+  // normal `.next` directory for local development and production builds.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
   // Next 16 blocks dev assets requested from a LAN origin unless it is
   // explicitly allowlisted. Keep this limited to the local demo host.
-  allowedDevOrigins: ["192.168.15.14"],
+  allowedDevOrigins: ["192.168.15.14", "localhost", "127.0.0.1"],
   turbopack: { root: process.cwd() },
   transpilePackages: ["@cvg/contracts", "@cvg/domain", "@cvg/ui", "@cvg/services", "@cvg/shared-state"],
   async headers() {

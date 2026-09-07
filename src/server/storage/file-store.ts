@@ -3,17 +3,10 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { S3FileStore, type S3FileStoreConfig } from "./s3-file-store";
 import { safeStorageKey } from "./storage-key";
+import type { FileStore } from "./file-store-contract";
 
 export { safeStorageKey } from "./storage-key";
-
-export interface FileStore {
-  put(key: string, content: Uint8Array): Promise<void>;
-  get(key: string): Promise<Buffer>;
-  delete?(key: string): Promise<void>;
-  remove(key: string): Promise<void>;
-  exists(key: string): Promise<boolean>;
-  healthcheck?(): Promise<void>;
-}
+export type { FileStore } from "./file-store-contract";
 
 export class LocalFileStore implements FileStore {
   constructor(private readonly root: string) {}

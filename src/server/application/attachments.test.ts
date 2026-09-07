@@ -32,6 +32,23 @@ async function setup() {
 }
 
 describe("secure attachment lifecycle", () => {
+  it("rejects an unsupported declared MIME before creating an upload session", async () => {
+    const context = await setup();
+    try {
+      await expect(context.service.createAttachmentUploadSession(context.imaging, context.versionId, {
+        filename: "laudo.txt",
+        mimeType: "text/plain",
+        sizeBytes: 4,
+        checksum: "a".repeat(64),
+        expectedVersion: context.versionGuard,
+        idempotencyKey: "attachment-invalid-mime"
+      })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+      expect(context.store.getState().attachments).toHaveLength(0);
+    } finally {
+      await rm(context.root, { recursive: true, force: true });
+    }
+  });
+
   it("binds every draft attachment operation to the draft author", async () => {
     const context = await setup();
     try {

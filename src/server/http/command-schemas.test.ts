@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   acknowledgeNotificationSchema,
+  admissionContextSchema,
   amendResultSchema,
   attachmentFinalizeSchema,
   attachmentUploadSchema,
@@ -68,5 +69,22 @@ describe("strict command schemas", () => {
     expect(voidResultSchema.safeParse({ reason: "Correção", expectedVersion: 1 }).success).toBe(true);
     expect(acknowledgeNotificationSchema.safeParse({}).success).toBe(false);
     expect(acknowledgeNotificationSchema.safeParse({ expectedVersion: 1, reason: "Confirmei o contexto", confirm: true }).success).toBe(true);
+  });
+
+  it("keeps admission context actions strict and action-specific", () => {
+    const effectiveAt = "2026-09-05T12:00:00.000Z";
+    expect(admissionContextSchema.safeParse({
+      action: "TRANSFER",
+      effectiveAt,
+      reason: "Mudança autorizada",
+      departmentCode: "INPATIENT",
+      ward: "UTI 2",
+      bed: "Box 04",
+      responsibleUserId: "user-vet",
+      expectedVersion: 1
+    }).success).toBe(true);
+    expect(admissionContextSchema.safeParse({ action: "TRANSFER", effectiveAt, reason: "Mudança autorizada" }).success).toBe(false);
+    expect(admissionContextSchema.safeParse({ action: "DISCHARGE", effectiveAt, reason: "Alta autorizada", ward: "indevido" }).success).toBe(false);
+    expect(admissionContextSchema.safeParse({ action: "RESPONSIBILITY_CHANGE", effectiveAt, reason: "Troca autorizada", responsibleUserId: " " }).success).toBe(false);
   });
 });

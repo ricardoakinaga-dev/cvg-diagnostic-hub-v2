@@ -37,4 +37,12 @@ describe("S3-compatible private file store", () => {
 
     await expect(store.exists("tenant/missing.bin")).resolves.toBe(false);
   });
+
+  it("supports the contract delete alias", async () => {
+    const client = { send: vi.fn(async () => ({})) } as unknown as S3Client;
+    const store = new S3FileStore({ endpoint: "http://minio.local", region: "us-east-1", bucket: "attachments", accessKeyId: "access", secretAccessKey: "secret", forcePathStyle: true }, client);
+
+    await store.delete("tenant/delete-alias.bin");
+    expect(client.send).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ Key: "tenant/delete-alias.bin" }) }));
+  });
 });

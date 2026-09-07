@@ -2,7 +2,43 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "006_transitional_snapshot_boundary";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "010_relational_backfill_control";
+
+/**
+ * The runtime schema is intentionally advanced by one ordered migration at a
+ * time. Keep this manifest next to the runner so a renamed, missing, or
+ * accidentally added migration cannot silently become a new baseline.
+ */
+export const RUNTIME_MIGRATION_VERSIONS = [
+  "001_initial",
+  "002_outbox_processing",
+  "003_runtime_integrity",
+  "004_outbox_claim_ownership",
+  "005_rate_limit_buckets",
+  "006_transitional_snapshot_boundary",
+  "007_relational_clinical_core",
+  "008_outbox_routing",
+  "009_relational_sample_lineage",
+  "010_relational_backfill_control"
+] as const;
+
+/**
+ * Immutable source checksums for the shipped baseline. The database ledger
+ * protects already-applied migrations; this manifest also catches an edited
+ * migration before a fresh bootstrap can accept it as a new baseline.
+ */
+export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRATION_VERSIONS)[number], string>> = {
+  "001_initial": "b60bb12dcbbb4fbabdcdd0e1f93644baa9de2997f96174d1997576c2fbdfab76",
+  "002_outbox_processing": "7f1d2cd32bcde518cc810a111d059b8da72ba468ea4ba8b73a94ffc07bce0e6b",
+  "003_runtime_integrity": "da4e13aad775a23a583d9162752767ed3890d2cfe76300356caeca9b9ada396f",
+  "004_outbox_claim_ownership": "664ddfd7abd2a68368e3bd41bfd5f8b7cf85470190dfaf1b9d5f2b374760428a",
+  "005_rate_limit_buckets": "01bb59f2df6c27be7802061b7a81dea92aa50b65210e0eae4b895f59d54b6f57",
+  "006_transitional_snapshot_boundary": "6ff5c971e30a7306673f692d2f53d16d0756a97055a18aa9f1e8c1efd7665057",
+  "007_relational_clinical_core": "59799c7880140036e500160bae84bd21bceb83894b7a98c6568e6577c5d29767",
+  "008_outbox_routing": "3bf712b2b2bcccb1a51a1a03fd22a4a349c9e4362b75a4e0e42f70eca1a08eff",
+  "009_relational_sample_lineage": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c",
+  "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f"
+};
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
 const MIGRATION_FILENAME = /^\d{3}_[a-z0-9_-]+\.sql$/;
@@ -20,14 +56,21 @@ interface MigrationLogger {
   info(message: string): void;
 }
 
-interface ApplyMigrationsOptions {
+export interface ApplyMigrationsOptions {
   readonly migrationDirectory: string;
   readonly logger?: MigrationLogger;
 }
 
-interface MigrationRunResult {
+export interface MigrationRunResult {
   readonly applied: readonly string[];
   readonly alreadyApplied: readonly string[];
+}
+
+export interface MigrationDefinition {
+  readonly filename: string;
+  readonly version: string;
+  readonly sql: string;
+  readonly checksum: string;
 }
 
 interface AppliedMigration {
@@ -45,7 +88,9 @@ interface RuntimeSchemaRow {
   readonly audit_truncate_guard_ready: boolean;
   readonly event_projection_ready: boolean;
   readonly outbox_claim_ownership_ready: boolean;
+  readonly outbox_routing_ready: boolean;
   readonly rate_limit_schema_ready: boolean;
+  readonly relational_clinical_core_ready: boolean;
   readonly transitional_storage_boundary_ready: boolean;
   readonly invalidation_trigger_ready: boolean;
 }
@@ -137,6 +182,26 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
      WHERE conrelid = 'outbox_messages'::regclass
        AND conname = 'outbox_messages_claim_token_unique'
   ) AS outbox_claim_ownership_ready,
+  (
+    (SELECT count(*) = 2
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'outbox_messages'
+        AND ((column_name = 'consumer_type' AND data_type = 'text' AND is_nullable = 'NO')
+          OR (column_name = 'routing_key' AND data_type = 'text' AND is_nullable = 'NO')))
+    AND EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conrelid = 'outbox_messages'::regclass
+         AND conname = 'outbox_messages_consumer_type_check'
+    )
+    AND EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conrelid = 'outbox_messages'::regclass
+         AND conname = 'outbox_messages_route_consistency_check'
+    )
+  ) AS outbox_routing_ready,
   EXISTS (
     SELECT 1
       FROM information_schema.columns
@@ -146,6 +211,131 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
      GROUP BY table_name
     HAVING count(*) = 3
   ) AS rate_limit_schema_ready,
+  (
+    EXISTS (
+      SELECT 1
+        FROM relational_schema_markers
+       WHERE marker_key = 'RELATIONAL_CLINICAL_CORE_EXPAND_V1'
+         AND schema_version = $1
+    )
+    AND EXISTS (
+      SELECT 1
+        FROM pg_class marker_table
+        JOIN pg_namespace marker_schema ON marker_schema.oid = marker_table.relnamespace
+       WHERE marker_schema.nspname = current_schema()
+         AND marker_table.relname = 'relational_schema_markers'
+         AND marker_table.relkind = 'r'
+         AND obj_description(marker_table.oid, 'pg_class') ILIKE '%RELATIONAL_CLINICAL_CORE_EXPAND_V1%'
+    )
+    AND NOT EXISTS (
+      SELECT 1
+        FROM unnest(ARRAY[
+          'relational_schema_markers',
+          'departments',
+          'roles',
+          'users',
+          'user_roles',
+          'sessions',
+          'auth_identities',
+          'owners',
+          'patients',
+          'patient_owners',
+          'external_references',
+          'encounters',
+          'admissions',
+          'diagnostic_services',
+          'service_instructions',
+          'sla_policies',
+          'critical_result_policies',
+          'reason_codes',
+          'request_code_sequences',
+          'diagnostic_requests',
+          'diagnostic_request_items',
+          'samples',
+          'sample_item_links',
+          'procedures',
+          'procedure_schedules',
+          'results',
+          'result_versions',
+          'result_components',
+          'attachments',
+          'notifications',
+          'notification_deliveries',
+          'acknowledgements',
+          'idempotency_keys'
+        ]::text[]) AS required(table_name)
+       WHERE NOT EXISTS (
+         SELECT 1
+           FROM pg_class relation
+           JOIN pg_namespace relation_schema ON relation_schema.oid = relation.relnamespace
+          WHERE relation_schema.nspname = current_schema()
+            AND relation.relname = required.table_name
+            AND relation.relkind = 'r'
+       )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+        FROM (VALUES
+          ('diagnostic_requests', 'id', 'text', 'NO'),
+          ('diagnostic_requests', 'request_code', 'character varying', 'NO'),
+          ('diagnostic_requests', 'patient_id', 'text', 'NO'),
+          ('diagnostic_requests', 'encounter_id', 'text', 'NO'),
+          ('diagnostic_request_items', 'request_id', 'text', 'NO'),
+          ('diagnostic_request_items', 'service_id', 'text', 'NO'),
+          ('diagnostic_request_items', 'due_at', 'timestamp with time zone', 'NO'),
+          ('samples', 'accession_code', 'text', 'NO'),
+          ('results', 'item_id', 'text', 'NO'),
+          ('result_versions', 'result_id', 'text', 'NO'),
+          ('result_versions', 'sequence', 'integer', 'NO'),
+          ('notifications', 'recipient_user_id', 'text', 'NO'),
+          ('idempotency_keys', 'payload_hash', 'text', 'NO')
+        ) AS required(table_name, column_name, data_type, is_nullable)
+       WHERE NOT EXISTS (
+         SELECT 1
+           FROM information_schema.columns column_info
+          WHERE column_info.table_schema = current_schema()
+            AND column_info.table_name = required.table_name
+            AND column_info.column_name = required.column_name
+            AND column_info.data_type = required.data_type
+            AND column_info.is_nullable = required.is_nullable
+       )
+    )
+    AND NOT EXISTS (
+      SELECT 1
+        FROM (VALUES
+          ('diagnostic_requests', 'diagnostic_requests_request_code_key', 'u', NULL),
+          ('diagnostic_requests', 'diagnostic_requests_encounter_patient_fk', 'f', NULL),
+          ('diagnostic_request_items', 'diagnostic_request_items_request_fk', 'f', NULL),
+          ('samples', 'samples_accession_code_key', 'u', NULL),
+          ('samples', 'samples_replaces_same_request_fk', 'f', NULL),
+          ('samples', 'samples_rejection_reason_required', 'c', '%status%REJECTED%rejection_reason_id%'),
+          ('samples', 'samples_accession_format', 'c', '%accession_code%^[A-Z0-9][A-Z0-9-]{2,39}$%'),
+          ('samples', 'samples_replacement_reason_required', 'c', '%status%REPLACED%rejection_reason_id%'),
+          ('sample_item_links', 'sample_item_links_sample_request_fk', 'f', NULL),
+          ('sample_item_links', 'sample_item_links_item_request_fk', 'f', NULL),
+          ('sample_item_links', 'sample_item_links_sample_item_key', 'u', NULL),
+          ('sample_item_links', 'sample_item_links_status_check', 'c', '%link_status%ACTIVE%REJECTED%REPLACED%'),
+          ('results', 'results_item_key', 'u', NULL),
+          ('result_versions', 'result_versions_result_sequence_key', 'u', NULL),
+          ('notifications', 'notifications_recipient_dedupe_key', 'u', NULL),
+          ('idempotency_keys', 'idempotency_keys_actor_scope_key_key', 'u', NULL)
+        ) AS required(table_name, constraint_name, constraint_type, constraint_definition)
+       WHERE NOT EXISTS (
+         SELECT 1
+           FROM pg_constraint constraint_info
+          WHERE constraint_info.conrelid = to_regclass(format('%I.%I', current_schema(), required.table_name))
+            AND constraint_info.conname = required.constraint_name
+            AND constraint_info.contype = required.constraint_type
+            AND (
+              required.constraint_definition IS NULL
+              OR (
+                constraint_info.convalidated
+                AND pg_get_constraintdef(constraint_info.oid) ILIKE required.constraint_definition
+              )
+            )
+       )
+    )
+  ) AS relational_clinical_core_ready,
   EXISTS (
     SELECT 1
       FROM runtime_storage_boundaries
@@ -180,13 +370,121 @@ export function migrationChecksum(sql: string): string {
   return createHash("sha256").update(sql, "utf8").digest("hex");
 }
 
+function migrationNumber(version: string): number {
+  return Number(version.slice(0, 3));
+}
+
+/**
+ * Validates the filesystem migration set without connecting to PostgreSQL.
+ * The default rule accepts a contiguous set beginning at 001 so small test
+ * directories can exercise the runner; callers validating the production
+ * bundle pass RUNTIME_MIGRATION_VERSIONS for the exact shipped contract.
+ */
+export function validateMigrationSet(
+  migrations: readonly MigrationDefinition[],
+  expectedVersions?: readonly string[]
+): readonly MigrationDefinition[] {
+  if (migrations.length === 0) throw new Error("MIGRATION_SET_EMPTY");
+
+  const ordered = [...migrations].sort((left, right) => left.filename.localeCompare(right.filename));
+  const versions = ordered.map((migration) => migration.version);
+  const seen = new Set<string>();
+  for (const version of versions) {
+    if (seen.has(version)) throw new Error(`MIGRATION_VERSION_DUPLICATE:${version}`);
+    seen.add(version);
+  }
+
+  if (expectedVersions) {
+    if (versions.length !== expectedVersions.length || versions.some((version, index) => version !== expectedVersions[index])) {
+      throw new Error(`MIGRATION_SET_MISMATCH:expected=${expectedVersions.join(",")};actual=${versions.join(",")}`);
+    }
+  } else {
+    const firstNumber = migrationNumber(versions[0] ?? "");
+    if (firstNumber !== 1) throw new Error(`MIGRATION_ORDER_INVALID:expected=001;actual=${versions[0] ?? ""}`);
+    for (let index = 1; index < ordered.length; index += 1) {
+      const previous = migrationNumber(versions[index - 1] ?? "");
+      const current = migrationNumber(versions[index] ?? "");
+      if (current !== previous + 1) {
+        throw new Error(`MIGRATION_ORDER_INVALID:expected=${String(previous + 1).padStart(3, "0")};actual=${versions[index] ?? ""}`);
+      }
+    }
+  }
+
+  for (const migration of ordered) {
+    if (migrationChecksum(migration.sql) !== migration.checksum) {
+      throw new Error(`MIGRATION_CHECKSUM_INVALID:${migration.version}`);
+    }
+  }
+  return ordered;
+}
+
+export function validateRuntimeMigrationSet(
+  migrations: readonly MigrationDefinition[]
+): readonly MigrationDefinition[] {
+  const ordered = validateMigrationSet(migrations, RUNTIME_MIGRATION_VERSIONS);
+  for (const migration of ordered) {
+    const expectedChecksum = RUNTIME_MIGRATION_CHECKSUMS[migration.version as (typeof RUNTIME_MIGRATION_VERSIONS)[number]];
+    if (expectedChecksum !== migration.checksum) {
+      throw new Error(`MIGRATION_CHECKSUM_MISMATCH:${migration.version}`);
+    }
+  }
+  return ordered;
+}
+
+export async function readMigrationSet(
+  migrationDirectory: string,
+  expectedVersions?: readonly string[]
+): Promise<readonly MigrationDefinition[]> {
+  const filenames = (await readdir(migrationDirectory))
+    .filter((filename) => filename.endsWith(".sql"))
+    .sort((left, right) => left.localeCompare(right));
+  const migrations = await Promise.all(filenames.map(async (filename) => {
+    const version = migrationVersion(filename);
+    const sql = await readFile(path.join(migrationDirectory, filename), "utf8");
+    return { filename, version, sql, checksum: migrationChecksum(sql) };
+  }));
+  return validateMigrationSet(migrations, expectedVersions);
+}
+
 function appliedMigration(value: unknown): AppliedMigration {
   if (!value || typeof value !== "object") throw new Error("MIGRATION_LEDGER_INVALID");
   const row = value as { version?: unknown; checksum?: unknown };
-  if (typeof row.version !== "string" || (row.checksum !== null && typeof row.checksum !== "string")) {
+  if (
+    typeof row.version !== "string"
+    || (row.checksum !== null && typeof row.checksum !== "string")
+    || (typeof row.checksum === "string" && !/^[a-f0-9]{64}$/i.test(row.checksum))
+  ) {
     throw new Error("MIGRATION_LEDGER_INVALID");
   }
   return { version: row.version, checksum: row.checksum };
+}
+
+function assertMigrationLedgerCompatible(
+  migrations: readonly MigrationDefinition[],
+  ledgerRows: readonly AppliedMigration[]
+): Map<string, AppliedMigration> {
+  const ledger = new Map<string, AppliedMigration>();
+  for (const entry of ledgerRows) {
+    if (ledger.has(entry.version)) throw new Error(`MIGRATION_LEDGER_DUPLICATE:${entry.version}`);
+    ledger.set(entry.version, entry);
+  }
+
+  const migrationIndexes = new Map(migrations.map((migration, index) => [migration.version, index] as const));
+  for (const entry of ledgerRows) {
+    if (!migrationIndexes.has(entry.version)) throw new Error(`MIGRATION_VERSION_UNKNOWN:${entry.version}`);
+  }
+
+  let highestAppliedIndex = -1;
+  for (const entry of ledgerRows) {
+    highestAppliedIndex = Math.max(highestAppliedIndex, migrationIndexes.get(entry.version) ?? -1);
+  }
+  for (let index = 0; index <= highestAppliedIndex; index += 1) {
+    const migration = migrations[index];
+    if (migration && !ledger.has(migration.version)) {
+      throw new Error(`MIGRATION_ORDER_GAP:${migration.version}`);
+    }
+  }
+  return ledger;
 }
 
 async function ensureMigrationLedger(client: SqlQueryable): Promise<void> {
@@ -220,23 +518,25 @@ async function applyMigration(client: SqlQueryable, version: string, checksum: s
 
 export async function applyMigrations(client: SqlQueryable, options: ApplyMigrationsOptions): Promise<MigrationRunResult> {
   const logger = options.logger ?? console;
-  const filenames = (await readdir(options.migrationDirectory))
-    .filter((filename) => filename.endsWith(".sql"))
-    .sort((left, right) => left.localeCompare(right));
-  const migrations = await Promise.all(filenames.map(async (filename) => {
-    const version = migrationVersion(filename);
-    const sql = await readFile(path.join(options.migrationDirectory, filename), "utf8");
-    return { version, sql, checksum: migrationChecksum(sql) };
-  }));
+  const migrations = await readMigrationSet(options.migrationDirectory);
 
   await client.query("SELECT pg_advisory_lock(hashtext($1))", [MIGRATION_LOCK_NAME]);
   try {
     await ensureMigrationLedger(client);
     const ledgerResult = await client.query("SELECT version, checksum FROM schema_migrations ORDER BY version");
-    const ledger = new Map(ledgerResult.rows.map((row) => {
-      const entry = appliedMigration(row);
-      return [entry.version, entry] as const;
-    }));
+    const parsedLedger = ledgerResult.rows.map((row) => appliedMigration(row));
+    const ledger = assertMigrationLedgerCompatible(migrations, parsedLedger);
+
+    // Preflight every immutable checksum before executing any pending SQL. A
+    // mismatch in a later migration must not leave earlier migrations applied
+    // during the same invocation.
+    for (const migration of migrations) {
+      const existing = ledger.get(migration.version);
+      if (existing && existing.checksum !== null && existing.checksum !== migration.checksum) {
+        throw new Error(`MIGRATION_CHECKSUM_MISMATCH:${migration.version}`);
+      }
+    }
+
     const applied: string[] = [];
     const alreadyApplied: string[] = [];
 
@@ -245,8 +545,6 @@ export async function applyMigrations(client: SqlQueryable, options: ApplyMigrat
       if (existing) {
         if (existing.checksum === null) {
           await recordLegacyChecksum(client, migration.version, migration.checksum);
-        } else if (existing.checksum !== migration.checksum) {
-          throw new Error(`MIGRATION_CHECKSUM_MISMATCH:${migration.version}`);
         }
         alreadyApplied.push(migration.version);
         logger.info(`Migration ${migration.version} já aplicada.`);
@@ -277,7 +575,9 @@ function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
     || typeof row.audit_truncate_guard_ready !== "boolean"
     || typeof row.event_projection_ready !== "boolean"
     || typeof row.outbox_claim_ownership_ready !== "boolean"
+    || typeof row.outbox_routing_ready !== "boolean"
     || typeof row.rate_limit_schema_ready !== "boolean"
+    || typeof row.relational_clinical_core_ready !== "boolean"
     || typeof row.transitional_storage_boundary_ready !== "boolean"
     || typeof row.invalidation_trigger_ready !== "boolean"
   ) return undefined;

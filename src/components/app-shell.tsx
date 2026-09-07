@@ -4,12 +4,38 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { apiFetch } from "./api-client";
+import { Icon, type IconName } from "./ui-icons";
 
 interface SessionUser { id: string; email: string; displayName: string; role: string; departmentCode: string; timezone: string }
 type LiveStatus = "connecting" | "connected" | "degraded";
+const REALTIME_FALLBACK_INTERVAL_MS = 30_000;
+const roleLabels: Record<string, string> = {
+  ADMIN: "Administração técnica",
+  MANAGER: "Gestão operacional",
+  VETERINARIAN: "Veterinária",
+  VET: "Veterinário",
+  INPATIENT_TEAM: "Equipe de internação",
+  LAB_TECH: "Técnica de laboratório",
+  RADIOLOGY_TEAM: "Equipe de radiologia",
+  ULTRASOUND_TEAM: "Equipe de ultrassom",
+  VIEWER: "Visualização operacional"
+};
+
+function roleLabel(role: string): string {
+  return roleLabels[role] ?? "Perfil operacional";
+}
+
+function ShellLoadingState() {
+  return (
+    <div className="screen-center" role="status" aria-label="Carregando o espaço operacional." aria-live="polite" aria-busy="true">
+      <div className="loading-mark" aria-hidden="true" />
+      <span className="sr-only">Carregando o espaço operacional.</span>
+    </div>
+  );
+}
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <Suspense fallback={<div className="screen-center"><div className="loading-mark" aria-label="Carregando" /></div>}><AppShellContent>{children}</AppShellContent></Suspense>;
+  return <Suspense fallback={<ShellLoadingState />}><AppShellContent>{children}</AppShellContent></Suspense>;
 }
 
 function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -39,26 +65,41 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
   useEffect(() => {
     if (!user) return;
     let source: EventSource | undefined;
-    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let fallbackTimer: ReturnType<typeof setInterval> | undefined;
     let stopped = false;
-    let retryCount = 0;
+    const stopFallback = () => {
+      if (fallbackTimer === undefined) return;
+      clearInterval(fallbackTimer);
+      fallbackTimer = undefined;
+    };
+    const startFallback = () => {
+      if (fallbackTimer !== undefined) return;
+      window.dispatchEvent(new Event("cvg:realtime-updated"));
+      fallbackTimer = setInterval(() => window.dispatchEvent(new Event("cvg:realtime-updated")), REALTIME_FALLBACK_INTERVAL_MS);
+    };
     const connect = () => {
       if (stopped) return;
       const nextSource = new EventSource("/api/v1/realtime/events");
       source = nextSource;
-      nextSource.onopen = () => { retryCount = 0; setLive("connected"); };
-      nextSource.onmessage = () => window.dispatchEvent(new Event("cvg:realtime-updated"));
+      // Keep the same EventSource alive through transient failures. The native
+      // EventSource reconnection algorithm then resends Last-Event-ID, avoiding
+      // a cursor reset when the transport recovers. A manual reconciliation
+      // still replaces the source deliberately and refetches durable state.
+      nextSource.onopen = () => { stopFallback(); setLive("connected"); };
+      const dispatchUpdate = () => window.dispatchEvent(new Event("cvg:realtime-updated"));
+      nextSource.onmessage = dispatchUpdate;
+      nextSource.addEventListener("diagnostic.updated", dispatchUpdate);
       nextSource.addEventListener("resync_required", () => window.dispatchEvent(new Event("cvg:realtime-resync")));
       nextSource.onerror = () => {
         if (stopped || source !== nextSource) return;
         setLive("degraded");
-        nextSource.close();
-        retryCount += 1;
-        retryTimer = setTimeout(connect, Math.min(30_000, 1_000 * 2 ** Math.min(retryCount, 5)));
+        // Do not call close here: closing aborts the browser's reconnect
+        // algorithm and loses its automatic Last-Event-ID header.
+        startFallback();
       };
     };
     connect();
-    return () => { stopped = true; source?.close(); if (retryTimer) clearTimeout(retryTimer); };
+    return () => { stopped = true; source?.close(); stopFallback(); };
   }, [reconnectToken, user]);
 
   function reconcile() {
@@ -71,7 +112,7 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
     try { await apiFetch("/session/logout", { method: "POST", body: "{}" }); } finally { router.replace("/login"); }
   }
 
-  if (loading) return <div className="screen-center"><div className="loading-mark" aria-label="Carregando" /></div>;
+  if (loading) return <ShellLoadingState />;
   if (!user) return null;
   const canAccessManagement = user.role === "ADMIN" || user.role === "MANAGER";
   const isTechnicalAdmin = user.role === "ADMIN";
@@ -80,7 +121,7 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
   const canAccessIndicators = user.role === "MANAGER";
   const managementView = searchParams.get("view");
   const isManagementRoute = pathname === "/management" || pathname === "/";
-  const isOverview = isManager && ((pathname === "/management" && !managementView) || pathname === "/");
+  const isOverview = isManager && isManagementRoute && !managementView;
   const isRequests = isManager && isManagementRoute && managementView === "requests";
   const isPending = isManager && isManagementRoute && managementView === "pending";
   const isStats = isManager && isManagementRoute && managementView === "stats";
@@ -93,40 +134,73 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
           <span><strong>Diagnostics</strong><small>HUB OPERACIONAL</small></span>
         </Link>
         <nav aria-label="Navegação principal" className="main-nav">
-          <NavLink href={isManager ? "/management" : "/"} active={isManager ? isOverview : pathname === "/"} icon="⌂">Visão geral</NavLink>
+          <NavLink href={isManager ? "/management" : "/"} active={isManager ? isOverview : pathname === "/"} icon="overview">Visão geral</NavLink>
           {isManager ? <>
-            <NavLink href="/queues" active={pathname.startsWith("/queues")} icon="▤">Central de exames</NavLink>
-            <NavLink href="/management?view=requests" active={isRequests} icon="⌁">Solicitações</NavLink>
-            <NavLink href="/management?view=pending" active={isPending} icon="!">Pendências</NavLink>
-            <NavLink href="/management?view=stats" active={isStats} icon="◒">Estatísticas</NavLink>
-            <NavLink href="/admin#users" active={pathname.startsWith("/admin") && hash === "#users"} icon="♙">Acessos</NavLink>
-            <NavLink href="/admin#catalog" active={pathname.startsWith("/admin") && hash === "#catalog"} icon="⚙">Catálogos</NavLink>
-            <NavLink href="/admin#audit" active={pathname.startsWith("/admin") && hash === "#audit"} icon="◌">Auditoria</NavLink>
+            <NavLink href="/queues" active={pathname.startsWith("/queues")} icon="queue">Central de exames</NavLink>
+            <NavLink href="/management?view=requests" active={isRequests} icon="requests">Solicitações</NavLink>
+            <NavLink href="/management?view=pending" active={isPending} icon="attention">Pendências</NavLink>
+            <NavLink href="/management?view=stats" active={isStats} icon="analytics">Estatísticas</NavLink>
+            <NavLink href="/admin#users" active={pathname.startsWith("/admin") && hash === "#users"} icon="users">Acessos</NavLink>
+            <NavLink href="/admin#catalog" active={pathname.startsWith("/admin") && hash === "#catalog"} icon="catalog">Catálogos</NavLink>
+            <NavLink href="/admin#audit" active={pathname.startsWith("/admin") && hash === "#audit"} icon="audit">Auditoria</NavLink>
           </> : <>
-            {canAccessClinicalOperations && <NavLink href="/queues" active={pathname.startsWith("/queues")} icon="▤">Central de exames</NavLink>}
-            {canAccessClinicalOperations && <NavLink href="/patients" active={pathname.startsWith("/patients")} icon="♧">Meus pacientes</NavLink>}
-            {canAccessIndicators && <NavLink href="/indicators" active={pathname.startsWith("/indicators")} icon="◒">Indicadores</NavLink>}
-            {canAccessManagement && <NavLink href="/admin" active={pathname.startsWith("/admin")} icon="⚙">Administração</NavLink>}
+            {canAccessClinicalOperations && <NavLink href="/queues" active={pathname.startsWith("/queues")} icon="queue">Central de exames</NavLink>}
+            {canAccessClinicalOperations && <NavLink href="/patients" active={pathname.startsWith("/patients")} icon="patients">Meus pacientes</NavLink>}
+            {canAccessIndicators && <NavLink href="/indicators" active={pathname.startsWith("/indicators")} icon="analytics">Indicadores</NavLink>}
+            {canAccessManagement && <NavLink href="/admin" active={pathname.startsWith("/admin")} icon="settings">Administração</NavLink>}
           </>}
-          {canAccessClinicalOperations && <NavLink href="/notifications" active={pathname.startsWith("/notifications")} icon="◌">Notificações</NavLink>}
-          <NavLink href="/account" active={pathname.startsWith("/account")} icon="◉">Minha conta</NavLink>
+          {canAccessClinicalOperations && <NavLink href="/notifications" active={pathname.startsWith("/notifications")} icon="notifications">Notificações</NavLink>}
+          <NavLink href="/account" active={pathname.startsWith("/account")} icon="account">Minha conta</NavLink>
         </nav>
         <div className="sidebar-footer">
-          <div className={`live-indicator live-${live}`}><span />{live === "connected" ? "Atualização ao vivo" : live === "degraded" ? "Atualização interrompida" : "Conectando"}</div>
-          <div className="user-card"><Link href="/account" className="user-profile-link" aria-label={`Abrir conta de ${user.displayName}`}><span className="avatar">{user.displayName.slice(0, 1)}</span><span className="user-copy"><strong>{user.displayName}</strong><small>{user.role.replaceAll("_", " ")}</small></span></Link><button onClick={() => void logout()} className="icon-button" aria-label="Sair">↪</button></div>
+          <div className={`live-indicator live-${live}`}><span />{live === "connected" ? "Conexão em tempo real" : live === "degraded" ? "Conexão interrompida" : "Conectando"}</div>
+          <div className="user-card"><Link href="/account" className="user-profile-link" aria-label={`Abrir conta de ${user.displayName}`}><span className="avatar">{user.displayName.slice(0, 1)}</span><span className="user-copy"><strong>{user.displayName}</strong><small>{roleLabel(user.role)}</small></span></Link></div>
         </div>
       </aside>
       <main className="main-content">
-        <header className="topbar"><div className="breadcrumb">CVG <span>/</span> Operação</div><div className="topbar-actions">{canAccessClinicalOperations && <Link href="/notifications" className="notification-trigger" aria-label="Abrir notificações">◌</Link>}<span className="topbar-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(new Date())}</span></div></header>
+        <header className="topbar"><div className="breadcrumb"><span className="breadcrumb-product">CVG</span><span>/</span> Operação</div><div className="topbar-actions">{canAccessClinicalOperations && <Link href="/notifications" className="notification-trigger" aria-label="Abrir notificações"><Icon name="notifications" size={19} /></Link>}<button type="button" onClick={() => void logout()} className="icon-button session-logout" aria-label="Sair"><Icon name="logout" size={18} /></button><span className="topbar-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(new Date())}</span></div></header>
         {live !== "connected" && <RealtimeStatusBanner status={live} onReconcile={reconcile} />}
         <div className="content-wrap">{children}</div>
       </main>
+      <MobileNav isManager={isManager} isTechnicalAdmin={isTechnicalAdmin} canAccessClinicalOperations={canAccessClinicalOperations} pathname={pathname} managementView={managementView} hash={hash} />
     </div>
   );
 }
 
-function NavLink({ href, active, icon, children }: { href: string; active: boolean; icon: string; children: React.ReactNode }) {
-  return <Link href={href} className={`nav-link ${active ? "active" : ""}`} aria-current={active ? "page" : undefined}><span aria-hidden="true">{icon}</span>{children}</Link>;
+function NavLink({ href, active, icon, children }: { href: string; active: boolean; icon: IconName; children: React.ReactNode }) {
+  const label = typeof children === "string" ? children : undefined;
+  return <Link href={href} className={`nav-link ${active ? "active" : ""}`} aria-label={label} title={label} aria-current={active ? "page" : undefined}><span className="nav-icon" aria-hidden="true"><Icon name={icon} size={19} /></span><span className="nav-label">{children}</span></Link>;
+}
+
+function MobileNav({ isManager, isTechnicalAdmin, canAccessClinicalOperations, pathname, managementView, hash }: { isManager: boolean; isTechnicalAdmin: boolean; canAccessClinicalOperations: boolean; pathname: string; managementView: string | null; hash: string }) {
+  if (isTechnicalAdmin) {
+    return <nav className="mobile-nav" aria-label="Navegação rápida">
+      <MobileNavLink href="/" active={pathname === "/"} icon="overview" label="Início" />
+      <MobileNavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings" label="Admin" />
+      <MobileNavLink href="/admin#users" active={pathname === "/admin" && hash === "#users"} icon="users" label="Acessos" />
+      <MobileNavLink href="/admin#catalog" active={pathname === "/admin" && hash === "#catalog"} icon="catalog" label="Catálogo" />
+      <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
+    </nav>;
+  }
+  const managerFocus = managementView === "requests"
+    ? { href: "/management?view=requests", icon: "requests" as const, label: "Solicitações" }
+    : managementView === "stats"
+      ? { href: "/management?view=stats", icon: "analytics" as const, label: "Estatísticas" }
+      : { href: "/management?view=pending", icon: "attention" as const, label: "Atenção" };
+  const isManagerRoute = isManager && (pathname === "/" || pathname === "/management");
+  const isManagerOverview = isManagerRoute && !managementView;
+  const isManagerFocus = isManagerRoute && Boolean(managementView);
+  return <nav className="mobile-nav" aria-label="Navegação rápida">
+    <MobileNavLink href={isManager ? "/management" : "/"} active={isManager ? isManagerOverview : pathname === "/"} icon="overview" label="Início" />
+    {!isTechnicalAdmin && <MobileNavLink href={isManager ? "/queues" : "/queues"} active={pathname.startsWith("/queues")} icon="queue" label="Fila" />}
+    {isManager ? <MobileNavLink href={managerFocus.href} active={isManagerFocus} icon={managerFocus.icon} label={managerFocus.label} /> : canAccessClinicalOperations ? <MobileNavLink href="/patients" active={pathname.startsWith("/patients")} icon="patients" label="Pacientes" /> : <MobileNavLink href="/admin" active={pathname.startsWith("/admin")} icon="settings" label="Admin" />}
+    {canAccessClinicalOperations && <MobileNavLink href="/notifications" active={pathname.startsWith("/notifications")} icon="notifications" label="Alertas" />}
+    <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
+  </nav>;
+}
+
+function MobileNavLink({ href, active, icon, label }: { href: string; active: boolean; icon: IconName; label: string }) {
+  return <Link href={href} className={`mobile-nav-link ${active ? "active" : ""}`} aria-label={`Acesso rápido: ${label}`} aria-current={active ? "page" : undefined}><Icon name={icon} size={19} /><span>{label}</span></Link>;
 }
 
 function RealtimeStatusBanner({ status, onReconcile }: { status: Exclude<LiveStatus, "connected">; onReconcile: () => void }) {
@@ -134,8 +208,8 @@ function RealtimeStatusBanner({ status, onReconcile }: { status: Exclude<LiveSta
   return (
     <div className={`realtime-banner realtime-${status}`} role="status" aria-live="polite" aria-atomic="true">
       <div className="realtime-banner-copy">
-        <strong>{degraded ? "Atualizações ao vivo indisponíveis" : "Conectando às atualizações ao vivo"}</strong>
-        <span>{degraded ? "As informações podem estar desatualizadas até a reconciliação com o servidor." : "As informações podem estar desatualizadas enquanto a conexão é estabelecida."}</span>
+        <strong>{degraded ? "Conexão em tempo real indisponível" : "Conectando à conexão em tempo real"}</strong>
+        <span>{degraded ? "Uma reconciliação limitada ocorre periodicamente; os dados podem permanecer desatualizados." : "As informações podem estar desatualizadas enquanto a conexão é estabelecida."}</span>
       </div>
       <button type="button" className="button button-ghost" onClick={onReconcile}>Atualizar agora</button>
     </div>

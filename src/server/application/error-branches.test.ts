@@ -17,7 +17,7 @@ describe("server-side validation and conflict branches", () => {
     await expect(service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-crp" }] }, { idempotencyKey: "invalid-service" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED" });
     await expect(service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-xray", note: "x".repeat(2001) }] }, { idempotencyKey: "invalid-note" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-xray" }], overrideReason: "" }, { idempotencyKey: "invalid-override", allowDuplicateOverride: true })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    await expect(service.getRequest(vet, "request-missing")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(service.getRequest(vet, "request-missing")).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
   });
 
   it("rejects invalid operational phases, roles, reasons and schedule windows", async () => {
@@ -103,7 +103,7 @@ describe("server-side validation and conflict branches", () => {
       await expect(service.reviewResult(vet, released.result.id, { versionId: released.version.id, expectedVersion: released.item.version, idempotencyKey: "critical-review-before-ack" })).rejects.toMatchObject({ code: "CRITICAL_ACK_REQUIRED", status: 409 });
       const criticalNotification = store.getState().notifications.find((notification) => notification.category === "CRITICAL" && notification.entityId === released.version.id);
       if (!criticalNotification) throw new Error("critical notification missing");
-      await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
+      await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50, allowSyntheticDelivery: true });
       const deliveredCriticalNotification = store.getState().notifications.find((notification) => notification.id === criticalNotification.id);
       if (!deliveredCriticalNotification) throw new Error("critical notification delivery missing");
       await service.acknowledgeNotification(vet, deliveredCriticalNotification.id, { expectedVersion: deliveredCriticalNotification.version, reason: "Confirmei a comunicação crítica.", confirm: true, idempotencyKey: "critical-ack" });
@@ -142,7 +142,7 @@ describe("server-side validation and conflict branches", () => {
       const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "stale-critical-start" });
       const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Crítico antes da emenda.", content: syntheticHemogramContent("Crítico antes da emenda."), expectedVersion: started.item.version, idempotencyKey: "stale-critical-draft" });
       const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "stale-critical-release" });
-      await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
+      await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50, allowSyntheticDelivery: true });
       const notification = store.getState().notifications.find((entry) => entry.category === "CRITICAL" && entry.entityId === released.version.id);
       if (!notification) throw new Error("critical notification missing");
       const amended = await service.amendResult(lab, released.result.id, { reason: "Atualização clínica controlada.", narrative: "Nova interpretação após revisão.", content: syntheticHemogramContent("Nova interpretação após revisão."), expectedVersion: released.result.version, idempotencyKey: "stale-critical-amend" });

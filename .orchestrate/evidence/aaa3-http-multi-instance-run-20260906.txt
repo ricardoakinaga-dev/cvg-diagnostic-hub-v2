@@ -1,0 +1,30 @@
+HTTP multi-instance dedicated run, against disposable PostgreSQL 16.15 on 127.0.0.1:55466:
+
+> npm run test:postgres -- --run tests/postgres/http-multi-instance.integration.test.ts --reporter=verbose
+
+ RUN  v3.2.7 /home/ricardo/cvg-diagnostic-hub-v2
+
+ ✓ tests/postgres/http-multi-instance.integration.test.ts > HTTP multi-instance PostgreSQL integration > propagates a session and a durable mutation from instance A to an SSE stream on instance B 2934ms
+ ✓ tests/postgres/http-multi-instance.integration.test.ts > HTTP multi-instance PostgreSQL integration > replays a durable event after reconnecting a next start instance with Last-Event-ID 23399ms
+
+ Test Files  1 passed (1)
+ Tests  2 passed (2)
+ Start at 04:08:18
+ Duration 26.68s (transform 129ms, setup 0ms, collect 170ms, tests 26.33s, environment 0ms, prepare 51ms)
+
+HTTP multi-instance full PostgreSQL suite, against disposable PostgreSQL 16.15 on 127.0.0.1:55467:
+
+> npm run test:postgres -- --run --reporter=dot
+
+ RUN  v3.2.7 /home/ricardo/cvg-diagnostic-hub-v2
+
+························
+
+ Test Files  5 passed (5)
+ Tests  24 passed (24)
+ Start at 04:09:01
+ Duration 35.62s (transform 379ms, setup 0ms, collect 671ms, tests 34.12s, environment 1ms, prepare 266ms)
+
+Post-run socket check:
+
+ LISTEN 0 200 127.0.0.1:5432 0.0.0.0:*

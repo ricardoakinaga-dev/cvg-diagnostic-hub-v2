@@ -1,0 +1,26 @@
+{
+  "generated_at": "2026-09-07T14:49:00-03:00",
+  "source": "sha256sum over the 20 PNG files in this evidence directory after the final Node 22 browser revalidation including the administration accessibility coverage and breadcrumb contrast correction",
+  "files": {
+    "cvg-patient-workspace-chromium-empty.png": "e217279ff764612375a9d78968e44d287e47d301673da8b2d3cc4f8376426361",
+    "cvg-patient-workspace-chromium-error-denied.png": "6e94cb5ff1db9cd1996bd146437c80a64424b47875a4f82ec54c3ed186a41a4f",
+    "cvg-patient-workspace-chromium-loading.png": "92cbdde3a128c28b23747ad90a2195108ca4db0c03dd23dcaed6ea3c1205a16c",
+    "cvg-patient-workspace-chromium-partial.png": "b407195503e01830d087157278af150b8b9fccc59d66719d816ca0a8d340c560",
+    "cvg-patient-workspace-chromium-stale.png": "171e0dbac6157353e7977d2d8aef470422979b2ba59d3a0760a92f18515eca62",
+    "cvg-patient-workspace-chromium.png": "87ca04368183eef7479a8ccb4458c22424da5914ea121624e2b00311c25953f8",
+    "cvg-patient-workspace-mobile-dense-collapsed.png": "ace281be95b8e2630a5089ea98aae28358e35777199bec6a736108b8e65598f3",
+    "cvg-patient-workspace-mobile-dense-expanded.png": "33ef783cdb12eee8e39d4772e5990eab946d0df103be695f7524752b2a864539",
+    "cvg-patient-workspace-mobile-empty.png": "c0ba92336b8aa7c72456f9dd64a105ff4142ea344715d8ca4686e39d9e1d1311",
+    "cvg-patient-workspace-mobile-error-denied.png": "197f9090f696247601fee9cba73d20344aae38e21f2d58f871a0c43aa4520b0b",
+    "cvg-patient-workspace-mobile-loading.png": "94d1262d62ec369fea1a9e7a79bac05ce9ac2b52f4c8fd147e6bb8618826e732",
+    "cvg-patient-workspace-mobile-partial.png": "cb40d64f6124913d13b723aa1068d814b96472cbe9eaa47965409614cb56aa08",
+    "cvg-patient-workspace-mobile-stale.png": "b3194cdd71822c282ddf2cb5e268cda8517126f8f0bc8129c887412929b5c05b",
+    "cvg-patient-workspace-mobile.png": "debb67ddd5983c8c01f2503fb71360d9191d25d7ad7693a396202ff6e96d6300",
+    "cvg-patient-workspace-tablet-empty.png": "836bfdc00b5e50dbe0b40ee7e446f0fc9cf4de9bf9bf332ed69b5a787adc6764",
+    "cvg-patient-workspace-tablet-error-denied.png": "0a222af604911f9783352f2741745edefa4e169a4fe66db34994a3455e085763",
+    "cvg-patient-workspace-tablet-loading.png": "e4bbc551e4f22d30ee2da536692622586a169692d388523a0cf59f0a4824193f",
+    "cvg-patient-workspace-tablet-partial.png": "d058c8b6ca84b27629e8c7cbcbe0a0c5e03d3e5c92fc464bb7389e51e7a249cb",
+    "cvg-patient-workspace-tablet-stale.png": "ba531e2d35ac0f8cfcd0188ac9f96d3119f4b5a10842ab684c649b59554e6281",
+    "cvg-patient-workspace-tablet.png": "81f59674d5c15fa1c8cd0a3ef7a25574a395d6fc00d0b3a929160da3c6f0c24f"
+  }
+}

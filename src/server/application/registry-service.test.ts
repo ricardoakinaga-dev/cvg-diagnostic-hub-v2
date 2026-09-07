@@ -31,10 +31,11 @@ describe("patient registry commands", () => {
     expect(result.encounter).toMatchObject({ patientId: result.patient.id, type: "OUTPATIENT", status: "OPEN" });
     expect(result.admission).toBeUndefined();
     expect(store.getState().users.find((user) => user.id === vet.id)?.patientIds).toContain(result.patient.id);
+    expect(store.getState().users.find((user) => user.id === vet.id)?.version).toBe(vet.version + 1);
     expect(store.getState().auditEvents.map((event) => event.eventType)).toEqual(["PatientCreated", "EncounterCreated"]);
     expect(store.getState().outbox.at(-1)).toMatchObject({ eventType: "PatientCreated", aggregateId: result.patient.id });
 
-    const replay = await service.createPatient(vet, {
+    const replay = await service.createPatient(store.getState().users.find((user) => user.id === vet.id)!, {
       displayName: "Amora",
       species: "Canino",
       breed: "Golden Retriever",
@@ -66,7 +67,7 @@ describe("patient registry commands", () => {
   });
 
   it("protects the registry with permission, validation and duplicate guards", async () => {
-    const { service, vet, lab } = setup();
+    const { store, service, vet, lab } = setup();
     const base = {
       displayName: "Luna",
       species: "Canino",
@@ -80,7 +81,8 @@ describe("patient registry commands", () => {
     await expect(service.createPatient(lab, base, { idempotencyKey: "registry-lab-denied" })).rejects.toMatchObject({ code: "SCOPE_DENIED" });
     await expect(service.createPatient(vet, { ...base, encounterType: "INPATIENT", ward: "UTI 1" }, { idempotencyKey: "registry-missing-bed" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await service.createPatient(vet, base, { idempotencyKey: "registry-luna-create" });
-    await expect(service.createPatient(vet, base, { idempotencyKey: "registry-luna-duplicate" })).rejects.toMatchObject({ code: "CONFLICT" });
-    await expect(service.createPatient(vet, { ...base, displayName: "Outra Luna" }, { idempotencyKey: "registry-luna-create" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED" });
+    const freshVet = store.getState().users.find((user) => user.id === vet.id);
+    await expect(service.createPatient(freshVet!, base, { idempotencyKey: "registry-luna-duplicate" })).rejects.toMatchObject({ code: "CONFLICT" });
+    await expect(service.createPatient(freshVet!, { ...base, displayName: "Outra Luna" }, { idempotencyKey: "registry-luna-create" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED" });
   });
 });

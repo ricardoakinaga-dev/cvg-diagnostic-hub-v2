@@ -53,7 +53,7 @@ async function main(databaseUrl: string): Promise<void> {
     if (!second.getState().requests.some((request) => request.id === requestId)) throw new Error("Estado não persistiu após reabrir a conexão.");
     if (!second.getState().auditEvents.some((event) => event.entityId === requestId)) throw new Error("Auditoria não foi projetada no PostgreSQL.");
     const bus = new InProcessEventBus();
-    const summary = await processOutboxBatch(second, bus, { workerId: "db-smoke-worker", batchSize: 10 });
+    const summary = await processOutboxBatch(second, bus, { workerId: "db-smoke-worker", batchSize: 10, allowSyntheticDelivery: true });
     if (summary.processed < 1 || bus.read().length < 1) throw new Error("Outbox não foi processado após reabrir o PostgreSQL.");
     console.log("PostgreSQL smoke test passou: estado, lock transacional, auditoria e outbox persistem.");
   } finally {

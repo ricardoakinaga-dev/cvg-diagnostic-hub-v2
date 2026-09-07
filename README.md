@@ -2,7 +2,7 @@
 
 Central operacional para solicitar, executar, acompanhar, liberar e revisar exames diagnósticos em um hospital veterinário.
 
-> **Status (25/08/2026):** MVP executável em ambiente local, com dados sintéticos, memória ou PostgreSQL 16. As ondas V2 verificadas adicionam Command Center attention-first, contexto operacional estruturado na fila e uma fatia vertical de Laboratório com painel tipado. Ainda não é uma release aprovada para uso hospitalar.
+> **Status (07/09/2026):** candidato local tecnicamente forte, ainda **CONDITIONAL PASS / NOT READY** para produção clínica. A execução corrente passou 725/725 testes em 86 arquivos, cobertura de 92,72% statements/lines, 85,82% branches e 94,31% functions; build Next.js 16.3.0, OpenAPI 65/60, rastreabilidade 43/43, migrations 001–010, security scan, `npm audit`, SBOM CycloneDX com 560 componentes sob Node 22, recovery 5/5 e performance 7/7. O browser passou 60/60 na matriz completa, sem retry, em Chromium/tablet/mobile; isso inclui o fluxo principal, ciclo clínico, acessibilidade (12/12) e realtime. A evidência PostgreSQL descartável anterior passou 39/39 em 6 arquivos em Node 22/PostgreSQL 16.15, mas a repetição corrente ficou condicionada pela ausência de `initdb`/`pg_ctl`/Docker e não tocou `127.0.0.1:5432`; o lane local production-like passou 51/51 contra `next start`, PostgreSQL, S3/scanner sintéticos e outbox durável; o restore smoke PostgreSQL-only passou com checksum e banco restaurado isolado. JSONB continua autoridade clínica. O relatório corrente, a barra e o manifesto estão em [`RELATORIO_AUDITORIA_2026-09-07.md`](docs/RELATORIO_AUDITORIA_2026-09-07.md), [`quality-bar.json`](.orchestrate/aaa3-execution-20260907/quality-bar.json) e [`evidence-manifest.json`](.orchestrate/aaa3-execution-20260907/evidence-manifest.json).
 
 O repositório oficial do V2 é [`ricardoakinaga-dev/cvg-diagnostic-hub-v2`](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2). A linha V1 permanece disponível durante a migração. O mapa atual, a barra congelada e as limitações da onda estão em [`docs/v2/MIGRATION_MAP.md`](docs/v2/MIGRATION_MAP.md) e [`docs/v2/QUALITY_BAR.md`](docs/v2/QUALITY_BAR.md).
 
@@ -22,7 +22,7 @@ O projeto segue a ordem:
 DISCOVERY → PRD → SPEC → BUILD PLAN → IMPLEMENTATION
 ```
 
-A implementação segue slices verticais: contrato → persistência → API → autorização → auditoria → UI → testes. O estado atual, a barra de qualidade, as rodadas e os gaps estão em `.gauntlet/`.
+A implementação segue slices verticais: contrato → persistência → API → autorização → auditoria → UI → testes. O estado atual deste ciclo, a barra de qualidade, as rodadas e os gaps estão em [`.orchestrate/aaa3-execution-20260907/`](.orchestrate/aaa3-execution-20260907/); `.gauntlet/` contém apenas pacotes históricos preservados.
 
 ## Leitura recomendada
 
@@ -37,12 +37,15 @@ A implementação segue slices verticais: contrato → persistência → API →
 
 ## Executar localmente
 
-Requer Node.js 20.9+ e npm. Docker é conveniente, mas o harness também aceita um PostgreSQL 16 descartável local:
+Requer Node.js 22.x e npm (o `.nvmrc` e o CI fixam essa linha). Docker é conveniente, mas o harness também aceita um PostgreSQL 16 descartável local:
 
 ```bash
 npm ci
 cp .env.example .env
 export DATABASE_URL=postgresql://cvg:cvg_dev@localhost:54329/cvg_diagnostics
+export APP_DATA_MODE=postgres
+export REALTIME_NOTIFICATION_ADAPTER=postgres-listen
+export REALTIME_NOTIFICATION_CHANNEL=cvg_realtime_wakeup
 export DEMO_PASSWORD="$(openssl rand -base64 32)"
 export ALLOW_SYNTHETIC_SEED=true
 npm run db:migrate
@@ -50,7 +53,7 @@ npm run db:seed
 npm run dev
 ```
 
-Abra `http://localhost:3000`. Neste ambiente, outro dispositivo na mesma rede pode acessar `http://192.168.15.14:3000`; o host LAN está liberado apenas para a demonstração local. O ambiente de demonstração usa `APP_DATA_MODE=memory` e a senha sintética definida por `DEMO_PASSWORD`; para testar persistência, use `APP_DATA_MODE=postgres` junto com `DATABASE_URL` após a migração.
+Abra `http://localhost:3000`. Neste ambiente, outro dispositivo na mesma rede pode acessar `http://192.168.15.14:3000`; o host LAN está liberado apenas para a demonstração local. O comando acima inicia em `APP_DATA_MODE=postgres`. Para uma demonstração somente em memória, use `APP_DATA_MODE=memory`, omita `DATABASE_URL` e mantenha a senha sintética definida por `DEMO_PASSWORD`.
 
 Corpos JSON são aceitos somente como `application/json`, com limites anteriores ao
 parse configurados por `JSON_BODY_MAX_BYTES` e `JSON_BODY_MAX_DEPTH`. Os defaults do
@@ -73,6 +76,8 @@ npm audit --audit-level=high
 ```
 
 Para evidência operacional adicional: `PERF_PASSWORD="$DEMO_PASSWORD" npm run perf:smoke` exige um servidor já iniciado; `ALLOW_DB_RESTORE_SMOKE=true npm run db:restore:smoke` restaura apenas em um banco Docker descartável. O seed sintético é proibido com `NODE_ENV=production` e só executa com `ALLOW_SYNTHETIC_SEED=true`. O `db:smoke` também é destrutivo: exige `ALLOW_DB_SMOKE_RESET=true`, host de loopback e um banco dedicado cujo nome comece por `cvg_smoke` ou `cvg_test`. A integração descartável roda com `ALLOW_POSTGRES_INTEGRATION_TESTS=true`, `POSTGRES_TEST_ADMIN_URL` local e `npm run test:postgres`.
+
+O backfill relacional disponível nesta etapa é explicitamente local e shadow-only: exige `ALLOW_RELATIONAL_BACKFILL=true`, `RELATIONAL_BACKFILL_TARGET=RELATIONAL_SHADOW`, uma migration aplicada até `010_relational_backfill_control` e `DATABASE_URL` já populado. Execute `npm run db:relational-backfill` somente em um banco descartável; o comando processa requests em lotes, grava checkpoint durável, mantém o lock da fonte até o checkpoint, valida chaves exatas, para se o snapshot mudar e reconcilia cada agregado sem alterar `cvg_runtime_state`. Ele não cria catálogo, ownership, políticas clínicas nem habilita cutover. A evidência final e a crítica independente estão no [packet de backfill](.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md).
 
 O E2E usa o Chrome disponível no host quando o navegador Playwright empacotado não possui dependências gráficas; gravação de vídeo fica desligada por padrão para não depender de `ffmpeg`. Os dados e arquivos locais ficam em `.data/` e não devem receber informação clínica real.
 
@@ -104,6 +109,6 @@ Ficam fora do MVP: faturamento, estoque, prontuário completo, agenda clínica g
 
 ## Limites atuais e próximos gates
 
-O runtime atual cobre as slices principais de solicitação, Lab, RX/US, resultados versionados com ações de UI, anexos privados locais/S3-compatible, scanner externo fail-closed, notificações, filas, busca, timeline, dashboard, RBAC, CSRF, auditoria, outbox com retry/lease/ownership, rate limit PostgreSQL, SSE, métricas e PostgreSQL snapshot transitório. A barra local e o status dos gates estão em [`docs/build/PREMIUM_MVP_V4.md`](docs/build/PREMIUM_MVP_V4.md), [`docs/operations/PRODUCTION_READINESS.md`](docs/operations/PRODUCTION_READINESS.md) e [`docs/TRACEABILITY_MATRIX.md`](docs/TRACEABILITY_MATRIX.md).
+O runtime atual cobre as slices principais de solicitação, Lab, RX/US, resultados versionados com ações de UI, anexos privados locais/S3-compatible, scanner externo fail-closed, notificações, filas, busca, timeline, dashboard, RBAC, CSRF, auditoria, outbox com retry/lease/ownership, rate limit PostgreSQL, SSE, métricas, PostgreSQL snapshot transitório e projeção shadow relacional populada/resumível. A barra local e o status dos gates estão em [`docs/build/PREMIUM_MVP_V4.md`](docs/build/PREMIUM_MVP_V4.md), [`docs/operations/PRODUCTION_READINESS.md`](docs/operations/PRODUCTION_READINESS.md) e [`docs/TRACEABILITY_MATRIX.md`](docs/TRACEABILITY_MATRIX.md).
 
-Antes de qualquer piloto, ainda precisam de decisão/evidência: identidade e ownership no hospital, transferência/alta, política de resultado crítico, fallback de notificação, retenção, RPO/RTO aprovado, varredura AV externa, object storage produtivo/credenciais, workload representativo, inspeção manual de acessibilidade e sign-off. Esses gates estão em [`docs/discovery/OPEN_QUESTIONS.md`](docs/discovery/OPEN_QUESTIONS.md), [`docs/operations/PRODUCTION_READINESS.md`](docs/operations/PRODUCTION_READINESS.md) e no backlog 95/100.
+Antes de qualquer piloto, ainda precisam de decisão/evidência: identidade e ownership no hospital, transferência/alta, política de resultado crítico, fallback de notificação, retenção, RPO/RTO aprovado, varredura AV externa, object storage produtivo/credenciais, workload representativo, inspeção manual de acessibilidade e sign-off. Esses gates estão em [`docs/discovery/OPEN_QUESTIONS.md`](docs/discovery/OPEN_QUESTIONS.md), [`docs/operations/PRODUCTION_READINESS.md`](docs/operations/PRODUCTION_READINESS.md) e no [backlog AAA-3 atual](docs/build/STATE_OF_ART_TRIPLE_AAA_BACKLOG.md). O scorecard 95/100 é histórico e está preservado em [`docs/build/QUALITY_SCORECARD_95.md`](docs/build/QUALITY_SCORECARD_95.md).

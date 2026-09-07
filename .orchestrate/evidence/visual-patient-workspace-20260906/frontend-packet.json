@@ -1,0 +1,109 @@
+{
+  "schema_version": 1,
+  "superseding_packet": {
+    "manifest": ".orchestrate/evidence/visual-patient-workspace-20260906-v6/manifest.json",
+    "critic_report": ".orchestrate/evidence/visual-patient-workspace-20260906-v6/critic-report.md",
+    "verdict": "APPROVED_LOCAL",
+    "critic": "Bernoulli",
+    "note": "The earlier 18-artifact state matrix in this packet is historical; the v6 packet contains the current 20-artifact responsive evidence."
+  },
+  "target": "/patients/{patientId}/diagnostics",
+  "environment": {
+    "url": "http://localhost:3100/patients/patient-thor/diagnostics",
+    "commit": "working-tree (dirty; latest spot-check is separately fingerprinted)",
+    "browser": "Playwright Chromium project matrix",
+    "runtime": "Next.js 16.3.0, synthetic memory store",
+    "metrics": ".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json",
+    "source_manifest": ".orchestrate/evidence/v2-patient-workspace-current-manifest-20260906.txt",
+    "source_manifest_sha256": "51cfe078586b7a6e10cf3321319a8247cec396fc61c5f42999ebee2c26dde922",
+    "latest_capture_manifest": ".orchestrate/evidence/visual-patient-workspace-20260906/latest-capture-manifest-20260906.txt",
+    "state_matrix_manifest": ".orchestrate/evidence/visual-patient-workspace-20260906/state-matrix-manifest-20260906.json",
+    "latest_keyboard_recheck": "Integrated into the responsive workspace scenario: final CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0 passed 51/51 in 4.6 minutes with no retries; responsive scenario 3/3 and dense mobile timeline collapsed/expanded assertions passed; core-flows SHA-256 2f9f4796b2c67112df7d175b27d7893c8afe9e7705f85408742084baf1046f91",
+    "current_source_fingerprints": {
+      "styles_file": "src/app/globals.css",
+      "styles_sha256": "584ac679e78680e0482d2e7361522f49428e221f213d6e4a362d1e605dbba21c",
+      "config_file": "next.config.mjs",
+      "config_sha256": "75b2a83344fb7ce4d425f8cb6fab116231ff17bd2dc09a605b05c66ba03eb63d",
+      "test_file": "tests/e2e/core-flows.spec.ts",
+      "test_sha256": "2f9f4796b2c67112df7d175b27d7893c8afe9e7705f85408742084baf1046f91",
+      "component_file": "src/components/patient-diagnostics.tsx",
+      "component_sha256": "099e159918df4ab60b5e5bd7945c0acad15873e36552f62c4571985a6e153729"
+    },
+    "final_state_matrix": {
+      "captured_at": "2026-09-06T19:31:53Z",
+      "manifest_sha256": "6e772715d157ef38e51bd46f929a8d7a280514a043eeb338b77097a303025eb9",
+      "artifacts": "18 PNGs across six states and three viewports",
+      "focused_result": "3/3 passed with no retries",
+      "full_matrix_result": "51/51 passed in 4.6 minutes with no retries",
+      "independent_review": ".orchestrate/evidence/v2-patient-workspace-independent-critic-final-matrix-20260906.md"
+    },
+    "production_like_capture": {
+      "runtime": "next start with disposable PostgreSQL 16.15, synthetic S3/scanner services and separate PostgreSQL outbox worker",
+      "matrix": "51/51 no-retry scenarios across Chromium, tablet and mobile",
+      "artifacts": [
+        {"name": "chromium", "artifact": ".orchestrate/evidence/visual-patient-workspace-20260906/production-chromium-1440-20260906.png", "sha256": "a415367b6110cf1edca4b3a407d684065d949461df8df055ab1d6a64209285a2"},
+        {"name": "tablet", "artifact": ".orchestrate/evidence/visual-patient-workspace-20260906/production-tablet-834-20260906.png", "sha256": "2cb8d955be650d76ec4bd7016e5303a6d706abf3a17fb87c231d54f489700c1c"},
+        {"name": "mobile", "artifact": ".orchestrate/evidence/visual-patient-workspace-20260906/production-mobile-375-20260906.png", "sha256": "3d7647ef6ff71841fd3d65f917182bc738bdc5008a3a9278b638a51e96772b5b"},
+        {"name": "dense-mobile-collapsed", "artifact": ".orchestrate/evidence/visual-patient-workspace-20260906/production-dense-mobile-collapsed-375-20260906.png", "sha256": "3bd8fefbf08efa2a5961ce7a6a7eae919741d4566cc1e9bfdc267ea02cb65b93"},
+        {"name": "dense-mobile-expanded", "artifact": ".orchestrate/evidence/visual-patient-workspace-20260906/production-dense-mobile-expanded-375-20260906.png", "sha256": "6b675820b55664ddcdbca0a8cc2728167a285f411070038f760ec77461cb29e2"}
+      ],
+      "limitations": "Synthetic dependencies and ready-state plus deterministic dense mobile timeline capture only; no target Web Vitals or manual/human acceptance."
+    }
+  },
+  "evidence": {
+    "state_viewport_matrix": {
+      "status": "PASS_WITH_CONDITIONS",
+      "states": ["ready", "loading", "error/denied", "empty", "partial", "stale/degraded"],
+      "viewports": [1440, 834, 375],
+      "artifacts": ".orchestrate/evidence/visual-patient-workspace-20260906/state-matrix-manifest-20260906.json",
+      "independent_review": ".orchestrate/evidence/v2-patient-workspace-independent-critic-final-matrix-20260906.md",
+      "note": "Fresh-context critic Epicurus approved the final local 18-PNG matrix with no material local visual defect; manual screen-reader/touch, product-golden, target Web Vitals and human release acceptance remain open."
+    },
+    "accessibility": {
+      "keyboard": {"status": "PASS", "evidence": ["tests/e2e/core-flows.spec.ts", "tests/e2e/accessibility.spec.ts"]},
+      "focus": {"status": "PASS", "evidence": ["tests/e2e/core-flows.spec.ts", "tests/e2e/accessibility.spec.ts"]},
+      "semantics": {"status": "PASS", "evidence": ["tests/e2e/accessibility.spec.ts", "src/components/patient-diagnostics.tsx"]},
+      "names": {"status": "PASS", "evidence": ["tests/e2e/accessibility.spec.ts", "src/components/patient-diagnostics.tsx"]},
+      "errors": {"status": "PASS", "evidence": ["src/components/patient-diagnostics.test.tsx", "tests/e2e/core-flows.spec.ts"]},
+      "non_color": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/visual-ledger.json"]},
+      "reduced_motion": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json", "src/app/globals.css"]},
+      "touch_targets": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json", "src/app/globals.css"], "note": "All 11 visible controls met the measured 24px minimum; manual ergonomics remains open."},
+      "zoom_reflow": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/reflow-copy-stress-20260906.json", ".orchestrate/evidence/visual-patient-workspace-20260906/zoom-200-reflow.png"], "note": "Effective 188px extreme proxy and 320px reflow-floor captures kept identity, context and refresh action visible without horizontal or critical-region overflow."},
+      "contrast": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/contrast.txt"]}
+    },
+    "performance": {
+      "lcp": {"status": "PASS", "value_ms": 892, "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json"], "note": "Worst observed local synthetic viewport value; production LCP remains unproved."},
+      "cls": {"status": "PASS", "value": 0, "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json"], "note": "All four local synthetic viewport captures measured zero layout shift."},
+      "responsive_images": {"status": "NOT_APPLICABLE", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/contrast.txt"], "reason": "The route has no runtime content image; the PNGs are QA captures only."},
+      "font_loading": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json"], "note": "document.fonts reported loaded with four faces in the local render."},
+      "oversized_media": {"status": "NOT_APPLICABLE", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/contrast.txt"], "reason": "The route has no runtime media payload."}
+    },
+    "typography": {
+      "heading_hierarchy": {"status": "PASS", "evidence": ["tests/e2e/accessibility.spec.ts", ".orchestrate/evidence/visual-patient-workspace-20260906/visual-ledger.json"]},
+      "measure": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/chromium-1440.png", ".orchestrate/evidence/visual-patient-workspace-20260906/mobile-375.png"]},
+      "line_height": {"status": "WARN", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/visual-ledger.json"]},
+      "fallback": {"status": "WARN", "evidence": ["src/app/globals.css", ".orchestrate/evidence/v2-patient-workspace-responsive-polish-20260906.md"]},
+      "numeric_alignment": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/chromium-1440.png", ".orchestrate/evidence/visual-patient-workspace-20260906/mobile-375.png"]},
+      "mobile_scale": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/mobile-375.png"]}
+    },
+    "copy_stress": {
+      "short_content": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/chromium-1440.png"]},
+      "long_content": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/reflow-copy-stress-20260906.json", ".orchestrate/evidence/visual-patient-workspace-20260906/long-copy-large-numbers-375.png"]},
+      "empty_content": {"status": "PASS", "evidence": ["src/components/patient-diagnostics.test.tsx"]},
+      "large_numbers": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/reflow-copy-stress-20260906.json", ".orchestrate/evidence/visual-patient-workspace-20260906/long-copy-large-numbers-375.png"]},
+      "localized_content": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/mobile-375.png", "src/components/patient-diagnostics.tsx", "src/components/patient-diagnostics.test.tsx"]}
+    },
+    "transient_states": {
+      "initial_loading": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/state-matrix-manifest-20260906.json", ".orchestrate/evidence/visual-patient-workspace-20260906/reflow-copy-stress-20260906.json", ".orchestrate/evidence/visual-patient-workspace-20260906/loading-375.png", "src/components/patient-diagnostics.tsx"]},
+      "pagination_loading": {"status": "PASS", "evidence": [".orchestrate/evidence/visual-patient-workspace-20260906/reflow-copy-stress-20260906.json", ".orchestrate/evidence/visual-patient-workspace-20260906/pagination-loading-375.png", "src/components/patient-diagnostics.tsx"]}
+    }
+  },
+  "critical_blockers": ["Manual screen-reader/touch, product-golden, target Web Vitals and human clinical/release acceptance are unavailable"],
+  "notes": [
+    "This packet is deliberately conditional where manual or independent evidence is unavailable; quality_gates.py should return CONDITIONAL rather than infer AAA.",
+    "The fresh-context Epicurus review is recorded in .orchestrate/evidence/v2-patient-workspace-independent-critic-final-matrix-20260906.md and APPROVES the complete final local state/viewport matrix. Earlier Hooke/Huygens and timeout packets remain historical evidence; manual/target/golden/human acceptance remains open.",
+    "The current capture set was regenerated after the contrast correction; the audited route text pairs are recorded in contrast.txt.",
+    "The token audit remains a heuristic WARN because the application stylesheet intentionally contains scoped raw values; no broad token rewrite was authorized by this polish slice.",
+    "The final full no-retry memory matrix after the responsive polish passed 51/51 in 4.6 minutes; the clean next-start production-like PNGs, dense collapsed/expanded PNGs and final 18-PNG state matrix are listed above. The local matrix is approved, but no AAA or release sign-off is inferred."
+  ]
+}

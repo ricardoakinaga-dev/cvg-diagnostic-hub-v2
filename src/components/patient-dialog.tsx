@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useRef, useState, type FormEvent } from "react";
+import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { useDialogFocus } from "./use-dialog-focus";
+import { Icon } from "./ui-icons";
 
 export interface CreatedPatientPayload {
   patient: { id: string; displayName: string; species: string; breed: string; sex: string; birthDate?: string; ownerLabel: string; externalId: string; active: boolean };
@@ -42,9 +45,11 @@ const encounterLabels: Record<PatientDraft["encounterType"], string> = {
 };
 
 export function PatientDialog({ onClose, onCreated, nested = false }: { onClose: () => void; onCreated: (result: CreatedPatientPayload) => void; nested?: boolean }) {
+  const dialogRef = useRef<HTMLElement>(null);
   const [draft, setDraft] = useState<PatientDraft>(initialDraft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  useDialogFocus(dialogRef, onClose);
 
   function setField<K extends keyof PatientDraft>(field: K, value: PatientDraft[K]) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -79,10 +84,10 @@ export function PatientDialog({ onClose, onCreated, nested = false }: { onClose:
 
   return (
     <div className={`dialog-backdrop ${nested ? "dialog-backdrop-nested" : ""}`} role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
-      <section className="dialog patient-dialog" role="dialog" aria-modal="true" aria-labelledby="patient-dialog-title">
+      <section ref={dialogRef} className="dialog patient-dialog" data-dialog-layer="true" role="dialog" aria-modal="true" aria-labelledby="patient-dialog-title">
         <div className="dialog-heading">
           <div><p className="eyebrow">Novo contexto</p><h2 id="patient-dialog-title">Cadastrar paciente</h2><p>O atendimento inicial será aberto junto com o cadastro.</p></div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar cadastro de paciente">×</button>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="Fechar cadastro de paciente"><Icon name="close" size={18} /></button>
         </div>
         <form onSubmit={(event) => void submit(event)}>
           <div className="patient-form-grid">
@@ -97,7 +102,7 @@ export function PatientDialog({ onClose, onCreated, nested = false }: { onClose:
           <fieldset className="patient-encounter-fieldset"><legend>Atendimento inicial</legend><p className="field-hint patient-encounter-hint">Escolha o contexto clínico que será aberto para este paciente e usado na solicitação.</p><div className="encounter-choice-list">{(Object.keys(encounterLabels) as PatientDraft["encounterType"][]).map((type) => <label key={type} className={`encounter-choice ${draft.encounterType === type ? "selected" : ""}`}><input type="radio" name="encounterType" value={type} checked={draft.encounterType === type} onChange={() => setField("encounterType", type)} /><span><strong>{encounterLabels[type]}</strong><small>{type === "INPATIENT" ? "Abre também ala e leito." : "Fica disponível para a solicitação de exames."}</small></span></label>)}</div></fieldset>
           {draft.encounterType === "INPATIENT" && <div className="patient-form-grid patient-admission-fields"><label>Ala ou unidade<input value={draft.ward} onChange={(event) => setField("ward", event.target.value)} maxLength={100} required placeholder="Ex.: UTI 1" /></label><label>Leito<input value={draft.bed} onChange={(event) => setField("bed", event.target.value)} maxLength={100} required placeholder="Ex.: Box 03" /></label></div>}
           {error && <div className="form-alert" role="alert">{error}</div>}
-          <div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="submit" className="button button-primary" disabled={busy}>{busy ? "Cadastrando…" : "Cadastrar paciente"}<span>→</span></button></div>
+          <div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><ActionButton type="submit" state={busy ? "pending" : "idle"} aria-label={busy ? "Cadastrando paciente" : "Confirmar cadastro de paciente"} icon={<Icon name="arrow-right" size={15} />}>{busy ? "Cadastrando…" : "Cadastrar paciente"}</ActionButton></div>
         </form>
       </section>
     </div>

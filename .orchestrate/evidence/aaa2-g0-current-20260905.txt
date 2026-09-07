@@ -1,0 +1,65 @@
+AAA-2 G0 execution evidence — 2026-09-05
+
+Repository snapshot
+- HEAD observed: 01bb1804682b4bb503e00e41c1361dc704d2294d
+- local runtime: Node v24.20.0, npm 11.19.0
+- CI/runtime target: Node 22 (`.nvmrc` and workflow); Node 22 was not installed on this host
+- evidence is from the working tree after the scoped authorization, cancellation, realtime, storage, UI reconciliation, policy, performance, recovery and relational-contract changes
+
+Deterministic local checks
+- `npm test`: PASS — 64 files, 524 tests
+- `npm run test:coverage`: PASS — 64 files, 524 tests; 91.31% statements/lines, 85.37% branches, 94.38% functions
+- `npm run typecheck`: PASS
+- `npm run lint`: PASS
+- `npm run build`: PASS — Next.js 16.3.0 production build and 11 static pages
+- `npm run validate:docs`: PASS — 56 required files and cross-document gates
+- `npm run validate:openapi`: PASS — 65 operations across 60 paths
+- `npm run security:scan`: PASS
+- `npm audit --audit-level=high --json`: PASS — zero vulnerabilities at every severity
+- `npx vitest run src/server/architecture-fitness.test.ts src/server/http/scoped-reads-route.test.ts src/server/http/cancellation-policy.test.ts src/server/observability/realtime.test.ts src/server/storage/file-store.test.ts src/server/storage/s3-file-store.test.ts`: PASS; focused regressions included scoped reads, 94 cancellation cases, realtime and storage boundaries
+- `node --test scripts/validate-traceability.test.mjs`: PASS — four validator self-tests
+
+Browser and external-environment checks
+- `CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0`: latest local rerun PASS — 45/45 in 2.7 min, without retry, after the stronger post-save conflict suppression fix; Playwright starts disposable memory servers with separate Next `distDir` and state per project (Chromium, tablet and mobile). The targeted critical-acknowledgement repeat also passed 6/6 (tablet 3/3 and mobile 3/3), without retry.
+- `npm run test:accessibility`: PASS — 6/6, included in the 45-case run
+- `npm run test:postgres`: BLOCKED/EXPECTED GUARD at the initial baseline — integration cases require `ALLOW_POSTGRES_INTEGRATION_TESTS=true`; Docker was unavailable on this host (`docker`/`docker compose` not found). A later portable PostgreSQL revalidation is recorded below.
+- Browser against PostgreSQL, relational migration/EXPLAIN approval, representative load, remote CI, manual clinical/accessibility review and pilot acceptance: NOT RUN
+
+Known G0 gap
+- Historical G0 snapshot (before the AAA2-022 transfer slice and AAA2-029 bounded policy slice): `npm run validate:traceability` FAILS CLOSED — the matrix had separate executable `code`, `test`, `command` and `evidence` columns, with five rows intentionally retaining `—` and producing 20 missing-reference issues. The validator and four negative/positive self-tests were present; no row was fabricated to make that historical gate green. A later pre-packet snapshot recorded 16 issues; the current structural result is the PASS recorded below.
+- `docs/build/AAA_2_DECISION_REGISTER.md`: OPEN — D-01 through D-06 require named hospital/clinical/operations decisors; no approval was inferred from implementation.
+- Fresh G1 critic: [aaa2-g1-critic-fresh-20260905.md](aaa2-g1-critic-fresh-20260905.md) — REJECT at its review boundary: it recorded the 44/45 flake and confirmed that migration 007/PostgresStore remain snapshot-authoritative/transitional, realtime is process-local, traceability has 20 missing references, and D-01–D-06 are open. Subsequent local rework fixed the post-save notice race and added granular scope-version checks; it does not supply the missing E2/PostgreSQL or human evidence.
+- Fresh G1 recheck: [aaa2-g1-critic-recheck-20260905.md](aaa2-g1-critic-recheck-20260905.md) — REJECT: it reran 45/45 E2E and the mobile case 3/3, but confirmed the branch result remains below the proposed 85% G4 target (84.04% in that run), PostgreSQL is still guarded, migration 007/PostgresStore remain snapshot-authoritative/transitional, realtime is process-local, traceability has 20 missing references, and D-01–D-06 are open.
+- Fresh G2 final critic: [aaa2-g2-critic-final-20260905.md](aaa2-g2-critic-final-20260905.md) — REJECT at its review boundary: it observed 44/45 with a tablet post-save conflict notice, and reconfirmed PostgreSQL, migration cutover, process-local realtime, traceability, restore/performance evidence and D-01–D-06 remain open. The stronger conflict suppression fix was applied after that boundary, then passed the clean 45/45 run and the 6/6 targeted repeat above, and received the fresh G3 review below.
+- Fresh G3 post-fix critic: [aaa2-g3-critic-postfix-20260905.md](aaa2-g3-critic-postfix-20260905.md) — REJECT / NÃO PRONTO overall, with the localized `ResultView` correction accepted: 10/10 focused tests, critical tablet/mobile 6/6, and full E2E 45/45 without retry. It reconfirmed the then-current branch coverage below 85%, traceability FAIL CLOSED with 20 issues, PostgreSQL blocked, JSONB snapshot authority, process-local realtime, missing recovery/performance evidence and open D-01–D-06; its out-of-order-load observation is addressed by the subsequent sequence guard below.
+- Current local slices: [aaa2-022-local-20260905.md](aaa2-022-local-20260905.md) records the policy-gated transfer/bed/discharge/responsibility command boundary and [aaa2-sla-policy-local-20260905.txt](aaa2-sla-policy-local-20260905.txt) records the bounded SLA calculation fallback. Both remain partial: D-01/D-04, UI, notification/delegation policy, persistence and durable overdue processing are open.
+- Current working-tree result after the local policy, recovery, performance, relational, identity and queue slices: 64 files, 524 tests, 91.31% statements/lines, 85.37% branches and 94.38% functions; `npm run validate:openapi` reports 65 operations across 60 paths. The branch threshold now passes locally, structural traceability passes, but multi-instance realtime, restore/performance acceptance and human decisions remain open.
+- Historical result before the subsequent local packets: `npm run validate:traceability` was FAIL CLOSED with 16 issues across FR-OPS-002, NFR-PERF-001, NFR-PERF-002 and NFR-OPS-001; that output remains preserved in [aaa2-traceability-current-20260905.txt](aaa2-traceability-current-20260905.txt) as the earlier review boundary. The cells were intentionally empty at that point because local slices did not yet have executable links.
+- Fresh G4 critic: [aaa2-g4-critic-current-20260905.md](aaa2-g4-critic-current-20260905.md) — REJECT / NÃO PRONTO PARA G4 at its independent review boundary. It reproduced 489/489, 11/11 ResultView, 42/42 transfer-context, 20/20 SLA focus, 45/45 synthetic E2E and 6/6 accessibility with 92.61%/85.35%/95.15% coverage before the later local slices. The consolidated working-tree run at that review boundary was 513/513 with 91.13%/85.18%/94.19%; later local identity/queue slices are 524/524 with 91.31%/85.37%/94.38%. JSONB authority, process-local realtime, external recovery/performance evidence and D-01–D-06 remain open.
+
+Subsequent local packets and consolidated revalidation:
+- [aaa2-perf-local-20260905.md](aaa2-perf-local-20260905.md): deterministic synthetic performance gate PASS, explicitly conditional on pilot/D-05.
+- [aaa2-recovery-local-20260905.md](aaa2-recovery-local-20260905.md): recovery manifest/governance contracts PASS locally, explicitly conditional on live restore/RPO/RTO/D-05.
+- [aaa2-relational-local-20260905.md](aaa2-relational-local-20260905.md): relational adapter/backfill/cutover contracts PASS locally, with snapshot authority and PostgreSQL execution still open.
+- `npm run validate:traceability`: PASS — 43 requirements and 43 acceptance criteria have linked code, test, command and current evidence. This is structural traceability only; policy-gated and environment-pending rows remain conditional.
+
+The browser evidence remains synthetic and conditional on production validation: the product journeys pass 45/45 with project-isolated servers, while PostgreSQL, multi-instance realtime and hospital acceptance remain unproven.
+
+This artifact is a current local execution record, not a production or hospital acceptance decision.
+
+Final revalidation after the subsequent test-coverage and documentation corrections:
+- `npm test`: PASS — 64 files / 524 tests.
+- `npm run test:coverage`: PASS — 91.31% statements/lines, 85.37% branches, 94.38% functions.
+- `npm run test:perf`: PASS — 7 tests; `npm run perf:synthetic`: PASS — 372 virtual requests, max p95/p99 171 ms, 12 expected validation errors and 0 unexpected errors.
+- `npm run test:recovery`: PASS — 5 tests; `node --test scripts/backup-restore.test.mjs`: PASS — 3 tests.
+- `CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0`: PASS — 45/45; `CI=1 npm run test:accessibility -- --fail-on-flaky-tests --retries=0`: PASS — 6/6.
+- `npm run validate:docs`: PASS — 56 files/gates; `npm run validate:traceability`: PASS — 43 requirements and 43 acceptance criteria; `git diff --check`: PASS.
+- Initial guarded baseline commands remain preserved above; the later local run used explicit opt-ins and credentials: `test:postgres` 16/16, direct restore smoke and HTTP perf smoke all passed as recorded below.
+
+Local PostgreSQL revalidation after the guarded baseline above:
+- [aaa2-postgres-local-20260905.md](aaa2-postgres-local-20260905.md) records a disposable loopback PostgreSQL 16.15 cluster executed without Docker.
+- `npm run test:postgres` with explicit opt-in: PASS — 16/16 integration and harness tests.
+- `npm run db:smoke` after migrations: PASS — state, transactional lock, audit and outbox survived reopening.
+- `npm run db:restore:smoke` with `ALLOW_DB_RESTORE_SMOKE=true` and `POSTGRES_DIRECT_URL`: PASS — isolated restore result `1|1|0`, manifest/checksum verified.
+- `npm run perf:smoke` against a Next server using `APP_DATA_MODE=postgres`: PASS — 80 requests, 0 errors, concurrency 4, maximum p95 45.94 ms in the latest run.
+- These are local conditional gates. Browser against PostgreSQL, two-host realtime/SSE, approved workload/EXPLAIN, object-storage/key recovery, RPO/RTO and human/remote-CI acceptance remain open.

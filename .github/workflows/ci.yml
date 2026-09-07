@@ -39,16 +39,52 @@ jobs:
       - run: npm ci
       - run: npm run validate:docs
       - run: npm run validate:openapi
+      - run: npm run validate:traceability
+      - run: node --test scripts/validate-traceability.test.mjs
+      - run: npm run validate:migrations
       - run: npm run security:scan
+      - name: Generate dependency SBOM
+        run: npm --silent run security:sbom > sbom.cdx.json
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:coverage
+      - name: Run mutation control sentinel
+        run: npm run test:mutation
+      - run: node --test scripts/coverage-report.test.mjs
+      - run: npm --silent run coverage:report > coverage-report.json
+      - run: npm run test:perf
+      - run: npm run test:recovery
+      - run: npm run perf:synthetic
       - run: npm run test:postgres
         env:
           ALLOW_POSTGRES_INTEGRATION_TESTS: "true"
           POSTGRES_TEST_ADMIN_URL: postgresql://cvg:cvg_ci@127.0.0.1:5432/postgres
       - run: npm audit --audit-level=high
       - run: npm run build
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coverage/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload coverage layer report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coverage-report.json
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Upload dependency SBOM
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.run_id }}-${{ github.run_attempt }}
+          path: sbom.cdx.json
+          if-no-files-found: warn
+          retention-days: 14
 
   browser:
     runs-on: ubuntu-latest
@@ -62,5 +98,296 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:e2e
-      - run: npm run test:accessibility
+      - name: Run browser E2E (fail on flaky retries)
+        run: npm run test:e2e -- --retries=0 --fail-on-flaky-tests
+      - name: Upload browser E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Run accessibility (fail on flaky retries)
+        run: npm run test:accessibility -- --retries=0 --fail-on-flaky-tests
+      - name: Upload accessibility artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+          if-no-files-found: warn
+          retention-days: 14
+
+  browser-postgres:
+    name: Browser E2E with disposable PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: verify
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cvg
+          POSTGRES_PASSWORD: cvg_ci
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cvg -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      E2E_DATABASE_NAME: "cvg_test_e2e_${{ github.run_id }}"
+      POSTGRES_TEST_ADMIN_URL: "postgresql://cvg:cvg_ci@127.0.0.1:5432/postgres"
+      DATABASE_URL: "postgresql://cvg:cvg_ci@127.0.0.1:5432/cvg_test_e2e_${{ github.run_id }}"
+      APP_DATA_MODE: postgres
+      DB_POOL_MAX: "10"
+      RATE_LIMIT_MODE: postgres
+      RATE_LIMIT_DB_POOL_MAX: "2"
+      LOGIN_RATE_LIMIT: "100"
+      REALTIME_NOTIFICATION_ADAPTER: postgres-listen
+      REALTIME_NOTIFICATION_CHANNEL: "cvg_test_e2e_realtime_${{ github.run_id }}"
+      REALTIME_LISTEN_POOL_MAX: "2"
+      OUTBOX_INLINE_LOCAL: "false"
+      OUTBOX_SINK: postgres
+      OUTBOX_DELIVERY_CHANNEL: IN_APP
+      OUTBOX_INTERVAL_MS: "250"
+      OUTBOX_BATCH_SIZE: "25"
+      OUTBOX_WORKER_ID: ci-browser-postgres-outbox
+      TRUST_PROXY: "true"
+      TRUST_PROXY_SHARED_SECRET: e2e-proxy-secret-2026
+      DEMO_PASSWORD: e2e-local-password-2026
+      SESSION_SECRET: cvg-ci-e2e-session-secret-2026-012345678901234567890123
+      APP_ORIGIN: http://127.0.0.1:3110
+      PORT: "3110"
+      STORAGE_MODE: s3
+      STORAGE_REGION: us-east-1
+      STORAGE_BUCKET: "cvg-test-e2e-${{ github.run_id }}"
+      STORAGE_ACCESS_KEY: cvg-ci-synthetic-access
+      STORAGE_SECRET_KEY: cvg-ci-synthetic-secret
+      STORAGE_FORCE_PATH_STYLE: "true"
+      STORAGE_SCAN_MODE: external
+      MALWARE_SCANNER_API_KEY: cvg-ci-synthetic-scanner-key
+      MALWARE_SCANNER_ALLOWED_HOSTS: 127.0.0.1
+      MALWARE_SCANNER_TIMEOUT_MS: "1000"
+      CRITICAL_POLICY_ENABLED: "true"
+      CRITICAL_POLICY_VERSION: ci-synthetic-policy-v1
+      CRITICAL_POLICY_APPROVAL_REF: ci-synthetic-approval-2026
+      CRITICAL_POLICY_APPROVED_AT: 2026-09-06T00:00:00.000Z
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare browser gate artifacts
+        run: mkdir -p logs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: Create dedicated PostgreSQL database
+        run: |
+          set -Eeuo pipefail
+          if [[ ! "$E2E_DATABASE_NAME" =~ ^cvg_test_e2e_[0-9]+$ ]]; then
+            echo "Refusing an unexpected PostgreSQL database target: $E2E_DATABASE_NAME" >&2
+            exit 1
+          fi
+          psql "$POSTGRES_TEST_ADMIN_URL" \
+            --set=ON_ERROR_STOP=1 \
+            --set="target_db=$E2E_DATABASE_NAME" \
+            --command='CREATE DATABASE :"target_db";' 2>&1 | tee logs/create-database.log
+      - name: Apply PostgreSQL migrations
+        env:
+          NODE_ENV: development
+        run: |
+          set -Eeuo pipefail
+          npm run db:migrate 2>&1 | tee logs/db-migrate.log
+      - name: Seed synthetic PostgreSQL data
+        env:
+          NODE_ENV: development
+          ALLOW_SYNTHETIC_SEED: "true"
+          DEMO_PASSWORD: e2e-local-password-2026
+        run: |
+          set -Eeuo pipefail
+          npm run db:seed 2>&1 | tee logs/db-seed.log
+      - name: Generate disposable scanner certificate
+        run: |
+          set -Eeuo pipefail
+          openssl req -x509 -newkey rsa:2048 -nodes \
+            -keyout .ci-e2e-scanner.key \
+            -out .ci-e2e-scanner.crt \
+            -days 1 \
+            -subj "/CN=127.0.0.1" \
+            -addext "subjectAltName=IP:127.0.0.1" \
+            2>&1 | tee logs/scanner-certificate.log
+      - name: Start disposable S3 and scanner services
+        env:
+          CI_SCANNER_KEY_FILE: .ci-e2e-scanner.key
+          CI_SCANNER_CERT_FILE: .ci-e2e-scanner.crt
+        run: |
+          set -Eeuo pipefail
+          setsid npm run ci:storage-services > logs/storage-services.log 2>&1 &
+          service_pid=$!
+          echo "$service_pid" > .ci-e2e-storage.pid
+          for _ in {1..50}; do
+            if [[ -s .ci-e2e-s3.port && -s .ci-e2e-scanner.port ]]; then break; fi
+            if ! kill -0 -- "-$service_pid" 2>/dev/null; then
+              echo "The disposable storage services exited before publishing their ports." >&2
+              exit 1
+            fi
+            sleep 0.2
+          done
+          if [[ ! -s .ci-e2e-s3.port || ! -s .ci-e2e-scanner.port ]]; then
+            echo "Timed out waiting for the disposable storage services." >&2
+            exit 1
+          fi
+          s3_port="$(<.ci-e2e-s3.port)"
+          scanner_port="$(<.ci-e2e-scanner.port)"
+          {
+            echo "STORAGE_ENDPOINT=http://127.0.0.1:${s3_port}"
+            echo "MALWARE_SCANNER_ENDPOINT=https://127.0.0.1:${scanner_port}/scan"
+            echo "NODE_EXTRA_CA_CERTS=${GITHUB_WORKSPACE}/.ci-e2e-scanner.crt"
+          } >> "$GITHUB_ENV"
+          echo "S3 service ready at http://127.0.0.1:${s3_port}; scanner ready at https://127.0.0.1:${scanner_port}/scan" | tee -a logs/storage-services.log
+      - name: Build production bundle
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          npm run build 2>&1 | tee logs/next-build.log
+      - name: Start production Next server
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          setsid npm run start -- --hostname 127.0.0.1 > logs/next-start.log 2>&1 &
+          echo "$!" > .ci-e2e-next.pid
+          sleep 1
+          if ! kill -0 "$(<.ci-e2e-next.pid)" 2>/dev/null; then
+            echo "The production Next server exited during startup." >&2
+            exit 1
+          fi
+      - name: Start durable PostgreSQL outbox worker
+        env:
+          NODE_ENV: production
+        run: |
+          set -Eeuo pipefail
+          setsid npm run outbox:worker > logs/outbox-worker.log 2>&1 &
+          echo "$!" > .ci-e2e-outbox.pid
+          sleep 1
+          if ! kill -0 "$(<.ci-e2e-outbox.pid)" 2>/dev/null; then
+            echo "The PostgreSQL outbox worker exited during startup." >&2
+            cat logs/outbox-worker.log >&2
+            exit 1
+          fi
+      - name: Poll production readiness
+        env:
+          BASE_URL: http://127.0.0.1:3110
+        run: |
+          set -Eeuo pipefail
+          deadline=$((SECONDS + 120))
+          readyz_status=000
+          while (( SECONDS < deadline )); do
+            response="$(curl --silent --show-error --max-time 2 --write-out $'\n%{http_code}' "$BASE_URL/api/v1/readyz" || true)"
+            readyz_status="${response##*$'\n'}"
+            readyz_body="${response%$'\n'*}"
+            if [[ "$readyz_status" == "200" ]] && node -e '
+              const payload = JSON.parse(process.argv[1]);
+              const data = payload?.data;
+              if (data?.status !== "ready" || data?.dataMode !== "postgres" || data?.storageMode !== "s3") process.exit(1);
+            ' "$readyz_body"; then
+              echo "readyz accepted: production, postgres, s3" | tee logs/readyz.log
+              exit 0
+            fi
+            echo "readyz not ready yet (HTTP ${readyz_status})" | tee -a logs/readyz.log
+            sleep 2
+          done
+          echo "Timed out waiting for production readiness (last HTTP ${readyz_status})." | tee -a logs/readyz.log >&2
+          exit 1
+      - name: Run PostgreSQL-backed browser matrix (51 scenarios, no retries)
+        env:
+          CI: "1"
+          BASE_URL: http://127.0.0.1:3110
+          E2E_REUSE_EXISTING_SERVER: "true"
+        run: |
+          set -Eeuo pipefail
+          npm run test:e2e -- --retries=0 --fail-on-flaky-tests 2>&1 | tee logs/playwright-postgres.log
+      - name: Cleanup disposable PostgreSQL browser lane
+        if: always()
+        run: |
+          set -u -o pipefail
+          cleanup_status=0
+
+          stop_process_group() {
+            local pid_file="$1"
+            if [[ ! -s "$pid_file" ]]; then return; fi
+            local pid
+            pid="$(<"$pid_file")"
+            if [[ ! "$pid" =~ ^[0-9]+$ ]]; then cleanup_status=1; return; fi
+            if kill -0 -- "-$pid" 2>/dev/null; then
+              kill -TERM -- "-$pid" 2>/dev/null || cleanup_status=1
+              for _ in {1..20}; do
+                if ! kill -0 -- "-$pid" 2>/dev/null; then return; fi
+                sleep 0.25
+              done
+              kill -KILL -- "-$pid" 2>/dev/null || cleanup_status=1
+            fi
+          }
+
+          stop_process() {
+            local pid_file="$1"
+            if [[ ! -s "$pid_file" ]]; then return; fi
+            local pid
+            pid="$(<"$pid_file")"
+            if [[ ! "$pid" =~ ^[0-9]+$ ]]; then cleanup_status=1; return; fi
+            if kill -0 "$pid" 2>/dev/null; then
+              kill -TERM "$pid" 2>/dev/null || cleanup_status=1
+              for _ in {1..20}; do
+                if ! kill -0 "$pid" 2>/dev/null; then return; fi
+                sleep 0.25
+              done
+              kill -KILL "$pid" 2>/dev/null || cleanup_status=1
+            fi
+          }
+
+          stop_process_group .ci-e2e-next.pid
+          stop_process_group .ci-e2e-storage.pid
+          stop_process_group .ci-e2e-outbox.pid
+          rm -f .ci-e2e-next.pid .ci-e2e-storage.pid .ci-e2e-outbox.pid .ci-e2e-s3.port .ci-e2e-scanner.port .ci-e2e-scanner.key .ci-e2e-scanner.crt
+
+          if [[ "$E2E_DATABASE_NAME" =~ ^cvg_test_e2e_[0-9]+$ ]]; then
+            if ! psql "$POSTGRES_TEST_ADMIN_URL" \
+              --set=ON_ERROR_STOP=1 \
+              --set="target_db=$E2E_DATABASE_NAME" 2>&1 <<'SQL' | tee logs/cleanup.log
+          SELECT pg_terminate_backend(pid)
+            FROM pg_stat_activity
+           WHERE datname = :'target_db'
+             AND pid <> pg_backend_pid();
+          DROP DATABASE IF EXISTS :"target_db";
+          SQL
+            then
+              cleanup_status=1
+            fi
+          else
+            echo "Refusing to clean an unexpected PostgreSQL database target: $E2E_DATABASE_NAME" | tee logs/cleanup.log >&2
+            cleanup_status=1
+          fi
+
+          exit "$cleanup_status"
+      - name: Upload PostgreSQL browser artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            playwright-report/
+            test-results/
+            logs/
+          if-no-files-found: warn
+          retention-days: 14

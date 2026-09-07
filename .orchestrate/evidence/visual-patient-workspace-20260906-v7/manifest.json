@@ -1,0 +1,73 @@
+{
+  "packet": "visual-patient-workspace-20260906-v7",
+  "capturedAt": "2026-09-06T19:42:28-03:00",
+  "scope": "local visual evidence only; not production, clinical, or human acceptance",
+  "captureCommand": "E2E_PORT_BASE=3110 npm run test:e2e -- --fail-on-flaky-tests --retries=0",
+  "captureResult": "PASS 51/51, no retries; includes 6/6 accessibility checks",
+  "dimensionsNote": "PNG dimensions reflect device scale factor; mobile captures are 1031 px wide for 375 CSS px.",
+  "independentCritic": {
+    "status": "PENDING",
+    "agent": "Chandrasekhar",
+    "verdict": null,
+    "report": "critic-report.md"
+  },
+  "contrastAudit": {
+    "errorPrimaryBackground": "#087269",
+    "errorPrimaryForeground": "#ffffff",
+    "errorPrimaryRatio": 5.8,
+    "hoverBackground": "#075f58",
+    "hoverForegroundRatio": 7.54,
+    "criterion": "WCAG 2.2 AA normal-text minimum 4.5:1"
+  },
+  "sourceHashes": {
+    "tests/e2e/core-flows.spec.ts": "b0dcc90ce83a2328e426790e931c3320e5cf7a96a99c63367251a9045e3fa921",
+    "src/components/patient-diagnostics.tsx": "1e0a0fabcede3fafbcef89bf83da1214d38cd69336ace00e006abd69b05550c4",
+    "src/components/use-dialog-focus.ts": "f1826e1abe5c598eac576cbfe03091419cfc3e2a3c2acca413ab2a7751cb4c72",
+    "src/components/patient-dialog.tsx": "49aba464e47a7f5a309a5cfe0bcaba08b1e2b53c82c50a7cad6b86b7c9edb8e6",
+    "src/components/dashboard.tsx": "19accea8ca055c493027e402e6a6cc95d8f313969a1ea8923e9a84fd3e7c5076",
+    "src/app/globals.css": "3ed472395e77102aeb292ba0d435fd17e3544f546a763b3622df6235245f1efe",
+    "src/server/application/request-service.ts": "680e428b2725d8508a63674d981474eb7d508bb79c8ac49a7b611251279601c3",
+    "src/server/application/service-types.ts": "730544456431bb7f5261b581e5255685b53fb917aa1a62ca49b777221b8ce253",
+    "scripts/validate-openapi.mjs": "d6aa9d7904939c864fa2a2875bb73fcaeab596b6e1d42ee87aa10621c2a257dc",
+    "tests/postgres/relational-sample-lineage.integration.test.ts": "46de2f6b4cdc179548eebd67dacdbe4d159de08b801c7ff9225e0d9ac995dcdb",
+    "src/components/patient-dialog.test.tsx": "733f9627feeb0901bf07875e7b04c0166cef23505aab82e572201289f873ccdd",
+    "src/server/store/postgres-store.ts": "a4e584310359067fa1e9086b809a20cea37d82418002452ccd5ae8cd53ace176",
+    "src/server/store/relational/clinical-core-adapter.ts": "fd761a8da594293fc1d00d22674c05cd2b4a0da0610d911a847b1e7d78daa1be",
+    "src/server/store/relational/clinical-core-readiness-sql.ts": "f3fad667e3396344ffd621596be83327c026537927f9493b5d5fc301ba4f47e5",
+    "src/server/store/relational/clinical-core-contracts.ts": "ce3e0d2abaf6d6e171501337b724657dd29f6ff6feed399f7d0ce0d7c9260809",
+    "db/migrations/009_relational_sample_lineage.sql": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c",
+    "src/server/store/migrations.ts": "2c78f57d43b01048db9513508c2aed4531f34b410d57cf8c8852421d5418c781",
+    "tests/support/postgres-test-harness.ts": "d95837232ae6d533d8f1f339483929f2bac99edf627dd354adb60dd74c025d6d",
+    "scripts/relational-backfill.ts": "fc2f973cf90c16f7768d4db1fb6bdac6f4a0a96ab54a24d67a159f89ea6d91ee",
+    "src/server/http/scoped-reads-route.test.ts": "0c3257a8205d6103eb945f47d7de0d4bab7201a7a12eaf3457def998df681304",
+    "src/server/application/patient-workspace.test.ts": "52ca47c4c0dc26d0fff68416f9bcaa7afd6940ca8150a1d0a19a0992cfd7360a",
+    "playwright.config.ts": "f2bb47f6a32388d8a6cb66a9d185d9ae3b08042f6424816f8d80484080ea3963"
+  },
+  "artifacts": [
+    { "file": "chromium-empty.png", "bytes": 127432, "sha256": "a3cfc6a7532fafe6b5e6eab86e6670077051561ee15b8b6ca4e0d5486a30ed52", "width": 1440, "height": 1000 },
+    { "file": "chromium-error-denied.png", "bytes": 44537, "sha256": "5b3c6c42c16d88488a146014218802aaad7b2e185f1f45f9928aadc6872d3297", "width": 1440, "height": 1000 },
+    { "file": "chromium-loading.png", "bytes": 61288, "sha256": "c001e64b44f23b1b0f5d56addb693f4512415e7b008946b23936d4223b8493a2", "width": 1440, "height": 1220 },
+    { "file": "chromium-partial.png", "bytes": 234063, "sha256": "51c0fc4084514165569a93fee80471f90cf2769cc4fe645952820b8524f590b4", "width": 1440, "height": 2095 },
+    { "file": "chromium-ready.png", "bytes": 303961, "sha256": "3f818186becefc806d47841230fbc524b803a41294a51f7aa549619e8447cce9", "width": 1440, "height": 2229 },
+    { "file": "chromium-stale.png", "bytes": 312608, "sha256": "f83569598e1c2c7cb590f7bd1776ba0c76735071b6adc90a15c86bafc59e13fd", "width": 1440, "height": 2311 },
+    { "file": "mobile-dense-collapsed.png", "bytes": 705077, "sha256": "34ddd2999f40298a42314e371752cd185f27926858ea5fb496b2fa8afd083949", "width": 1031, "height": 8181 },
+    { "file": "mobile-dense-expanded.png", "bytes": 763693, "sha256": "f456ccece816bacd349eb73fda3155adb47295fbf682b5559c8212e1d108574c", "width": 1031, "height": 8797 },
+    { "file": "mobile-empty.png", "bytes": 352862, "sha256": "d03c199028597ecd3fcdbd9eb9a0cf1a0f4a70660f3db232b55b1fed9d344148", "width": 1031, "height": 4395 },
+    { "file": "mobile-error-denied.png", "bytes": 80268, "sha256": "c09ea8b23fe6190b72ed8ff59eb5d6395115a4de836fbc0ce8a64b59be735f4f", "width": 1031, "height": 2233 },
+    { "file": "mobile-loading.png", "bytes": 126008, "sha256": "2e40187d87975687612ee927a431aca3c109b6d21350cab5d775afb8467d9766", "width": 1031, "height": 5187 },
+    { "file": "mobile-partial.png", "bytes": 671303, "sha256": "9a52a834e011255810c06a9c707ead5d0637f63063cc962998a5eb35be295f16", "width": 1031, "height": 7574 },
+    { "file": "mobile-ready.png", "bytes": 762072, "sha256": "f4d7b7d30b6e6328ea8cc3b0a348f7772d42c831389560d6402c750e40464964", "width": 1031, "height": 8797 },
+    { "file": "mobile-stale.png", "bytes": 740018, "sha256": "32bf537df563e323479dce4b790121b7ab657eb19b037c98947de4cd48577fc0", "width": 1031, "height": 8594 },
+    { "file": "tablet-empty.png", "bytes": 116443, "sha256": "c0880cc502141373475cc221a6fb3ac983b41594775a95cb543fce01540c2137", "width": 834, "height": 1343 },
+    { "file": "tablet-error-denied.png", "bytes": 42671, "sha256": "f8aa5632c2eb2196f65a7f43c5f5fc1b4dc0826ae5f4744622ca51646fa36192", "width": 834, "height": 1194 },
+    { "file": "tablet-loading.png", "bytes": 209734, "sha256": "4879ee0ebc4976d6223f6aa141c483e4fff87d3e99641bbd270648eba0295557", "width": 834, "height": 1850 },
+    { "file": "tablet-partial.png", "bytes": 189685, "sha256": "3deb57b2f91ec90f67987adae62ae27a5ebdeafcb86daa1fdb66072272d538ff", "width": 834, "height": 2068 },
+    { "file": "tablet-ready.png", "bytes": 265569, "sha256": "2d67a87f02461d9b002032a3c79a526908236856df2a3ae4e2fb85ea80d99138", "width": 834, "height": 3153 },
+    { "file": "tablet-stale.png", "bytes": 272943, "sha256": "dc95f8f06b841f6f59423c0df77671de0c95c69aafc56a4b6116065e63561f29", "width": 834, "height": 3235 }
+  ],
+  "knownLimits": [
+    "Raster evidence cannot prove keyboard focus restoration/trapping, screen-reader announcements, live-region semantics, scrollWidth, network/console behavior, retry semantics, performance, production correctness, or clinical acceptance.",
+    "The full browser run provides automated axe and keyboard assertions; manual screen-reader, touch, product-golden, target-production Web Vitals, clinical sign-off, and human acceptance remain outside this local packet.",
+    "The green live-update indicator beside stale/degraded notices still requires DOM/runtime semantics review to distinguish transport health from snapshot freshness."
+  ]
+}

@@ -77,6 +77,8 @@ describe("authorized read models", () => {
     expect((await service.listPatients(actor, "thor")).map((entry) => entry.id)).toEqual(["patient-thor"]);
     expect((await service.listPatients(actor, "does-not-exist"))).toEqual([]);
     expect((await service.getPatient(actor, "patient-thor")).displayName).toBe("Thor");
+    await expect(service.getPatient(lab, "patient-does-not-exist")).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+    await expect(service.getItem(lab, "item-does-not-exist")).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
     expect((await service.listPatients(manager)).map((entry) => entry.id)).toEqual(["patient-thor"]);
     await expect(service.getPatient(manager, "patient-mel")).rejects.toMatchObject({ code: "SCOPE_DENIED" });
     await expect(service.getItem(manager, request.items[0].id)).rejects.toMatchObject({ code: "SCOPE_DENIED" });
@@ -158,6 +160,17 @@ describe("authorized read models", () => {
       denominator: 0,
       definition: expect.stringContaining("Notificações críticas")
     });
+    const pagedQueue = await service.listQueuePage(lab, "LABORATORY", { limit: 1 });
+    expect(pagedQueue.items).toHaveLength(1);
+    expect(pagedQueue.nextCursor).toBeUndefined();
+    const secondLabRequest = await service.createRequest(actor, { patientId: "patient-mel", encounterId: "encounter-mel", priority: "ROUTINE", items: [{ serviceId: "service-crp" }] }, { idempotencyKey: "read-model-second-lab-request" });
+    const firstQueuePage = await service.listQueuePage(lab, "LABORATORY", { limit: 1 });
+    expect(firstQueuePage.nextCursor).toBeTruthy();
+    const secondQueuePage = await service.listQueuePage(lab, "LABORATORY", { limit: 1, cursor: firstQueuePage.nextCursor });
+    expect(secondQueuePage.items).toHaveLength(1);
+    expect(secondQueuePage.items[0].id).not.toBe(firstQueuePage.items[0].id);
+    expect(secondQueuePage.items[0].requestId).toBe(secondLabRequest.id);
+    await expect(service.listQueuePage(lab, "LABORATORY", { cursor: Buffer.from("invalid").toString("base64url") })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     expect((await service.dashboard(manager)).totalActive).toBe(0);
 
     const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-READ-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "read-model-receive" });
@@ -166,7 +179,7 @@ describe("authorized read models", () => {
     expect((await service.listNotifications(actor, "UNREAD")).items).toHaveLength(1);
     const pendingNotification = (await service.listNotifications(actor)).items[0];
     await expect(service.acknowledgeNotification(actor, pendingNotification.id, { expectedVersion: pendingNotification.version, reason: "Confirmação prematura", confirm: true, idempotencyKey: "read-model-pending-ack" })).rejects.toMatchObject({ code: "NOTIFICATION_NOT_DELIVERED" });
-    await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50 });
+    await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date(Date.now() + 1_000), batchSize: 50, allowSyntheticDelivery: true });
     const notification = (await service.listNotifications(actor)).items[0];
     await expect(service.acknowledgeNotification(actor, notification.id, {} as never)).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REQUIRED" });
     await service.acknowledgeNotification(actor, notification.id, { expectedVersion: notification.version, reason: "Confirmei a recoleta no contexto autorizado.", confirm: true, idempotencyKey: "read-model-ack" });

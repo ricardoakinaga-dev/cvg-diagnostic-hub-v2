@@ -43,7 +43,7 @@ O cliente não escolhe actor, escopo ou estado. Cada mutação recebe `expectedV
 | MalwareScanner | scanner local controlado, HTTP externo | modo local é proibido em produção; endpoint/chave são obrigatórios |
 | Rate limiter | memória fora de produção, buckets PostgreSQL em produção | backend desconhecido ou indisponível falha fechado |
 | Outbox | claim/lease/retry + token de ownership | conclusão exige worker e claim atuais dentro do lease |
-| Realtime | SSE autorizado com polling/replay/resync | não há `LISTEN/NOTIFY` multi-instância demonstrado ainda |
+| Realtime | SSE autorizado com polling/replay/resync; `postgres-listen` opt-in para wake-up multi-instância | conexão PostgreSQL real, duas instâncias, carga e propagação ainda não demonstradas |
 
 ## 5. Read models
 

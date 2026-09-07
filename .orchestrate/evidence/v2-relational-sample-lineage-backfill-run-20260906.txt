@@ -1,0 +1,55 @@
+V2 RELATIONAL SAMPLE-LINEAGE BACKFILL — DISPOSABLE RUN NOTES
+Date: 2026-09-06
+Workspace: /home/ricardo/cvg-diagnostic-hub-v2
+Existing PostgreSQL 127.0.0.1:5432: NOT TOUCHED
+Disposable PostgreSQL: 127.0.0.1:55468, role ricardo, PostgreSQL 16.15
+
+FOCUSED COMMAND
+ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://ricardo@127.0.0.1:55468/postgres npm run test:postgres -- --run tests/postgres/relational-sample-lineage.integration.test.ts --reporter=verbose
+
+RESULT
+Test Files  1 passed (1)
+Tests       9 passed (9)
+Start       05:35:40
+Duration    6.39s (transform 132ms, setup 0ms, collect 179ms, tests 6.05s, environment 0ms, prepare 49ms)
+
+FULL POSTGRES COMMAND
+ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://ricardo@127.0.0.1:55468/postgres npm run test:postgres -- --reporter=verbose
+
+RESULT
+Test Files  5 passed (5)
+Tests       29 passed (29)
+Start       05:35:51
+Duration    38.07s (transform 332ms, setup 0ms, collect 599ms, tests 36.72s, environment 1ms, prepare 241ms)
+
+RELATIONAL FOCUSED CASES
+1. migration 009 readiness and live constraints: PASS
+2. scoped projection/read/reconciliation: PASS
+3. populated migration-010 backfill, durable checkpoint and idempotent replay, including source drift fail-closed: PASS
+4. failed-run durable request-cursor resume: PASS
+5. source row lock held through checkpoint and concurrent writer fails closed: PASS
+6. same run serialized across independent PostgreSQL pools: PASS
+7. target key-set divergence rejected instead of compensated by counts: PASS
+8. indexed relational aggregate access path: PASS
+9. invalid accession/replacement/link constraints: PASS
+
+Authority remained SNAPSHOT/JSONB and target remained RELATIONAL_SHADOW.
+
+BROAD LOCAL REVALIDATION
+npm run validate: PASS — 564/564 tests in 67 files; 93.06% statements/lines, 85.14% branches, 95.51% functions; docs 56/56; OpenAPI 65 operations/60 paths; traceability 43/43; migrations 001–010/checksums.
+npm run build: PASS — 12 static pages generated.
+CI=1 npm run test:e2e -- --retries=0 --fail-on-flaky-tests: PASS — 51/51.
+npm run test:accessibility -- --retries=0 --fail-on-flaky-tests: PASS — 6/6.
+npm run security:scan: PASS.
+npm audit --audit-level=high: PASS — 0 vulnerabilities.
+npm run test:perf: PASS — 7/7.
+npm run test:recovery: PASS — 5/5.
+engineering-framework state checker: PASS — 11/11 checks.
+git diff --check: PASS.
+
+INDEPENDENT CRITIC
+The fresh read-only review found no CRITICAL issue, reported one HIGH and
+MEDIUM/LOW findings, and was recorded with each disposition after remediation.
+The final retest cleared the local HIGH/MEDIUM/LOW findings for this bounded
+shadow slice; production, clinical and relational-authority approval remain
+explicitly out of scope.

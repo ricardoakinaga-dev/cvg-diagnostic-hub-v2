@@ -21,14 +21,14 @@ Collections add `meta.nextCursor`, `meta.limit` and stable ordering. Errors foll
 
 ### IDs and headers
 
-- Internal resource IDs: opaque UUIDv7 strings.
+- Internal resource IDs are opaque strings. The production relational target is UUIDv7 or another approved monotonic UUID equivalent; the current local/synthetic runtime may use prefixed opaque IDs and clients must never parse or construct them.
 - Human request identifier: `requestCode`.
 - Mutating clinical commands: `Idempotency-Key` and `If-Match`/`expectedVersion` where specified. Patient registration also requires an idempotency key because it creates a patient and an initial encounter atomically.
 - Auth: secure server session cookie; future OIDC boundary does not expose bearer tokens to local storage. `POST /session/reauth` records a short-lived password reauthentication on the session for sensitive access-management commands.
 
 ### Pagination/filtering
 
-List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `sort`, and resource-specific filters. Search cursors encode the last rank/updatedAt/id tuple and timeline cursors encode occurredAt/id; clients must treat them as opaque. No endpoint returns unbounded clinical data. Filters use stable enum codes.
+List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `sort`, and resource-specific filters. Search cursors encode the last rank/updatedAt/id tuple and timeline cursors encode occurredAt/id; clients must treat them as opaque. No endpoint returns unbounded clinical data. Filters use stable enum codes. Every collection client must retain `meta.nextCursor` when present and send it back as the opaque `cursor` query parameter; it must not infer completion from row count alone. This applies in particular to `GET /queues/{departmentCode}/items`, including each queue in a manager's delegated scope.
 
 ### Idempotency and concurrency matrix
 
@@ -55,18 +55,21 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth` | authenticated session boundary |
+| Observability | `GET /metrics` | `health.readiness` |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
-| Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}` | scoped view |
+| Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
 | Diagnostic requests | `POST /diagnostic-requests`, `GET /diagnostic-requests`, `GET /diagnostic-requests/{id}` | create/view scope |
 | Request items | `GET /diagnostic-items/{id}` | item scope |
 | Results | `GET /results/{id}`, `GET /results/{id}/versions` | result scope |
-| Reports/attachments | `GET /reports/{id}`, upload session/finalize/download | result + file scope |
+| Reports/attachments | `GET /reports/{id}`, upload session/content/finalize/download | result + file scope |
 | Notifications | `GET /notifications`, `POST /notifications/{id}/acknowledge` | recipient |
-| Catalog | `GET /diagnostic-services`, `GET /reason-codes`, admin commands | config permission |
+| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `GET /reason-codes`, admin commands | config permission |
 | Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
 | Management control | `GET /management/overview` | `dashboard.view` + `user_role.manage`; one scoped snapshot for requests, pending work, departments and operational indicators |
 | Search | `GET /search` | scoped search |
 | Audit/timeline | `GET /audit-events`, `GET /timeline` | scoped/manager |
+| Dashboard | `GET /dashboard`, `GET /management/overview` | scoped dashboard; manager overview additionally requires management scope |
 | Health | `GET /livez`, `GET /readyz` | liveness/readiness policy |
 | Realtime | `GET /realtime/events` | session + scope |
 
@@ -76,6 +79,13 @@ Every endpoint below performs a server-side check for each listed canonical perm
 
 | Method and path | Required permission(s) | Additional condition/scope |
 | --- | --- | --- |
+| `GET /livez` | none | public liveness boundary; no dependency payload |
+| `GET /readyz` | none | public readiness boundary; checks configured dependencies and fails closed |
+| `GET /metrics` | `health.readiness` | readiness-capable configuration actor; bounded Prometheus labels and no clinical payload |
+| `POST /session/login` | none | public credential boundary; issues secure session and CSRF cookies |
+| `GET /session/me` | authenticated active session | returns only the current user/session projection |
+| `POST /session/logout` | authenticated active session | revokes the current session and clears cookies |
+| `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
@@ -83,6 +93,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /patients/{id}/encounters` | `encounter.view` | patient scope; returns only that patient's encounters |
 | `GET /encounters/{id}` | `encounter.view` | patient/encounter scope |
 | `GET /admissions/{id}` | `admission.view` | WARD/CARE scope |
+| `POST /admissions/{id}/context` | `admission.context.manage` | approved D-01 policy, manager delegation, `If-Match`/`expectedVersion` and idempotency |
 | `POST /diagnostic-requests` | `request.create` | duplicate override additionally requires `request.duplicate_override` |
 | `GET /diagnostic-requests` | `request.list` | filters cannot widen actor scope |
 | `GET /diagnostic-requests/{id}` | `request.view` | request patient and department scope |
@@ -110,6 +121,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /results/{id}/review` | `result.review` | care/policy scope; exact current version |
 | `GET /reports/{id}` | `result.view`, `attachment.view` | report and referenced files share result scope |
 | `POST /result-versions/{id}/attachments/upload-session` | `attachment.upload_session` | actor may edit the owning result/service |
+| `PUT /attachments/{id}/content` | `attachment.finalize` | bounded binary media and size boundary; upload remains bound to the issued session |
 | `POST /attachments/{id}/finalize` | `attachment.finalize` | owning result/service and scan/checksum policy |
 | `GET /attachments/{id}/download` | `attachment.download`, `attachment.view` | short-lived authorized download only |
 | `GET /notifications` | `notification.view` | recipient scope; no cross-user listing |
@@ -118,13 +130,14 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /timeline` | `timeline.view` | request/item scope and cursor filters |
 | `GET /search` | `search.execute` | every returned record is independently scope-filtered |
 | `GET /diagnostic-services` | `service.catalog.view` | authenticated operational scope |
+| `GET /diagnostic-services/{serviceId}/result-template` | `service.catalog.view` | executor service scope; returns the configured versioned template only |
 | `GET /diagnostic-services?includeInactive=true` | `service.catalog.manage` | admin/delegated manager scope; inactive values remain visible only for configuration |
 | `POST /diagnostic-services` | `service.catalog.manage` | admin/delegated manager policy; creates a versioned catalog entry |
 | `PATCH /diagnostic-services/{id}` | `service.catalog.manage` | admin/delegated manager policy; all editable fields are versioned, while referenced structural changes fail safely with `CATALOG_IN_USE` |
-| `POST /sla-policies/{id}` | `sla_policy.manage` | admin/delegated manager policy |
-| `PATCH /sla-policies/{id}` | `sla_policy.manage` | admin/delegated manager policy and version guard |
-| `POST /critical-result-policies/{id}` | `critical_result_policy.manage` | admin/delegated manager policy |
-| `PATCH /critical-result-policies/{id}` | `critical_result_policy.manage` | admin/delegated manager policy and version guard |
+| `POST /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
+| `PATCH /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
+| `POST /critical-result-policies/{id}` | `critical_result_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-03 is approved |
+| `PATCH /critical-result-policies/{id}` | `critical_result_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-03 is approved |
 | `POST /reason-codes` | `reason_code.manage` | admin/delegated manager policy; creates an auditable code |
 | `PATCH /reason-codes/{id}` | `reason_code.manage` | admin/delegated manager policy and version guard |
 | `GET /reason-codes` | `reason_code.manage` | configuration actors only; inactive values retained for audit |
@@ -133,13 +146,11 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /users/{id}/roles` | `user_role.manage` | ADMIN or delegated MANAGER target scope; recent password reauthentication, target `expectedVersion`, reason, confirmation and audit; ADMIN may revise a MANAGER's `managedDepartmentCodes` |
 | `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit |
 | `GET /management/overview` | `dashboard.view`, `user_role.manage` | active MANAGER only; data is filtered to own department plus explicitly managed diagnostic departments |
+| `GET /dashboard` | `dashboard.view` | department and patient scope; bounded operational indicators only |
 | `GET /audit-events` | `audit.view` | manager/admin or scoped audit policy |
-| `GET /livez` | `health.liveness` | platform/internal exposure policy |
-| `GET /readyz` | `health.readiness` | platform/internal exposure policy |
 | `GET /realtime/events` | `realtime.connect` | authenticated session and event scope |
-| `POST /session/reauth` | authenticated session | current password; refreshes a short-lived step-up timestamp without returning credentials |
 
-This table is exhaustive for the planned routes in this document. Any new route must add a canonical permission, scope rule and operation-traceability row in the same change.
+This table is exhaustive for the planned routes in this document. The executable boundary is `src/server/http/api-operation-manifest.ts` and its generated OpenAPI validation; policy-gated rows above are intentionally not runtime operations yet. Any new route must add a canonical permission, scope rule and operation-traceability row in the same change.
 
 ## 3. Request commands
 
@@ -225,8 +236,8 @@ Schedule conflict returns `409 SCHEDULE_CONFLICT`; previous schedule remains his
 
 ## 7. Attachments
 
-1. `POST /result-versions/{id}/attachments/upload-session` returns short-lived upload URL and expected checksum/limits; mutating upload flows use `Idempotency-Key`.
-2. Client uploads directly to S3-compatible storage with opaque key.
+1. `POST /result-versions/{id}/attachments/upload-session` returns a short-lived upload URL and expected checksum/limits; mutating upload flows use `Idempotency-Key`.
+2. The production target may use a signed S3-compatible URL. The current local runtime exposes the same contract through the authenticated `PUT /attachments/{id}/content` boundary, so storage credentials and object keys never reach the client.
 3. `POST /attachments/{id}/finalize` validates size/MIME/checksum/scan state and requires `Idempotency-Key`.
 4. `GET /attachments/{id}/download` returns authorized short-lived URL or streams through a safe proxy.
 

@@ -1,0 +1,457 @@
+{
+  "criteria": [
+    {
+      "baseline": {
+        "actual": "Há prova local sintética e prova PostgreSQL descartável do slice relacional; não há jornada browser PostgreSQL/E3 completa.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige evidência E2/E3 e políticas clínicas aplicáveis.",
+      "dimension": "jornadas públicas",
+      "evidence_method": "Suíte API + Playwright servido em banco durável, com dataset e revisão humana identificados.",
+      "id": "AAA-01",
+      "license_notes": "Critério interno; não substitui aceite hospitalar.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Contexto, solicitação, Lab/RX/US, resultado, revisão, recoleta, transferência e alta funcionam pela API e UI servidas sem mutações mockadas.",
+      "validity_notes": "Testes de memória e fixtures não provam operação hospitalar.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Validação local atual registra 65 operações em 60 paths e testes de contrato verdes.",
+        "status": "PASS"
+      },
+      "conditions": "Revalidar no candidato final.",
+      "dimension": "contrato HTTP",
+      "evidence_method": "Redocly, drift validator, runtime contract tests, casos negativos e revisão semântica.",
+      "id": "AAA-02",
+      "license_notes": "Critério interno.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "PRD, SPEC, OpenAPI, runtime, schemas e UI mantêm paridade de schemas, status, erros, paginação, versão e idempotência.",
+      "validity_notes": "PASS local não cobre mudanças posteriores ou clientes externos.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Casos de entrada e segurança locais estão verdes na suíte consolidada.",
+        "status": "PASS"
+      },
+      "conditions": "Repetir com configuração de homologação.",
+      "dimension": "fronteira de entrada",
+      "evidence_method": "Testes de rota, limites de corpo, headers inválidos, abuso HTTP e rate limit.",
+      "id": "AAA-03",
+      "license_notes": "Critério interno.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Payloads, headers, nesting, tamanho e confiança no proxy têm limites e falham de forma segura.",
+      "validity_notes": "Não implica proteção contra infraestrutura real não ensaiada.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Há matriz e testes locais; não há IdP/política institucional nem homologação distribuída completa.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige D-01/D-05 e evidência E2/E3.",
+      "dimension": "autorização",
+      "evidence_method": "Matriz allow/deny, revogação cross-instance, listas, busca, SSE e comandos em PostgreSQL.",
+      "id": "AAA-04",
+      "license_notes": "Critério interno de segurança.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Ator, ação, fase, paciente, serviço, setor e delegação são verificados no servidor, inclusive entre instâncias.",
+      "validity_notes": "Permissão visual nunca é autoridade.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Testes locais cobrem escopo e não vazamento; scanner externo, ambiente institucional e revisão independente final continuam ausentes.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige revisão independente e ambiente alvo.",
+      "dimension": "confidencialidade",
+      "evidence_method": "Casos negativos públicos, telemetria sanitizada e revisão adversarial.",
+      "id": "AAA-05",
+      "license_notes": "Critério interno de privacidade e segurança.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Drafts, versões, anexos, timelines, listas, contagens, busca e SSE não revelam recursos fora do escopo.",
+      "validity_notes": "Ausência de achado local não prova ausência de vulnerabilidade.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Patient Workspace e comandos de contexto existem localmente; política hospitalar real não foi aprovada.",
+        "status": "BLOCKED"
+      },
+      "conditions": "D-01 é autoridade humana obrigatória.",
+      "dimension": "identidade clínica",
+      "evidence_method": "Política D-01 assinada, jornadas E2/E3 e regressões de identidade/escopo.",
+      "id": "AAA-06",
+      "license_notes": "Não inventar identidade ou ownership.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Paciente, tutor, encounter, admission, origem, homônimo, transferência e alta são inequívocos e governados.",
+      "validity_notes": "Fixture sintética não representa cadastro institucional.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Há 20/20 PostgreSQL no slice e regressão local; ciclo clínico completo e política D-02 ainda não estão aprovados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige D-02 e cobertura do candidato completo.",
+      "dimension": "lifecycle",
+      "evidence_method": "Testes unitários/API/PostgreSQL, corrida concorrente, constraints e idempotência.",
+      "id": "AAA-07",
+      "license_notes": "Critério interno de integridade clínica.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Estados, agregado, versões, revisão, cancelamento, replay e concorrência não perdem ou sobrescrevem dados.",
+      "validity_notes": "Cenários declarados não enumeram todo comportamento possível.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Schema expand-only e shadow projection passam localmente; JSONB ainda é a autoridade runtime.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige cutover autorizado e reconciliação alvo.",
+      "dimension": "persistência",
+      "evidence_method": "SQL de runtime, dual-read, backfill, constraints, índices, concorrência e inspeção EXPLAIN.",
+      "id": "AAA-08",
+      "license_notes": "Nenhuma migração produtiva é autorizada por este registro.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Schema relacional é autoridade clínica ativa, concorrente e consultável sem snapshot/lock global como fonte clínica.",
+      "validity_notes": "A prova descartável não demonstra durabilidade operacional.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Migrations 001–009 e rollback transacional local passam; backfill populado, cutover e restore completo não foram provados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige dados representativos e autoridade D-05.",
+      "dimension": "migração",
+      "evidence_method": "Banco representativo, falha intermediária, restore, hash de convergência e gate de cutover.",
+      "id": "AAA-09",
+      "license_notes": "Preservar reversibilidade.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Upgrade, backfill, compatibilidade, cutover e rollback/roll-forward são recuperáveis e reconciliados.",
+      "validity_notes": "Cluster vazio não mede risco de dados legados.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Há testes cross-instance do store no PostgreSQL local; não há deployment/homologação distribuída completa.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige ambiente alvo e SRE.",
+      "dimension": "multi-instância",
+      "evidence_method": "Duas instâncias reais, PostgreSQL, revogação, concorrência e indisponibilidade.",
+      "id": "AAA-10",
+      "license_notes": "Critério operacional.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Sessão, escopo, dados e limites são coerentes entre instâncias e após restart.",
+      "validity_notes": "Dois pools locais não equivalem a topologia produtiva.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Routing e testes de outbox locais existem; sink produtivo e chaos/retry distribuído não foram provados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige operação de delivery configurada.",
+      "dimension": "delivery",
+      "evidence_method": "Corrida de workers, crash após envio, tokens de ownership e sink observável.",
+      "id": "AAA-11",
+      "license_notes": "Sem falso sucesso clínico.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Outbox possui consumidor correto, confirmação durável, lease, retry, dedupe e dead-letter seguros.",
+      "validity_notes": "Validação de banco não comprova entrega a terceiro.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "SSE, fallback e testes locais existem; fanout multi-instância e browser durável permanecem abertos.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige ensaio operacional e revisão de segurança.",
+      "dimension": "realtime",
+      "evidence_method": "Duas instâncias, Last-Event-ID, reconexão, cliente lento, revogação e degradação.",
+      "id": "AAA-12",
+      "license_notes": "Realtime é sinal operacional, nunca fonte clínica.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "SSE possui heartbeat, replay, resync, expiração, fallback, limites e autorização sem fonte clínica paralela.",
+      "validity_notes": "E2E sintético não prova rede institucional.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Contrato, local store e filtros CLEAN/FINALIZED passam; AV, object storage e restore de anexos não foram exercitados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige D-05 e serviços reais de homologação.",
+      "dimension": "arquivos",
+      "evidence_method": "Scanner/storage de homologação, casos de falha e restore de conteúdo.",
+      "id": "AAA-13",
+      "license_notes": "Nenhum arquivo clínico real deve ser usado neste ambiente.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "MIME, checksum, scan, quarentena, download privado e recuperação de anexos funcionam no storage produtivo.",
+      "validity_notes": "Storage local não representa scanner ou bucket produtivo.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Readiness/métricas/runbooks e testes locais passam; alerta end-to-end e plantão real não foram provados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige SRE, destino de telemetria e ownership.",
+      "dimension": "observabilidade",
+      "evidence_method": "Injeção de falha, alerta recebido, diagnóstico pelo runbook e cardinalidade controlada.",
+      "id": "AAA-14",
+      "license_notes": "Não persistir dados clínicos desnecessários em logs.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Readiness, correlação, métricas e alertas permitem detectar e agir em falha real.",
+      "validity_notes": "Métricas unitárias não provam diagnóstico em produção.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Performance sintética local passa; workload representativo, EXPLAIN e soak não foram aprovados/executados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige D-05 e workload congelado.",
+      "dimension": "desempenho",
+      "evidence_method": "PostgreSQL, duas instâncias, workload representativo, soak, throughput e EXPLAIN.",
+      "id": "AAA-15",
+      "license_notes": "Não reduzir workload para forçar latência verde.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Leituras, comandos, busca e realtime cumprem workload aprovado com p50/p95/p99 e erro conhecidos.",
+      "validity_notes": "Benchmarks sintéticos são condicionais.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "E2E 51/51, axe 6/6 e inspeção local passam; avaliação manual e browser durável permanecem ausentes.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige revisão visual/acessibilidade independente.",
+      "dimension": "UX/acessibilidade",
+      "evidence_method": "Playwright/axe, inspeção visual real, avaliação manual e três viewports.",
+      "id": "AAA-16",
+      "license_notes": "Critério de produto e acesso.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Contexto, próxima ação, teclado, touch, leitor de tela, contraste, zoom e estados degradados funcionam.",
+      "validity_notes": "Automação não substitui usuário de leitor de tela.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Fitness e typecheck locais passam; revisão independente final não retornou e o programa completo ainda evolui.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige review independente contra o candidato final.",
+      "dimension": "arquitetura",
+      "evidence_method": "Fitness checks, inspeção de dependências, revisão fresca e integração.",
+      "id": "AAA-17",
+      "license_notes": "Não adicionar complexidade sem necessidade demonstrada.",
+      "priority": "medium",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Fronteiras acíclicas, adaptadores separados, módulos coesos e seams testáveis sem exceção conveniente.",
+      "validity_notes": "Estrutura limpa não garante coesão sem julgamento.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Lockfile, build, scan e audit locais passam; CI remoto e candidato limpo não foram demonstrados.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige pipeline externo e revisão de proveniência.",
+      "dimension": "cadeia/build",
+      "evidence_method": "Lockfile, npm audit, secret scan, checkout isolado, CI remoto e fingerprint do candidato.",
+      "id": "AAA-18",
+      "license_notes": "Não expor segredos em evidências.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Dependências, segredos, instalação, build, CI e proveniência são reproduzíveis, sem crítico/alto aberto.",
+      "validity_notes": "Audit local é fotografia, não garantia futura.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Manifestos e smoke local existem; restore completo de banco+anexos+chaves e RPO/RTO aprovados não existem.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige D-05 e ambiente isolado com ownership.",
+      "dimension": "recuperação",
+      "evidence_method": "Restore em ambiente vazio, tempos medidos, perda medida, conteúdo validado pela aplicação e runbook.",
+      "id": "AAA-19",
+      "license_notes": "Restore destrutivo somente em alvo explicitamente isolado.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Banco, anexos, configuração e chaves necessárias restauram dentro de RPO/RTO aprovados e a aplicação confirma o conteúdo.",
+      "validity_notes": "Scripts dry-run não provam recuperação operacional.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Validação estrutural local passa; evidência independente e completa para todos os MUST/AC ainda não está fechada.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Exige reconciliação no candidato final.",
+      "dimension": "rastreabilidade",
+      "evidence_method": "Validators de docs/OpenAPI/traceability, manifests com hash e revisão semântica.",
+      "id": "AAA-20",
+      "license_notes": "Link nominal não é prova suficiente.",
+      "priority": "high",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Todo MUST/AC liga requisito, contrato, implementação, teste significativo, comando e evidência atual.",
+      "validity_notes": "O verificador estrutural não substitui revisão semântica.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Decisões clínicas/hospitalares permanecem abertas e explicitamente não inventadas.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Fronteira humana obrigatória.",
+      "dimension": "governança clínica",
+      "evidence_method": "Decisões D-01–D-05 assinadas e ligadas ao candidato, catálogo e ensaios.",
+      "id": "AAA-21",
+      "license_notes": "Nenhuma autoridade é inferida do código.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "Políticas clínicas e operacionais têm dono, aprovação, versão, vigência e exercitação nos fluxos.",
+      "validity_notes": "Não pode ser satisfeita por teste sintético.",
+      "version": "AAA-3"
+    },
+    {
+      "baseline": {
+        "actual": "Não há CI remoto, revisão independente concluída, piloto ou aceite formal do hospital.",
+        "status": "BLOCKED"
+      },
+      "conditions": "Fronteira de release humana/operacional.",
+      "dimension": "aceite/release",
+      "evidence_method": "Packet E4 com assinaturas dos responsáveis, critérios de interrupção e fingerprint do candidato final.",
+      "id": "AAA-22",
+      "license_notes": "Estado NOT READY é obrigatório até evidência E4.",
+      "priority": "critical",
+      "required": true,
+      "snapshot_sha256": null,
+      "source": "docs/build/AAA_2_QUALITY_BAR.md",
+      "source_type": "REPO",
+      "target": "CI remoto, revisão independente, aceite manual, treino, piloto, rollback e decisão formal estão completos para o candidato.",
+      "validity_notes": "Nenhum resultado local pode ser promovido a release hospitalar.",
+      "version": "AAA-3"
+    }
+  ],
+  "frozen_at": "2026-09-06T04:05:41Z",
+  "goal": "Evoluir o CVG Diagnostics Hub para um resultado State of Art / Triplo AAA, preservando a segurança clínica, a rastreabilidade, a persistência durável, a UX acessível e os limites explícitos de autoridade.",
+  "revision_log": [
+    {
+      "author": "lead-agent",
+      "reason": "Novo ciclo Gauntlet após a consolidação do AAA-2, recuperação do control-plane e prova PostgreSQL descartável; preserva a barra mais estrita e registra a independência/release como gaps reais.",
+      "recorded_at": "2026-09-06T04:05:41Z",
+      "version": "AAA-3"
+    }
+  ],
+  "schema_version": 1,
+  "sources": [
+    {
+      "license_notes": "Objetivo fornecido pelo usuário; não é uma licença para publicação, produção ou decisão clínica.",
+      "location": "codex_internal_context.objective",
+      "snapshot_sha256": null,
+      "type": "USER",
+      "version": "2026-09-06"
+    },
+    {
+      "license_notes": "Contrato interno do repositório; metas externas permanecem sujeitas à aprovação dos responsáveis.",
+      "location": "docs/build/AAA_2_QUALITY_BAR.md",
+      "snapshot_sha256": "18025b5c4950c05df06aee413ade6db5da64942e8880a115c2aaaa479005ed6b",
+      "type": "REPO",
+      "version": "AAA-2 / 2026-09-05"
+    },
+    {
+      "license_notes": "Especificação interna do slice V2; não é certificação clínica ou regulatória.",
+      "location": "docs/v2/QUALITY_BAR.md",
+      "snapshot_sha256": "1ba23e1bfae60ca15796ffe3a8e3227f41f6bb6c5d6853b07b4151245a3d16f2",
+      "type": "REPO",
+      "version": "V2 / current"
+    }
+  ],
+  "version": "AAA-3"
+}

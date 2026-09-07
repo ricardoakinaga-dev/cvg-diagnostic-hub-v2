@@ -5,6 +5,7 @@ import type { OperationalContext, OperationalEscalationLevel, Priority } from "@
 import { Surface } from "@cvg/ui";
 import { formatRelativeTime } from "@/components/api-client";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
+import { Icon } from "@/components/ui-icons";
 
 export interface CommandCenterAttentionItem {
   id: string;
@@ -44,6 +45,11 @@ const escalationLabels: Record<OperationalEscalationLevel, string> = {
   ATTENTION: "Atenção",
   URGENT: "Urgente"
 };
+const departmentLabels: Record<string, string> = { LABORATORY: "Laboratório", RADIOLOGY: "Radiologia", ULTRASOUND: "Ultrassom", INPATIENT: "Internação", OPERATIONS: "Operações" };
+
+function departmentLabel(code: string): string {
+  return departmentLabels[code] ?? code.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
+}
 
 export function CommandCenterPanel({ data }: { data: CommandCenterData }) {
   const attention = data.attention ?? [];
@@ -68,9 +74,9 @@ export function CommandCenterPanel({ data }: { data: CommandCenterData }) {
 
       {attention.length === 0 ? (
         <div className="command-center-empty" role="status">
-          <span aria-hidden="true">✓</span>
+          <span aria-hidden="true"><Icon name="check" size={16} /></span>
           <div><strong>Nenhum item requer atenção imediata</strong><p>Os itens ativos continuam disponíveis na Central de Exames.</p></div>
-          <Link href="/queues" className="text-link">Abrir central <span>→</span></Link>
+          <Link href="/queues" className="text-link">Abrir central <Icon name="arrow-right" size={15} /></Link>
         </div>
       ) : (
         <ul className="command-center-attention">
@@ -85,7 +91,7 @@ export function CommandCenterPanel({ data }: { data: CommandCenterData }) {
             {departments.length === 0 ? <span className="command-center-muted">Nenhum setor no escopo atual.</span> : departments.map((department) => <DepartmentCard key={department.departmentCode} department={department} />)}
           </div>
         </div>
-        <Link href="/queues" className="button button-ghost">Ver todas as filas <span>→</span></Link>
+        <Link href="/queues" className="button button-ghost">Ver todas as filas <Icon name="arrow-right" size={15} /></Link>
       </div>
     </Surface>
   );
@@ -98,10 +104,10 @@ function AttentionRow({ item }: { item: CommandCenterAttentionItem }) {
       <Link href={item.deepLink} className="command-center-row-link">
         <span className="command-center-row-priority" aria-label={escalationLabels[operationalContext.escalationLevel]}>{escalationLabels[operationalContext.escalationLevel]}</span>
         <span className="command-center-patient"><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId} · {item.requestCode}</small></span>
-        <span className="command-center-service"><strong>{item.service.name}</strong><small>{item.departmentCode} · <StatusBadge status={item.status} /></small></span>
+        <span className="command-center-service"><strong>{item.service.name}</strong><small>{departmentLabel(item.departmentCode)} · <StatusBadge status={item.status} /></small></span>
         <span className="command-center-next"><strong>{item.nextAction}</strong><small>{operationalContext.currentOwner.label}{operationalContext.blockedBy ? ` · ${operationalContext.blockedBy.label}` : ""}</small></span>
         <span className={`command-center-due ${item.overdue ? "text-danger" : ""}`}><strong>{item.overdue ? "Atrasado" : formatRelativeTime(item.dueAt)}</strong><small><PriorityBadge priority={item.priority} /></small></span>
-        <span className="row-arrow" aria-hidden="true">→</span>
+        <span className="row-arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span>
       </Link>
     </li>
   );

@@ -1,0 +1,26 @@
+AAA-2 traceability lane — bounded local evidence — 2026-09-05
+
+This packet records local harness and partial-domain checks. It is not production, PostgreSQL, representative-load or hospital acceptance evidence.
+
+FR-OPS-002 — CONDITIONAL
+- Command: npx vitest run src/server/application/service.test.ts
+- Result: PASS — 6 tests; request creation stamps sla_started_at-equivalent, due_at-equivalent and sla policy version; the fixture verifies the configured urgent duration.
+- Limit: the runtime still uses service/priority hours from the in-memory snapshot. Calendar, timezone, event-dependent start, pause/resume, overdue job and policy history remain unimplemented and require D-04.
+
+NFR-PERF-001 / NFR-PERF-002 — CONDITIONAL
+- Command: npx tsx --test scripts/perf-report.test.ts
+- Result: PASS — 2 tests; the smoke harness reports request count, errors, p50, p95, p99 and max latency deterministically.
+- Command: npm run perf:smoke
+- Result: NOT RUN in this lane. Existing operational documentation records a prior 400-request synthetic smoke; it is not representative hospital load, PostgreSQL EXPLAIN, multi-instance, soak or acceptance evidence.
+
+NFR-OPS-001 — BLOCKED
+- Command: node --test scripts/backup-restore.test.mjs
+- Result: PASS — 3 tests; backup, explicit restore opt-in, disposable restore database, cleanup and pg_dump/pg_restore guard contracts are present.
+- Command: npm run db:restore:smoke
+- Result: BLOCKED — no Docker/PostgreSQL target and no approved RPO/RTO/object-storage/key-material environment on this host.
+- Limit: no database, attachment, key metadata, checksum, RPO or RTO restore result is claimed.
+
+FR-CORE-005 — BLOCKED
+- Command: npx vitest run src/server/application/service.test.ts
+- Result: PASS for the existing request context and admission linkage only.
+- Limit: there is no transfer/bed/discharge command or acceptance test. D-01 must define identity, ownership, delegation, context validity and the rule for open items before implementation can be claimed.

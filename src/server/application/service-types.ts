@@ -7,6 +7,43 @@ export interface CommandMeta {
   correlationId?: string;
 }
 
+export type AdmissionContextAction = "TRANSFER" | "BED_CHANGE" | "DISCHARGE" | "RESPONSIBILITY_CHANGE";
+
+interface AdmissionContextCommandBase extends CommandMeta {
+  effectiveAt: string;
+  reason: string;
+}
+
+export type AdmissionContextCommandInput =
+  | (AdmissionContextCommandBase & {
+      action: "TRANSFER";
+      departmentCode: string;
+      ward: string;
+      bed: string;
+      responsibleUserId: string;
+    })
+  | (AdmissionContextCommandBase & {
+      action: "BED_CHANGE";
+      ward: string;
+      bed: string;
+    })
+  | (AdmissionContextCommandBase & {
+      action: "DISCHARGE";
+    })
+  | (AdmissionContextCommandBase & {
+      action: "RESPONSIBILITY_CHANGE";
+      responsibleUserId: string;
+    });
+
+export interface AdmissionContextCommandResult {
+  admission: Admission;
+  encounter: StoreState["encounters"][number];
+  affectedRequestCount: number;
+  openItemCount: number;
+  openItemsPreserved: true;
+  policyVersion: string;
+}
+
 export interface NotificationAcknowledgeInput extends CommandMeta {
   reason: string;
   confirm: true;
@@ -345,6 +382,19 @@ export interface TimelineResult {
   total: number;
 }
 
+export interface PatientNextAction {
+  id: string;
+  requestId: string;
+  requestCode: string;
+  itemId: string;
+  label: string;
+  deepLink: string;
+  status: ItemState;
+  priority: Priority;
+  dueAt: string;
+  departmentCode: string;
+}
+
 export interface RequestView extends DiagnosticRequest {
   patient: StoreState["patients"][number];
   encounter: StoreState["encounters"][number];
@@ -367,23 +417,93 @@ export interface ItemView {
   service: DiagnosticService;
 }
 
-export type SampleCommandResult = { sample: Sample; items: DiagnosticItem[]; request: DiagnosticRequest };
-export type ResultDraftCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: DiagnosticRequest };
-export type ResultReleaseCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: DiagnosticRequest };
-export type ReviewCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: DiagnosticRequest };
-export type ItemCommandResult = { item: DiagnosticItem; request: DiagnosticRequest };
-export type ProcedureScheduleCommandResult = { item: DiagnosticItem; procedure: Procedure; schedule: ProcedureSchedule; request: DiagnosticRequest };
-export type ProcedureRescheduleCommandResult = { procedure: Procedure; schedule: ProcedureSchedule; history: ProcedureSchedule[]; item: DiagnosticItem; request: DiagnosticRequest };
-export type ProcedureExecutionCommandResult = { item: DiagnosticItem; procedure: Procedure; request: DiagnosticRequest };
-export type AmendCommandResult = { result: Result; version: ResultVersion; previousVersion: ResultVersion; item: DiagnosticItem; request: DiagnosticRequest };
-export type VoidCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: DiagnosticRequest; replacementRequired: boolean };
+export type SampleCommandResult = { sample: Sample; items: DiagnosticItem[]; request: RequestView };
+export type ResultDraftCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: RequestView };
+export type ResultReleaseCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: RequestView };
+export type ReviewCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: RequestView };
+export type ItemCommandResult = { item: DiagnosticItem; request: RequestView };
+export type ProcedureScheduleCommandResult = { item: DiagnosticItem; procedure: Procedure; schedule: ProcedureSchedule; request: RequestView };
+export type ProcedureRescheduleCommandResult = { procedure: Procedure; schedule: ProcedureSchedule; history: ProcedureSchedule[]; item: DiagnosticItem; request: RequestView };
+export type ProcedureExecutionCommandResult = { item: DiagnosticItem; procedure: Procedure; request: RequestView };
+export type AmendCommandResult = { result: Result; version: ResultVersion; previousVersion: ResultVersion; item: DiagnosticItem; request: RequestView };
+export type VoidCommandResult = { result: Result; version: ResultVersion; item: DiagnosticItem; request: RequestView; replacementRequired: boolean };
 export type PublicAttachment = Omit<Attachment, "storageKey" | "uploadClaimToken" | "uploadClaimExpiresAt">;
 export type AttachmentSessionResult = { attachment: PublicAttachment; uploadUrl: string; expiresAt: string };
 export type AttachmentFinalizationResult = { attachment: PublicAttachment };
+
+export interface PatientWorkspaceSampleSummary {
+  id: string;
+  requestId: string;
+  accessionCode: string;
+  sampleType: string;
+  status: Sample["status"];
+  collectedAt?: string;
+  receivedAt?: string;
+}
+
+export interface PatientWorkspaceResultSummary {
+  id: string;
+  versionId: string;
+  status: "RELEASED";
+  releasedAt?: string;
+  needsReReview: boolean;
+}
+
+export interface PatientWorkspaceAttachmentSummary {
+  id: string;
+  resultVersionId: string;
+  safeName: string;
+  detectedMime: string;
+  sizeBytes: number;
+  scanStatus: "CLEAN";
+  uploadStatus: "FINALIZED";
+  createdAt: string;
+}
+
+export interface PatientWorkspaceItemContext {
+  operationalContext: OperationalContext;
+  sample: PatientWorkspaceSampleSummary | null;
+  result: PatientWorkspaceResultSummary | null;
+  attachments: PatientWorkspaceAttachmentSummary[];
+}
+
+export type PatientWorkspaceRequestView = Omit<RequestView, "items"> & {
+  items: Array<RequestView["items"][number] & { workspaceContext: PatientWorkspaceItemContext }>;
+};
+
+export interface PatientWorkspaceSummary {
+  asOf: string;
+  dataQuality: {
+    status: "FRESH" | "DEGRADED";
+    asOf: string;
+    note?: string;
+  };
+  currentContext: {
+    encounterId: string | null;
+    admissionId: string | null;
+    departmentCode: string | null;
+    ward: string | null;
+    bed: string | null;
+    responsibleLabel: string | null;
+  };
+  summary: {
+    requestCount: number;
+    itemCount: number;
+    activeItemCount: number;
+    availableResultCount: number;
+    sampleCount: number;
+    attachmentCount: number;
+  };
+}
+
 export type PatientDiagnosticsResult = {
   patient: StoreState["patients"][number];
-  items: RequestView[];
+  encounters: StoreState["encounters"][number][];
+  admissions: Admission[];
+  items: PatientWorkspaceRequestView[];
   events: AuditEvent[];
+  nextActions: PatientNextAction[];
+  workspace: PatientWorkspaceSummary;
   nextCursor?: string;
   limit: number;
   total: number;

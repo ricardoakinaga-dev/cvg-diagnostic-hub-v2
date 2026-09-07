@@ -15,7 +15,7 @@
 | consistency | `CONTINUOUS` reconciliation |
 | relational projections | audit events, outbox messages, rate-limit buckets |
 
-O contrato impede que essa transição seja confundida com um schema relacional clínico concluído. O harness PostgreSQL prova migration/readiness, reload, transações, uma linhagem de resultado por item, auditoria, outbox e concorrência; ainda faltam FKs/checks/indexes clínicos no banco, `EXPLAIN` com dados representativos e prova de browser contra Postgres.
+O contrato impede que essa transição seja confundida com um schema relacional clínico concluído. O harness PostgreSQL prova migration/readiness, reload, transações, projeção/read/reconciliation de request/item/sample/link com membership completo, replay idempotente, rollback adapter/snapshot, uma linhagem de resultado por item, auditoria, outbox e concorrência; a leitura do agregado também possui `EXPLAIN` estrutural local com fan-out de distração e caminhos indexados. Ainda faltam backfill/cutover autoritativos, workload aprovado/representativo, revisão de todos os FKs/checks/índices de produção e prova browser sobre a seam relacional.
 
 ## 1. Conventions
 
@@ -73,9 +73,14 @@ Do not enforce unique request+service blindly: duplicate override can be clinica
 | Table | Fields/meaning | Constraints/indexes |
 | --- | --- | --- |
 | `samples` | id, request_id, accession_code, sample_type, status, replaces_sample_id?, collected/received fields, rejection code/note, version | unique accession; FK chain cannot cross request |
-| `sample_item_links` | sample_id, item_id, link_status, linked_at/by, rejection details | unique sample+item; check same request |
+| `sample_item_links` | sample_id, item_id, link_status, linked_at/by, rejection details, version | unique sample+item; check same request; historical links are versioned and never silently removed |
 | `procedures` | id, item_id, workflow_type, status, performed_at/by, metadata JSON schema version | unique active procedure per item |
 | `procedure_schedules` | id, procedure_id, starts/ends, resource, status, reason, actor, version | no overlapping active schedule per resource if policy requires |
+
+Durante a seam transitória 007–009, `samples.item_ids` é uma coluna de projeção
+usada para preservar a membership declarada pelo snapshot e tornar a leitura
+relacional verificável. Ela não muda a autoridade do JSONB nem substitui a tabela
+normalizada `sample_item_links` no modelo relacional alvo.
 
 ## 7. Results and files
 
@@ -106,6 +111,9 @@ FK: item.request_id → diagnostic_requests.id
 FK: result.item_id → diagnostic_request_items.id (one logical result per item in MVP)
 UNIQUE: diagnostic_requests.request_code
 UNIQUE: samples.accession_code
+CHECK: samples.accession_code matches the canonical uppercase accession namespace
+CHECK: samples.rejection_reason_id is not null for REJECTED and REPLACED samples
+CHECK: sample_item_links.link_status is ACTIVE, REJECTED, or REPLACED
 UNIQUE: result_versions(result_id, sequence)
 CHECK: released_at is not null only for RELEASED/SUPERSEDED version
 CHECK: amendment_reason is not null when supersedes_id is not null

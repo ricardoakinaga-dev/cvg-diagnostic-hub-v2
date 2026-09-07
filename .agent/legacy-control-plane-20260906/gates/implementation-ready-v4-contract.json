@@ -1,0 +1,74 @@
+{
+  "record_id": "GATE-IMPLEMENTATION-READY-V4-CONTRACT-001",
+  "timestamp": "2026-08-22T03:10:03Z",
+  "gate_id": "IMPLEMENTATION_READY",
+  "scope": "Exact and bounded HTTP and OpenAPI contract local implementation",
+  "scope_ref": "TASK-V4-CONTRACT-001",
+  "version": 1,
+  "criteria": [
+    {
+      "id": "IR-001",
+      "description": "The authorized implementation outcome, scope and acceptance bar are explicit and traceable",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/plans/premium-enterprise-mvp-v4.md"
+      ],
+      "confidence": "HIGH",
+      "limitations": "This gate authorizes only the local API contract and request-boundary slice; it does not assert V4-API-01/02 already pass"
+    },
+    {
+      "id": "IR-002",
+      "description": "Dependencies, interfaces, risks and the executable work sequence are defined from current evidence",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-V4-CONTRACT-BASELINE-001",
+        ".agent/plans/premium-enterprise-mvp-v4.md",
+        ".agent/backlog.json"
+      ],
+      "confidence": "HIGH",
+      "limitations": "Operation schemas may be split into smaller generated artifacts during GREEN as long as the manifest and semantic/drift gates remain exact"
+    },
+    {
+      "id": "IR-003",
+      "description": "Test-first verification, recovery, security controls and authority boundaries are defined before material edits",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/plans/premium-enterprise-mvp-v4.md",
+        ".agent/authority.jsonl#AUTH-V4-CONTRACT-001"
+      ],
+      "confidence": "HIGH",
+      "limitations": "The work uses synthetic local requests only and does not authorize external publication, production deployment or real clinical data"
+    }
+  ],
+  "evidence": [
+    "docs/build/PREMIUM_MVP_V4.md",
+    ".agent/plans/premium-enterprise-mvp-v4.md",
+    ".agent/backlog.json",
+    ".agent/verification.jsonl#VER-V4-CONTRACT-BASELINE-001"
+  ],
+  "confidence": "HIGH",
+  "gaps": [],
+  "conditions": [],
+  "authority": {
+    "required": true,
+    "state": "CONFIRMED",
+    "actor": "Workspace owner (user)",
+    "scope": "Exact and bounded HTTP and OpenAPI contract local implementation",
+    "decision": "Proceed with local RED-first manifest, OpenAPI and request-boundary implementation within the frozen external boundary",
+    "evidence_ref": ".agent/authority.jsonl#AUTH-V4-CONTRACT-001",
+    "expires_or_revalidates": "Revalidate on public API scope expansion, external publication, real data, or risk escalation"
+  },
+  "residual_risk": "HIGH",
+  "decision": "PASS",
+  "next_action": "Write manifest drift and bounded JSON RED tests before changing runtime or OpenAPI production artifacts",
+  "revalidation_triggers": [
+    "material change to public API scope or Quality Bar v4",
+    "new CRITICAL risk or cross-system blast radius",
+    "attempt to publish externally or use real clinical data"
+  ],
+  "supersedes": null
+}

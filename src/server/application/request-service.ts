@@ -2,12 +2,13 @@ import { createHash, randomUUID } from "node:crypto";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
-import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, PatientWorkspaceItemContext, PatientWorkspaceResultSummary, PatientWorkspaceSampleSummary, PatientWorkspaceAttachmentSummary, ReportView } from "./service-types";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
-import type { ApplicationServiceContext } from "./service-context";
+import type { ApplicationServiceContext, PatientDiagnosticsAuxiliaryRead } from "./service-context";
 import * as helpers from "./service-common";
+import { reprojectRequestForActor } from "./request-projection";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -41,6 +42,7 @@ const {
   requirePatientPermission,
   requireRequestPermission,
   findOrThrow,
+  findOrThrowScoped,
   createAudit,
   createOutbox,
   notificationFor,
@@ -69,6 +71,8 @@ const {
   requestView,
   requestViewForActor,
   canViewRequest,
+  canViewItem,
+  requireItemPermission,
   requestForAuditEvent,
   auditEventItem,
   auditEventItemIds,
@@ -84,6 +88,7 @@ const {
   pageSize,
   dateFilter,
   resultView,
+  operationalContextFor,
   visibleResultVersions,
   requireCurrentResultRead,
   ensureExpectedVersion,
@@ -95,7 +100,7 @@ const {
   transitionItem,
 } = helpers;
 
-export function createRequestService({ store, storage }: ApplicationServiceContext) {
+export function createRequestService({ store, storage, patientDiagnosticsAuxiliaryReader }: ApplicationServiceContext) {
   const service = {
     async createRequest(actor: User, input: CreateRequestInput, meta: CommandMeta & { allowDuplicateOverride?: boolean } = {}): Promise<RequestView> {
       const scope = "POST:/diagnostic-requests";
@@ -103,8 +108,6 @@ export function createRequestService({ store, storage }: ApplicationServiceConte
         const currentActor = requireActiveUser(originalState, actor);
         requirePermission(currentActor, "request.create", { patientId: input.patientId, departmentCode: currentActor.departmentCode });
         if (meta.allowDuplicateOverride) requireIdempotencyKey(meta.idempotencyKey);
-        const idempotent = withIdempotency<RequestView>(originalState, currentActor.id, scope, meta.idempotencyKey, { input, allowDuplicateOverride: meta.allowDuplicateOverride });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing as RequestView };
         if (!input.patientId || !input.encounterId || !Array.isArray(input.items) || input.items.length < 1 || input.items.length > 20) {
           throw new ApiError("VALIDATION_ERROR", "Paciente, atendimento e pelo menos um serviço são obrigatórios.", 400);
         }
@@ -114,6 +117,14 @@ export function createRequestService({ store, storage }: ApplicationServiceConte
         const admission = input.admissionId ? findOrThrow(originalState.admissions.find((entry) => entry.id === input.admissionId)) : undefined;
         if (admission && admission.encounterId !== encounter.id) throw new ApiError("VALIDATION_ERROR", "Internação não pertence ao atendimento informado.", 400);
         const services = input.items.map((entry) => serviceFor(originalState, entry.serviceId));
+        if (currentActor.role === "MANAGER" && services.some((service) => !managerCanAccessDepartment(currentActor, service.departmentCode))) {
+          throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+        }
+        // Resource and delegated-department authorization must precede an
+        // idempotent replay; a user's scope may have been revoked since the
+        // original request was committed.
+        const idempotent = withIdempotency<RequestView>(originalState, currentActor.id, scope, meta.idempotencyKey, { input, allowDuplicateOverride: meta.allowDuplicateOverride });
+        if (idempotent.found) return { state: originalState, result: reprojectRequestForActor(originalState, currentActor, (idempotent.existing as RequestView).id) };
         const duplicateItems = originalState.items.filter((item) =>
           item.status !== "COMPLETED" && item.status !== "CANCELLED" && item.status !== "REJECTED" &&
           item.requestId && input.items.some((requested) => requested.serviceId === item.serviceId) &&
@@ -188,7 +199,7 @@ export function createRequestService({ store, storage }: ApplicationServiceConte
     async getRequest(actor: User, requestId: string): Promise<RequestView> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const request = requestFor(state, requestId);
+      const request = findOrThrowScoped(state.requests.find((entry) => entry.id === requestId));
       requireRequestPermission(state, currentActor, "request.view", request);
       return requestViewForActor(state, currentActor, request);
     },
@@ -196,11 +207,17 @@ export function createRequestService({ store, storage }: ApplicationServiceConte
     async getPatientDiagnostics(actor: User, patientId: string, filters: { limit?: number; cursor?: string } = {}): Promise<PatientDiagnosticsResult> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const patient = findOrThrow(state.patients.find((entry) => entry.id === patientId));
       const limit = pageSize(filters.limit);
-      requirePatientPermission(state, currentActor, "patient.view", patient.id);
-      requirePatientPermission(state, currentActor, "diagnostic.timeline.view", patient.id);
       const cursor = decodeRequestCursor(filters.cursor);
+      // Authorize the opaque identifier before resolving it. The public 404
+      // envelope must not reveal whether a patient exists outside the actor's
+      // scope. A scoped-but-stale identifier is normalized to the same denial
+      // for the same reason.
+      requirePatientPermission(state, currentActor, "patient.view", patientId);
+      requirePatientPermission(state, currentActor, "diagnostic.timeline.view", patientId);
+      const patient = state.patients.find((entry) => entry.id === patientId);
+      if (!patient) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+      const asOf = now();
       const requests = state.requests
         .filter((request) => request.patientId === patient.id && canViewRequest(state, currentActor, request))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id));
@@ -208,32 +225,190 @@ export function createRequestService({ store, storage }: ApplicationServiceConte
       const pageRequests = afterCursor.slice(0, limit);
       const page = pageRequests.map((request) => requestViewForActor(state, currentActor, request));
       const visibleRequestIds = new Set(requests.map((request) => request.id));
-      const visibleItemIds = new Set(requests.flatMap((request) => request.itemIds));
+      const visibleItemIds = new Set(requests.flatMap((request) => request.itemIds).filter((itemId) => canViewItem(state, currentActor, itemFor(state, itemId))));
+      let auxiliaryRead: PatientDiagnosticsAuxiliaryRead = { samples: [], results: [], attachments: [] };
+      let dataQuality: PatientDiagnosticsResult["workspace"]["dataQuality"] = { status: "FRESH", asOf };
+      try {
+        auxiliaryRead = await patientDiagnosticsAuxiliaryReader({
+          state,
+          actor: currentActor,
+          patientId: patient.id,
+          requestIds: visibleRequestIds,
+          itemIds: visibleItemIds
+        });
+      } catch {
+        dataQuality = {
+          status: "DEGRADED",
+          asOf,
+          note: "A leitura auxiliar de amostras, resultados e anexos está indisponível; os itens autorizados continuam visíveis."
+        };
+      }
+      const scopedEncounterIds = isExecutorRole(currentActor) || currentActor.role === "MANAGER"
+        ? new Set(requests.map((request) => request.encounterId))
+        : undefined;
+      const encounters = state.encounters
+        .filter((encounter) => encounter.patientId === patient.id && (!scopedEncounterIds || scopedEncounterIds.has(encounter.id)))
+        .map((encounter) => ({ ...encounter }));
+      const encounterIds = new Set(encounters.map((encounter) => encounter.id));
+      const admissions = state.admissions
+        .filter((admission) => encounterIds.has(admission.encounterId) && canAccessResource(currentActor, "admission.view", { patientId: patient.id, departmentCode: admission.departmentCode }))
+        .map((admission) => ({ ...admission }));
+      const activeEncounter = [...encounters]
+        .sort((left, right) => Number(right.status === "OPEN") - Number(left.status === "OPEN") || right.openedAt.localeCompare(left.openedAt) || left.id.localeCompare(right.id))[0];
+      const currentAdmission = activeEncounter
+        ? admissions
+          .filter((admission) => admission.encounterId === activeEncounter.id)
+          .sort((left, right) => Number(!left.dischargedAt) - Number(!right.dischargedAt) || (right.updatedAt ?? right.admittedAt).localeCompare(left.updatedAt ?? left.admittedAt) || left.id.localeCompare(right.id))[0]
+        : undefined;
+      const responsibleLabel = currentAdmission?.responsibleUserId && canAccessResource(currentActor, "patient.view", {
+        patientId: patient.id,
+        departmentCode: currentAdmission.departmentCode
+      })
+        ? state.users.find((user) => user.id === currentAdmission.responsibleUserId)?.displayName ?? null
+        : null;
+      const visibleItems = requests.flatMap((request) => request.itemIds
+        .map((itemId) => itemFor(state, itemId))
+        .filter((item) => canViewItem(state, currentActor, item)));
+      const workspaceContextFor = (item: DiagnosticItem, request: DiagnosticRequest): PatientWorkspaceItemContext => {
+        const service = serviceFor(state, item.serviceId);
+        const operationalContext = operationalContextFor(item, service, asOf, request.requestingDepartmentCode);
+        const linkedSamples = auxiliaryRead.samples
+          .filter((sample) => sample.requestId === request.id && sample.itemIds.includes(item.id))
+          .sort((left, right) => {
+            const leftTime = Date.parse(left.receivedAt ?? left.collectedAt ?? "") || 0;
+            const rightTime = Date.parse(right.receivedAt ?? right.collectedAt ?? "") || 0;
+            return rightTime - leftTime || right.id.localeCompare(left.id);
+          });
+        const selectedSample = item.currentSampleId
+          ? linkedSamples.find((sample) => sample.id === item.currentSampleId) ?? linkedSamples[0]
+          : linkedSamples[0];
+        const sample: PatientWorkspaceSampleSummary | null = selectedSample
+          ? {
+              id: selectedSample.id,
+              requestId: selectedSample.requestId,
+              accessionCode: selectedSample.accessionCode,
+              sampleType: selectedSample.sampleType,
+              status: selectedSample.status,
+              ...(selectedSample.collectedAt ? { collectedAt: selectedSample.collectedAt } : {}),
+              ...(selectedSample.receivedAt ? { receivedAt: selectedSample.receivedAt } : {})
+            }
+          : null;
+        let result: PatientWorkspaceResultSummary | null = null;
+        const currentResult = item.currentResultId ? auxiliaryRead.results.find((entry) => entry.id === item.currentResultId && entry.itemId === item.id) : undefined;
+        if (currentResult) {
+          try {
+            const resultViewForActor = resultView(state, currentResult);
+            if (currentResult.lifecycleStatus === "RELEASED" && resultViewForActor.version.status === "RELEASED") {
+              requireCurrentResultRead(currentActor, resultViewForActor);
+              requirePermission(currentActor, "attachment.view", {
+                patientId: resultViewForActor.request.patientId,
+                departmentCode: resultViewForActor.service.departmentCode,
+                serviceCode: resultViewForActor.service.code
+              });
+              result = {
+                id: currentResult.id,
+                versionId: resultViewForActor.version.id,
+                status: "RELEASED",
+                ...(resultViewForActor.version.releasedAt ? { releasedAt: resultViewForActor.version.releasedAt } : {}),
+                needsReReview: currentResult.needsReReview
+              };
+            }
+          } catch {
+            result = null;
+          }
+        }
+        const attachments: PatientWorkspaceAttachmentSummary[] = result
+          ? auxiliaryRead.attachments
+            .filter((attachment) => attachment.resultVersionId === result!.versionId && attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED")
+            .map((attachment) => ({
+              id: attachment.id,
+              resultVersionId: attachment.resultVersionId,
+              safeName: attachment.safeName,
+              detectedMime: attachment.detectedMime,
+              sizeBytes: attachment.sizeBytes,
+              scanStatus: "CLEAN",
+              uploadStatus: "FINALIZED",
+              createdAt: attachment.createdAt
+            }))
+          : [];
+        return { operationalContext, sample, result, attachments };
+      };
+      const allContexts = visibleItems.map((item) => workspaceContextFor(item, requestFor(state, item.requestId)));
+      const nextActions = requests
+        .flatMap((request) => request.itemIds.map((itemId) => ({ request, item: itemFor(state, itemId) })))
+        .filter(({ item }) => canViewItem(state, currentActor, item))
+        .filter(({ item }) => !["COMPLETED", "CANCELLED", "REJECTED", "RESULT_VOIDED"].includes(item.status))
+        .map(({ request, item }) => {
+          const service = serviceFor(state, item.serviceId);
+          return {
+            id: item.id,
+            requestId: request.id,
+            requestCode: request.requestCode,
+            itemId: item.id,
+            label: nextActionFor(item, service),
+            deepLink: `/requests/${request.id}`,
+            status: item.status,
+            priority: item.priority,
+            dueAt: item.dueAt,
+            departmentCode: item.departmentCode
+          };
+        })
+        .sort((left, right) => left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id));
       const events = state.auditEvents
         .filter((event) => {
           const request = requestForAuditEvent(state, event);
-          return request?.patientId === patient.id && (visibleRequestIds.has(request.id) || (event.entityType === "DiagnosticRequestItem" && visibleItemIds.has(event.entityId)));
+          return request?.patientId === patient.id && visibleRequestIds.has(request.id) && auditEventItemIds(state, event).every((itemId) => visibleItemIds.has(itemId));
         })
         .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
       const last = pageRequests.at(-1);
       const nextCursor = last && pageRequests.length < afterCursor.length ? encodeKeysetCursor({ createdAt: last.createdAt, id: last.id }) : undefined;
-      return { patient: { ...patient }, items: page, events, nextCursor, limit, total: requests.length };
+      const items = page.map((request) => ({
+        ...request,
+        items: request.items.map((item) => ({
+          ...item,
+          workspaceContext: workspaceContextFor(item, request)
+        }))
+      }));
+      return {
+        patient: { ...patient },
+        encounters,
+        admissions,
+        items,
+        events,
+        nextActions,
+        workspace: {
+          asOf,
+          dataQuality,
+          currentContext: {
+            encounterId: activeEncounter?.id ?? null,
+            admissionId: currentAdmission?.id ?? null,
+            departmentCode: currentAdmission?.departmentCode ?? null,
+            ward: currentAdmission?.ward ?? null,
+            bed: currentAdmission?.bed ?? null,
+            responsibleLabel
+          },
+          summary: {
+            requestCount: requests.length,
+            itemCount: visibleItems.length,
+            activeItemCount: visibleItems.filter((item) => !["COMPLETED", "CANCELLED", "REJECTED", "RESULT_VOIDED"].includes(item.status)).length,
+            availableResultCount: allContexts.filter((context) => context.result !== null).length,
+            sampleCount: allContexts.filter((context) => context.sample !== null).length,
+            attachmentCount: allContexts.reduce((count, context) => count + context.attachments.length, 0)
+          }
+        },
+        nextCursor,
+        limit,
+        total: requests.length
+      };
     },
 
     async getItem(actor: User, itemId: string): Promise<ItemView> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const item = itemFor(state, itemId);
+      const item = findOrThrowScoped(state.items.find((entry) => entry.id === itemId));
       const request = requestFor(state, item.requestId);
       const service = serviceFor(state, item.serviceId);
-      if (isExecutorRole(currentActor)) {
-        requirePermission(currentActor, "item.view", { departmentCode: service.departmentCode });
-      } else if (currentActor.role === "MANAGER") {
-        if (!hasManagerRequestContext(state, currentActor, request) || service.departmentCode !== currentActor.departmentCode) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
-        requirePermission(currentActor, "item.view", { departmentCode: service.departmentCode });
-      } else {
-        requirePermission(currentActor, "item.view", { patientId: request.patientId, departmentCode: request.requestingDepartmentCode });
-      }
+      requireItemPermission(state, currentActor, "item.view", item);
       const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
       return { item, request: requestViewForActor(state, currentActor, request), patient, service };
     },

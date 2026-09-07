@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Dashboard } from "./dashboard";
 import * as apiClient from "./api-client";
@@ -138,6 +138,56 @@ describe("Dashboard resilience", () => {
     expect(apiFetchMock.mock.calls.map(([path]) => path)).toEqual(["/session/me"]);
   });
 
+  it("supports scoped search navigation, realtime resync and closing a request dialog", async () => {
+    const apiFetchMock = mockDashboardResponses((path) => {
+      if (path === "/search?q=thor") return Promise.resolve([{ id: "search-1", label: "EX-0001", patient: "Thor", deepLink: "#request-1", status: "Em execução" }]);
+      return undefined;
+    });
+
+    render(<Dashboard />);
+    await screen.findByText("Amostra recebida");
+    fireEvent.change(screen.getByRole("combobox", { name: "Buscar no Hub" }), { target: { value: "thor" } });
+    expect(await screen.findByText("EX-0001")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("option", { name: /EX-0001/ }));
+    expect(screen.getByRole("combobox", { name: "Buscar no Hub" })).toHaveValue("");
+
+    fireEvent(window, new Event("cvg:realtime-resync"));
+    await waitFor(() => expect(apiFetchMock.mock.calls.filter(([path]) => path === "/dashboard")).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole("button", { name: /Nova solicitação/i }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar exames" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar" }));
+    expect(screen.queryByRole("dialog", { name: "Solicitar exames" })).not.toBeInTheDocument();
+  });
+
+  it("implements the search shortcut and keyboard combobox navigation", async () => {
+    const apiFetchMock = mockDashboardResponses((path) => {
+      if (path === "/search?q=thor") return Promise.resolve([
+        { id: "search-1", label: "EX-0001", patient: "Thor", deepLink: "#request-1", status: "IN_PROGRESS" },
+        { id: "search-2", label: "EX-0002", patient: "Thor", deepLink: "#request-2", status: "RESULTS_AVAILABLE" }
+      ]);
+      return undefined;
+    });
+
+    render(<Dashboard />);
+    await screen.findByText("Amostra recebida");
+    const input = screen.getByRole("combobox", { name: "Buscar no Hub" });
+    fireEvent.keyDown(window, { key: "k", metaKey: true });
+    expect(document.activeElement).toBe(input);
+
+    fireEvent.change(input, { target: { value: "thor" } });
+    const listbox = await screen.findByRole("listbox", { name: "Resultados da busca" });
+    expect(input).toHaveAttribute("aria-controls", listbox.id);
+    expect(input).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.keyDown(input, { key: "ArrowDown" });
+    expect(input).toHaveAttribute("aria-activedescendant", "clinical-dashboard-search-result-0");
+    expect(screen.getByRole("option", { name: /EX-0001/ })).toHaveAttribute("aria-selected", "true");
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(input).toHaveValue("");
+    expect(apiFetchMock.mock.calls.some(([path]) => path === "/search?q=thor")).toBe(true);
+  });
+
   it("keeps stale data and its last update timestamp visible after a refresh failure", async () => {
     let statsAttempts = 0;
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
@@ -210,7 +260,7 @@ describe("Dashboard resilience", () => {
     fireEvent.change(screen.getByPlaceholderText("Ex.: Amora"), { target: { value: "Amora" } });
     fireEvent.change(screen.getByPlaceholderText("Ex.: Labrador"), { target: { value: "Labrador" } });
     fireEvent.change(screen.getByPlaceholderText("Nome para identificação no atendimento"), { target: { value: "M. Ribeiro" } });
-    fireEvent.click(screen.getByRole("button", { name: /^Cadastrar paciente/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cadastro de paciente" }));
 
     await waitFor(() => expect(screen.getByLabelText("Paciente")).toHaveValue("patient-amora"));
     expect(screen.getByRole("option", { name: /Amora · Canino · CVG-AMORA/ })).toBeInTheDocument();
@@ -298,5 +348,23 @@ describe("Dashboard resilience", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tentar carregar atendimentos" }));
     expect(await screen.findByText("ATD-THOR-002 · Atendimento externo · Em aberto")).toBeInTheDocument();
     expect(encounterAttempts).toBe(2);
+  });
+
+  it("renders honest empty states and closes a new-request dialog without mutation", async () => {
+    const apiFetchMock = mockDashboardResponses((path) => {
+      if (path.startsWith("/diagnostic-requests")) return Promise.resolve([]);
+      if (path.startsWith("/notifications")) return Promise.resolve([]);
+      if (path === "/diagnostic-services") return Promise.resolve(services);
+      return undefined;
+    });
+
+    render(<Dashboard />);
+    expect(await screen.findByText("Nenhuma solicitação pendente")).toBeInTheDocument();
+    expect(screen.getByText("Tudo em dia")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Nova solicitação/i }));
+    expect(await screen.findByRole("dialog", { name: "Solicitar exames" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Solicitar exames" })).not.toBeInTheDocument());
+    expect(apiFetchMock.mock.calls.some(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST")).toBe(false);
   });
 });

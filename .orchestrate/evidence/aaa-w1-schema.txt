@@ -1,0 +1,10 @@
+AAA-W1-SCHEMA evidence — 2026-09-04
+Scope: db/migrations/007_relational_clinical_core.sql and migration readiness code/tests.
+
+Relational migration contract suite
+Result: PASS — 27/27 contract assertions.
+The migration is additive, transactional, marker-backed, compatible with text IDs, and does not seed clinical policy thresholds or mutate the authoritative JSONB snapshot.
+
+npm test -- --reporter=dot
+Result: PASS — 49 test files, 299 tests.
+No live PostgreSQL server, migration execution, EXPLAIN plan, or cutover/backfill evidence was available on this host.

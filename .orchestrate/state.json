@@ -1,0 +1,126 @@
+{
+  "schema_version": 3,
+  "goal": "Elevar o CVG Diagnostics Hub de MVP local 78/100 para um artefato State of Art / AAA: fechar gaps locais, ampliar provas de persistência, segurança, jornadas, operação, UX e rastreabilidade; preservar gates clínicos e hospitalares como dependências externas explícitas.",
+  "contracts": {
+    "AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1",
+    "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1",
+    "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1",
+    "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1",
+    "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"
+  },
+  "limits": {
+    "max_attempts_per_task": 2,
+    "max_checkpoint_age_seconds": 300
+  },
+  "evidence_registry": {
+    "sha256:5bf087b852f5c98ee6f4852351c4fcc316fb31f05cf3b69cc3529e03140021c0": ".orchestrate/evidence/aaa-w0-tests.txt",
+    "sha256:106994c6e60f0789cba52fbf95e883a5ffcef76ee43c8d7352e82b50dee0b173": ".orchestrate/evidence/aaa-w0-supply.txt",
+    "sha256:db19d0e368d159b4f244346c5072e40c67d94944821422ddd8aad8d8d40ed6bd": ".orchestrate/evidence/aaa-w0-browser.txt",
+    "sha256:6a41f7af0ee33a6fa3654a6380c0b57cc58ec61135c64f7d6ff5be03c086baec": ".orchestrate/evidence/aaa-w0-docs.txt",
+    "sha256:01f47e6aeb874728b00eff1171830dcd8cd653926a31c4dd1b76996e60a14781": ".orchestrate/evidence/aaa-w1-schema.txt",
+    "sha256:b590b18a2474bd74d40833197efdbc5c071a058dbce01e60d2f8f8a297b88254": ".orchestrate/evidence/aaa-w7-ci.txt",
+    "sha256:99d95bdaaccbf748316bec9e2dd8b10516f0a6f4755ef93d6dbb5550b07dc171": ".orchestrate/evidence/aaa-final-critic-20260904.md",
+    "sha256:8dba4cdae74c82c53636ddbd26601feb630d0cbea0e60830c22795e86e402c5a": ".orchestrate/evidence/v2-relational-sample-lineage-postgres-20260906.md",
+    "sha256:2f4edede95f406654e0a34dac5182f29e6ef3cea7231c9142f9f0a5226ba3396": ".orchestrate/evidence/v2-relational-sample-lineage-postgres-manifest-20260906.txt"
+  },
+  "tasks": [
+    {
+      "id": "AAA-W0-TESTS",
+      "status": "REVIEW",
+      "dependencies": [],
+      "owns": ["vitest.postgres.config.ts", "tests/postgres/**", "src/server/store/postgres-store.test.ts"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [
+        {"id": "AAA-02", "required": true, "evidence": []},
+        {"id": "AAA-07", "required": true, "evidence": []},
+        {"id": "AAA-08", "required": true, "evidence": []},
+        {"id": "AAA-10", "required": true, "evidence": []}
+      ],
+      "attempts": [{"number": 1, "outcome": "Alias and readiness fixtures implemented; PostgreSQL integration remains fail-closed because the host has no opt-in/live database.", "hypothesis_id": "HYP-AAA-W0-TESTS-001", "hypothesis": "The PostgreSQL harness can be collected and the readiness contract can be represented without weakening the production guard.", "evidence_delta": "Collection advanced to 10 integration tests plus 6 harness tests; default unit regression is 299/299.", "evidence_refs": ["sha256:5bf087b852f5c98ee6f4852351c4fcc316fb31f05cf3b69cc3529e03140021c0"]}, {"number": 2, "outcome": "A disposable PostgreSQL 16.15 cluster executed the expanded harness and sample-lineage integration without weakening the opt-in guard.", "hypothesis_id": "HYP-AAA-W0-TESTS-002", "hypothesis": "The real 001–009 migration set and relational sample-lineage seam can be exercised on an isolated loopback database while unsafe defaults remain fail-closed.", "evidence_delta": "The current PostgreSQL packet records 3 files and 20/20 tests, including 14 lineage/integration tests, 6 durable-store harness tests, migration-009 constraints, complete item membership, exact replay/idempotency, atomic rollback, readiness, projection/read/reconciliation and negative SQL checks.", "evidence_refs": ["sha256:8dba4cdae74c82c53636ddbd26601feb630d0cbea0e60830c22795e86e402c5a"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW"],
+      "open_findings": [{"severity": "medium", "summary": "Disposable PostgreSQL execution now passes locally; target CI/production repetition, browser-backed persistence, representative workload, recovery and cutover remain open."}]
+    },
+    {
+      "id": "AAA-W0-SUPPLY",
+      "status": "REVIEW",
+      "dependencies": [],
+      "owns": ["package.json", "package-lock.json"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [{"id": "AAA-18", "required": true, "evidence": []}],
+      "attempts": [{"number": 1, "outcome": "fast-uri upgraded through the lockfile and the high-severity audit gate is clean.", "hypothesis_id": "HYP-AAA-W0-SUPPLY-001", "hypothesis": "The reported HIGH vulnerability can be remediated by refreshing the resolved transitive package without changing application behavior.", "evidence_delta": "Resolved fast-uri is 3.1.7 and npm audit reports zero vulnerabilities; typecheck, lint, tests and build remain green.", "evidence_refs": ["sha256:106994c6e60f0789cba52fbf95e883a5ffcef76ee43c8d7352e82b50dee0b173"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW"],
+      "open_findings": []
+    },
+    {
+      "id": "AAA-W0-BROWSER",
+      "status": "REVIEW",
+      "dependencies": [],
+      "owns": ["playwright.config.ts", "tests/e2e/**"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [
+        {"id": "AAA-01", "required": true, "evidence": []},
+        {"id": "AAA-15", "required": true, "evidence": []},
+        {"id": "AAA-16", "required": true, "evidence": []}
+      ],
+      "attempts": [{"number": 1, "outcome": "Browser authentication was stabilized with hydration-aware API synchronization and isolated synthetic rate-limit addresses.", "hypothesis_id": "HYP-AAA-W0-BROWSER-001", "hypothesis": "The browser flake is caused by a cold hydrated form/native-submit race plus shared test rate-limit state.", "evidence_delta": "Independent E2E verification passes 45/45 with fail-on-flaky-tests and no retry; accessibility passes 6/6; data remains memory-backed.", "evidence_refs": ["sha256:db19d0e368d159b4f244346c5072e40c67d94944821422ddd8aad8d8d40ed6bd"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW"],
+      "open_findings": [{"severity": "medium", "summary": "Browser evidence is synthetic memory only; PostgreSQL-backed browser execution and manual clinical/accessibility acceptance remain open."}]
+    },
+    {
+      "id": "AAA-W0-DOCS",
+      "status": "REVIEW",
+      "dependencies": [],
+      "owns": ["docs/README.md", "docs/TRACEABILITY_MATRIX.md", "docs/testing/**", "docs/operations/**", "docs/ux/USER_FLOWS.md", "docs/v2/MIGRATION_MAP.md", "docs/PROJECT_STATUS_REPORT.md", "docs/build/**", ".agent/state.json"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [
+        {"id": "AAA-20", "required": true, "evidence": []},
+        {"id": "AAA-21", "required": true, "evidence": []},
+        {"id": "AAA-22", "required": true, "evidence": []}
+      ],
+      "attempts": [{"number": 1, "outcome": "Normative docs, traceability, current evidence, migration-map facts and agent state were reconciled against the post-wave checks.", "hypothesis_id": "HYP-AAA-W0-DOCS-001", "hypothesis": "A single current evidence vocabulary can distinguish local PASS from external or environmental blockers without overstating readiness.", "evidence_delta": "Docs validator and diff check pass; current 299/49, coverage, 45/45 no-retry E2E and explicit blockers are recorded.", "evidence_refs": ["sha256:6a41f7af0ee33a6fa3654a6380c0b57cc58ec61135c64f7d6ff5be03c086baec"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW"],
+      "open_findings": [{"severity": "medium", "summary": "Clinical governance, institutional identity, production approval and independent requirement-to-digest closure remain external or critic-owned gates."}]
+    },
+    {
+      "id": "AAA-W1-SCHEMA-EXPAND",
+      "status": "REVIEW",
+      "dependencies": [],
+      "owns": ["db/migrations/007_relational_clinical_core.sql", "src/server/store/migrations.ts", "src/server/store/migrations.test.ts"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [
+        {"id": "AAA-08", "required": true, "evidence": []},
+        {"id": "AAA-09", "required": true, "evidence": []},
+        {"id": "AAA-10", "required": true, "evidence": []}
+      ],
+      "attempts": [{"number": 1, "outcome": "Added an additive transactional relational clinical core and readiness contract without changing the authoritative snapshot or seeding policy thresholds.", "hypothesis_id": "HYP-AAA-W1-SCHEMA-001", "hypothesis": "An expand-only relational core can be introduced compatibly with the current text-ID JSONB runtime and verified statically before a live database is available.", "evidence_delta": "27/27 migration contract assertions pass and the full unit suite is 299/299; live migration, EXPLAIN, backfill and cutover remain unverified.", "evidence_refs": ["sha256:01f47e6aeb874728b00eff1171830dcd8cd653926a31c4dd1b76996e60a14781"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW"],
+      "open_findings": [{"severity": "high", "summary": "Disposable PostgreSQL execution now passes for migration 009, complete sample membership, exact replay and atomic rollback; target-environment EXPLAIN evidence, populated backfill rehearsal, dual-read and cutover proof remain open."}]
+    },
+    {
+      "id": "AAA-W7-CI-EVIDENCE",
+      "status": "REVIEW",
+      "dependencies": [],
+      "owns": [".github/workflows/ci.yml"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [
+        {"id": "AAA-02", "required": true, "evidence": []},
+        {"id": "AAA-17", "required": true, "evidence": []},
+        {"id": "AAA-22", "required": true, "evidence": []}
+      ],
+      "attempts": [{"number": 1, "outcome": "CI workflow hardened with fail-on-flaky browser gates and always-uploaded diagnostic artifacts while preserving PostgreSQL opt-in fail-closed behavior.", "hypothesis_id": "HYP-AAA-W7-CI-001", "hypothesis": "CI can make retry-recovered browser failures visible and preserve enough artifacts for independent diagnosis without weakening safety gates.", "evidence_delta": "Available YAML parsers accept the workflow; flags and artifact conditions were checked statically; no remote execution is available.", "evidence_refs": ["sha256:b590b18a2474bd74d40833197efdbc5c071a058dbce01e60d2f8f8a297b88254"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW"],
+      "open_findings": [{"severity": "medium", "summary": "The workflow has not executed in a remote CI environment from this host."}]
+    },
+    {
+      "id": "AAA-W7-004",
+      "status": "REWORK",
+      "dependencies": [],
+      "owns": [".orchestrate/evidence/aaa-final-critic-20260904.md"],
+      "contracts": {"AAA_BAR": "docs/build/STATE_OF_ART_QUALITY_BAR.md@AAA-1", "EXECUTIVE_PLAN": "docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md@AAA-1", "ROADMAP": "docs/build/STATE_OF_ART_ROADMAP.md@AAA-1", "BACKLOG": "docs/build/STATE_OF_ART_BACKLOG.md@AAA-1", "BASELINE": "docs/PROJECT_STATUS_REPORT.md@2026-09-04"},
+      "criteria": [{"id": "AAA-01", "required": true, "evidence": []}, {"id": "AAA-08", "required": true, "evidence": []}, {"id": "AAA-22", "required": true, "evidence": []}],
+      "attempts": [{"number": 1, "outcome": "Independent Final Critic rejected AAA-READY while preserving the mutation sentinel; rework is required across relational persistence, distributed operations and external release gates.", "hypothesis_id": "HYP-AAA-W7-004-001", "hypothesis": "The current implementation and evidence satisfy the frozen AAA-1 bar for local and external release readiness.", "evidence_delta": "Fresh critic classified 5 criteria PASS, 5 FAIL, 6 BLOCKED and 6 NOT VERIFIED; post-fingerprint matched pre-fingerprint exactly.", "evidence_refs": ["sha256:99d95bdaaccbf748316bec9e2dd8b10516f0a6f4755ef93d6dbb5550b07dc171"]}],
+      "history": ["PENDING", "READY", "RUNNING", "IMPLEMENTED", "REVIEW", "REWORK"],
+      "open_findings": [{"severity": "high", "summary": "AAA-08/09 and downstream persistence, delivery, realtime, observability, recovery and release gates are not closed."}]
+    }
+  ]
+}

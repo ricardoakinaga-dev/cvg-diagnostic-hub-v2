@@ -1,3 +1,5 @@
+import { percentile, round, summarize } from "./perf-report";
+
 const baseUrl = (process.env.BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 const totalRequests = positiveInteger(process.env.PERF_REQUESTS, 100);
 const concurrency = positiveInteger(process.env.PERF_CONCURRENCY, 10);
@@ -58,26 +60,6 @@ async function runBatch(path: string, count: number, workers: number, cookie: st
   return results;
 }
 
-function summarize(endpoint: string, samples: Array<{ status: number; durationMs: number }>) {
-  const durations = samples.map((sample) => sample.durationMs).sort((left, right) => left - right);
-  const errors = samples.filter((sample) => sample.status < 200 || sample.status >= 300);
-  return {
-    endpoint,
-    requests: samples.length,
-    errors: errors.length,
-    errorRate: Number((errors.length / Math.max(1, samples.length)).toFixed(4)),
-    p50Ms: percentile(durations, 0.5),
-    p95Ms: percentile(durations, 0.95),
-    p99Ms: percentile(durations, 0.99),
-    maxMs: durations.at(-1) ?? 0
-  };
-}
-
-function percentile(values: number[], ratio: number): number {
-  if (values.length === 0) return 0;
-  return values[Math.min(values.length - 1, Math.ceil(values.length * ratio) - 1)];
-}
-
 function positiveInteger(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : fallback;
@@ -86,10 +68,6 @@ function positiveInteger(value: string | undefined, fallback: number): number {
 function positiveNumber(value: string | undefined, fallback: number): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function round(value: number): number {
-  return Number(value.toFixed(2));
 }
 
 void main().catch((error: unknown) => {

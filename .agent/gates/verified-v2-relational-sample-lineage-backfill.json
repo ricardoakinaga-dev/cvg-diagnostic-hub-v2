@@ -1,0 +1,101 @@
+{
+  "record_id": "GATE-VERIFIED-V2-RELATIONAL-SAMPLE-LINEAGE-002",
+  "timestamp": "2026-09-06T08:51:57Z",
+  "gate_id": "VERIFIED",
+  "scope": "Final post-hardening verification of the V2 relational sample/accession lineage seam and its evidence controls",
+  "scope_ref": "TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001",
+  "version": 2,
+  "criteria": [
+    {
+      "id": "V-001-ACCEPTANCE-EVIDENCE",
+      "description": "The bounded local acceptance evidence executes against the current artifact",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-V2-RELATIONAL-SAMPLE-LINEAGE-BACKFILL-010",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md"
+      ],
+      "confidence": "HIGH",
+      "limitations": "This criterion covers the local technical boundary only and does not assert clinical or production acceptance"
+    },
+    {
+      "id": "V-002-REGRESSION-RISK",
+      "description": "The available regression, persistence and evidence controls are reconciled for the bounded slice",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-V2-RELATIONAL-SAMPLE-LINEAGE-BACKFILL-010",
+        "tests/postgres/relational-sample-lineage.integration.test.ts",
+        "src/server/store/relational/clinical-core-backfill.ts"
+      ],
+      "confidence": "HIGH",
+      "limitations": "Target-environment workload, browser persistence and remote CI are not proven by this local gate"
+    },
+    {
+      "id": "V-003-LIMITATIONS-AUTHORITY",
+      "description": "Limitations and authority boundaries are explicit and prevent an unsafe release claim",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-V2-RELATIONAL-SAMPLE-LINEAGE-BACKFILL-010",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md",
+        "docs/v2/RELATIONAL_SAMPLE_LINEAGE.md",
+        "docs/v2/MIGRATION_MAP.md",
+        "docs/v2/QUALITY_BAR.md"
+      ],
+      "confidence": "HIGH",
+      "limitations": "No independent approval, hospital policy approval or production release authority is inferred"
+    }
+  ],
+  "evidence": [
+    ".agent/verification.jsonl#VER-V2-RELATIONAL-SAMPLE-LINEAGE-BACKFILL-010",
+    ".orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md",
+    ".orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md",
+    ".orchestrate/evidence/v2-relational-sample-lineage-backfill-run-20260906.txt",
+    "docs/v2/RELATIONAL_SAMPLE_LINEAGE.md",
+    "docs/v2/MIGRATION_MAP.md"
+  ],
+  "confidence": "HIGH",
+  "gaps": [],
+  "conditions": [
+    {
+      "id": "COND-V2-RELATIONAL-TARGET-EVIDENCE-20260906-BACKFILL",
+      "description": "Supply target-environment projection, full backfill, dual-read, EXPLAIN, workload, recovery and independent-review evidence before cutover",
+      "non_blocking": true,
+      "impact": "Blocks hospital/production release or broader cutover, but does not invalidate the bounded local technical slice",
+      "owner": "Product, clinical governance and platform operations",
+      "due_or_trigger": "Before real clinical data, target cutover, production deployment or RELEASE_READY",
+      "due_at": "2026-10-06T08:51:57Z",
+      "verification_method": "Signed policy, target-environment evidence and a later gate record that cites the resolved condition",
+      "evidence_refs": [
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md",
+        "docs/v2/RELATIONAL_SAMPLE_LINEAGE.md",
+        "docs/v2/MIGRATION_MAP.md"
+      ],
+      "status": "OPEN",
+      "residual_risk": "MEDIUM",
+      "authority_state": "NOT_REQUIRED"
+    }
+  ],
+  "authority": {
+    "required": false,
+    "state": "NOT_REQUIRED",
+    "actor": "No external authority required for bounded local synthetic verification",
+    "scope": "Final post-hardening verification of the V2 relational sample/accession lineage seam and its evidence controls",
+    "decision": "Record local evidence while withholding clinical, hospital and production release authority",
+    "evidence_ref": ".orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md",
+    "expires_or_revalidates": "Revalidate before real data, target cutover, production deployment or release"
+  },
+  "residual_risk": "MEDIUM",
+  "decision": "PASS_WITH_CONDITIONS",
+  "next_action": "Resolve the typed external conditions and obtain the required independent or human evidence before RELEASE_READY",
+  "revalidation_triggers": [
+    "fresh independent criticism changes the local risk assessment",
+    "real clinical data, hospital identity or policy approval",
+    "target-environment migration, workload, recovery or browser persistence evidence",
+    "production deployment, external publication or material scope expansion"
+  ],
+  "supersedes": "GATE-VERIFIED-V2-RELATIONAL-SAMPLE-LINEAGE-001"
+}

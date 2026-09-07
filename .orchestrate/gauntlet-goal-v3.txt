@@ -1,0 +1,1 @@
+$gauntlet-loop $orchestrate $engineering-framework $design-director '/home/ricardo/cvg-diagnostic-hub-v2/docs' leia todos os arquivos da pasta em seguida continue a construção do programa, quero um resultado State of Art, Triplo AAA de qualidade, comece agora e só pare quando tiver tudo perfeito.

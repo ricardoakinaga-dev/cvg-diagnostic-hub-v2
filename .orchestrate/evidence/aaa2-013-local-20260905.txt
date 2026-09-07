@@ -1,0 +1,7 @@
+AAA2-013 local slice evidence — 2026-09-05
+
+PASS — `npx vitest run src/server/store/relational/backfill.test.ts`: 3 tests cover dependency ordering (including notification parents before deliveries), checkpoint cursor resume after interruption, idempotent re-run, transform-version drift, page-order validation and target hash divergence.
+
+PASS — `npm run typecheck` and targeted lint after the local runner was added.
+
+LIMITATION — The runner is a storage-neutral contract. No PostgreSQL backfill, production corpus, live reconciliation counts or orphan report was executed; AAA2-011/012 database evidence and the institutional transformation policy remain required.

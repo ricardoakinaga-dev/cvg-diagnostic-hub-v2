@@ -15,9 +15,10 @@ tenham evidência própria.
 
 ## Status e fonte de verdade
 
-- **Stage:** VERIFY/AUDIT concluído condicionalmente para a fatia Laboratório
-  estruturado, após correção do release legado, do catálogo e da paridade de
-  contrato; próxima fatia: Patient Workspace.
+- **Stage:** BUILD/VERIFY/AUDIT concluído condicionalmente para a fatia Laboratório
+  estruturado e para o backfill shadow relacional local, após correção do
+  release legado, do catálogo e da paridade de contrato; próxima fronteira:
+  evidência de ambiente-alvo para o seam relacional.
 - **Tier/risk/blast radius:** `T3_SYSTEM` / `HIGH` / `SYSTEM`.
 - **Quality bar:** `docs/v2/QUALITY_BAR.md`.
 - **Migration map:** `docs/v2/MIGRATION_MAP.md`.
@@ -272,6 +273,282 @@ program to release readiness.
   schema and a new runtime/OpenAPI parity regression proved that claim false:
   `critical` remains optional in both contracts. Template authoring, sample /
   accession linkage and clinical policy remain explicit next-wave limits.
-- The slice remains conditional because thresholds/critical behavior,
+- At the time of this Laboratory checkpoint, thresholds/critical behavior,
   sample/accession linkage, relational persistence, Patient Workspace and
-  clinical acceptance are not implemented or approved.
+  clinical acceptance were not implemented or approved. Later V2 checkpoints
+  below supersede the implementation status of the sample/accession and
+  Patient Workspace items without changing the clinical-policy limit.
+
+## Relational sample-lineage checkpoint (conditional closure)
+
+- Migration 009 adds canonical accession, replacement-reason and link-status
+  constraints while preserving the immutable 007/008 baseline. The adapter
+  readiness query now requires those constraints to be both present and
+  `convalidated`.
+- Application, adapter, relational read boundary and cutover reconciliation
+  preserve append-only replacement lineage, derived link metadata, optimistic
+  versions and fail-closed scope. Reconciliation canonicalizes only known
+  temporal fields to UTC, matching PostgreSQL `timestamptz` serialization while
+  retaining invalid timestamps as mismatches.
+- The historical local packet
+  [`v2-relational-sample-lineage-postgres-20260906.md`](../../.orchestrate/evidence/v2-relational-sample-lineage-postgres-20260906.md)
+  records PostgreSQL 16.15 in a disposable loopback cluster, 22/22 tests,
+  live migration-009 constraint rejection, and projection/read/reconciliation
+  across request, item, sample and link.
+- The dedicated backfill packet
+  [`v2-relational-sample-lineage-backfill-20260906.md`](../../.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md)
+  records the populated request-scoped migration-010 shadow backfill with
+  durable checkpoint, resume, idempotent replay, per-request reconciliation,
+  exact-key completeness and fail-closed source drift; the final revalidation
+  is 9/9 focused and 29/29 across the disposable PostgreSQL suite.
+- The independent backfill critic report
+  [`v2-relational-sample-lineage-backfill-critic-20260906.md`](../../.orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md)
+  records one initial HIGH and MEDIUM/LOW findings, their remediation and the
+  final retest; no local CRITICAL/HIGH remains in the bounded slice.
+- The slice remains conditional: JSONB is still runtime authority; full 007–010
+  mapping, continuous dual-read/cutover, target-environment/browser
+  persistence, representative EXPLAIN/load, independent final criticism and
+  hospital policy/acceptance remain open.
+
+## Hardening de replay — fronteira atual
+
+O replay de um run `COMPLETED` deve continuar sendo uma verificação de
+integridade, não apenas uma consulta do ledger. Antes de retornar sucesso, ele
+precisa revalidar as chaves exatas das dez tabelas e reconciliar cada request
+contra o snapshot atual, que continua sendo a autoridade. Corrupção, row extra,
+row ausente ou metadata divergente no shadow deve produzir falha explícita, sem
+alterar a autoridade nem promover o cutover. A regressão mínima é um teste
+PostgreSQL que completa o run, corrompe o target, executa o mesmo `runId` e
+observa `POSTGRES_RELATIONAL_BACKFILL_COMPLETENESS_MISMATCH` ou
+`POSTGRES_RELATIONAL_RECONCILIATION_DIVERGED`.
+
+## Purpose / Big Picture
+
+Este ExecPlan mantém uma única linha de execução para o programa V2: preservar
+o host funcional, ampliar a fronteira clínica relacional com segurança e deixar
+cada afirmação de qualidade ligada a uma evidência verificável. A conclusão
+local não é convertida em autorização clínica, hospitalar ou de produção.
+
+## Progress
+
+- [x] (2026-09-06T03:34:00Z) Migração 009, vínculo completo de amostras,
+  replay idempotente, rollback atômico e reconciliação hash foram implementados.
+- [x] (2026-09-06T03:34:00Z) PostgreSQL 16.15 descartável passou 20/20 testes
+  no packet local, com cleanup seguro e sem tocar o processo existente.
+- [x] (2026-09-06T03:34:00Z) O control-plane legado foi preservado em snapshot
+  imutável e reconstruído conforme o contrato v2.
+- [x] (2026-09-06T08:02:12Z) Migration 010 e o backfill shadow request-scoped
+  foram implementados; o teste PostgreSQL focado passou 9/9 com dado populado,
+  checkpoint/retomada, replay idempotente, lock de origem, serialização entre
+  pools, completude por chaves exatas e source drift fail-closed.
+- [x] (2026-09-06T08:42:00Z) A crítica independente fresca foi registrada com
+  todas as disposições e os gates finais foram reexecutados: validate 570/570,
+  build 12 páginas, E2E 51/51 sem retries, acessibilidade 6/6, PostgreSQL
+  completo 29/29, segurança, performance e recovery verdes.
+- [x] (2026-09-06T09:36:40Z) Hardening do replay `COMPLETED` concluído
+  localmente: RED real (8/9), GREEN focado 9/9, PostgreSQL completo 29/29,
+  regressões de store 25/25, validate/build/browser/security/perf/recovery
+  verdes. As duas críticas frescas expiraram sem relatório e permanecem
+  `NOT_RUN`; por isso a fronteira externa continua aberta.
+- [x] (2026-09-06T10:06:05Z) Revisão visual do Patient Workspace concluída em
+  1440/834/375 CSS px: os cards mobile agora preservam serviço, status, próxima
+  ação e responsável com wrapping; todas as próximas ações server-provided são
+  visíveis; o recorte da timeline é explicitado; e os tokens secundários
+  auditados passaram 4,5:1. Componentes 7/7, render 3/3, E2E 51/51,
+  acessibilidade 6/6 e contraste passaram. O packet visual permanece
+  `REVIEW REQUIRED`: crítica independente, screen reader manual, toque, zoom,
+  reduced motion, métricas LCP/CLS e golden de produto não estão disponíveis.
+- [x] (2026-09-06T10:53:50Z) Pós-crítica fresca do Patient Workspace: a crítica
+  read-only de Erdos foi `CONDITIONAL`; paginação via `nextCursor`, skeleton
+  estrutural, banner sem shift e rótulos operacionais foram corrigidos e
+  cobertos. O packet atual foi regenerado com manifest/hash, screenshots e
+  métricas; focused component 13/13, render 3/3, acessibilidade 6/6, validate
+  570/570, build 12 páginas e E2E 51/51 permanecem verdes. O ledger continua
+  `REVIEW REQUIRED` até sign-off visual pós-fix e os checks manuais/externos.
+
+## Surprises & Discoveries
+
+O checker canônico encontrou uma divergência de governança que os testes de
+produto não capturam: o ledger usava IMPLEMENTED, VERIFY -> VERIFY,
+PASS_WITH_CONDITIONS e ações textuais fora do contrato v2. A recuperação também
+confirmou que a evidência PostgreSQL local é forte; a nova fatia populada fecha
+somente o backfill shadow request-scoped, não o mapeamento completo, cutover,
+carga representativa ou aceitação clínica.
+
+A auditoria visual encontrou dois riscos de confiança na apresentação: dados
+operacionais importantes eram truncados em 375px e contagens de listas
+parcialmente renderizadas não declaravam seu recorte. A correção foi limitada à
+camada de apresentação, preservando o snapshot e a autoridade server-owned.
+
+## Decision Log
+
+- 2026-09-06 — Preservar os ledgers legados byte a byte em
+  .agent/legacy-control-plane-20260906 antes da migração.
+- 2026-09-06 — Traduzir resultados condicionais para PASS somente quando a
+  verificação local realmente foi concluída; manter condições e limites no gate
+  VERIFIED e no estado PARTIAL.
+- 2026-09-06 — Remover a dependência de verificação final do Patient Workspace
+  da tarefa relacional; a implementação usa a fundação já existente, enquanto
+  a crítica independente continua uma fronteira separada.
+- 2026-09-06 — Não criar aprovação independente ou autorização de release para
+  compensar workers indisponíveis.
+
+## Outcomes & Retrospective
+
+O resultado atual é um seam relacional tecnicamente exercitável, com invariantes
+de associação, prontidão, replay, atomicidade e backfill populado/retomável
+demonstradas em PostgreSQL descartável. A principal dívida remanescente é
+ambiental e de governança, não um teste local vermelho: o runtime ainda usa
+JSONB como autoridade, a migração completa não foi executada e o trabalho de
+cutover exige evidência externa, revisão independente e decisões humanas.
+
+## Context and Orientation
+
+O host executável é a aplicação Next.js de raiz. Os packages compartilhados,
+serviços de aplicação, adapter relacional, migrations e suites PostgreSQL formam
+uma transição incremental; os documentos V2, o packet relacional e os ledgers
+.agent são os pontos de navegação para a próxima sessão.
+
+## Scope and Constraints
+
+O escopo desta etapa é local, sintético, reversível e fail-closed. Inclui
+contratos, migração, projeção, leitura, reconciliação, evidência e recuperação.
+Exclui produção, dados clínicos reais, credenciais, deploy, cutover destrutivo,
+thresholds clínicos, política hospitalar, carga representativa e publicação
+externa. Um bloqueio não pode ser resolvido por uma afirmação textual.
+
+## Architecture and Interfaces
+
+A interface transicional mantém o JSONB como autoridade e publica a projeção
+relacional como shadow seam. O adapter escreve linhas versionadas e append-only;
+o read boundary exige escopo e paridade exata; replay de backfill concluído
+revalida chaves e aggregates antes de declarar sucesso; o cutover compara hashes e só
+prossegue quando readiness, membership, replay, rollback e políticas externas
+estiverem demonstrados. A migration 009 é aditiva e falha fechada para arrays
+legados vazios.
+
+## Milestones
+
+### M5 — Control-plane v2 e seam relacional
+
+O milestone só é promovido quando o checker v2 passa, o packet PostgreSQL é
+reproduzível, a revisão independente é ligada ao artefato atual e todos os
+limites externos continuam visíveis.
+
+## Plan of Work
+
+1. Reconciliar state, backlog, plano, log, verification ledger e gates no
+   contrato v2.
+2. Reexecutar as validações locais da aplicação e do PostgreSQL depois da
+   migração do control-plane.
+3. Solicitar crítica read-only fresca em janela delimitada; se indisponível,
+   preservar PARTIAL e os blockers.
+4. Somente com evidência autorizada, planejar o backfill completo, dual-read,
+   EXPLAIN, carga, recuperação e cutover em ambiente-alvo.
+
+## Concrete Steps
+
+<!-- engineering-framework: active_action_id=TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001:RELATIONAL-SAMPLE-LINEAGE-TARGET-EVIDENCE-GATE -->
+
+1. [TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001:RELATIONAL-SAMPLE-LINEAGE-TARGET-EVIDENCE-GATE] Obter evidência de ambiente-alvo para mapeamento relacional completo, dual-read, carga, recovery, rollback e governança; manter o snapshot JSONB como autoridade até aprovação. **Pendente de ambiente e autoridade externos.**
+2. [TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001:RELATIONAL-SAMPLE-LINEAGE-COMPLETED-REPLAY-INTEGRITY] Revalidar um run `COMPLETED` contra as chaves e os aggregates relacionais atuais; corrupção posterior deve falhar fechado sem promover autoridade. **Concluído: RED/GREEN real, 9/9 focado, 29/29 completo e 25/25 unit/store.**
+3. Implementar backfill PostgreSQL populado por request com checkpoint durável, retomada e reconciliação hash; manter o snapshot JSONB como autoridade. **Concluído localmente.**
+4. Exercitar a nova fronteira em PostgreSQL descartável com dado populado, repetição idempotente, interrupção/retomada, concorrência e divergência fail-closed; reexecutar typecheck, lint, validação completa, build, suites de navegador, segurança, performance e recovery. **Concluído: 9/9 focado, 29/29 completo, validate 612/612, E2E 51/51, acessibilidade 6/6, security/perf/recovery verdes; a crítica visual fresca Epicurus retornou `APPROVE` para a matriz local, enquanto os gates de ambiente e autoridade permanecem abertos.**
+
+## Validation and Acceptance
+
+Aceitação local exige checker v2 PASS, JSON/JSONL válidos, plano sem drift de
+ação, npm run validate PASS, build PASS, E2E/acessibilidade/security/perf/
+recovery PASS, crítica independente sem CRITICAL/HIGH local não resolvido e
+packets PostgreSQL focado e completo reproduzíveis. A fatia técnica atual
+atende os checks executáveis com PASS_WITH_CONDITIONS; a crítica visual fresca
+Epicurus aprovou a matriz local e as tentativas anteriores `NOT_RUN`/condicionais
+permanecem históricas. Aceitação de release exige
+também as decisões humanas e evidências ambientais listadas nos gates, que ainda
+não estão presentes.
+
+## Risks and Human Decisions
+
+Continuam pendentes identidade e ownership hospitalar, política de resultados
+críticos, namespace de accession, retenção/residência, backup/RPO/RTO, storage/
+malware/secrets, mapeamento relacional completo, dual-read/cutover, carga, CI
+remoto, aceitação manual e revisão independente de ambiente-alvo. Risco HIGH e blast radius
+SYSTEM permanecem declarados.
+
+## Idempotence and Recovery
+
+A migration e a projeção devem ser repetíveis em cluster descartável sem tocar
+DATABASE_URL ou o PostgreSQL existente. Um replay `COMPLETED` também revalida o
+target antes de retornar sucesso. Em interrupção, primeiro reconciliar
+state e ponteiros; depois repetir somente ações idempotentes e anexar evidência.
+O snapshot legado preserva a origem da migração, e nenhum evento histórico é
+apagado para esconder falha ou timeout.
+
+## Artifacts and Evidence
+
+As evidências principais são os packets
+.orchestrate/evidence/v2-relational-sample-lineage-postgres-20260906.md e
+.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md,
+seus manifests/saídas brutas, a crítica
+.orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md,
+as migrations 009/010, os adapters/read boundary/cutover/backfill, os testes
+PostgreSQL e os ledgers canônicos .agent. O snapshot legado serve apenas para
+auditoria da recuperação. A revisão de interface está registrada em
+.orchestrate/evidence/v2-patient-workspace-responsive-polish-20260906.md, com
+screenshots nativos, ledger visual serializável, relatório de contraste e
+packet frontend; o avaliador frontend retorna `CONDITIONAL` honestamente para
+as fronteiras manuais/performance ainda não executadas.
+
+- [x] (2026-09-06T12:15:42Z) Revalidação final da fatia Patient Workspace: labels
+  de departamento conhecidos/desconhecidos, wrapping do owner e capturas 188/320/375,
+  loading, pagination-loading e long-copy ficaram sincronizados; domínio/componente
+  passaram 19/19, `npm run validate` 569/569, build com 12 rotas, E2E completo sem
+  retry 51/51, security/audit/perf/recovery verdes; Wegener confirmou em nova leitura
+  independente que os achados visuais foram fechados, mantendo o ledger
+  `REVIEW REQUIRED`/condicional para manual, alvo/produção, golden, clínico, humano e AAA.
+- [x] (2026-09-06T13:36:39Z) Revalidação corrente após hardening do lane
+  `browser-postgres`, retries explícitos zero e falha fechada do runtime externo:
+  coverage 570/570 (93,07/85,12/95,51), build 12 rotas, docs 73 arquivos,
+  OpenAPI 65/60, traceability 43/43, migrations, typecheck/lint, security/audit,
+  performance 7/7, recovery 5/5 e E2E 51/51 verdes. O critic independente fresco
+  expirou sem relatório; ledger e pacote visual permanecem `REVIEW REQUIRED`/
+  condicional, sem promoção a AAA ou produção.
+- [x] (2026-09-06T15:51:30Z) Revalidação G4 ampla do working tree: `npm run
+  test:coverage` passou 612/612 em 75 arquivos, com 92,04% statements/lines,
+  85,02% branches e 94,43% functions no escopo executável de app, domínio,
+  runtime, persistência e UI; typecheck, lint, docs 73, OpenAPI 65/60,
+  traceability 43/43, migrations 001–010, security/audit, build 12 rotas,
+  performance 7/7, recovery 5/5 e E2E sem retry 51/51 com acessibilidade 6/6
+  também passaram. O packet [`aaa3-g4-broad-coverage-20260906.md`](../.orchestrate/evidence/aaa3-g4-broad-coverage-20260906.md)
+  fixa o denominador, exit codes, hashes e fingerprint; o candidato continua
+  local/condicional porque JSONB é a autoridade runtime, a revisão visual
+  independente está `BLOCKED` e os gates de ambiente, cutover, recovery,
+  políticas humanas, hospital e release continuam abertos.
+- [x] (2026-09-06T16:34:07Z) Revalidação G4 ampla final do working tree com a
+  política serial oficial do Vitest: `npm run validate` passou integralmente;
+  `npm run test:coverage` passou 612/612 em 75 arquivos, 92,01% statements/lines,
+  85,03% no artefato corrente de branches (piso observado 85,02% em repetições)
+  e 94,43% functions; docs 73, OpenAPI 65/60, traceability 43/43,
+  migrations 001–010, typecheck, lint e a política de cobertura ampla passaram.
+  O packet G4 foi atualizado com o hash do artefato, a política de execução e
+  o fingerprint atual. O estado segue local/condicional: JSONB permanece
+  autoridade runtime, a crítica visual independente está `BLOCKED` e os gates
+  de ambiente-alvo, cutover, recovery, políticas humanas, hospital e release
+  continuam abertos.
+- [x] (2026-09-06T18:52:09Z) Fechamento do pacote visual local: o cenário
+  responsivo agora captura ready/loading/error-denied/empty/partial/stale em
+  1440/834/375 CSS px, com 18 PNGs, hashes e dimensões no manifest; a crítica
+  fresca e selada de Hooke retornou `APPROVE`, e a matriz E2E final passou
+  51/51 sem retry. VIS-004/VIS-014 fecham no escopo local; manual,
+  golden/alvo-produção, autoridade relacional, clínico e humano continuam
+  explicitamente abertos.
+- [x] (2026-09-06T19:42:36Z) Revalidação final após o polish responsivo: o
+  foco passou 3/3 e sincronizou a matriz final de 18 PNGs; Epicurus, em contexto
+  fresco e somente leitura, retornou `APPROVE` sem defeito visual local material;
+  E2E completo isolado passou 51/51 em 4,6 minutos sem retry e `npm run validate`
+  passou 612/612, docs 73/73, OpenAPI 65/60, traceability 43/43 e migrations
+  001–010. O estado permanece VERIFY/PARTIAL por causa de CI remoto, ambiente-
+  alvo, cutover relacional, revisão manual, políticas clínicas e autoridade de
+  release ainda ausentes.
+- [x] (2026-09-06T21:14:42Z) Revalidação final da rodada visual v6: o foco responsivo passou 3/3 e a suíte E2E completa passou 51/51 em 3,9 minutos, sem retry, com acessibilidade 6/6; `npm run validate` passou 614/614 em 75 arquivos, cobertura 92,01/85,00/94,36, docs 73/73, OpenAPI 65/60, traceability 43/43 e migrations 001–010. O packet v6 contém 20 PNGs em 1440/834/375, incluindo timeline densa colapsada/expandida; Bernoulli fez crítica independente fresca e retornou `APPROVED_LOCAL`. O loading mobile foi estabilizado antes da captura. A nova integração PostgreSQL de recoleta/rollback permanece NOT_RUN por falta de cluster descartável; o 5432 persistente não foi tocado. O estado permanece VERIFY/PARTIAL por CI/ambiente alvo, autoridade relacional/cutover, recovery, revisão manual, políticas clínicas e autoridade de release.
+- [x] (2026-09-06T21:36:00Z) Reconciliação final dos packets e do status: `npm run validate:docs` passou 73/73 e `git diff --check` passou; os documentos correntes apontam para o packet v6 de 20 artefatos e para 614/614 (92,01/85,00/94,36), enquanto snapshots de 18 artefatos/612 testes ficaram explicitamente históricos. A integração PostgreSQL nova continua NOT_RUN sem runtime descartável; o 5432 persistente não foi tocado. Estado mantido em VERIFY/PARTIAL.

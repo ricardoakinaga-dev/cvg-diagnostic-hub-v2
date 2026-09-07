@@ -1,9 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import type { ItemState, WorkflowType } from "@cvg/contracts";
+import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { Icon } from "./ui-icons";
 
 export type WorkflowActionKind =
   | "RECEIVE_SAMPLE"
@@ -16,6 +18,8 @@ export type WorkflowActionKind =
   | "RECEIVE_REPLACEMENT"
   | "REQUEST_RECOLLECTION"
   | "RESCHEDULE";
+
+type WorkflowPendingAction = "submit" | "release" | null;
 
 export interface WorkflowActionItem {
   id: string;
@@ -71,9 +75,14 @@ export function apiDateTime(value: string): string {
 export function WorkflowAction({ item, onComplete }: { item: WorkflowActionItem; onComplete?: () => void }) {
   const action = workflowActionFor(item);
   const secondaryAction = secondaryWorkflowActionFor(item);
+  const formId = useId();
+  const firstFieldNodeRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+  const setFirstFieldRef = useCallback((element: HTMLInputElement | HTMLTextAreaElement | null) => {
+    firstFieldNodeRef.current = element;
+  }, []);
   const [open, setOpen] = useState(false);
   const [selectedAction, setSelectedAction] = useState<WorkflowActionKind | undefined>(action);
-  const [busy, setBusy] = useState(false);
+  const [pendingAction, setPendingAction] = useState<WorkflowPendingAction>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [accessionCode, setAccessionCode] = useState("");
@@ -87,31 +96,35 @@ export function WorkflowAction({ item, onComplete }: { item: WorkflowActionItem;
   const [rescheduleReason, setRescheduleReason] = useState("");
   const [draft, setDraft] = useState<{ id: string; version: number }>();
 
+  useEffect(() => {
+    if (open) firstFieldNodeRef.current?.focus();
+  }, [open, selectedAction]);
+
   if (!action) return <span className="next-action">Sem ação disponível</span>;
   if (action === "REVIEW_RESULT" && item.currentResultId) {
-    return <Link className="button button-ghost workflow-action-link" href={`/results/${item.currentResultId}`}>{actionLabel[action]} →</Link>;
+    return <Link className="button button-ghost workflow-action-link" href={`/results/${item.currentResultId}`}>{actionLabel[action]} <Icon name="arrow-right" size={15} /></Link>;
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
-    setBusy(true);
+    if (pendingAction) return;
+    setPendingAction("submit");
     setError("");
     setNotice("");
     if (!selectedAction) return;
     if ((selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT") && !accessionCode.trim()) {
       setError("Informe o accession da amostra.");
-      setBusy(false);
+      setPendingAction(null);
       return;
     }
     if ((selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE") && (!startsAt || !endsAt || !resource.trim())) {
       setError("Informe janela e recurso da agenda.");
-      setBusy(false);
+      setPendingAction(null);
       return;
     }
     if (selectedAction === "CREATE_RESULT" && !narrative.trim()) {
       setError("Informe o texto do resultado.");
-      setBusy(false);
+      setPendingAction(null);
       return;
     }
     try {
@@ -142,13 +155,13 @@ export function WorkflowAction({ item, onComplete }: { item: WorkflowActionItem;
     } catch (cause) {
       setError(getSafeErrorMessage(cause, "Não foi possível confirmar a ação."));
     } finally {
-      setBusy(false);
+      setPendingAction(null);
     }
   }
 
   async function releaseDraft() {
-    if (!draft || busy) return;
-    setBusy(true);
+    if (!draft || pendingAction) return;
+    setPendingAction("release");
     setError("");
     try {
       await apiFetch(`/results/${draft.id}/release`, { method: "POST", body: JSON.stringify({ expectedVersion: draft.version }) });
@@ -159,36 +172,36 @@ export function WorkflowAction({ item, onComplete }: { item: WorkflowActionItem;
     } catch (cause) {
       setError(getSafeErrorMessage(cause, "Não foi possível liberar o resultado."));
     } finally {
-      setBusy(false);
+      setPendingAction(null);
     }
   }
 
   return (
     <div className="workflow-action">
-      <button className="button button-primary" type="button" onClick={() => { setSelectedAction(action); setOpen((value) => !value); setError(""); }} aria-expanded={open}>
+      <ActionButton className="workflow-primary-action" type="button" onClick={() => { setSelectedAction(action); setOpen((value) => selectedAction === action ? !value : true); setError(""); }} aria-expanded={open && selectedAction === action} aria-controls={formId} disabled={pendingAction !== null} state={pendingAction === "submit" && selectedAction === action ? "pending" : "idle"}>
         {actionLabel[action]}
-      </button>
-      {secondaryAction && <button className="button button-ghost workflow-secondary-action" type="button" onClick={() => { setSelectedAction(secondaryAction); setOpen(true); setError(""); }} aria-expanded={open}>{actionLabel[secondaryAction]}</button>}
-      {open && selectedAction && <form className="workflow-form" onSubmit={(event) => void submit(event)}>
+      </ActionButton>
+      {secondaryAction && <ActionButton tone="ghost" className="workflow-secondary-action" type="button" onClick={() => { setSelectedAction(secondaryAction); setOpen(true); setError(""); }} aria-expanded={open && selectedAction === secondaryAction} aria-controls={formId} disabled={pendingAction !== null} state={pendingAction === "submit" && selectedAction === secondaryAction ? "pending" : "idle"}>{actionLabel[secondaryAction]}</ActionButton>}
+      {open && selectedAction && <form id={formId} className="workflow-form" onSubmit={(event) => void submit(event)}>
         {selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT" ? <>
-          <label>Accession<input value={accessionCode} onChange={(event) => setAccessionCode(event.target.value)} autoComplete="off" placeholder="ACC-2026-001" /></label>
+          <label>Accession<input ref={setFirstFieldRef} value={accessionCode} onChange={(event) => setAccessionCode(event.target.value)} autoComplete="off" placeholder="ACC-2026-001" /></label>
           <label>Tipo de amostra<input value={sampleType} onChange={(event) => setSampleType(event.target.value)} /></label>
         </> : null}
         {selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE" ? <>
-          <label>Início<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
+          <label>Início<input ref={setFirstFieldRef} type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
           <label>Fim<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label>
           <label>Recurso<input value={resource} onChange={(event) => setResource(event.target.value)} placeholder="US-01" /></label>
           {selectedAction === "RESCHEDULE" && <label>Motivo<input value={rescheduleReason} onChange={(event) => setRescheduleReason(event.target.value)} placeholder="Conflito de agenda" /></label>}
         </> : null}
         {selectedAction === "REQUEST_RECOLLECTION" ? <>
-          <label>Código do motivo<input value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} placeholder="HEMOLYZED" /></label>
+          <label>Código do motivo<input ref={setFirstFieldRef} value={reasonCode} onChange={(event) => setReasonCode(event.target.value)} placeholder="HEMOLYZED" /></label>
           <label>Observação<textarea value={reasonNote} onChange={(event) => setReasonNote(event.target.value)} rows={3} placeholder="Descreva o motivo operacional." /></label>
         </> : null}
-        {selectedAction === "CREATE_RESULT" ? <label>Resultado<textarea value={narrative} onChange={(event) => setNarrative(event.target.value)} rows={4} placeholder="Descreva o resultado confirmado pelo setor." /></label> : null}
+        {selectedAction === "CREATE_RESULT" ? <label>Resultado<textarea ref={setFirstFieldRef} value={narrative} onChange={(event) => setNarrative(event.target.value)} rows={4} placeholder="Descreva o resultado confirmado pelo setor." /></label> : null}
         {error && <p className="form-alert" role="alert">{error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
-        <div className="workflow-form-actions"><button className="button button-ghost" type="button" onClick={() => setOpen(false)}>Cancelar</button><button className="button button-primary" type="submit" disabled={busy}>{busy ? "Confirmando…" : "Confirmar"}</button></div>
-        {draft && <div className="workflow-draft-actions"><Link className="button button-ghost" href={`/results/${draft.id}`}>Abrir draft</Link>{item.workflowType === "LABORATORY" ? <span className="workflow-draft-guidance">Abra o editor para preencher e liberar o painel.</span> : <button className="button button-primary" type="button" onClick={() => void releaseDraft()} disabled={busy}>Liberar resultado</button>}</div>}
+        <div className="workflow-form-actions"><button className="button button-ghost" type="button" onClick={() => setOpen(false)} disabled={pendingAction !== null}>Cancelar</button><ActionButton state={pendingAction === "submit" ? "pending" : "idle"} disabled={pendingAction !== null} type="submit">{pendingAction === "submit" ? "Confirmando…" : "Confirmar"}</ActionButton></div>
+        {draft && <div className="workflow-draft-actions"><Link className="button button-ghost" href={`/results/${draft.id}`}>Abrir draft</Link>{item.workflowType === "LABORATORY" ? <span className="workflow-draft-guidance">Abra o editor para preencher e liberar o painel.</span> : <ActionButton state={pendingAction === "release" ? "pending" : "idle"} disabled={pendingAction !== null} onClick={() => void releaseDraft()}>{pendingAction === "release" ? "Liberando…" : "Liberar resultado"}</ActionButton>}</div>}
       </form>}
     </div>
   );

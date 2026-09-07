@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "items": [
     {
       "id": "TASK-V4-PLAN-001",
@@ -11,8 +11,20 @@
       "dependencies": [],
       "owner": "primary-agent",
       "acceptance_summary": "Quality Bar v4, ExecPlan, canonical state and a valid implementation gate are persisted and checker-valid",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", ".agent/plans/premium-enterprise-mvp-v4.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-PLAN-002", ".agent/gates/implementation-ready-v4.json#GATE-IMPLEMENTATION-READY-V4-001"],
-      "next_action": "Keep the plan synchronized as implementation evidence changes"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        ".agent/plans/premium-enterprise-mvp-v4.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/verification.jsonl#VER-V4-PLAN-002",
+        ".agent/gates/implementation-ready-v4.json#GATE-IMPLEMENTATION-READY-V4-001"
+      ],
+      "next_action": {
+        "id": "TASK-V4-PLAN-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-SEC-001",
@@ -21,11 +33,25 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "GAP-V4-01,GAP-V4-02,GAP-V4-03,GAP-V4-04",
-      "dependencies": ["TASK-V4-PLAN-001"],
+      "dependencies": [
+        "TASK-V4-PLAN-001"
+      ],
       "owner": "security-domain-wave",
       "acceptance_summary": "V4-SEC-01/02/03 and V4-DOM-01 pass with RED-first regressions",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-SEC-GREEN-002", ".agent/verification.jsonl#VER-V4-SEC-REGRESSION-003", ".agent/audits/TASK-V4-SEC-001-CRITIC.md"],
-      "next_action": "Preserve the closed invariants while TASK-V4-DATA-001 proves them across PostgreSQL instances"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/verification.jsonl#VER-V4-SEC-GREEN-002",
+        ".agent/verification.jsonl#VER-V4-SEC-REGRESSION-003",
+        ".agent/audits/TASK-V4-SEC-001-CRITIC.md"
+      ],
+      "next_action": {
+        "id": "TASK-V4-SEC-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-CONTRACT-001",
@@ -34,11 +60,24 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "GAP-V4-06,GAP-V4-07",
-      "dependencies": ["TASK-V4-PLAN-001"],
+      "dependencies": [
+        "TASK-V4-PLAN-001"
+      ],
       "owner": "api-contract-wave",
       "acceptance_summary": "V4-API-01/02 pass with semantic lint, drift checks and negative route tests",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-CONTRACT-CLOSURE-007", ".agent/audits/TASK-V4-CONTRACT-001-CRITIC.md"],
-      "next_action": "Preserve exact manifest/OpenAPI/runtime parity while durable PostgreSQL behavior is implemented"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/verification.jsonl#VER-V4-CONTRACT-CLOSURE-007",
+        ".agent/audits/TASK-V4-CONTRACT-001-CRITIC.md"
+      ],
+      "next_action": {
+        "id": "TASK-V4-CONTRACT-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-DATA-001",
@@ -47,11 +86,27 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "GAP-V4-05,GAP-V4-08",
-      "dependencies": ["TASK-V4-SEC-001", "TASK-V4-CONTRACT-001"],
+      "dependencies": [
+        "TASK-V4-SEC-001",
+        "TASK-V4-CONTRACT-001"
+      ],
       "owner": "data-wave",
       "acceptance_summary": "V4-DB-01/02 pass on a disposable two-store PostgreSQL harness and V4-DB-03 is explicitly bounded by the safe transitional snapshot boundary",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", ".agent/audits/TASK-V4-DATA-001-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/gates/implementation-ready-v4-data.json#GATE-IMPLEMENTATION-READY-V4-DATA-001", ".agent/verification.jsonl#VER-V4-DATA-GREEN-029", ".agent/verification.jsonl#VER-V4-DATA-GREEN-041"],
-      "next_action": "Keep the transitional boundary fail-closed while production planning supplies relational clinical migration, indexes and representative EXPLAIN evidence"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        ".agent/audits/TASK-V4-DATA-001-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/gates/implementation-ready-v4-data.json#GATE-IMPLEMENTATION-READY-V4-DATA-001",
+        ".agent/verification.jsonl#VER-V4-DATA-GREEN-029",
+        ".agent/verification.jsonl#VER-V4-DATA-GREEN-041"
+      ],
+      "next_action": {
+        "id": "TASK-V4-DATA-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-OPS-001",
@@ -60,11 +115,26 @@
       "priority": "P1",
       "status": "DONE",
       "origin": "GAP-V4-10,GAP-V4-11",
-      "dependencies": ["TASK-V4-DATA-001"],
+      "dependencies": [
+        "TASK-V4-DATA-001"
+      ],
       "owner": "operations-security-wave",
       "acceptance_summary": "V4-OPS-01/02 pass with lease races, notification delivery state transitions and fail-closed production adapters",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-REG-GREEN-028", ".agent/verification.jsonl#VER-V4-DATA-GREEN-029", ".agent/verification.jsonl#VER-V4-OPS-GREEN-039", ".agent/verification.jsonl#VER-V4-OPS-GREEN-042"],
-      "next_action": "Bind the local controls to the approved production worker, ingress, object-storage, malware-scanner and secrets topology"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/verification.jsonl#VER-V4-REG-GREEN-028",
+        ".agent/verification.jsonl#VER-V4-DATA-GREEN-029",
+        ".agent/verification.jsonl#VER-V4-OPS-GREEN-039",
+        ".agent/verification.jsonl#VER-V4-OPS-GREEN-042"
+      ],
+      "next_action": {
+        "id": "TASK-V4-OPS-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-ARCH-001",
@@ -73,11 +143,27 @@
       "priority": "P1",
       "status": "DONE",
       "origin": "GAP-V4-12",
-      "dependencies": ["TASK-V4-SEC-001", "TASK-V4-CONTRACT-001"],
+      "dependencies": [
+        "TASK-V4-SEC-001",
+        "TASK-V4-CONTRACT-001"
+      ],
       "owner": "architecture-wave",
       "acceptance_summary": "V4-ARCH-01 passes with cohesive application modules, domain dependency fitness checks and no production source file over 800 lines",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", "src/server/architecture-fitness.test.ts", ".agent/verification.jsonl#VER-V4-REG-GREEN-028", ".agent/verification.jsonl#VER-V4-ARCH-GREEN-040", ".agent/verification.jsonl#VER-V4-ARCH-GREEN-043"],
-      "next_action": "Preserve module boundaries and repeat the fitness gate when persistence or integration topology changes"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        "src/server/architecture-fitness.test.ts",
+        ".agent/verification.jsonl#VER-V4-REG-GREEN-028",
+        ".agent/verification.jsonl#VER-V4-ARCH-GREEN-040",
+        ".agent/verification.jsonl#VER-V4-ARCH-GREEN-043"
+      ],
+      "next_action": {
+        "id": "TASK-V4-ARCH-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-JOURNEY-001",
@@ -86,11 +172,27 @@
       "priority": "P1",
       "status": "DONE",
       "origin": "GAP-V4-09",
-      "dependencies": ["TASK-V4-DATA-001", "TASK-V4-OPS-001", "TASK-V4-ARCH-001"],
+      "dependencies": [
+        "TASK-V4-DATA-001",
+        "TASK-V4-OPS-001",
+        "TASK-V4-ARCH-001"
+      ],
       "owner": "journey-wave",
       "acceptance_summary": "V4-UX-01/02 pass locally without mocked mutation routes or forced actions, with both synthetic-memory and focused PostgreSQL clinical evidence",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-030", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-031", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-044"],
-      "next_action": "Obtain manual clinical and accessibility acceptance plus representative load evidence before RELEASE_READY"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-030",
+        ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-031",
+        ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-044"
+      ],
+      "next_action": {
+        "id": "TASK-V4-JOURNEY-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-DOC-001",
@@ -99,11 +201,27 @@
       "priority": "P1",
       "status": "DONE",
       "origin": "GAP-V4-13,GAP-V4-14",
-      "dependencies": ["TASK-V4-DATA-001", "TASK-V4-ARCH-001", "TASK-V4-JOURNEY-001"],
+      "dependencies": [
+        "TASK-V4-DATA-001",
+        "TASK-V4-ARCH-001",
+        "TASK-V4-JOURNEY-001"
+      ],
       "owner": "documentation-wave",
       "acceptance_summary": "V4-DOC-01 and V4-TRACE-01 pass with generated-contract, traceability, readiness and evidence counts reconciled",
-      "evidence_refs": [".agent/audits/AUDIT-V4-BASELINE.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/verification.jsonl#VER-V4-DOC-GREEN-032", ".agent/verification.jsonl#VER-V4-REG-GREEN-028", ".agent/verification.jsonl#VER-V4-DOC-GREEN-045"],
-      "next_action": "Keep actual-vs-target claims synchronized as external release evidence is supplied"
+      "evidence_refs": [
+        ".agent/audits/AUDIT-V4-BASELINE.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/verification.jsonl#VER-V4-DOC-GREEN-032",
+        ".agent/verification.jsonl#VER-V4-REG-GREEN-028",
+        ".agent/verification.jsonl#VER-V4-DOC-GREEN-045"
+      ],
+      "next_action": {
+        "id": "TASK-V4-DOC-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/audits/AUDIT-V4-BASELINE.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V4-AUDIT-001",
@@ -112,11 +230,28 @@
       "priority": "P0",
       "status": "VERIFY",
       "origin": "V4-REG-01,V4-CRITIC-01",
-      "dependencies": ["TASK-V4-OPS-001", "TASK-V4-JOURNEY-001", "TASK-V4-DOC-001"],
+      "dependencies": [
+        "TASK-V4-OPS-001",
+        "TASK-V4-JOURNEY-001",
+        "TASK-V4-DOC-001"
+      ],
       "owner": "primary-agent-and-independent-critic",
       "acceptance_summary": "All required local v4 criteria pass and the final independent critic found no unresolved local CRITICAL/HIGH finding; release conditions remain external",
-      "evidence_refs": [".agent/plans/premium-enterprise-mvp-v4.md", "docs/build/PREMIUM_MVP_V4.md", ".agent/gates/verified-v4-final.json#GATE-VERIFIED-V4-FINAL-001", ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-038", ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046", ".agent/verification.jsonl#VER-V4-CRITIC-GREEN-037"],
-      "next_action": "Keep VERIFIED conditional and resolve the typed external conditions before requesting RELEASE_READY"
+      "evidence_refs": [
+        ".agent/plans/premium-enterprise-mvp-v4.md",
+        "docs/build/PREMIUM_MVP_V4.md",
+        ".agent/gates/verified-v4-final.json#GATE-VERIFIED-V4-FINAL-001",
+        ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-038",
+        ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046",
+        ".agent/verification.jsonl#VER-V4-CRITIC-GREEN-037"
+      ],
+      "next_action": {
+        "id": "TASK-V4-AUDIT-001:REVIEW",
+        "kind": "REVIEW",
+        "summary": "Revisar a evidência atual antes de promover a tarefa para conclusão",
+        "target": ".agent/plans/premium-enterprise-mvp-v4.md",
+        "completion_signal": "Uma revisão executada deixa a tarefa em DONE ou registra um bloqueio concreto"
+      }
     },
     {
       "id": "TASK-V2-PLAN-001",
@@ -128,8 +263,20 @@
       "dependencies": [],
       "owner": "primary-agent",
       "acceptance_summary": "V2 plan, migration map and binary first-wave bar are persisted without overwriting V4 history",
-      "evidence_refs": [".agent/plans/cvg-diagnostic-hub-v2.md", "docs/v2/MIGRATION_MAP.md", "docs/v2/QUALITY_BAR.md", ".gauntlet/state.md#Round 16"],
-      "next_action": "Preserve the frozen bar and advance the next V2 clinical slice"
+      "evidence_refs": [
+        ".agent/plans/cvg-diagnostic-hub-v2.md",
+        "docs/v2/MIGRATION_MAP.md",
+        "docs/v2/QUALITY_BAR.md",
+        ".gauntlet/state.md",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-PLAN-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-PLAN-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".agent/plans/cvg-diagnostic-hub-v2.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-FOUNDATION-001",
@@ -138,11 +285,27 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-FOUND-02",
-      "dependencies": ["TASK-V2-PLAN-001"],
+      "dependencies": [
+        "TASK-V2-PLAN-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Domain/UI foundation is runtime-consumed, typed and tested; no placeholder package is counted",
-      "evidence_refs": ["packages/domain/src/index.ts", "packages/ui/src/index.tsx", "packages/services/src/index.ts", "packages/shared-state/src/index.ts", "src/features/command-center/command-center-panel.tsx", ".agent/verification.jsonl#VER-V2-WAVE1-REG-001"],
-      "next_action": "Keep package imports runtime-consumed while preparing the apps/web and apps/api move"
+      "evidence_refs": [
+        "packages/domain/src/index.ts",
+        "packages/ui/src/index.tsx",
+        "packages/services/src/index.ts",
+        "packages/shared-state/src/index.ts",
+        "src/features/command-center/command-center-panel.tsx",
+        ".agent/verification.jsonl#VER-V2-WAVE1-REG-001",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-FOUNDATION-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-FOUNDATION-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "packages/domain/src/index.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-DOMAIN-001",
@@ -151,11 +314,25 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-OPS-01",
-      "dependencies": ["TASK-V2-PLAN-001"],
+      "dependencies": [
+        "TASK-V2-PLAN-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Owner, next action, blocker, waiting, expected-by and operational escalation are typed and covered by state-matrix tests",
-      "evidence_refs": ["packages/domain/src/index.ts", "packages/domain/src/operational-context.test.ts", "src/server/application/operational-context.ts", ".agent/verification.jsonl#VER-V2-WAVE1-FOCUS-001"],
-      "next_action": "Extend the operational state matrix when approved clinical workflow policies are added"
+      "evidence_refs": [
+        "packages/domain/src/index.ts",
+        "packages/domain/src/operational-context.test.ts",
+        "src/server/application/operational-context.ts",
+        ".agent/verification.jsonl#VER-V2-WAVE1-FOCUS-001",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-DOMAIN-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-DOMAIN-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "packages/domain/src/index.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-CONTRACT-001",
@@ -164,11 +341,26 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-CONTRACT-01",
-      "dependencies": ["TASK-V2-DOMAIN-001"],
+      "dependencies": [
+        "TASK-V2-DOMAIN-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Contracts, OpenAPI/runtime payloads and negative authorization cases agree",
-      "evidence_refs": ["packages/contracts/src/index.ts", "scripts/validate-openapi.mjs", "docs/api/openapi.json", "src/server/http/openapi-runtime-response.test.ts", ".agent/verification.jsonl#VER-V2-WAVE1-CONTRACT-001"],
-      "next_action": "Keep generated OpenAPI and runtime response tests synchronized for the next slice"
+      "evidence_refs": [
+        "packages/contracts/src/index.ts",
+        "scripts/validate-openapi.mjs",
+        "docs/api/openapi.json",
+        "src/server/http/openapi-runtime-response.test.ts",
+        ".agent/verification.jsonl#VER-V2-WAVE1-CONTRACT-001",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-CONTRACT-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-CONTRACT-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "packages/contracts/src/index.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-API-001",
@@ -177,11 +369,25 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-OPS-02,V2-SEC-01",
-      "dependencies": ["TASK-V2-CONTRACT-001"],
+      "dependencies": [
+        "TASK-V2-CONTRACT-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Server-sorted attention and sector state are real, scoped and resilient to partial/degraded reads",
-      "evidence_refs": ["src/server/application/read-service.ts", "src/server/application/read-models.test.ts", "src/app/api/v1/[...path]/route.test.ts", ".agent/verification.jsonl#VER-V2-WAVE1-SCOPE-001"],
-      "next_action": "Add backend degraded dependency projections only when a real multi-source read boundary exists"
+      "evidence_refs": [
+        "src/server/application/read-service.ts",
+        "src/server/application/read-models.test.ts",
+        "src/app/api/v1/[...path]/route.test.ts",
+        ".agent/verification.jsonl#VER-V2-WAVE1-SCOPE-001",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-API-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-API-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "src/server/application/read-service.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-UI-001",
@@ -190,24 +396,53 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-UX-01,V2-UX-02",
-      "dependencies": ["TASK-V2-CONTRACT-001", "TASK-V2-FOUNDATION-001", "TASK-V2-API-001"],
+      "dependencies": [
+        "TASK-V2-CONTRACT-001",
+        "TASK-V2-FOUNDATION-001",
+        "TASK-V2-API-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Real API data drives dashboard, filters and accessible drawer while clinical actions remain explicit server commands",
-      "evidence_refs": ["src/features/command-center/command-center-panel.tsx", "src/features/diagnostics/exam-queue.tsx", "src/features/diagnostics/exam-queue.test.tsx", "src/components/dashboard.tsx"],
-      "next_action": "Continue feature-oriented composition with Patient Workspace and modality workspaces"
+      "evidence_refs": [
+        "src/features/command-center/command-center-panel.tsx",
+        "src/features/diagnostics/exam-queue.tsx",
+        "src/features/diagnostics/exam-queue.test.tsx",
+        "src/components/dashboard.tsx",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-UI-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-UI-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "src/features/command-center/command-center-panel.tsx",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-JOURNEY-001",
       "title": "Prove Command Center and queue drawer in the real served artifact",
-      "stage": "VERIFY",
+      "stage": "BUILD",
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-TEST-01,V2-REG-01",
-      "dependencies": ["TASK-V2-API-001", "TASK-V2-UI-001"],
+      "dependencies": [
+        "TASK-V2-API-001",
+        "TASK-V2-UI-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Focused browser journey, regression suite, typecheck, lint and build pass under compatible Node",
-      "evidence_refs": ["tests/e2e/core-flows.spec.ts", ".agent/verification.jsonl#VER-V2-WAVE1-E2E-001"],
-      "next_action": "Add the next clinical journey without weakening the served-artifact regression matrix"
+      "evidence_refs": [
+        "tests/e2e/core-flows.spec.ts",
+        ".agent/verification.jsonl#VER-V2-WAVE1-E2E-001",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-JOURNEY-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-JOURNEY-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "tests/e2e/core-flows.spec.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-AUDIT-001",
@@ -216,24 +451,49 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-CRITIC-01",
-      "dependencies": ["TASK-V2-JOURNEY-001"],
+      "dependencies": [
+        "TASK-V2-JOURNEY-001"
+      ],
       "owner": "primary-agent-and-independent-critic",
       "acceptance_summary": "The first-wave bar is evaluated against the master prompt and all unresolved local CRITICAL/HIGH findings are fixed or bounded",
-      "evidence_refs": [".gauntlet/state.md#Round 16", ".gauntlet/state.md#Round 17", ".agent/verification.jsonl#VER-V2-WAVE1-CRITIC-001"],
-      "next_action": "Repeat independent criticism after each material V2 slice"
+      "evidence_refs": [
+        ".gauntlet/state.md",
+        ".agent/verification.jsonl#VER-V2-WAVE1-CRITIC-001",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-AUDIT-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-AUDIT-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".gauntlet/state.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-RETEST-001",
       "title": "Re-run artifact evidence and persist the V2 checkpoint",
-      "stage": "VERIFY",
+      "stage": "BUILD",
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-REG-01,V2-CRITIC-01",
-      "dependencies": ["TASK-V2-AUDIT-001"],
+      "dependencies": [
+        "TASK-V2-AUDIT-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Fresh retest, gauntlet checkpoint, limitations and next global backlog are reconciled",
-      "evidence_refs": [".gauntlet/progress.md", ".gauntlet/state.md#Round 17", ".agent/state.json"],
-      "next_action": "Open the next V2 clinical-domain slice; keep this wave conditional"
+      "evidence_refs": [
+        ".gauntlet/progress.md",
+        ".gauntlet/state.md",
+        ".agent/state.json",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-RETEST-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-RETEST-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": ".gauntlet/progress.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-LAB-DOMAIN-001",
@@ -242,11 +502,25 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-LAB-01,V2-LAB-02,V2-LAB-03",
-      "dependencies": ["TASK-V2-RETEST-001"],
+      "dependencies": [
+        "TASK-V2-RETEST-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Synthetic Hemogram template, typed observations, panel revision checks, units, completeness and configured flags are implemented without clinical thresholds",
-      "evidence_refs": ["packages/contracts/src/index.ts", "packages/domain/src/laboratory-result.ts", "packages/domain/src/laboratory-result.test.ts", "src/server/store/fixtures.ts"],
-      "next_action": "Keep the domain pure while the contract/API/UI boundary is audited"
+      "evidence_refs": [
+        "packages/contracts/src/index.ts",
+        "packages/domain/src/laboratory-result.ts",
+        "packages/domain/src/laboratory-result.test.ts",
+        "src/server/store/fixtures.ts",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-LAB-DOMAIN-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-LAB-DOMAIN-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "packages/contracts/src/index.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-LAB-CONTRACT-001",
@@ -255,11 +529,27 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-LAB-02,V2-LAB-06",
-      "dependencies": ["TASK-V2-LAB-DOMAIN-001"],
+      "dependencies": [
+        "TASK-V2-LAB-DOMAIN-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Zod, generated OpenAPI, route manifest and AJV runtime responses agree for template and structured result payloads",
-      "evidence_refs": ["src/server/http/command-schemas.ts", "src/server/http/command-schemas.test.ts", "src/server/http/api-operation-manifest.ts", "scripts/validate-openapi.mjs", "src/server/http/openapi-runtime-response.test.ts", "docs/api/openapi.json"],
-      "next_action": "Preserve generated contract parity through the independent audit"
+      "evidence_refs": [
+        "src/server/http/command-schemas.ts",
+        "src/server/http/command-schemas.test.ts",
+        "src/server/http/api-operation-manifest.ts",
+        "scripts/validate-openapi.mjs",
+        "src/server/http/openapi-runtime-response.test.ts",
+        "docs/api/openapi.json",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-LAB-CONTRACT-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-LAB-CONTRACT-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "src/server/http/command-schemas.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-LAB-API-001",
@@ -268,11 +558,27 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-LAB-01,V2-LAB-04",
-      "dependencies": ["TASK-V2-LAB-CONTRACT-001"],
+      "dependencies": [
+        "TASK-V2-LAB-CONTRACT-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Template read is server-scoped and structured draft/release normalizes observations while preserving idempotency, expected versions, audit and outbox",
-      "evidence_refs": ["src/server/application/management-service.ts", "src/server/application/result-service.ts", "src/server/application/catalog.test.ts", "src/server/application/workflow-commands.test.ts", "src/app/api/v1/[...path]/route.ts", "src/app/api/v1/[...path]/route.test.ts"],
-      "next_action": "Review compatibility path and release semantics in the independent audit"
+      "evidence_refs": [
+        "src/server/application/management-service.ts",
+        "src/server/application/result-service.ts",
+        "src/server/application/catalog.test.ts",
+        "src/server/application/workflow-commands.test.ts",
+        "src/app/api/v1/[...path]/route.ts",
+        "src/app/api/v1/[...path]/route.test.ts",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-LAB-API-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-LAB-API-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "src/server/application/management-service.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-LAB-UI-001",
@@ -281,24 +587,51 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-LAB-05",
-      "dependencies": ["TASK-V2-LAB-CONTRACT-001", "TASK-V2-LAB-API-001"],
+      "dependencies": [
+        "TASK-V2-LAB-CONTRACT-001",
+        "TASK-V2-LAB-API-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "ResultView renders the real panel revision, typed inputs, units, pending-policy references and server-derived flags without accepting client flags",
-      "evidence_refs": ["src/components/result-view.tsx", "src/components/result-view.test.tsx", "src/app/globals.css"],
-      "next_action": "Keep the UI subordinate to server template and lifecycle state"
+      "evidence_refs": [
+        "src/components/result-view.tsx",
+        "src/components/result-view.test.tsx",
+        "src/app/globals.css",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-LAB-UI-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-LAB-UI-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "src/components/result-view.tsx",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-LAB-JOURNEY-001",
       "title": "Prove the structured Hemogram journey in the served browser artifact",
-      "stage": "VERIFY",
+      "stage": "BUILD",
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-LAB-04,V2-LAB-05",
-      "dependencies": ["TASK-V2-LAB-API-001", "TASK-V2-LAB-UI-001"],
+      "dependencies": [
+        "TASK-V2-LAB-API-001",
+        "TASK-V2-LAB-UI-001"
+      ],
       "owner": "primary-agent",
       "acceptance_summary": "Chromium fills typed analytes, round-trips normalized values/flags and releases the structured result with accessibility checks",
-      "evidence_refs": ["tests/e2e/clinical-lifecycle.spec.ts", "src/server/http/openapi-runtime-response.test.ts"],
-      "next_action": "Run full regression and integrate independent criticism"
+      "evidence_refs": [
+        "tests/e2e/clinical-lifecycle.spec.ts",
+        "src/server/http/openapi-runtime-response.test.ts",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-LAB-JOURNEY-001-CURRENT-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-LAB-JOURNEY-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "tests/e2e/clinical-lifecycle.spec.ts",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-LAB-AUDIT-001",
@@ -307,31 +640,139 @@
       "priority": "P0",
       "status": "DONE",
       "origin": "V2-LAB-07",
-      "dependencies": ["TASK-V2-LAB-JOURNEY-001"],
+      "dependencies": [
+        "TASK-V2-LAB-JOURNEY-001"
+      ],
       "owner": "primary-agent-and-independent-critic",
       "acceptance_summary": "Fresh critic identifies or clears material local gaps; limitations and human clinical gates are explicit and retested",
       "evidence_refs": [
         "docs/v2/LABORATORY_VERTICAL.md",
-        ".agent/gates/v2-laboratory-conditional.json#GATE-V2-LAB-CONDITIONAL-001",
+        ".agent/gates/v2-laboratory-conditional.json#GATE-VERIFIED-V2-LAB-001",
         ".agent/verification.jsonl#VER-V2-LAB-CRITIC-RETEST-001",
         ".agent/verification.jsonl#VER-V2-LAB-REG-002",
         ".agent/verification.jsonl#VER-V2-LAB-CONTRACT-002",
-        ".agent/verification.jsonl#VER-V2-LAB-DOC-002"
+        ".agent/verification.jsonl#VER-V2-LAB-DOC-002",
+        ".agent/verification.jsonl#VER-CONTROL-TASK-V2-LAB-AUDIT-001-CURRENT-001"
       ],
-      "next_action": "Open the next V2 Patient Workspace slice while preserving this conditional Laboratory gate"
+      "next_action": {
+        "id": "TASK-V2-LAB-AUDIT-001:REOPEN",
+        "kind": "REOPEN",
+        "summary": "Reabrir somente se uma nova mudança ou fronteira de verificação for autorizada",
+        "target": "docs/v2/LABORATORY_VERTICAL.md",
+        "completion_signal": "Uma nova fronteira autorizada tem uma transição e uma evidência próprias"
+      }
     },
     {
       "id": "TASK-V2-PATIENT-WORKSPACE-001",
-      "title": "Specify the contextual Patient Workspace slice",
-      "stage": "SPEC",
+      "title": "Implement and verify the contextual Patient Workspace slice",
+      "stage": "BUILD",
       "priority": "P0",
-      "status": "PENDING",
+      "status": "VERIFY",
       "origin": "V2-NEXT-GATE",
-      "dependencies": ["TASK-V2-LAB-AUDIT-001"],
+      "dependencies": [
+        "TASK-V2-LAB-AUDIT-001"
+      ],
       "owner": "primary-agent",
-      "acceptance_summary": "Patient, encounter, admission, request, item, result, sample, attachment and operational context are specified as one scoped workspace before implementation",
-      "evidence_refs": ["docs/v2/MIGRATION_MAP.md", "docs/v2/QUALITY_BAR.md", ".agent/gates/v2-laboratory-conditional.json#GATE-V2-LAB-CONDITIONAL-001"],
-      "next_action": "Freeze Patient Workspace contract, scope matrix and journey bar before coding"
+      "acceptance_summary": "Patient, encounter, admission, request, item, result, sample, attachment and operational context are implemented as one scoped workspace with contract, responsive readability, contrast and regression evidence; local verification remains conditional",
+      "evidence_refs": [
+        "docs/v2/PATIENT_WORKSPACE.md",
+        "docs/v2/MIGRATION_MAP.md",
+        "docs/v2/QUALITY_BAR.md",
+        ".orchestrate/evidence/aaa3-final-revalidation-20260906.md",
+    ".orchestrate/evidence/v2-patient-workspace-local-20260905.md",
+    ".orchestrate/evidence/v2-patient-workspace-responsive-polish-20260906.md",
+        ".orchestrate/evidence/v2-patient-workspace-current-20260906.md",
+        ".orchestrate/evidence/v2-patient-workspace-state-matrix-independent-critic-20260906.md",
+        ".orchestrate/evidence/v2-patient-workspace-independent-critic-20260906.md",
+        ".orchestrate/evidence/v2-patient-workspace-independent-critic-final-20260906.md",
+        ".orchestrate/evidence/v2-patient-workspace-independent-critic-final-matrix-20260906.md",
+        ".orchestrate/evidence/visual-patient-workspace-20260906-v6/manifest.json",
+        ".orchestrate/evidence/visual-patient-workspace-20260906-v6/critic-report.md",
+        ".orchestrate/evidence/visual-patient-workspace-20260906/visual-ledger.json",
+        ".orchestrate/evidence/visual-patient-workspace-20260906/frontend-packet.json",
+        ".orchestrate/evidence/visual-patient-workspace-20260906/state-matrix-manifest-20260906.json",
+        ".orchestrate/evidence/visual-patient-workspace-20260906/frontend-metrics-20260906.json",
+        ".orchestrate/evidence/visual-patient-workspace-20260906/reflow-copy-stress-20260906.json",
+        ".orchestrate/evidence/v2-patient-workspace-current-manifest-20260906.txt",
+        ".agent/verification.jsonl#VER-V2-PATIENT-WORKSPACE-RESPONSIVE-013",
+        ".agent/verification.jsonl#VER-V2-PATIENT-WORKSPACE-RESPONSIVE-014",
+        ".agent/verification.jsonl#VER-V2-PATIENT-WORKSPACE-RESPONSIVE-015",
+        ".agent/verification.jsonl#VER-V2-G4-FINAL-023",
+        ".agent/verification.jsonl#VER-V2-G4-FINAL-024",
+        ".agent/verification.jsonl#VER-V2-G4-FINAL-025",
+        "packages/domain/src/index.ts",
+        "packages/domain/src/operational-context.test.ts",
+        "src/server/application/patient-workspace.test.ts",
+        "src/components/patient-diagnostics.test.tsx",
+        "tests/e2e/core-flows.spec.ts",
+        ".agent/gates/v2-laboratory-conditional.json#GATE-VERIFIED-V2-LAB-001"
+      ],
+      "next_action": {
+        "id": "TASK-V2-PATIENT-WORKSPACE-001:PATIENT-WORKSPACE-FRESH-REVIEW",
+        "kind": "REVIEW",
+        "summary": "Registrar a aprovação visual local v6 e obter evidência DOM/manual, golden, alvo/produção e aceite humano",
+        "target": ".orchestrate/evidence/visual-patient-workspace-20260906-v6/manifest.json",
+        "completion_signal": "A crítica independente v6 está ligada ao packet atual; o bloqueio DOM/manual, golden, alvo/produção e humano permanece explicitamente registrado até haver autoridade para fechar"
+      }
+    },
+    {
+      "id": "TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001",
+      "title": "Harden relational sample/accession lineage and optimistic schedule projection",
+      "stage": "BUILD",
+      "priority": "P0",
+      "status": "VERIFY",
+      "origin": "VSL-REL-SAMPLE-001",
+      "dependencies": [
+        "TASK-V2-LAB-AUDIT-001"
+      ],
+      "owner": "primary-agent",
+      "acceptance_summary": "Application validates canonical accessions and duplicate item IDs; replacement lineage and sample-item links are scoped, derived, versioned and fail closed; procedure schedules carry optimistic versions; the bounded migration-010 shadow backfill is durable, resumable, exact-key complete and fail-closed; replay of a completed run revalidates target keys and aggregates before reporting success",
+      "evidence_refs": [
+        "docs/v2/RELATIONAL_SAMPLE_LINEAGE.md",
+        "docs/v2/QUALITY_BAR.md",
+        "db/migrations/009_relational_sample_lineage.sql",
+        "db/migrations/010_relational_backfill_control.sql",
+        "src/server/store/migrations.ts",
+        "src/server/store/migrations.test.ts",
+        "src/server/application/workflow-service.ts",
+        "src/server/store/relational/clinical-core-adapter.ts",
+        "src/server/store/relational/clinical-core-read.ts",
+        "src/server/store/relational/clinical-core-readiness.ts",
+        "src/server/store/relational/projection-sql.ts",
+        "src/server/store/relational/cutover.ts",
+        "src/server/store/relational/clinical-core-backfill.ts",
+        "src/server/store/relational/clinical-core-backfill.test.ts",
+        "scripts/relational-backfill.ts",
+        ".orchestrate/evidence/aaa3-final-revalidation-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-local-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-postgres-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-postgres-manifest-20260906.txt",
+        ".orchestrate/evidence/aaa3-realtime-postgres-20260906.md",
+        ".orchestrate/evidence/aaa3-http-multi-instance-20260906.md",
+        ".orchestrate/evidence/aaa3-http-multi-instance-run-20260906.txt",
+        "tests/postgres/relational-sample-lineage.integration.test.ts",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-run-20260906.txt",
+        ".orchestrate/evidence/v2-relational-sample-lineage-backfill-critic-20260906.md",
+        "tests/postgres/realtime-listen.integration.test.ts",
+        "tests/postgres/http-multi-instance.integration.test.ts",
+        "tests/support/next-http-test-server.ts",
+        "tests/postgres/postgres-store.integration.test.ts",
+        "tests/support/postgres-test-harness.ts",
+    "src/server/domain/realtime-configuration.ts",
+    ".orchestrate/evidence/v2-relational-sample-lineage-replay-hardening-20260906.md",
+    ".orchestrate/evidence/v2-relational-sample-lineage-replay-hardening-run-20260906.txt",
+    ".agent/verification.jsonl#VER-V2-RELATIONAL-SAMPLE-LINEAGE-BACKFILL-011",
+    ".agent/verification.jsonl#VER-V2-G4-FINAL-024",
+    ".agent/verification.jsonl#VER-V2-G4-FINAL-025"
+      ],
+      "next_action": {
+    "id": "TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001:RELATIONAL-SAMPLE-LINEAGE-TARGET-EVIDENCE-GATE",
+    "kind": "VERIFY",
+    "summary": "Obter evidência de ambiente-alvo, revisão independente e autoridade humana antes de qualquer cutover",
+    "target": ".orchestrate/evidence/v2-relational-sample-lineage-replay-hardening-20260906.md",
+    "completion_signal": "Ambiente-alvo, carga/EXPLAIN, recovery/rollback, revisão independente e decisões clínicas/hospitalares assinadas estão anexados a um novo gate"
+      }
     }
   ]
 }

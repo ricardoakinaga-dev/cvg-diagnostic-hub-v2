@@ -7,6 +7,7 @@ import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes }
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
+import { decodeQueueCursor, encodeQueueCursor } from "./queue-pagination";
 import * as helpers from "./service-common";
 const {
   MAX_NOTE_LENGTH,
@@ -41,6 +42,7 @@ const {
   requirePatientPermission,
   requireRequestPermission,
   findOrThrow,
+  findOrThrowScoped,
   createAudit,
   createOutbox,
   notificationFor,
@@ -69,6 +71,8 @@ const {
   requestView,
   requestViewForActor,
   canViewRequest,
+  canViewItem,
+  requireItemPermission,
   requestForAuditEvent,
   auditEventItem,
   auditEventItemIds,
@@ -123,7 +127,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           if (!request) return currentActor.role === "ADMIN" || (currentActor.role === "MANAGER" && canViewManagementAudit(state, currentActor, event));
           const eventDepartmentCode = auditEventDepartmentCode(state, event);
           if (currentActor.role === "MANAGER" && eventDepartmentCode && !managerCanAccessDepartment(currentActor, eventDepartmentCode)) return false;
-          return canViewRequest(state, currentActor, request);
+          return canViewRequest(state, currentActor, request) && auditEventItemIds(state, event).every((itemId) => canViewItem(state, currentActor, itemFor(state, itemId)));
         })
         .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || left.id.localeCompare(right.id));
       const afterCursor = cursor ? events.filter((event) => event.occurredAt < cursor.occurredAt || (event.occurredAt === cursor.occurredAt && event.id > cursor.id)) : events;
@@ -137,23 +141,23 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
     async getPatient(actor: User, patientId: string) {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const patient = findOrThrow(state.patients.find((entry) => entry.id === patientId));
-      requirePatientPermission(state, currentActor, "patient.view", patient.id);
+      requirePatientPermission(state, currentActor, "patient.view", patientId);
+      const patient = findOrThrowScoped(state.patients.find((entry) => entry.id === patientId));
       return patient;
     },
 
     async listEncounters(actor: User, patientId: string) {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const patient = findOrThrow(state.patients.find((entry) => entry.id === patientId));
-      requirePatientPermission(state, currentActor, "encounter.view", patient.id);
+      requirePatientPermission(state, currentActor, "encounter.view", patientId);
+      const patient = findOrThrowScoped(state.patients.find((entry) => entry.id === patientId));
       return state.encounters.filter((encounter) => encounter.patientId === patient.id).map((encounter) => ({ ...encounter }));
     },
 
     async getEncounter(actor: User, encounterId: string) {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const encounter = findOrThrow(state.encounters.find((entry) => entry.id === encounterId));
+      const encounter = findOrThrowScoped(state.encounters.find((entry) => entry.id === encounterId));
       requirePatientPermission(state, currentActor, "encounter.view", encounter.patientId);
       return encounter;
     },
@@ -161,9 +165,12 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
     async getAdmission(actor: User, admissionId: string): Promise<Admission> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const admission = findOrThrow(state.admissions.find((entry) => entry.id === admissionId));
-      const encounter = findOrThrow(state.encounters.find((entry) => entry.id === admission.encounterId));
+      const admission = findOrThrowScoped(state.admissions.find((entry) => entry.id === admissionId));
+      const encounter = findOrThrowScoped(state.encounters.find((entry) => entry.id === admission.encounterId));
       requirePatientPermission(state, currentActor, "admission.view", encounter.patientId);
+      if (!canAccessResource(currentActor, "admission.view", { patientId: encounter.patientId, departmentCode: admission.departmentCode })) {
+        throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+      }
       return admission;
     },
 
@@ -187,12 +194,8 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         .filter((request) => (from === undefined || Date.parse(request.createdAt) >= from) && (to === undefined || Date.parse(request.createdAt) <= to))
         .filter((request) => request.itemIds.some((itemId) => {
           const item = itemFor(state, itemId);
-          const service = serviceFor(state, item.serviceId);
-          const visibleByPatient = canViewRequest(state, currentActor, request) || Boolean(currentActor.patientIds?.includes(request.patientId));
-          const visibleByService = ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"].includes(currentActor.role) && service.departmentCode === currentActor.departmentCode;
-          const managerItemScope = currentActor.role !== "MANAGER" || managerCanAccessDepartment(currentActor, item.departmentCode);
           const overdue = new Date(item.dueAt).getTime() < currentTime && !["COMPLETED", "CANCELLED", "REJECTED"].includes(item.status);
-          return (visibleByPatient || visibleByService) && managerItemScope &&
+          return canViewItem(state, currentActor, item) &&
             (!filters.status || item.status === filters.status) &&
             (!departmentCode || item.departmentCode === departmentCode) &&
             (!filters.priority || item.priority === filters.priority) &&
@@ -241,8 +244,6 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         requirePermission(currentActor, "notification.acknowledge", {});
         if (input.confirm !== true) throw new ApiError("VALIDATION_ERROR", "A confirmação explícita é obrigatória.", 400);
         const reason = requireText(input.reason, "reason", 500);
-        const idempotent = withIdempotency(originalState, currentActor.id, scope, input.idempotencyKey, { notificationId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const notification = findOrThrow(originalState.notifications.find((entry) => entry.id === notificationId));
         ensureExpectedVersion(notification.version, input.expectedVersion);
         if (notification.category === "CRITICAL" && notification.entityType === "RESULT_VERSION") {
@@ -259,6 +260,8 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           const request = requestForNotification(originalState, notification);
           if (currentActor.role !== "MANAGER" || !request || !hasManagerRequestContext(originalState, currentActor, request)) throw new ApiError("NOT_FOUND", "Notificação não encontrada.", 404);
         }
+        const idempotent = withIdempotency(originalState, currentActor.id, scope, input.idempotencyKey, { notificationId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const acknowledgedAt = now();
         const updated = { ...notification, state: "ACKNOWLEDGED" as const, acknowledgedAt, acknowledgedBy: currentActor.id, version: notification.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
@@ -268,7 +271,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       });
     },
 
-    async listQueue(actor: User, departmentCode: string, filters: { status?: ItemState; overdue?: boolean; limit?: number } = {}): Promise<QueueItemView[]> {
+    async listQueuePage(actor: User, departmentCode: string, filters: { status?: ItemState; overdue?: boolean; limit?: number; cursor?: string } = {}) {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const normalizedDepartment = departmentCode.trim().toUpperCase();
@@ -278,13 +281,19 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const currentTime = Date.now();
       const asOf = new Date(currentTime).toISOString();
       const priorityRank: Record<Priority, number> = { EMERGENCY: 0, URGENT: 1, ROUTINE: 2 };
+      const limit = pageSize(filters.limit);
+      const cursor = decodeQueueCursor(filters.cursor);
       const items = state.items
+        .filter((item) => canViewItem(state, currentActor, item))
         .filter((item) => item.departmentCode === normalizedDepartment)
         .filter((item) => !filters.status || item.status === filters.status)
         .filter((item) => filters.overdue === undefined || (new Date(item.dueAt).getTime() < currentTime && !["COMPLETED", "CANCELLED", "REJECTED"].includes(item.status)) === filters.overdue)
-        .sort((left, right) => priorityRank[left.priority] - priorityRank[right.priority] || left.dueAt.localeCompare(right.dueAt))
-        .slice(0, pageSize(filters.limit));
-      return items.map((item) => {
+        .sort((left, right) => priorityRank[left.priority] - priorityRank[right.priority] || left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id));
+      const afterCursor = cursor
+        ? items.filter((item) => priorityRank[item.priority] > cursor.priorityRank || (priorityRank[item.priority] === cursor.priorityRank && (item.dueAt > cursor.dueAt || (item.dueAt === cursor.dueAt && item.id > cursor.id))))
+        : items;
+      const pageItems = afterCursor.slice(0, limit);
+      const page = pageItems.map((item) => {
         const request = requestFor(state, item.requestId);
         const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
         const service = serviceFor(state, item.serviceId);
@@ -308,6 +317,15 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           escalationLevel: operationalContext.escalationLevel
         };
       });
+      const last = pageItems.at(-1);
+      const nextCursor = last && pageItems.length < afterCursor.length
+        ? encodeQueueCursor({ priorityRank: priorityRank[last.priority], dueAt: last.dueAt, id: last.id })
+        : undefined;
+      return { items: page, nextCursor, limit, total: items.length };
+    },
+
+    async listQueue(actor: User, departmentCode: string, filters: { status?: ItemState; overdue?: boolean; limit?: number } = {}): Promise<QueueItemView[]> {
+      return (await service.listQueuePage(actor, departmentCode, filters)).items;
     },
 
     async search(actor: User, query: string, filters: SearchFilters = {}) {
@@ -338,12 +356,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         if ((from !== undefined && Date.parse(request.createdAt) < from) || (to !== undefined && Date.parse(request.createdAt) > to)) continue;
         const items = request.itemIds.map((itemId) => itemFor(state, itemId));
         const visibleItems = items.filter((item) => {
-          const service = serviceFor(state, item.serviceId);
-          const visibleByRequest = canViewRequest(state, currentActor, request) || currentActor.patientIds?.includes(request.patientId);
-          const visibleByService = ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"].includes(currentActor.role) && service.departmentCode === currentActor.departmentCode;
-          const managerItemScope = currentActor.role !== "MANAGER" || managerCanAccessDepartment(currentActor, service.departmentCode);
-          const visible = Boolean(visibleByRequest || visibleByService) && managerItemScope;
-          return visible && (!filters.status || item.status === filters.status) && (!departmentCode || item.departmentCode === departmentCode);
+          return canViewItem(state, currentActor, item) && (!filters.status || item.status === filters.status) && (!departmentCode || item.departmentCode === departmentCode);
         });
         if (!visibleItems.length) continue;
         const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
@@ -414,11 +427,8 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       if (!request) throw new ApiError("VALIDATION_ERROR", "Informe requestId ou itemId.", 400);
       if (item && item.requestId !== request.id) throw new ApiError("NOT_FOUND", "A solicitação e o item não pertencem ao mesmo contexto.", 404);
       requireRequestPermission(state, currentActor, "timeline.view", request);
-      const visibleItemIds = isExecutorRole(currentActor)
-        ? request.itemIds.filter((entryId) => itemFor(state, entryId).departmentCode === currentActor.departmentCode)
-        : currentActor.role === "MANAGER"
-          ? request.itemIds.filter((entryId) => managerCanAccessDepartment(currentActor, itemFor(state, entryId).departmentCode))
-          : request.itemIds;
+      if (item) requireItemPermission(state, currentActor, "timeline.view", item);
+      const visibleItemIds = request.itemIds.filter((entryId) => canViewItem(state, currentActor, itemFor(state, entryId)));
       const limit = pageSize(filters.limit);
       const cursor = decodeTimelineCursor(filters.cursor);
       const events = state.auditEvents
@@ -426,7 +436,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           const eventRequest = requestForAuditEvent(state, event);
           if (!eventRequest || eventRequest.id !== request.id) return false;
           const eventItemIds = auditEventItemIds(state, event);
-          return eventItemIds.length === 0 || eventItemIds.some((eventItemId) => visibleItemIds.includes(eventItemId));
+          return eventItemIds.length === 0 || eventItemIds.every((eventItemId) => visibleItemIds.includes(eventItemId));
         })
         .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id));
       const afterCursor = cursor
@@ -443,12 +453,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       requirePermission(currentActor, "dashboard.view", { departmentCode: currentActor.departmentCode });
-      const visibleItems = state.items.filter((item) => {
-        const request = requestFor(state, item.requestId);
-        const service = serviceFor(state, item.serviceId);
-        if (currentActor.role === "MANAGER") return managerCanAccessDepartment(currentActor, item.departmentCode);
-        return Boolean(currentActor.patientIds?.includes(request.patientId)) || (["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"].includes(currentActor.role) && service.departmentCode === currentActor.departmentCode);
-      });
+      const visibleItems = state.items.filter((item) => canViewItem(state, currentActor, item));
       const asOf = now();
       const currentTime = Date.parse(asOf);
       const terminalStatuses = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);

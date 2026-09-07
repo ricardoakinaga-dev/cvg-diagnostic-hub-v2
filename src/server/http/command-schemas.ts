@@ -25,6 +25,38 @@ const legacyResultContent = structuredContent.refine(
 );
 const resultContent = z.union([structuredLaboratoryContent, legacyResultContent]);
 
+const admissionContextBase = {
+  effectiveAt: boundedDateTime,
+  reason: boundedText(500),
+  expectedVersion
+};
+
+export const admissionContextSchema = z.discriminatedUnion("action", [
+  z.object({
+    ...admissionContextBase,
+    action: z.literal("TRANSFER"),
+    departmentCode: z.string().trim().regex(/^[A-Za-z0-9_-]{1,60}$/),
+    ward: boundedText(100),
+    bed: boundedText(100),
+    responsibleUserId: boundedText(100)
+  }).strict(),
+  z.object({
+    ...admissionContextBase,
+    action: z.literal("BED_CHANGE"),
+    ward: boundedText(100),
+    bed: boundedText(100)
+  }).strict(),
+  z.object({
+    ...admissionContextBase,
+    action: z.literal("DISCHARGE")
+  }).strict(),
+  z.object({
+    ...admissionContextBase,
+    action: z.literal("RESPONSIBILITY_CHANGE"),
+    responsibleUserId: boundedText(100)
+  }).strict()
+]);
+
 export const emptyCommandSchema = z.object({ expectedVersion }).strict();
 
 export const cancelSchema = z.object({

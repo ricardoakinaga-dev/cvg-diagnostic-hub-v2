@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Priority } from "@cvg/contracts";
 import { ApiClientError, apiFetch, createClientUniqueId, formatRelativeTime, getSafeErrorMessage } from "./api-client";
-import { PriorityBadge, StatusBadge } from "./status-badge";
+import { PriorityBadge, statusLabel, StatusBadge } from "./status-badge";
 import { ManagementDashboard } from "./management-dashboard";
 import { PatientDialog, type CreatedPatientPayload } from "./patient-dialog";
+import { useDialogFocus } from "./use-dialog-focus";
+import { Icon, type IconName } from "./ui-icons";
 import { CommandCenterPanel, type CommandCenterData } from "@/features/command-center/command-center-panel";
 
 interface Item { id: string; status: Parameters<typeof StatusBadge>[0]["status"]; priority: Priority; dueAt: string; service: { name: string; code: string }; note?: string }
@@ -19,9 +21,14 @@ interface SessionUser { displayName: string; role?: string }
 
 const encounterTypeLabels: Record<Encounter["type"], string> = { INPATIENT: "Internação", EMERGENCY: "Emergência", OUTPATIENT: "Atendimento externo" };
 const encounterStatusLabels: Record<Encounter["status"], string> = { OPEN: "Em aberto", CLOSED: "Encerrado" };
+const aggregateStatusLabels: Record<string, string> = { REQUESTED: "Solicitado", IN_PROGRESS: "Em execução", PARTIALLY_AVAILABLE: "Parcialmente disponível", RESULTS_AVAILABLE: "Resultados disponíveis", COMPLETED: "Concluído", CANCELLED: "Cancelado" };
 
 function encounterLabel(encounter: Encounter): string {
   return `${encounter.externalId} · ${encounterTypeLabels[encounter.type]} · ${encounterStatusLabels[encounter.status]}`;
+}
+
+function searchStatusLabel(status: string): string {
+  return aggregateStatusLabels[status] ?? statusLabel(status as Parameters<typeof statusLabel>[0]) ?? status.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
 
 function dashboardDateLabel(date = new Date()): string {
@@ -100,12 +107,12 @@ function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
       <div className="admin-policy-banner" role="status"><strong>Perfil técnico</strong><p>Dados clínicos, pacientes e solicitações operacionais permanecem protegidos e disponíveis somente nos perfis assistenciais autorizados.</p></div>
       <div className="admin-landing-grid">
         <Link href="/admin" className="panel admin-landing-card">
-          <span className="strip-icon" aria-hidden="true">⚙</span>
+          <span className="strip-icon" aria-hidden="true"><Icon name="settings" size={16} /></span>
           <span><strong>Configuração e acesso</strong><small>Catálogo de serviços, políticas e usuários do Hub.</small></span>
-          <span className="text-link">Abrir administração <span>→</span></span>
+          <span className="text-link">Abrir administração <Icon name="arrow-right" size={15} /></span>
         </Link>
         <section className="panel admin-landing-card" aria-label="Escopo protegido">
-          <span className="strip-icon" aria-hidden="true">✦</span>
+          <span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span>
           <span><strong>Escopo protegido</strong><small>A separação entre operação clínica e administração técnica está ativa.</small></span>
           <span className="admin-landing-status">Protegido</span>
         </section>
@@ -118,6 +125,10 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
   const [showRequest, setShowRequest] = useState(false);
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; label: string; patient: string; deepLink: string; status: string }>>([]);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchRequestVersion = useRef(0);
+  const searchResultsId = "clinical-dashboard-search-results";
 
   const fetchRequests = useCallback(() => apiFetch<Request[]>("/diagnostic-requests?limit=20"), []);
   const fetchStats = useCallback(() => apiFetch<Stats>("/dashboard"), []);
@@ -149,9 +160,24 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
     return () => { window.removeEventListener("cvg:realtime-updated", refresh); window.removeEventListener("cvg:realtime-resync", resync); };
   }, [reloadAll]);
   useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        searchInputRef.current?.focus();
+        searchInputRef.current?.select();
+      }
+    };
+    window.addEventListener("keydown", focusSearch);
+    return () => window.removeEventListener("keydown", focusSearch);
+  }, []);
+  useEffect(() => {
+    const version = searchRequestVersion.current + 1;
+    searchRequestVersion.current = version;
     const timer = window.setTimeout(() => {
       if (search.trim().length < 2) { setSearchResults([]); return; }
-      void apiFetch<typeof searchResults>(`/search?q=${encodeURIComponent(search)}`).then(setSearchResults).catch(() => setSearchResults([]));
+      void apiFetch<typeof searchResults>(`/search?q=${encodeURIComponent(search)}`)
+        .then((results) => { if (searchRequestVersion.current === version) setSearchResults(results); })
+        .catch(() => { if (searchRequestVersion.current === version) setSearchResults([]); });
     }, 280);
     return () => window.clearTimeout(timer);
   }, [search]);
@@ -179,32 +205,74 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
 
   return (
     <div className="dashboard-page">
-      <div className="page-heading"><div><p className="eyebrow">{dashboardDateLabel()}</p><h1>Bom dia, <em>{userName}.</em></h1><p className="page-lede">Aqui está o que merece sua atenção agora.</p></div>{canCreateClinicalRequest && <button type="button" className="button button-primary" onClick={() => setShowRequest(true)}><span>＋</span> Nova solicitação</button>}</div>
-      <div className="search-bar"><span aria-hidden="true">⌕</span><input aria-label="Buscar no Hub" placeholder="Buscar protocolo, paciente, serviço ou accession…" value={search} onChange={(event) => setSearch(event.target.value)} /><kbd>⌘ K</kbd>{searchResults.length > 0 && <div className="search-popover">{searchResults.map((result) => <Link key={result.id} href={result.deepLink} onClick={() => setSearch("")}><span className="search-icon">↗</span><span><strong>{result.label}</strong><small>{result.patient} · {result.status}</small></span></Link>)}</div>}</div>
+      <div className="page-heading"><div><p className="eyebrow">{dashboardDateLabel()}</p><h1>Bom dia, <em>{userName}.</em></h1><p className="page-lede">Aqui está o que merece sua atenção agora.</p></div>{canCreateClinicalRequest && <button type="button" className="button button-primary" onClick={() => setShowRequest(true)}><Icon name="add" size={16} /> Nova solicitação</button>}</div>
+      <div className="search-bar">
+        <span aria-hidden="true"><Icon name="search" size={19} /></span>
+        <input
+          ref={searchInputRef}
+          aria-label="Buscar no Hub"
+          aria-autocomplete="list"
+          aria-controls={searchResults.length > 0 ? searchResultsId : undefined}
+          aria-expanded={searchResults.length > 0}
+          aria-activedescendant={activeSearchIndex >= 0 ? `clinical-dashboard-search-result-${activeSearchIndex}` : undefined}
+          role="combobox"
+          placeholder="Buscar protocolo, paciente, serviço ou accession…"
+          value={search}
+          onChange={(event) => { setActiveSearchIndex(-1); setSearch(event.target.value); }}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              setSearch("");
+              setActiveSearchIndex(-1);
+            } else if (event.key === "ArrowDown" && searchResults.length > 0) {
+              event.preventDefault();
+              setActiveSearchIndex((current) => Math.min(current + 1, searchResults.length - 1));
+            } else if (event.key === "ArrowUp" && searchResults.length > 0) {
+              event.preventDefault();
+              setActiveSearchIndex((current) => Math.max(current - 1, 0));
+            } else if (event.key === "Enter" && activeSearchIndex >= 0) {
+              event.preventDefault();
+              document.getElementById(`clinical-dashboard-search-result-${activeSearchIndex}`)?.click();
+            }
+          }}
+        />
+        <kbd>⌘ K</kbd>
+        {searchResults.length > 0 && <div id={searchResultsId} className="search-popover" role="listbox" aria-label="Resultados da busca">
+          {searchResults.map((result, index) => <Link
+            key={result.id}
+            id={`clinical-dashboard-search-result-${index}`}
+            href={result.deepLink}
+            role="option"
+            aria-selected={index === activeSearchIndex}
+            onMouseEnter={() => setActiveSearchIndex(index)}
+            onClick={() => { setSearch(""); setActiveSearchIndex(-1); }}
+          ><span className="search-icon" aria-hidden="true"><Icon name="arrow-right" size={15} /></span><span><strong>{result.label}</strong><small>{result.patient} · {searchStatusLabel(result.status)}</small></span></Link>)}
+        </div>}
+        <span className="sr-only" role="status" aria-live="polite">{search.length >= 2 ? `${searchResults.length} resultado${searchResults.length === 1 ? "" : "s"} encontrado${searchResults.length === 1 ? "" : "s"}.` : ""}</span>
+      </div>
       {stats && <CommandCenterPanel data={stats} />}
       <section className="metric-grid" aria-label="Indicadores de atenção" aria-busy={statsResource.status === "loading"}>
         {!stats && <ResourceFeedback resource={statsResource} label="indicadores" onRetry={loadStats} />}
         {stats && <>
           {statsResource.error && <ResourceFeedback resource={statsResource} label="indicadores" onRetry={loadStats} />}
-          <MetricCard label="Atrasados" value={stats.overdue} tone="danger" caption="exigem intervenção" icon="◷" />
-          <MetricCard label="Recoletas" value={stats.recollections} tone="warning" caption="aguardando nova amostra" icon="⌁" />
-          <MetricCard label="Resultados novos" value={stats.newResults} tone="success" caption="aguardando revisão" icon="↗" />
-          <MetricCard label="Críticos" value={stats.critical} tone="critical" caption="confirmação necessária" icon="!" />
+          <MetricCard label="Atrasados" value={stats.overdue} tone="danger" caption="exigem intervenção" icon="clock" />
+          <MetricCard label="Recoletas" value={stats.recollections} tone="warning" caption="aguardando nova amostra" icon="refresh" />
+          <MetricCard label="Resultados novos" value={stats.newResults} tone="success" caption="aguardando revisão" icon="arrow-right" />
+          <MetricCard label="Críticos" value={stats.critical} tone="critical" caption="confirmação necessária" icon="attention" />
         </>}
       </section>
       <div className="dashboard-columns">
         <section className="panel attention-panel" aria-busy={requestsResource.status === "loading"}>
-          <div className="panel-heading"><div><p className="eyebrow">Acompanhe de perto</p><h2>Solicitações em andamento</h2></div><Link href="/queues" className="text-link">Ver central <span>→</span></Link></div>
+          <div className="panel-heading"><div><p className="eyebrow">Acompanhe de perto</p><h2>Solicitações em andamento</h2></div><Link href="/queues" className="text-link">Ver central <Icon name="arrow-right" size={15} /></Link></div>
           {requestsResource.error && requestsResource.data && <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} />}
           {!requestsResource.data ? <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} /> : activeRequests.length === 0 ? <EmptyState title="Nenhuma solicitação pendente" description="Quando um exame precisar de ação, ele aparecerá aqui." /> : <div className="request-list">{activeRequests.slice(0, 6).map((request) => <RequestRow key={request.id} request={request} />)}</div>}
         </section>
         <section className="panel notification-panel" aria-busy={notificationsResource.status === "loading"}>
-          <div className="panel-heading"><div><p className="eyebrow">Ação necessária</p><h2>Últimas notificações</h2></div><Link href="/notifications" className="text-link">Ver todas <span>→</span></Link></div>
+          <div className="panel-heading"><div><p className="eyebrow">Ação necessária</p><h2>Últimas notificações</h2></div><Link href="/notifications" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link></div>
           {notificationsResource.error && notificationsResource.data && <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} />}
           {!notificationsResource.data ? <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} /> : notifications.length === 0 ? <EmptyState title="Tudo em dia" description="Nenhuma nova ação no seu escopo." compact /> : <div className="notification-list">{notifications.slice(0, 4).map((notification) => <NotificationRow key={notification.id} notification={notification} />)}</div>}
         </section>
       </div>
-      <section className="bottom-strip"><div><span className="strip-icon">✦</span><div><strong>Visibilidade ponta a ponta</strong><p>Os estados são confirmados pelo servidor e auditados em uma única timeline.</p></div></div><span className="strip-status">Atualizado {stats ? formatRelativeTime(stats.updatedAt) : "indisponível"}</span></section>
+      <section className="bottom-strip"><div><span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span><div><strong>Visibilidade ponta a ponta</strong><p>Os estados são confirmados pelo servidor e auditados em uma única timeline.</p></div></div><span className="strip-status">Atualizado {stats ? formatRelativeTime(stats.updatedAt) : "indisponível"}</span></section>
       {showRequest && <RequestDialog canCreatePatient={canCreateClinicalRequest} services={services} servicesError={servicesResource.error} onRetryServices={loadServices} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); reloadAll(); }} />}
     </div>
   );
@@ -221,24 +289,26 @@ function ResourceFeedback<T>({ resource, label, onRetry }: { resource: ResourceS
   );
 }
 
-function MetricCard({ label, value, tone, caption, icon }: { label: string; value: number; tone: string; caption: string; icon: string }) {
-  return <article className={`metric-card metric-${tone}`}><div className="metric-top"><span>{label}</span><b aria-hidden="true">{icon}</b></div><strong>{value}</strong><small>{caption}</small></article>;
+function MetricCard({ label, value, tone, caption, icon }: { label: string; value: number; tone: string; caption: string; icon: IconName }) {
+  return <article className={`metric-card metric-${tone}`}><div className="metric-top"><span>{label}</span><b aria-hidden="true"><Icon name={icon} size={16} /></b></div><strong>{value}</strong><small>{caption}</small></article>;
 }
 
 function RequestRow({ request }: { request: Request }) {
   const primary = request.items[0];
-  return <Link href={`/requests/${request.id}`} className="request-row"><div className="patient-chip"><span className="patient-avatar">{request.patient.displayName.slice(0, 1)}</span><span><strong>{request.patient.displayName}</strong><small>{request.patient.species} · {request.patient.sex} · {request.patient.externalId}</small></span></div><div className="request-service"><strong>{request.items.length > 1 ? `${primary.service.name} + ${request.items.length - 1}` : primary.service.name}</strong><small>{request.requestCode} · {formatRelativeTime(request.createdAt)}</small></div><div className="request-state"><PriorityBadge priority={request.priority} /><StatusBadge status={primary.status} /></div><span className="row-arrow" aria-hidden="true">→</span></Link>;
+  return <Link href={`/requests/${request.id}`} className="request-row"><div className="patient-chip"><span className="patient-avatar">{request.patient.displayName.slice(0, 1)}</span><span><strong>{request.patient.displayName}</strong><small>{request.patient.species} · {request.patient.sex} · {request.patient.externalId}</small></span></div><div className="request-service"><strong>{request.items.length > 1 ? `${primary.service.name} + ${request.items.length - 1}` : primary.service.name}</strong><small>{request.requestCode} · {formatRelativeTime(request.createdAt)}</small></div><div className="request-state"><PriorityBadge priority={request.priority} /><StatusBadge status={primary.status} /></div><span className="row-arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link>;
 }
 
 function NotificationRow({ notification }: { notification: Notification }) {
-  return <Link href={notification.deepLink} className="notification-row"><span className={`notification-dot notification-${notification.category.toLowerCase()}`} /><span className="notification-copy"><strong>{notification.title}</strong><small>{notification.body}</small><time>{formatRelativeTime(notification.createdAt)}</time></span><span aria-hidden="true" className="row-arrow">→</span></Link>;
+  return <Link href={notification.deepLink} className="notification-row"><span className={`notification-dot notification-${notification.category.toLowerCase()}`} /><span className="notification-copy"><strong>{notification.title}</strong><small>{notification.body}</small><time>{formatRelativeTime(notification.createdAt)}</time></span><span aria-hidden="true" className="row-arrow"><Icon name="arrow-right" size={16} /></span></Link>;
 }
 
-function EmptyState({ title, description, compact = false }: { title: string; description: string; compact?: boolean }) { return <div className={`empty-state ${compact ? "empty-compact" : ""}`}><span aria-hidden="true">✓</span><strong>{title}</strong><p>{description}</p></div>; }
+function EmptyState({ title, description, compact = false }: { title: string; description: string; compact?: boolean }) { return <div className={`empty-state ${compact ? "empty-compact" : ""}`}><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>{title}</strong><p>{description}</p></div>; }
 
 function DashboardSkeleton() { return <div className="dashboard-page"><div className="skeleton-heading skeleton-block" /><div className="skeleton-search skeleton-block" /><div className="metric-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="metric-card skeleton-card" />)}</div><div className="dashboard-columns"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></div>; }
 
 function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [patients, setPatients] = useState<Array<{ id: string; displayName: string; species: string; externalId: string }>>([]);
   const [patientId, setPatientIdState] = useState("");
   const [encounters, setEncounters] = useState<Encounter[]>([]);
@@ -256,6 +326,7 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
   const [showPatientCreate, setShowPatientCreate] = useState(false);
   const [patientNotice, setPatientNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  useDialogFocus(dialogRef, onClose, closeButtonRef);
   useEffect(() => { void apiFetch<typeof patients>("/patients").then(setPatients).catch(() => setError("Não foi possível carregar os pacientes.")); }, []);
   const loadEncounters = useCallback(async (nextPatientId: string) => {
     const version = encounterLoadVersion.current + 1;
@@ -347,7 +418,7 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     }
   }
   return <>
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section className="dialog" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title"><div className="dialog-heading"><div><p className="eyebrow">Novo fluxo</p><h2 id="request-dialog-title">Solicitar exames</h2><p>O atendimento e o setor serão confirmados pelo servidor.</p></div><button type="button" className="icon-button" onClick={onClose} aria-label="Fechar">×</button></div><div className="dialog-field-heading"><label htmlFor="request-patient">Paciente</label>{canCreatePatient && <button type="button" className="text-button" onClick={() => setShowPatientCreate(true)}>＋ Cadastrar paciente</button>}</div><select id="request-patient" value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="">Selecione um paciente…</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}</select>{patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={!patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true">✓</b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<span>→</span></button></div></section></div>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={dialogRef} className="dialog" data-dialog-layer="true" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title"><div className="dialog-heading"><div><p className="eyebrow">Novo fluxo</p><h2 id="request-dialog-title">Solicitar exames</h2><p>O atendimento e o setor serão confirmados pelo servidor.</p></div><button ref={closeButtonRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><Icon name="close" size={18} /></button></div><div className="dialog-field-heading"><label htmlFor="request-patient">Paciente</label>{canCreatePatient && <button type="button" className="text-button" onClick={() => setShowPatientCreate(true)}><Icon name="add" size={14} /> Cadastrar paciente</button>}</div><select id="request-patient" value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="">Selecione um paciente…</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}</select>{patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={!patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true"><Icon name="check" size={14} /></b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<Icon name="arrow-right" size={15} /></button></div></section></div>
     {showPatientCreate && <PatientDialog nested onClose={() => setShowPatientCreate(false)} onCreated={onPatientCreated} />}
   </>;
 }

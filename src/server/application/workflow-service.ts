@@ -8,6 +8,7 @@ import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
+import { reprojectCommandRequest, reprojectRequestForActor } from "./request-projection";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -34,6 +35,7 @@ const {
   requireRecentReauthentication,
   requireActiveUser,
   requirePermission,
+  requireItemPermission,
   isExecutorRole,
   hasServicePatientContext,
   hasManagerRequestContext,
@@ -95,27 +97,54 @@ const {
   transitionItem,
 } = helpers;
 
+// Local phase policy from STATE_MACHINES: receipt/start/report/failure require
+// a scoped manager. No technical administrator or executor grant is implied.
+function requireCancellationPermission(state: StoreState, actor: User, item: DiagnosticItem): void {
+  requireItemPermission(state, actor, "item.cancel", item);
+  if (!["REQUESTED", "RECEIVED", "SCHEDULED", "IN_PROGRESS", "AWAITING_REPORT", "RECOLLECTION_REQUIRED", "FAILED"].includes(item.status)) {
+    throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser cancelado nesta fase.", 409);
+  }
+  if (["RECEIVED", "IN_PROGRESS", "AWAITING_REPORT", "FAILED"].includes(item.status) && actor.role !== "MANAGER") {
+    throw new ApiError("FORBIDDEN", "O cancelamento nesta fase exige um gestor autorizado no setor executor.", 403);
+  }
+}
+
+function advanceSchedule(
+  schedule: ProcedureSchedule,
+  changes: Partial<Pick<ProcedureSchedule, "status" | "reason">>
+): ProcedureSchedule {
+  return { ...schedule, ...changes, version: schedule.version + 1 };
+}
+
+function validatedAccessionCode(value: string): string {
+  if (!/^[A-Z0-9][A-Z0-9-]{2,39}$/.test(value)) {
+    throw new ApiError("VALIDATION_ERROR", "Accession inválido.", 400);
+  }
+  return value;
+}
+
 export function createWorkflowService({ store, storage }: ApplicationServiceContext) {
   const service = {
     async receiveSample(actor: User, itemIds: string[], input: ReceiveSampleInput) {
       const scope = "POST:/receive-sample";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemIds, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (!itemIds.length || itemIds.length > 20) throw new ApiError("VALIDATION_ERROR", "Selecione ao menos um item.", 400);
+        if (new Set(itemIds).size !== itemIds.length) throw new ApiError("VALIDATION_ERROR", "Selecione itens distintos para a mesma amostra.", 400);
         const items = itemIds.map((itemId) => itemFor(originalState, itemId));
         const request = requestFor(originalState, items[0].requestId);
         const serviceItems = items.map((item) => ({ item, service: serviceFor(originalState, item.serviceId) }));
+        items.forEach((item) => requireItemPermission(originalState, currentActor, "sample.receive", item));
+        const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemIds, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         if (serviceItems.some(({ item, service }) => item.requestId !== request.id || service.workflowType !== "LABORATORY" || item.status !== "REQUESTED")) {
           throw new ApiError("INVALID_STATE_TRANSITION", "A amostra só pode ser recebida para itens laboratoriais solicitados.", 409);
         }
-        requirePermission(currentActor, "sample.receive", { departmentCode: serviceItems[0].service.departmentCode });
         items.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
-        if (!input.accessionCode.match(/^[A-Z0-9][A-Z0-9-]{2,39}$/)) throw new ApiError("VALIDATION_ERROR", "Accession inválido.", 400);
-        if (originalState.samples.some((sample) => sample.accessionCode === input.accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
+        const accessionCode = validatedAccessionCode(input.accessionCode);
+        if (originalState.samples.some((sample) => sample.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
         const receivedAt = now();
-        const sample: Sample = { id: id("sample"), requestId: request.id, accessionCode: input.accessionCode, sampleType: requireText(input.sampleType, "sampleType", 100), status: "RECEIVED", itemIds: items.map((item) => item.id), receivedAt, receivedBy: currentActor.id, version: 1 };
+        const sample: Sample = { id: id("sample"), requestId: request.id, accessionCode, sampleType: requireText(input.sampleType, "sampleType", 100), status: "RECEIVED", itemIds: items.map((item) => item.id), receivedAt, receivedBy: currentActor.id, version: 1 };
         const updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), receivedAt, currentSampleId: sample.id, version: item.version + 1 }));
         let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples, sample] }, request, updatedItems);
         const correlationId = input.correlationId ?? id("corr");
@@ -126,33 +155,47 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       });
     },
 
+    async requestRecollectionForItem(actor: User, itemId: string, input: RecollectionInput) {
+      // Resolve and authorize the item before reading its current sample. This
+      // keeps an unscoped item from producing a state-specific oracle (for
+      // example, 409 for no sample versus 404 for a foreign item).
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const item = itemFor(state, itemId);
+      requireItemPermission(state, currentActor, "sample.recollection.request", item);
+      if (!item.currentSampleId) {
+        throw new ApiError("INVALID_STATE_TRANSITION", "Este item não possui amostra recebida para recoleta.", 409);
+      }
+      return service.requestRecollection(actor, item.currentSampleId, input);
+    },
+
     async requestRecollection(actor: User, sampleId: string, input: RecollectionInput) {
       const scope = "POST:/request-recollection";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<SampleCommandResult & { replacement: Sample }>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const sample = findOrThrow(originalState.samples.find((entry) => entry.id === sampleId));
         const request = requestFor(originalState, sample.requestId);
         const linkedItems = sample.itemIds.map((itemId) => itemFor(originalState, itemId));
         const service = serviceFor(originalState, linkedItems[0].serviceId);
-        requirePermission(currentActor, "sample.recollection.request", { departmentCode: service.departmentCode });
+        linkedItems.forEach((item) => requireItemPermission(originalState, currentActor, "sample.recollection.request", item));
+        const idempotent = withIdempotency<SampleCommandResult & { replacement: Sample }>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         linkedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
         if (sample.status !== "RECEIVED") throw new ApiError("INVALID_STATE_TRANSITION", "A amostra não está disponível para recoleta.", 409);
         const reason = findOrThrow(originalState.reasonCodes.find((entry) => entry.type === "RECOLLECTION" && entry.code === input.reasonCode && entry.active), "VALIDATION_ERROR", "Motivo de recoleta inválido.");
         const rejectionNote = input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : undefined;
-        const rejectedSample: Sample = { ...sample, status: "REJECTED", rejectionCode: reason.code, rejectionNote, version: sample.version + 1 };
+        const replacedSample: Sample = { ...sample, status: "REPLACED", rejectionCode: reason.code, rejectionNote, version: sample.version + 1 };
         const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: `PENDING-${randomUUID().slice(0, 8).toUpperCase()}`, sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
         const updatedItems = linkedItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECOLLECTION_REQUIRED", item.workflowType), currentSampleId: replacement.id, version: item.version + 1 }));
-        let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples.filter((entry) => entry.id !== sample.id), rejectedSample, replacement] }, request, updatedItems);
+        let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples.map((entry) => entry.id === sample.id ? replacedSample : entry), replacement] }, request, updatedItems);
         const requester = findOrThrow(originalState.users.find((user) => user.id === request.requesterId));
         const correlationId = input.correlationId ?? id("corr");
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: "ACTIONABLE", priority: "HIGH", recipientUserId: requester.id, entityType: "SAMPLE", entityId: replacement.id, deepLink: `/requests/${request.id}`, title: "Nova coleta necessária", body: `${requester.displayName}, a amostra ${sample.accessionCode} precisa ser recolhida: ${reason.label}.`, dedupeKey: `recollection:${sample.id}:${replacement.id}` };
         nextState = notificationFor(nextState, notification);
         const notificationId = nextState.notifications.find((entry) => entry.dedupeKey === notification.dedupeKey && entry.recipientUserId === notification.recipientUserId)?.id;
-        nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("SampleRejected", currentActor.id, "Sample", sample.id, correlationId, "RECEIVED", "REJECTED", { reasonCode: reason.code }), createAudit("RecollectionRequested", currentActor.id, "Sample", replacement.id, correlationId, undefined, "EXPECTED", { replacesSampleId: sample.id })], outbox: [...nextState.outbox, createOutbox("RecollectionRequested", "Sample", replacement.id, correlationId, { reasonCode: reason.code, replacesSampleId: sample.id, ...(notificationId ? { notificationId } : {}) })] };
-        const result = { sample: rejectedSample, replacement, items: updatedItems, request: requestViewForActor(nextState, currentActor, requestFor(nextState, request.id)) };
+        nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("SampleRejected", currentActor.id, "Sample", sample.id, correlationId, "RECEIVED", "REPLACED", { reasonCode: reason.code }), createAudit("RecollectionRequested", currentActor.id, "Sample", replacement.id, correlationId, undefined, "EXPECTED", { replacesSampleId: sample.id })], outbox: [...nextState.outbox, createOutbox("RecollectionRequested", "Sample", replacement.id, correlationId, { reasonCode: reason.code, replacesSampleId: sample.id, ...(notificationId ? { notificationId } : {}) })] };
+        const result = { sample: replacedSample, replacement, items: updatedItems, request: requestViewForActor(nextState, currentActor, requestFor(nextState, request.id)) };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { sampleId, input }), result };
       });
     },
@@ -162,16 +205,17 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const expected = findOrThrow(originalState.samples.find((entry) => entry.id === sampleId));
-        requirePermission(currentActor, "sample.replacement.receive", { departmentCode: "LABORATORY" });
         const guardedItems = expected.itemIds.map((itemId) => itemFor(originalState, itemId));
+        guardedItems.forEach((item) => requireItemPermission(originalState, currentActor, "sample.replacement.receive", item));
+        const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         guardedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
         if (expected.status !== "EXPECTED" || !expected.replacesSampleId) throw new ApiError("INVALID_STATE_TRANSITION", "A recoleta não está aguardando recebimento.", 409);
-        if (originalState.samples.some((sample) => sample.accessionCode === input.accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
+        const accessionCode = validatedAccessionCode(input.accessionCode);
+        if (originalState.samples.some((sample) => sample.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
         const receivedAt = now();
-        const replacement: Sample = { ...expected, accessionCode: input.accessionCode, sampleType: requireText(input.sampleType, "sampleType", 100), status: "RECEIVED", receivedAt, receivedBy: currentActor.id, version: expected.version + 1 };
+        const replacement: Sample = { ...expected, accessionCode, sampleType: requireText(input.sampleType, "sampleType", 100), status: "RECEIVED", receivedAt, receivedBy: currentActor.id, version: expected.version + 1 };
         const request = requestFor(originalState, replacement.requestId);
         const items = replacement.itemIds.map((itemId) => itemFor(originalState, itemId));
         const updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), currentSampleId: replacement.id, receivedAt, version: item.version + 1 }));
@@ -188,14 +232,15 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
     },
 
     async updateItemState(actor: User, itemId: string, target: ItemState, input: CommandMeta, permission: Permission) {
+      if (target === "CANCELLED") throw new ApiError("INVALID_STATE_TRANSITION", "Use o comando de cancelamento com motivo e permissão por fase.", 409);
       const scope = `POST:/items/${target}`;
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, target, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const service = serviceFor(originalState, item.serviceId);
-        requirePermission(currentActor, permission, { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, permission, item);
+        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, target, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         const nextItem = { ...item, status: transitionItem(item.status, target, item.workflowType), startedAt: target === "IN_PROGRESS" ? (item.startedAt ?? now()) : item.startedAt, version: item.version + 1 };
         const request = requestFor(originalState, item.requestId);
@@ -211,12 +256,12 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       const scope = "POST:/procedure/schedule";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ProcedureScheduleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "procedure.schedule", { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "procedure.schedule", item);
+        const idempotent = withIdempotency<ProcedureScheduleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         if (!(["RADIOLOGY", "ULTRASOUND"] as WorkflowType[]).includes(item.workflowType) || !service.requiresSchedule && item.workflowType === "RADIOLOGY" && item.status !== "REQUESTED") {
           throw new ApiError("VALIDATION_ERROR", "Este item não aceita agendamento nesta etapa.", 400);
@@ -226,7 +271,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         if (hasScheduleConflict(originalState, window)) throw new ApiError("SCHEDULE_CONFLICT", "O recurso já está reservado neste intervalo.", 409);
         const createdAt = now();
         const procedure: Procedure = { id: id("procedure"), itemId, workflowType: item.workflowType as "RADIOLOGY" | "ULTRASOUND", status: "SCHEDULED", scheduleIds: [], version: 1 };
-        const schedule: ProcedureSchedule = { id: id("schedule"), procedureId: procedure.id, ...window, status: "SCHEDULED", actorId: currentActor.id, createdAt };
+        const schedule: ProcedureSchedule = { id: id("schedule"), procedureId: procedure.id, ...window, status: "SCHEDULED", actorId: currentActor.id, createdAt, version: 1 };
         const nextProcedure = { ...procedure, scheduleIds: [schedule.id] };
         const updatedItem = { ...item, status: transitionItem(item.status, "SCHEDULED", item.workflowType), procedureId: procedure.id, version: item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
@@ -241,25 +286,31 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       const scope = "POST:/procedure/reschedule";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ProcedureRescheduleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { procedureId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const procedure = procedureFor(originalState, procedureId);
         const item = itemFor(originalState, procedure.itemId);
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "procedure.reschedule", { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "procedure.reschedule", item);
+        const idempotent = withIdempotency<ProcedureRescheduleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { procedureId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(procedure.version, input.expectedVersion);
         if (procedure.status !== "SCHEDULED" || item.status !== "SCHEDULED") throw new ApiError("INVALID_STATE_TRANSITION", "Somente um procedimento agendado pode ser remarcado.", 409);
         const window = scheduleWindow(input);
         if (hasScheduleConflict(originalState, window, procedure.id)) throw new ApiError("SCHEDULE_CONFLICT", "O recurso já está reservado neste intervalo.", 409);
         const currentSchedule = findOrThrow(originalState.schedules.filter((schedule) => schedule.procedureId === procedure.id && schedule.status === "SCHEDULED").sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]);
         const reason = input.reason ? requireText(input.reason, "reason", 500) : undefined;
-        const cancelledSchedule = { ...currentSchedule, status: "CANCELLED" as const, reason };
-        const schedule: ProcedureSchedule = { id: id("schedule"), procedureId: procedure.id, ...window, status: "SCHEDULED", actorId: currentActor.id, createdAt: now() };
+        const cancelledSchedule = advanceSchedule(currentSchedule, { status: "CANCELLED", reason });
+        const schedule: ProcedureSchedule = { id: id("schedule"), procedureId: procedure.id, ...window, status: "SCHEDULED", actorId: currentActor.id, createdAt: now(), version: 1 };
         const updatedProcedure = { ...procedure, scheduleIds: [...procedure.scheduleIds, schedule.id], version: procedure.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         const nextState = { ...originalState, procedures: originalState.procedures.map((entry) => entry.id === procedure.id ? updatedProcedure : entry), schedules: [...originalState.schedules.map((entry) => entry.id === currentSchedule.id ? cancelledSchedule : entry), schedule], auditEvents: [...originalState.auditEvents, createAudit("ProcedureRescheduled", currentActor.id, "Procedure", procedure.id, correlationId, "SCHEDULED", "SCHEDULED", { reason: reason ?? null }), createAudit("ScheduleCreated", currentActor.id, "ProcedureSchedule", schedule.id, correlationId, undefined, "SCHEDULED", { supersedesScheduleId: currentSchedule.id })], outbox: [...originalState.outbox, createOutbox("ProcedureRescheduled", "Procedure", procedure.id, correlationId, { scheduleId: schedule.id, previousScheduleId: currentSchedule.id })] };
-        const result = { procedure: updatedProcedure, schedule, history: nextState.schedules.filter((entry) => entry.procedureId === procedure.id), item, request };
+        const result = {
+          procedure: updatedProcedure,
+          schedule,
+          history: nextState.schedules.filter((entry) => entry.procedureId === procedure.id),
+          item,
+          request: requestViewForActor(nextState, currentActor, requestFor(nextState, request.id))
+        };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { procedureId, input }), result };
       });
     },
@@ -268,12 +319,12 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       const scope = "POST:/procedure/start";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ItemCommandResult & { procedure: Procedure }>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "procedure.start", { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "procedure.start", item);
+        const idempotent = withIdempotency<ItemCommandResult & { procedure: Procedure }>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         let procedure = item.procedureId ? procedureFor(originalState, item.procedureId) : undefined;
         if (item.workflowType === "ULTRASOUND" && (!procedure || procedure.status !== "SCHEDULED" || item.status !== "SCHEDULED")) throw new ApiError("INVALID_STATE_TRANSITION", "O ultrassom precisa estar agendado antes de iniciar.", 409);
@@ -295,19 +346,19 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       const scope = "POST:/procedure/mark-performed";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ItemCommandResult & { procedure: Procedure }>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const procedure = item.procedureId ? procedureFor(originalState, item.procedureId) : undefined;
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "procedure.mark_performed", { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "procedure.mark_performed", item);
+        const idempotent = withIdempotency<ItemCommandResult & { procedure: Procedure }>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         if (!procedure || procedure.status !== "IN_PROGRESS" || item.status !== "IN_PROGRESS") throw new ApiError("INVALID_STATE_TRANSITION", "O procedimento não está em execução.", 409);
         const performedAt = now();
         const updatedProcedure = { ...procedure, status: "PERFORMED" as const, performedAt, performedBy: currentActor.id, version: procedure.version + 1 };
         const updatedItem = { ...item, status: transitionItem(item.status, "AWAITING_REPORT", item.workflowType), performedAt, version: item.version + 1 };
-        const schedules = originalState.schedules.map((schedule) => procedure.scheduleIds.includes(schedule.id) && schedule.status === "SCHEDULED" ? { ...schedule, status: "COMPLETED" as const } : schedule);
+        const schedules = originalState.schedules.map((schedule) => procedure.scheduleIds.includes(schedule.id) && schedule.status === "SCHEDULED" ? advanceSchedule(schedule, { status: "COMPLETED" }) : schedule);
         const correlationId = input.correlationId ?? id("corr");
         let nextState = nextRequestState({ ...originalState, procedures: originalState.procedures.map((entry) => entry.id === procedure.id ? updatedProcedure : entry), schedules }, request, [updatedItem]);
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("ProcedurePerformed", currentActor.id, "Procedure", procedure.id, correlationId, "IN_PROGRESS", "PERFORMED", {})], outbox: [...nextState.outbox, createOutbox("ProcedurePerformed", "Procedure", procedure.id, correlationId, { itemId })] };
@@ -321,18 +372,17 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
-        const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "item.cancel", { patientId: request.patientId, departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "item.cancel", item);
+        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
+        requireCancellationPermission(originalState, currentActor, item);
         ensureExpectedVersion(item.version, input.expectedVersion);
         activeReason(originalState, "CANCEL", input.reasonCode);
-        if (!["REQUESTED", "RECEIVED", "SCHEDULED", "IN_PROGRESS", "AWAITING_REPORT", "RECOLLECTION_REQUIRED", "FAILED"].includes(item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser cancelado nesta fase.", 409);
         const reason = input.reason ? requireText(input.reason, "reason", 500) : input.reasonCode;
         const updatedItem = { ...item, status: transitionItem(item.status, "CANCELLED", item.workflowType), cancellationReason: reason, version: item.version + 1 };
-        const schedules = originalState.schedules.map((schedule) => item.procedureId && schedule.procedureId === item.procedureId && schedule.status === "SCHEDULED" ? { ...schedule, status: "CANCELLED" as const, reason } : schedule);
+        const schedules = originalState.schedules.map((schedule) => item.procedureId && schedule.procedureId === item.procedureId && schedule.status === "SCHEDULED" ? advanceSchedule(schedule, { status: "CANCELLED", reason }) : schedule);
         const requestState = nextRequestState({ ...originalState, schedules }, request, [updatedItem]);
         const correlationId = input.correlationId ?? id("corr");
         const nextState = { ...requestState, auditEvents: [...requestState.auditEvents, createAudit("DiagnosticItemCancelled", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, item.status, "CANCELLED", { reasonCode: input.reasonCode })], outbox: [...requestState.outbox, createOutbox("DiagnosticItemCancelled", "DiagnosticRequestItem", item.id, correlationId, { reasonCode: input.reasonCode })] };
@@ -346,21 +396,25 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<RequestView>(originalState, currentActor.id, scope, input.idempotencyKey, { requestId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const request = requestFor(originalState, requestId);
-        ensureExpectedVersion(request.version, input.expectedVersion);
-        requirePermission(currentActor, "request.cancel", { patientId: request.patientId, departmentCode: request.requestingDepartmentCode });
-        activeReason(originalState, "CANCEL", input.reasonCode);
-        const selected = input.itemIds?.length ? new Set(input.itemIds) : new Set(request.itemIds);
+        requireRequestPermission(originalState, currentActor, "request.cancel", request);
+        const selected = new Set(input.itemIds ?? request.itemIds);
+        if (input.itemIds && (selected.size !== input.itemIds.length || input.itemIds.some((itemId) => !request.itemIds.includes(itemId)))) {
+          throw new ApiError("VALIDATION_ERROR", "Selecione apenas itens distintos desta solicitação.", 400);
+        }
         const targets = request.itemIds.map((itemId) => itemFor(originalState, itemId)).filter((item) => selected.has(item.id));
         if (!targets.length) throw new ApiError("VALIDATION_ERROR", "Selecione pelo menos um item para cancelar.", 400);
+        targets.forEach((item) => requireItemPermission(originalState, currentActor, "item.cancel", item));
+        const idempotent = withIdempotency<RequestView>(originalState, currentActor.id, scope, input.idempotencyKey, { requestId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectRequestForActor(originalState, currentActor, idempotent.existing!.id) };
+        targets.forEach((item) => requireCancellationPermission(originalState, currentActor, item));
+        ensureExpectedVersion(request.version, input.expectedVersion);
+        activeReason(originalState, "CANCEL", input.reasonCode);
         const reason = input.reason ? requireText(input.reason, "reason", 500) : input.reasonCode;
         const updatedItems = targets.map((item) => {
-          if (!["REQUESTED", "RECEIVED", "SCHEDULED", "IN_PROGRESS", "AWAITING_REPORT", "RECOLLECTION_REQUIRED", "FAILED"].includes(item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Um dos itens não pode ser cancelado nesta fase.", 409);
           return { ...item, status: transitionItem(item.status, "CANCELLED", item.workflowType), cancellationReason: reason, version: item.version + 1 };
         });
-        const schedules = originalState.schedules.map((schedule) => updatedItems.some((item) => item.procedureId === schedule.procedureId) && schedule.status === "SCHEDULED" ? { ...schedule, status: "CANCELLED" as const, reason } : schedule);
+        const schedules = originalState.schedules.map((schedule) => updatedItems.some((item) => item.procedureId === schedule.procedureId) && schedule.status === "SCHEDULED" ? advanceSchedule(schedule, { status: "CANCELLED", reason }) : schedule);
         let nextState = nextRequestState({ ...originalState, schedules }, request, updatedItems);
         const correlationId = input.correlationId ?? id("corr");
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, ...updatedItems.map((item) => createAudit("DiagnosticItemCancelled", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, targets.find((target) => target.id === item.id)!.status, "CANCELLED", { reasonCode: input.reasonCode }))], outbox: [...nextState.outbox, createOutbox("DiagnosticRequestCancelled", "DiagnosticRequest", request.id, correlationId, { itemIds: updatedItems.map((item) => item.id), reasonCode: input.reasonCode })] };
@@ -374,12 +428,12 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "item.reject", { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "item.reject", item);
+        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         activeReason(originalState, "REJECT", input.reasonCode);
         if (!["REQUESTED", "RECEIVED", "IN_PROGRESS"].includes(item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser rejeitado nesta fase.", 409);
@@ -399,12 +453,12 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
-        requirePermission(currentActor, "item.complete", { departmentCode: service.departmentCode });
+        requireItemPermission(originalState, currentActor, "item.complete", item);
+        const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         if (item.status !== "REVIEWED") throw new ApiError("INVALID_STATE_TRANSITION", "Somente um resultado revisado pode ser concluído.", 409);
         const updatedItem = { ...item, status: transitionItem(item.status, "COMPLETED", item.workflowType), completedAt: now(), version: item.version + 1 };

@@ -1,4 +1,5 @@
 import type { ItemState, Priority } from "@cvg/contracts";
+import { Icon } from "./ui-icons";
 
 const statusLabels: Record<ItemState, string> = {
   REQUESTED: "Solicitado",
@@ -33,15 +34,21 @@ const statusTone: Record<ItemState, string> = {
 };
 
 const priorityLabels: Record<Priority, string> = { ROUTINE: "Rotina", URGENT: "Urgente", EMERGENCY: "Emergência" };
+type StatusTone = "neutral" | "info" | "accent" | "success" | "warning" | "danger" | "muted";
 
-export function StatusBadge({ status }: { status: ItemState }) {
-  return <span className={`status-badge status-${statusTone[status]}`}><span aria-hidden="true" className="status-dot" />{statusLabels[status]}</span>;
+export function StatusBadge({ status, label, tone }: { status: ItemState; label?: string; tone?: StatusTone }) {
+  return <span className={`status-badge status-${tone ?? statusTone[status]}`}><span aria-hidden="true" className="status-dot" />{label ?? statusLabels[status]}</span>;
 }
 
 export function PriorityBadge({ priority }: { priority: Priority }) {
-  return <span className={`priority-badge priority-${priority.toLowerCase()}`}><span aria-hidden="true">{priority === "EMERGENCY" ? "!" : priority === "URGENT" ? "↑" : "•"}</span>{priorityLabels[priority]}</span>;
+  const icon = priority === "EMERGENCY" ? "attention" : priority === "URGENT" ? "arrow-up" : "dot";
+  return <span className={`priority-badge priority-${priority.toLowerCase()}`}><span aria-hidden="true" className="priority-icon"><Icon name={icon} size={12} /></span>{priorityLabels[priority]}</span>;
 }
 
 export function statusLabel(status: ItemState): string {
   return statusLabels[status];
+}
+
+export function priorityLabel(priority: Priority): string {
+  return priorityLabels[priority];
 }

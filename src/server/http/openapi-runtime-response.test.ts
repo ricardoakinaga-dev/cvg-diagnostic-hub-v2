@@ -79,6 +79,11 @@ describe("OpenAPI schemas against real route responses", () => {
     const createdBody = await created.json();
     expectResponseMatches("/diagnostic-requests", "post", created.status, createdBody);
 
+    const diagnostics = await GET(new Request("http://localhost/api/v1/patients/patient-thor/diagnostics?limit=10", {
+      headers: { cookie: vet.cookie }
+    }), params(["patients", "patient-thor", "diagnostics"]));
+    expectResponseMatches("/patients/{patientId}/diagnostics", "get", diagnostics.status, await diagnostics.json());
+
     const search = await GET(new Request("http://localhost/api/v1/search?q=Thor&limit=10", {
       headers: { cookie: vet.cookie }
     }), params(["search"]));

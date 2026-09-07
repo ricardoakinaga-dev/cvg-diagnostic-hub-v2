@@ -1,0 +1,10 @@
+AAA-W0-BROWSER evidence — 2026-09-04
+Scope: Playwright configuration and tests/e2e/**.
+
+CI=1 npm run test:e2e -- --fail-on-flaky-tests
+Result: PASS — 45 passed, no retry output.
+The independent run used disposable Next.js servers, isolated synthetic rate-limit addresses, and memory-backed application data.
+
+npm run test:accessibility -- --fail-on-flaky-tests
+Result: PASS — 6 passed across Chromium, tablet, and mobile, without retries.
+No PostgreSQL-backed browser run was available on this host.

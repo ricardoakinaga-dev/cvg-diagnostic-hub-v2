@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
-import { authenticateRequest, loginUser, reauthenticateUser, revokeSession } from "./session";
+import { authenticateRequest, authorizationSnapshotIsCurrent, getCsrfCookieName, getSessionCookieName, loginUser, reauthenticateUser, revokeSession } from "./session";
 
 describe("secure server sessions", () => {
   it("creates an opaque session and authenticates it through a cookie", async () => {
@@ -15,6 +15,8 @@ describe("secure server sessions", () => {
 
     expect(user.email).toBe("vet@cvg.local");
     expect(login.sessionToken).not.toContain(user.id);
+    expect(getSessionCookieName()).toBe("cvg_session");
+    expect(getCsrfCookieName()).toBe("cvg_csrf");
   });
 
   it("rejects wrong credentials and revoked sessions", async () => {
@@ -45,6 +47,22 @@ describe("secure server sessions", () => {
       code: "SESSION_EXPIRED",
       status: 401
     });
+  });
+
+  it("rejects a long-lived realtime actor when a granular scope changes", async () => {
+    const store = new MemoryStore(createDemoState("scope-session-password"));
+    const login = await loginUser(store, "vet@cvg.local", "scope-session-password");
+    const actor = await authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}` } }));
+
+    await store.transaction((state) => ({
+      state: {
+        ...state,
+        users: state.users.map((user) => user.id === actor.id ? { ...user, patientIds: [] } : user)
+      },
+      result: undefined
+    }));
+
+    expect(authorizationSnapshotIsCurrent(store.getState(), actor)).toBe(false);
   });
 
   it("records a recent password reauthentication on the opaque session", async () => {

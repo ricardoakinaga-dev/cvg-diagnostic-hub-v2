@@ -1,15 +1,17 @@
 /** @vitest-environment jsdom */
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AccountView } from "./account-view";
 import * as apiClient from "./api-client";
+
+const replace = vi.fn();
 
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a {...props}>{children}</a>
 }));
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn() })
+  useRouter: () => ({ replace })
 }));
 
 describe("AccountView", () => {
@@ -37,5 +39,17 @@ describe("AccountView", () => {
     expect(screen.getByText("Veterinária")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Meus pacientes/i })).toHaveAttribute("href", "/patients");
     expect(screen.getByRole("link", { name: /Central de exames/i })).toHaveAttribute("href", "/queues");
+  });
+
+  it("logs out through the server before redirecting to login", async () => {
+    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
+      if (path === "/session/me") return Promise.resolve({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } }) as never;
+      return Promise.resolve({}) as never;
+    });
+    render(<AccountView />);
+    expect(await screen.findByRole("button", { name: "Encerrar sessão" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Encerrar sessão" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/session/logout", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
   });
 });

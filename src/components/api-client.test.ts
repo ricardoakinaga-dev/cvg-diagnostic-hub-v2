@@ -59,4 +59,16 @@ describe("browser API client", () => {
     expect(formatRelativeTime(new Date(Date.now() - 10_000).toISOString())).toBe("agora");
     expect(formatRelativeTime(new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString())).toBe("há 2 h");
   });
+
+  it("keeps future deadlines directional instead of calling them current", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-06T12:00:00.000Z"));
+    try {
+      expect(formatRelativeTime("2026-09-06T12:00:30.000Z")).toBe("em instantes");
+      expect(formatRelativeTime("2026-09-06T13:30:00.000Z")).toBe("em 2 h");
+      expect(formatRelativeTime("2026-09-07T12:00:00.000Z")).toBe("em 1 dia");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

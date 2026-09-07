@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-09-06T11:57:50Z",
+  "target": "/patients/{patientId}/diagnostics",
+  "environment": {
+    "browser": "system Google Chrome via Playwright",
+    "runtime": "Next.js 16.3.0 dev server, synthetic memory store, current working tree",
+    "procedure": "Authenticated navigation with effective viewport set by page.setViewportSize; current captures cover structural loading, pagination loading, the 320px reflow floor, and a route-intercepted synthetic long-copy/large-number fixture",
+    "fallback": "Browser/IAB unavailable; Playwright used explicitly"
+  },
+  "reflow": [
+    {
+      "state": "200-percent-proxy",
+      "viewport_css": [188, 406],
+      "rationale": "Half-width proxy of the 375px mobile fixture to exercise an extreme zoom/reflow boundary",
+      "horizontal_overflow": false,
+      "critical_region_overflow": false,
+      "workspace_visible": true,
+      "identity_heading_visible": true,
+      "context_visible": true,
+      "refresh_action_visible": true,
+      "screenshot": "zoom-200-reflow.png",
+      "sha256": "4d11dc2be30e8be82e1b32d66b30aee864fffe2b5477d710ad96982286ff07aa",
+      "native_dimensions": [188, 3085]
+    },
+    {
+      "state": "wcag-reflow-floor",
+      "viewport_css": [320, 568],
+      "horizontal_overflow": false,
+      "critical_region_overflow": false,
+      "workspace_visible": true,
+      "identity_heading_visible": true,
+      "context_visible": true,
+      "refresh_action_visible": true,
+      "request_visible": true,
+      "screenshot": "reflow-320.png",
+      "sha256": "4f9d5d03bd1d4ab932612e87e2d37db9462f475d865e35b3ffc925c164c9815d",
+      "native_dimensions": [320, 2179]
+    },
+    {
+      "state": "mobile-baseline",
+      "viewport_css": [375, 812],
+      "horizontal_overflow": false,
+      "critical_region_overflow": false,
+      "workspace_visible": true,
+      "identity_heading_visible": true,
+      "context_visible": true,
+      "refresh_action_visible": true
+    }
+  ],
+  "transient_states": [
+    {
+      "state": "initial-loading",
+      "viewport_css": [375, 812],
+      "horizontal_overflow": false,
+      "workspace_visible": true,
+      "identity_heading_visible": true,
+      "context_visible": true,
+      "refresh_action_visible": true,
+      "screenshot": "loading-375.png",
+      "sha256": "0a426204488fcdb3791bb29026a53ba48f339bd8d16caecf26bbd8ee9e81adb0",
+      "native_dimensions": [375, 2018],
+      "assertion": "Named structural skeleton remained visible while the authorized diagnostics request was intentionally delayed."
+    },
+    {
+      "state": "pagination-loading",
+      "viewport_css": [375, 812],
+      "horizontal_overflow": false,
+      "workspace_visible": true,
+      "first_page_visible": true,
+      "loading_control_visible": true,
+      "loading_control_label": "Carregando…",
+      "screenshot": "pagination-loading-375.png",
+      "sha256": "e04578911930080232cffb1fc63d88f503f78a7aca9e98a28fea983aab86cde7",
+      "native_dimensions": [375, 1938],
+      "assertion": "The confirmed first page stayed visible while the next authorized page was delayed."
+    }
+  ],
+  "copy_stress": {
+    "state": "long-copy-and-large-numbers",
+    "viewport_css": [375, 812],
+    "fixture": "The route response was intercepted and populated with long patient, service, owner, action, ward, bed and request-code strings plus nine-digit summary counts.",
+    "horizontal_overflow": false,
+    "critical_region_overflow": false,
+    "workspace_visible": true,
+    "identity_heading_visible": true,
+    "context_visible": true,
+    "refresh_action_visible": true,
+    "long_copy_present": true,
+    "large_numbers_present": true,
+    "screenshot": "long-copy-large-numbers-375.png",
+    "sha256": "7c965cec2f36e91a1f00166b6ee1fb4e54ba11117b5bf30d44eb2c9e4a59d5b4",
+    "native_dimensions": [375, 2433]
+  },
+  "limitations": [
+    "The 188px capture is an explicit extreme reflow proxy, not a claim that every mobile browser implements zoom with that exact CSS viewport.",
+    "The long-copy fixture is synthetic and route-intercepted; it does not represent production data distribution.",
+    "Manual screen-reader narration, touch ergonomics, product-golden comparison and production/target-environment behavior remain unverified."
+  ]
+}

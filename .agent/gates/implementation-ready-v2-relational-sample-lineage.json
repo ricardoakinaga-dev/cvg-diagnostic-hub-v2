@@ -1,0 +1,82 @@
+{
+  "record_id": "GATE-IMPLEMENTATION-READY-V2-RELATIONAL-SAMPLE-LINEAGE-001",
+  "timestamp": "2026-09-06T09:43:55Z",
+  "gate_id": "IMPLEMENTATION_READY",
+  "scope": "Implementation readiness for the V2 relational sample/accession lineage shadow backfill and completed-run replay hardening",
+  "scope_ref": "TASK-V2-RELATIONAL-SAMPLE-LINEAGE-001",
+  "version": 1,
+  "criteria": [
+    {
+      "id": "IR-001",
+      "description": "The authorized implementation outcome, scope and acceptance bar for the bounded relational shadow slice are explicit and traceable",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/plans/cvg-diagnostic-hub-v2.md",
+        ".agent/backlog.json",
+        "docs/v2/RELATIONAL_SAMPLE_LINEAGE.md",
+        "docs/v2/QUALITY_BAR.md"
+      ],
+      "confidence": "HIGH",
+      "limitations": "This gate authorizes only the bounded local shadow implementation and does not authorize relational cutover, clinical use or production release"
+    },
+    {
+      "id": "IR-002",
+      "description": "Dependencies, interfaces, risks and the executable RED/GREEN sequence are frozen from current evidence",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".agent/plans/cvg-diagnostic-hub-v2.md",
+        ".agent/backlog.json",
+        "db/migrations/009_relational_sample_lineage.sql",
+        "db/migrations/010_relational_backfill_control.sql",
+        "src/server/store/relational/clinical-core-backfill.ts"
+      ],
+      "confidence": "HIGH",
+      "limitations": "Full 007–010 mapping, target-environment operations and authority promotion are explicitly outside this implementation-ready boundary"
+    },
+    {
+      "id": "IR-003",
+      "description": "Fail-closed verification, safe disposable PostgreSQL execution, rollback behavior and authority boundaries are defined before material data edits",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [
+        ".orchestrate/evidence/v2-relational-sample-lineage-replay-hardening-20260906.md",
+        ".orchestrate/evidence/v2-relational-sample-lineage-replay-hardening-run-20260906.txt",
+        "tests/postgres/relational-sample-lineage.integration.test.ts",
+        "docs/testing/POSTGRES_INTEGRATION.md"
+      ],
+      "confidence": "HIGH",
+      "limitations": "The harness requires a dedicated disposable loopback database and must not reuse or reset the existing DATABASE_URL or PostgreSQL process"
+    }
+  ],
+  "evidence": [
+    ".agent/plans/cvg-diagnostic-hub-v2.md",
+    ".agent/backlog.json",
+    "docs/v2/RELATIONAL_SAMPLE_LINEAGE.md",
+    "docs/v2/QUALITY_BAR.md",
+    ".orchestrate/evidence/v2-relational-sample-lineage-replay-hardening-20260906.md"
+  ],
+  "confidence": "HIGH",
+  "gaps": [],
+  "conditions": [],
+  "authority": {
+    "required": false,
+    "state": "NOT_REQUIRED",
+    "actor": "No external authority required for bounded local implementation readiness",
+    "scope": "Implementation readiness for the V2 relational sample/accession lineage shadow backfill and completed-run replay hardening",
+    "decision": "Authorize only local synthetic/disposable implementation and verification within the frozen boundary",
+    "evidence_ref": ".agent/plans/cvg-diagnostic-hub-v2.md",
+    "expires_or_revalidates": "Revalidate on real clinical data, target infrastructure, destructive migration, authority promotion or material scope expansion"
+  },
+  "residual_risk": "MEDIUM",
+  "decision": "PASS",
+  "next_action": "Proceed only within the bounded local implementation and verification sequence; obtain a separate VERIFIED decision for acceptance",
+  "revalidation_triggers": [
+    "real clinical data, target database or external infrastructure access",
+    "full relational mapping, dual-read or authority/cutover design",
+    "destructive or normalization migration",
+    "new CRITICAL risk, cross-system blast radius or policy requirement"
+  ],
+  "supersedes": null
+}

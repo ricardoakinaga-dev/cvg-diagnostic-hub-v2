@@ -1,6 +1,17 @@
 export interface ApiEnvelope<T> {
   data: T;
-  meta: { correlationId: string; requestId: string; [key: string]: unknown };
+  meta: ApiResponseMeta;
+}
+
+export interface ApiResponseMeta {
+  correlationId: string;
+  requestId: string;
+  [key: string]: unknown;
+}
+
+export interface ApiFetchResult<T> {
+  data: T;
+  meta: ApiResponseMeta;
 }
 
 export interface ApiFailure {
@@ -79,7 +90,7 @@ export function createClientUniqueId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export async function apiFetchWithMeta<T>(path: string, init: RequestInit = {}): Promise<ApiFetchResult<T>> {
   const headers = new Headers(init.headers);
   headers.set("accept", "application/json");
   if (init.body && !headers.has("content-type")) headers.set("content-type", "application/json");
@@ -93,11 +104,26 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
   try { body = await response.json(); } catch { throw new ApiClientError(response.status, {}); }
   if (!response.ok) throw new ApiClientError(response.status, normalizeApiFailure(body));
   if (!isApiEnvelope<T>(body)) throw new ApiClientError(response.status, {});
-  return body.data;
+  return { data: body.data, meta: body.meta };
+}
+
+export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  return (await apiFetchWithMeta<T>(path, init)).data;
 }
 
 export function formatRelativeTime(value: string): string {
-  const elapsedMinutes = Math.round((Date.now() - new Date(value).getTime()) / 60000);
+  const deltaMs = Date.now() - new Date(value).getTime();
+  if (deltaMs < 0) {
+    const futureMs = Math.abs(deltaMs);
+    if (futureMs < 60_000) return "em instantes";
+    const futureMinutes = Math.ceil(futureMs / 60_000);
+    if (futureMinutes < 60) return `em ${futureMinutes} min`;
+    const futureHours = Math.ceil(futureMinutes / 60);
+    if (futureHours < 24) return `em ${futureHours} h`;
+    const futureDays = Math.ceil(futureHours / 24);
+    return `em ${futureDays} ${futureDays === 1 ? "dia" : "dias"}`;
+  }
+  const elapsedMinutes = Math.round(deltaMs / 60000);
   if (elapsedMinutes < 1) return "agora";
   if (elapsedMinutes < 60) return `há ${elapsedMinutes} min`;
   const elapsedHours = Math.round(elapsedMinutes / 60);

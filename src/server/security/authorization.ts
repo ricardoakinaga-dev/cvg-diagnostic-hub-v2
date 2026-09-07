@@ -39,6 +39,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   ],
   MANAGER: [
     ...commonRead,
+    "admission.context.manage",
     "request.create",
     "request.cancel",
     "request.duplicate_override",

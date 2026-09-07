@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 import { getRuntimeStoreAsync, resetRuntimeStore } from "../../../../server/store/runtime";
-import { resetMetrics } from "../../../../server/observability/metrics";
+import { renderPrometheus, resetMetrics } from "../../../../server/observability/metrics";
+import { resetRateLimits } from "../../../../server/security/rate-limit";
 import { syntheticHemogramContent } from "../../../../server/store/fixtures";
 
 process.env.APP_DATA_MODE = "memory";
@@ -162,6 +163,54 @@ describe("versioned API boundary", () => {
 
     expect(response.status).toBe(200);
     expect(body.data).toMatchObject({ status: "ready", dataMode: "memory" });
+  });
+
+  it("fails readiness closed when distributed rate limiting lacks its shared backend", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "postgres");
+    vi.stubEnv("DATABASE_URL", "");
+    try {
+      const response = await GET(new Request("http://localhost/api/v1/readyz"), params(["readyz"]));
+      const body = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(body.error).toMatchObject({ code: "NOT_READY" });
+      expect(JSON.stringify(body)).not.toContain("postgresql://");
+    } finally {
+      vi.unstubAllEnvs();
+      resetRuntimeStore();
+    }
+  });
+
+  it("keeps forwarded headers from changing rate-limit identity without the trusted proxy secret", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    vi.stubEnv("TRUST_PROXY", "true");
+    vi.stubEnv("TRUST_PROXY_SHARED_SECRET", "proxy-secret");
+    vi.stubEnv("LOGIN_RATE_LIMIT", "1");
+    resetRateLimits();
+
+    const malformedLogin = (headers: Record<string, string>) => POST(new Request("http://localhost/api/v1/session/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: "{"
+    }), params(["session", "login"]));
+
+    try {
+      const trustedFirst = await malformedLogin({ "x-forwarded-for": "198.51.100.10", "x-cvg-proxy-secret": "proxy-secret" });
+      const trustedSecond = await malformedLogin({ "x-forwarded-for": "198.51.100.10", "x-cvg-proxy-secret": "proxy-secret" });
+      const trustedOther = await malformedLogin({ "x-forwarded-for": "198.51.100.11", "x-cvg-proxy-secret": "proxy-secret" });
+      const forgedFirst = await malformedLogin({ "x-forwarded-for": "203.0.113.10", "x-cvg-proxy-secret": "wrong-secret" });
+      const forgedSecond = await malformedLogin({ "x-forwarded-for": "203.0.113.11", "x-cvg-proxy-secret": "wrong-secret" });
+
+      expect(trustedFirst.status).toBe(400);
+      expect(trustedSecond.status).toBe(429);
+      expect(trustedOther.status).toBe(400);
+      expect(forgedFirst.status).toBe(400);
+      expect(forgedSecond.status).toBe(429);
+      expect((await forgedSecond.json()).error.code).toBe("RATE_LIMITED");
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("reports storage readiness failure and exposes the failure counter only to an administrator", async () => {
@@ -569,6 +618,123 @@ describe("versioned API boundary", () => {
     expect(denied.status).toBe(404);
   });
 
+  it("emits realtime poll, resync, and closure metrics without event identifiers", async () => {
+    const auth = await login();
+    const stream = await GET(new Request("http://localhost/api/v1/realtime/events", {
+      headers: { cookie: auth.cookie, "last-event-id": "expired-event" }
+    }), params(["realtime", "events"]));
+    const reader = stream.body?.getReader();
+    expect(reader).toBeTruthy();
+    const first = await reader!.read();
+    expect(new TextDecoder().decode(first.value)).toContain("event: resync_required");
+
+    const beforeClose = renderPrometheus();
+    expect(beforeClose).toContain('cvg_realtime_poll_duration_ms_count{mode="stream",outcome="success"} 1');
+    expect(beforeClose).toContain('cvg_realtime_resyncs_total{reason="event_window_expired"} 1');
+    expect(beforeClose).not.toContain("expired-event");
+
+    await reader!.cancel();
+    expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="consumer_cancel"} 1');
+  });
+
+  it("wakes an authorized stream after a local mutation while retaining polling fallback", async () => {
+    const previousInterval = process.env.REALTIME_STREAM_INTERVAL_MS;
+    process.env.REALTIME_STREAM_INTERVAL_MS = "60000";
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const auth = await login();
+      const stream = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
+      reader = stream.body?.getReader();
+      expect(reader).toBeTruthy();
+      await reader!.read();
+
+      const created = await POST(new Request("http://localhost/api/v1/diagnostic-requests", {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie: auth.cookie, "x-csrf-token": auth.csrf, "idempotency-key": "realtime-local-wake" },
+        body: JSON.stringify({ patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] })
+      }), params(["diagnostic-requests"]));
+      expect(created.status).toBe(201);
+
+      const next = await Promise.race([
+        reader!.read(),
+        new Promise<ReadableStreamReadResult<Uint8Array>>((resolve) => setTimeout(() => resolve({ done: true, value: undefined }), 500))
+      ]);
+      expect(next.done).toBe(false);
+      expect(new TextDecoder().decode(next.value)).toContain("event: diagnostic.updated");
+    } finally {
+      await reader?.cancel();
+      if (previousInterval === undefined) delete process.env.REALTIME_STREAM_INTERVAL_MS;
+      else process.env.REALTIME_STREAM_INTERVAL_MS = previousInterval;
+    }
+  });
+
+  it("rejects a stream above the configured connection budget and releases it on cancel", async () => {
+    const previousLimit = process.env.REALTIME_MAX_CONNECTIONS;
+    process.env.REALTIME_MAX_CONNECTIONS = "1";
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const auth = await login();
+      const first = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
+      reader = first.body?.getReader();
+      expect(reader).toBeTruthy();
+      await reader!.read();
+
+      const second = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
+      expect(second.status).toBe(429);
+      expect((await second.json()).error.code).toBe("REALTIME_CAPACITY");
+      expect(renderPrometheus()).toContain('cvg_realtime_connection_rejections_total{reason="connection_limit"} 1');
+    } finally {
+      await reader?.cancel();
+      if (previousLimit === undefined) delete process.env.REALTIME_MAX_CONNECTIONS;
+      else process.env.REALTIME_MAX_CONNECTIONS = previousLimit;
+    }
+    expect(renderPrometheus()).toContain("cvg_sse_connections 0");
+  });
+
+  it("fails closed and records a bounded timeout when the persistence poll stalls", async () => {
+    const previousTimeout = process.env.REALTIME_POLL_TIMEOUT_MS;
+    process.env.REALTIME_POLL_TIMEOUT_MS = "5";
+    let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
+    try {
+      const auth = await login();
+      const store = await getRuntimeStoreAsync();
+      const originalRead = store.readState.bind(store);
+      let calls = 0;
+      vi.spyOn(store, "readState").mockImplementation(async () => {
+        calls += 1;
+        if (calls > 1) await new Promise((resolve) => setTimeout(resolve, 25));
+        return originalRead();
+      });
+
+      const stream = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
+      reader = stream.body?.getReader();
+      expect(reader).toBeTruthy();
+      const result = await reader!.read();
+      expect(result.done).toBe(true);
+      expect(renderPrometheus()).toContain('cvg_realtime_poll_failures_total{mode="stream",reason="poll_timeout"} 1');
+      expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="poll_timeout"} 1');
+    } finally {
+      await reader?.cancel();
+      if (previousTimeout === undefined) delete process.env.REALTIME_POLL_TIMEOUT_MS;
+      else process.env.REALTIME_POLL_TIMEOUT_MS = previousTimeout;
+    }
+  });
+
+  it("fails closed when an unsupported notification adapter is selected", async () => {
+    const previousAdapter = process.env.REALTIME_NOTIFICATION_ADAPTER;
+    process.env.REALTIME_NOTIFICATION_ADAPTER = "postgres-listen";
+    try {
+      const auth = await login();
+      const response = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
+      expect(response.status).toBe(500);
+      expect((await response.json()).error.code).toBe("REALTIME_ADAPTER_UNAVAILABLE");
+      expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="adapter_unavailable"} 1');
+    } finally {
+      if (previousAdapter === undefined) delete process.env.REALTIME_NOTIFICATION_ADAPTER;
+      else process.env.REALTIME_NOTIFICATION_ADAPTER = previousAdapter;
+    }
+  });
+
   it("tracks active SSE connections and cleans the gauge when the client disconnects", async () => {
     const admin = await login("admin@cvg.local");
     const stream = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: admin.cookie } }), params(["realtime", "events"]));
@@ -864,7 +1030,16 @@ describe("versioned API boundary", () => {
       headers: { cookie: vet.cookie }
     }), params(["patients", "patient-thor", "diagnostics"]));
     expect(diagnostics.status).toBe(200);
-    expect((await diagnostics.json()).data.items).toHaveLength(1);
+    const diagnosticsBody = await diagnostics.json();
+    expect(diagnosticsBody.data).toMatchObject({
+      items: expect.any(Array),
+      workspace: {
+        asOf: expect.any(String),
+        currentContext: expect.objectContaining({ encounterId: "encounter-thor", admissionId: "admission-thor" }),
+        summary: expect.objectContaining({ requestCount: 1, itemCount: 1 })
+      }
+    });
+    expect(diagnosticsBody.data.items).toHaveLength(1);
 
     const timeline = await GET(new Request(`http://localhost/api/v1/timeline?requestId=${JSON.parse(await create.clone().text()).data.id}&limit=1`, {
       headers: { cookie: vet.cookie }

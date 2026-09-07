@@ -1,0 +1,15 @@
+AAA-2 G1 rework after fresh-critic rejection — 2026-09-05
+
+The independent fresh critic packet `aaa2-g1-critic-fresh-20260905.md` recorded a mobile 44/45 browser run whose failure was the success notice being replaced by the event emitted after the same draft save. The implementation now preserves the next mutation success notice while still rereading the server state. Granular authorization snapshots also compare patientIds, serviceCodes and managedDepartmentCodes, and patient registration increments the user authorization version when it changes patient scope.
+
+Local verification after rework:
+
+- `npx vitest run src/components/result-view.test.tsx`: PASS — 10 tests, including typed draft preservation, pending-save race protection and post-save realtime notice preservation.
+- `npx vitest run src/server/application/registry-service.test.ts src/server/security/session.test.ts`: PASS — 10 tests, including authorization-version invalidation and granular scope revocation.
+- `npm test`: PASS — 54 files, 451 tests.
+- `npm run test:coverage`: PASS — 54 files, 451 tests; 91.92% statements/lines, 84.05% branches, 94.11% functions.
+- `CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0`: PASS — 45/45 in 2.9 minutes, without retry, with separate memory servers and Next distDirs per project.
+
+Remaining limits are unchanged and are deliberately not promoted to PASS: no live PostgreSQL or two-instance run; migration 007 and `PostgresStore` still keep the JSONB snapshot as the transitional runtime authority; the realtime adapter is process-local; traceability fails closed with 20 missing references; D-01–D-06, restore/RPO/RTO, representative performance, alerts/SLO, manual UX review and hospital acceptance remain open.
+
+This packet supersedes no independent verdict. It is rework evidence for a new critic pass.

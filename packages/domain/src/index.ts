@@ -37,6 +37,14 @@ const ownerLabels: Record<OperationalOwner["code"], string> = {
   UNKNOWN: "A definir"
 };
 
+const requestingDepartmentLabels: Record<string, string> = {
+  INPATIENT: "Internação",
+  LABORATORY: "Laboratório",
+  RADIOLOGY: "Radiologia",
+  ULTRASOUND: "Ultrassom",
+  OPERATIONS: "Operações"
+};
+
 const actionLabels: Record<OperationalAction["code"], string> = {
   COLLECT_SAMPLE: "Receber amostra",
   SCHEDULE_EXAM: "Agendar exame",
@@ -69,7 +77,8 @@ function ownerForDepartment(departmentCode: string): OperationalOwner {
 
 function requestingOwner(input: OperationalContextInput): OperationalOwner {
   const code = input.requestingDepartmentCode?.trim().toUpperCase();
-  return code ? { code: "REQUESTING_TEAM", label: `Equipe solicitante · ${code}` } : { code: "REQUESTING_TEAM", label: ownerLabels.REQUESTING_TEAM };
+  const label = code ? requestingDepartmentLabels[code] : undefined;
+  return { code: "REQUESTING_TEAM", label: label ? `Equipe solicitante · ${label}` : ownerLabels.REQUESTING_TEAM };
 }
 
 function actionFor(input: OperationalContextInput): OperationalAction {

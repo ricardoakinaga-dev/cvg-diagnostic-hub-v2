@@ -1,0 +1,56 @@
+V2 COMPLETED-RUN REPLAY INTEGRITY — DISPOSABLE VERIFICATION NOTES
+Date: 2026-09-06
+Workspace: /home/ricardo/cvg-diagnostic-hub-v2
+Existing PostgreSQL 127.0.0.1:5432: NOT TOUCHED
+Disposable PostgreSQL: 127.0.0.1:55469 focused, 127.0.0.1:55470 full
+Disposable runtime: PostgreSQL 16.15
+
+RED
+Before the source change, the real disposable focused run passed 8 tests and
+failed the new post-completion target-corruption assertion because the replay
+resolved instead of failing closed. This confirmed the regression against the
+actual database boundary.
+
+GREEN
+Focused command:
+ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://ricardo@127.0.0.1:55469/postgres npm run test:postgres -- --run tests/postgres/relational-sample-lineage.integration.test.ts --reporter=verbose
+Result: 1 file, 9/9 tests, 6.47s.
+
+Full command:
+ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://ricardo@127.0.0.1:55470/postgres npm run test:postgres -- --reporter=verbose
+Result: 5 files, 29/29 tests, 40.94s.
+
+Focused unit/type command:
+npm test -- --run src/server/store/relational/clinical-core-backfill.test.ts src/server/store/postgres-store.test.ts src/server/store/relational/cutover.test.ts --reporter=verbose
+Result: 3 files, 25/25 tests, 3.33s.
+npm run typecheck
+Result: PASS.
+
+BROAD CHECKS
+npm run validate: PASS — 67 files, 564/564 tests; 93.06% statements/lines,
+85.11% branches, 95.51% functions; docs 56/56; OpenAPI 65 operations/60 paths;
+traceability 43/43; migrations 001–010/checksums.
+npm run build: PASS — 12 static pages.
+CI=1 npm run test:e2e -- --retries=0 --fail-on-flaky-tests: PASS — 51/51,
+3.4 minutes.
+npm run test:accessibility -- --retries=0 --fail-on-flaky-tests: PASS — 6/6,
+22.3s.
+npm run security:scan: PASS.
+npm audit --audit-level=high: PASS — 0 vulnerabilities.
+npm run test:perf: PASS — 7/7.
+npm run test:recovery: PASS — 5/5.
+engineering-framework state checker: PASS — 11/11 checks; state, backlog, log,
+gate history and active pointers reconcile.
+git diff --check: PASS.
+
+INDEPENDENT REVIEW
+Fresh sealed critics Mill and Maxwell were commissioned after the change with
+fork_context=false. Both timed out without reports, were re-polled and closed;
+status is NOT_RUN and no approval is inferred. The earlier critic report is
+pre-hardening context only.
+
+LIMITS
+JSONB remains authority. Full mapping, target-environment dual-read/cutover,
+approved load/EXPLAIN, target recovery/rollback, production infrastructure,
+remote CI, clinical governance, manual acceptance and hospital release remain
+open. This artifact supports PASS_WITH_CONDITIONS for the bounded local slice.

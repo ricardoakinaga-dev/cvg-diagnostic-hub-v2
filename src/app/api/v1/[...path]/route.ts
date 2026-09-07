@@ -8,13 +8,17 @@ import { authenticateRequest, authorizationSnapshotIsCurrent, clearSessionCookie
 import type { CommandMeta, SearchResultType } from "../../../../server/application/service";
 import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
-import type { StoreState, User } from "../../../../server/domain/models";
+import { eventVisible } from "../../../../server/application/realtime-visibility";
 import { assertRateLimit } from "../../../../server/security/rate-limit";
 import { createSafeConsoleSink, processOutboxBatch } from "../../../../server/operations/outbox";
-import { incrementGauge, recordHttpRequest, recordReadinessFailure, refreshOperationalMetrics, renderPrometheus, routeMetricLabel } from "../../../../server/observability/metrics";
+import { recordHttpRequest, recordReadinessFailure, refreshOperationalMetrics, renderPrometheus, routeMetricLabel } from "../../../../server/observability/metrics";
+import { logHttpRequest } from "../../../../server/observability/structured-logger";
+import { notifyRealtimeMutation } from "../../../../server/observability/realtime";
+import { createRealtimeResponse, RealtimeUnavailableError } from "../../../../server/observability/realtime-stream";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import {
   acknowledgeNotificationSchema,
+  admissionContextSchema,
   amendResultSchema,
   attachmentFinalizeSchema,
   attachmentUploadSchema,
@@ -121,6 +125,11 @@ function responseFor<T>(data: T, correlationId: string, id: string, status = 200
 }
 
 function errorFor(error: unknown, correlationId: string, id: string): NextResponse {
+  if (error instanceof RealtimeUnavailableError) {
+    error = error.reason === "capacity"
+      ? new ApiError("REALTIME_CAPACITY", "O canal em tempo real atingiu sua capacidade operacional. Tente novamente.", 429, { retryable: true })
+      : new ApiError("REALTIME_ADAPTER_UNAVAILABLE", "O canal em tempo real não está disponível nesta instância.", 500, { retryable: true });
+  }
   const response = toApiErrorResponse(error, correlationId, id);
   const nextResponse = NextResponse.json(response.body, { status: response.status });
   nextResponse.headers.set("x-correlation-id", correlationId);
@@ -209,7 +218,17 @@ async function dispatch(method: string, request: Request, context: RouteContext)
     metricPath = ["invalid"];
   }
   const response = await dispatchInner(method, request, context);
-  recordHttpRequest(method, routeMetricLabel(metricPath), response.status, performance.now() - startedAt);
+  if (method !== "GET" && response.status >= 200 && response.status < 300) notifyRealtimeMutation();
+  const route = routeMetricLabel(metricPath);
+  const durationMs = performance.now() - startedAt;
+  recordHttpRequest(method, route, response.status, durationMs);
+  logHttpRequest({
+    method,
+    route,
+    status: response.status,
+    durationMs,
+    correlationId: response.headers.get("x-correlation-id") ?? undefined
+  });
   return response;
 }
 
@@ -221,9 +240,6 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     const operation = matchApiOperation(method, path);
     if (!operation) throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
     validateRequestHeaders(request, operation);
-    const clientAddress = clientAddressFor(request);
-    const loginRateLimit = positiveInteger(process.env.LOGIN_RATE_LIMIT, 10);
-    await assertRateLimit(`${clientAddress}:${operation.operationId}`, operation.operationId === "login" ? loginRateLimit : 240, 60_000);
     const isLogin = operation.operationId === "login";
     const isPublic = operation.authentication === "public";
     if (path[0] === "livez" && method === "GET") return responseFor({ status: "ok", service: "cvg-diagnostics-hub" }, correlationId, id);
@@ -235,6 +251,9 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
         throw new ApiError("NOT_READY", "A dependência de persistência ainda não está disponível.", 503, { retryable: true });
       }
     }
+    const clientAddress = clientAddressFor(request);
+    const loginRateLimit = positiveInteger(process.env.LOGIN_RATE_LIMIT, 10);
+    await assertRateLimit(`${clientAddress}:${operation.operationId}`, operation.operationId === "login" ? loginRateLimit : 240, 60_000);
     const store = await getRuntimeStoreAsync();
     await flushConfiguredLocalOutbox(store);
     const service = createApplicationService(store, { storage: getRuntimeFileStore() });
@@ -345,6 +364,11 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     if (path[0] === "patients" && method === "GET" && path.length === 2) return responseFor(await service.getPatient(actor, path[1]), correlationId, id);
     if (path[0] === "encounters" && method === "GET" && path.length === 2) return responseFor(await service.getEncounter(actor, path[1]), correlationId, id);
     if (path[0] === "admissions" && method === "GET" && path.length === 2) return responseFor(await service.getAdmission(actor, path[1]), correlationId, id);
+    if (path[0] === "admissions" && path.length === 3 && path[2] === "context" && method === "POST") {
+      const body = await objectBody(request);
+      const input = parseCommandBody(body, admissionContextSchema, "Os dados da atualização de contexto são inválidos.");
+      return responseFor(await service.updateAdmissionContext(actor, path[1], { ...input, ...commandMeta(request, body, operation) }), correlationId, id);
+    }
 
     if (path[0] === "diagnostic-requests" && path.length === 1 && method === "GET") {
       const search = new URL(request.url).searchParams;
@@ -416,9 +440,7 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       }
       if (action === "request-recollection") {
         const input = parseCommandBody(body, recollectionSchema, "Os dados de recoleta são inválidos.");
-        const item = (await store.readState()).items.find((entry) => entry.id === itemId);
-        if (!item?.currentSampleId) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não possui amostra recebida para recoleta.", 409);
-        return responseFor(await service.requestRecollection(actor, item.currentSampleId, { ...input, ...meta }), correlationId, id);
+        return responseFor(await service.requestRecollectionForItem(actor, itemId, { ...input, ...meta }), correlationId, id);
       }
       if (action === "results" && method === "POST") {
         const input = parseCommandBody(body, resultDraftSchema, "Os dados do resultado são inválidos.");
@@ -523,7 +545,13 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       const search = new URL(request.url).searchParams;
       const overdue = search.get("overdue");
       if (overdue !== null && overdue !== "true" && overdue !== "false") throw new ApiError("VALIDATION_ERROR", "O filtro de atraso é inválido.", 400);
-      return responseFor(await service.listQueue(actor, path[1], { status: parseItemState(search.get("status")), overdue: overdue === null ? undefined : overdue === "true", limit: parseLimit(search.get("limit")) }), correlationId, id);
+      const data = await service.listQueuePage(actor, path[1], {
+        status: parseItemState(search.get("status")),
+        overdue: overdue === null ? undefined : overdue === "true",
+        cursor: parseCursor(search.get("cursor")),
+        limit: parseLimit(search.get("limit"))
+      });
+      return responseFor(data.items, correlationId, id, 200, { nextCursor: data.nextCursor, limit: data.limit, total: data.total });
     }
     if (path[0] === "search" && method === "GET") {
       const search = new URL(request.url).searchParams;
@@ -550,7 +578,11 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     if (path[0] === "realtime" && path[1] === "events" && method === "GET") {
       if (!canAccessResource(actor, "realtime.connect", {})) throw new ApiError("SCOPE_DENIED", "Você não tem acesso ao canal em tempo real.", 404);
       const snapshot = parseBooleanFilter(new URL(request.url).searchParams.get("snapshot"), "snapshot") ?? false;
-      return await realtimeResponse(store, actor, correlationId, request.headers.get("last-event-id") ?? undefined, snapshot, request);
+      return await createRealtimeResponse(store, actor, correlationId, request.headers.get("last-event-id") ?? undefined, snapshot, request, {
+        isAuthorized: authorizationSnapshotIsCurrent,
+        eventVisible,
+        authorizationError: () => new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401)
+      });
     }
 
     throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
@@ -561,7 +593,7 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
 
 async function flushConfiguredLocalOutbox(store: Awaited<ReturnType<typeof getRuntimeStoreAsync>>): Promise<void> {
   if (process.env.OUTBOX_INLINE_LOCAL !== "true" || process.env.NODE_ENV === "production") return;
-  await processOutboxBatch(store, createSafeConsoleSink(() => undefined), { workerId: `inline_${process.pid}`, batchSize: 100 });
+  await processOutboxBatch(store, createSafeConsoleSink(() => undefined), { workerId: `inline_${process.pid}`, batchSize: 100, allowSyntheticDelivery: true });
 }
 
 function publicUser(user: { id: string; email: string; displayName: string; role: string; departmentCode: string; timezone: string; managedDepartmentCodes?: ReadonlyArray<string> }) {
@@ -633,145 +665,6 @@ function parseCursor(value: string | null): string | undefined {
   return value;
 }
 
-async function realtimeResponse(store: Awaited<ReturnType<typeof getRuntimeStoreAsync>>, actor: User, correlationId: string, lastEventId: string | undefined, snapshot: boolean, request: Request): Promise<Response> {
-  const headers = { "content-type": "text/event-stream; charset=utf-8", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-correlation-id": correlationId };
-  if (snapshot) {
-    const state = await store.readState();
-    if (!authorizationSnapshotIsCurrent(state, actor)) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
-    const boundedEvents = state.outbox.slice(-20);
-    const lastIndex = lastEventId ? boundedEvents.findIndex((message) => message.id === lastEventId) : -1;
-    const replayExpired = Boolean(lastEventId) && lastIndex < 0;
-    const replayWindow = lastEventId && !replayExpired ? boundedEvents.slice(lastIndex + 1) : boundedEvents;
-    const events = replayWindow.filter((message) => eventVisible(state, actor, message.aggregateType, message.aggregateId, message.payload)).map((message) => ({ eventId: message.id, type: message.eventType, occurredAt: message.availableAt, entityType: message.aggregateType, entityId: message.aggregateId, correlationId: message.correlationId }));
-    const resync = replayExpired ? `event: resync_required\ndata: ${JSON.stringify({ reason: "event_window_expired" })}\n\n` : "";
-    const payload = `${resync}${events.map((event) => `id: ${event.eventId}\nevent: diagnostic.updated\ndata: ${JSON.stringify(event)}\n\n`).join("")}`;
-    const authorizationState = await store.readState();
-    if (!authorizationSnapshotIsCurrent(authorizationState, actor)) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
-    return new Response(`retry: 5000\n\n${payload || ": heartbeat\n\n"}`, { headers });
-  }
-  let timer: ReturnType<typeof setInterval> | undefined;
-  let expirationTimer: ReturnType<typeof setTimeout> | undefined;
-  let closed = false;
-  let metricRegistered = false;
-  let pollInFlight = false;
-  const maxStreamMs = positiveInteger(process.env.REALTIME_STREAM_MAX_MS, 0);
-  const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
-      const encoder = new TextEncoder();
-      let cursor = lastEventId;
-      let preamblePending = true;
-      incrementGauge("sse_connections");
-      metricRegistered = true;
-      const cleanup = () => {
-        if (timer) clearInterval(timer);
-        if (expirationTimer) clearTimeout(expirationTimer);
-        if (metricRegistered) {
-          incrementGauge("sse_connections", -1);
-          metricRegistered = false;
-        }
-      };
-      const closeStream = () => {
-        if (closed) return;
-        closed = true;
-        cleanup();
-        controller.close();
-      };
-      const send = async () => {
-        if (closed || pollInFlight) return;
-        pollInFlight = true;
-        try {
-          const current = await store.readState();
-          if (closed) return;
-          if (!authorizationSnapshotIsCurrent(current, actor)) {
-            closeStream();
-            return;
-          }
-          const messages = current.outbox.slice(-20);
-          const cursorIndex = cursor ? messages.findIndex((message) => message.id === cursor) : -1;
-          const expired = Boolean(cursor) && cursorIndex < 0;
-          const replay = cursor && !expired ? messages.slice(cursorIndex + 1) : messages;
-          const visible = replay.filter((message) => eventVisible(current, actor, message.aggregateType, message.aggregateId, message.payload));
-          const nextPayload = `${preamblePending ? "retry: 5000\n\n" : ""}${expired ? `event: resync_required\ndata: ${JSON.stringify({ reason: "event_window_expired" })}\n\n` : ""}${visible.map((message) => {
-            cursor = message.id;
-            return `id: ${message.id}\nevent: diagnostic.updated\ndata: ${JSON.stringify({ eventId: message.id, type: message.eventType, occurredAt: message.availableAt, entityType: message.aggregateType, entityId: message.aggregateId, correlationId: message.correlationId })}\n\n`;
-          }).join("") || ": heartbeat\n\n"}`;
-          const authorizationState = await store.readState();
-          if (closed || !authorizationSnapshotIsCurrent(authorizationState, actor)) {
-            closeStream();
-            return;
-          }
-          preamblePending = false;
-          controller.enqueue(encoder.encode(nextPayload));
-        } catch {
-          closeStream();
-        } finally {
-          pollInFlight = false;
-        }
-      };
-      void send();
-      timer = setInterval(() => void send(), positiveInteger(process.env.REALTIME_STREAM_INTERVAL_MS, 5_000));
-      if (maxStreamMs > 0) expirationTimer = setTimeout(closeStream, maxStreamMs);
-      request.signal.addEventListener("abort", () => {
-        closeStream();
-      }, { once: true });
-      if (request.signal.aborted) closeStream();
-    },
-    cancel() {
-      closed = true;
-      if (timer) clearInterval(timer);
-      if (expirationTimer) clearTimeout(expirationTimer);
-      if (metricRegistered) {
-        incrementGauge("sse_connections", -1);
-        metricRegistered = false;
-      }
-    }
-  });
-  return new Response(stream, { headers });
-}
-
-function eventVisible(state: StoreState, actor: User, entityType: string, entityId: string, payload: Record<string, unknown>): boolean {
-  let patientId: string | undefined;
-  let departmentCode: string | undefined;
-  if (entityType === "DiagnosticRequest") {
-    const request = state.requests.find((entry) => entry.id === entityId);
-    patientId = request?.patientId;
-    const serviceItem = request?.itemIds.map((itemId) => state.items.find((entry) => entry.id === itemId)).find((item) => item?.departmentCode === actor.departmentCode);
-    departmentCode = serviceItem?.departmentCode ?? request?.requestingDepartmentCode;
-  } else if (entityType === "DiagnosticRequestItem") {
-    const item = state.items.find((entry) => entry.id === entityId);
-    const request = item ? state.requests.find((entry) => entry.id === item.requestId) : undefined;
-    patientId = request?.patientId;
-    departmentCode = item?.departmentCode;
-  } else if (entityType === "Sample") {
-    const sample = state.samples.find((entry) => entry.id === entityId);
-    const request = sample ? state.requests.find((entry) => entry.id === sample.requestId) : undefined;
-    patientId = request?.patientId;
-    departmentCode = sample ? "LABORATORY" : undefined;
-  } else if (entityType === "Result" || entityType === "Procedure") {
-    const itemId = entityType === "Result" ? state.results.find((entry) => entry.id === entityId)?.itemId : state.procedures.find((entry) => entry.id === entityId)?.itemId;
-    const item = itemId ? state.items.find((entry) => entry.id === itemId) : undefined;
-    const request = item ? state.requests.find((entry) => entry.id === item.requestId) : undefined;
-    patientId = request?.patientId;
-    departmentCode = item?.departmentCode;
-  } else if (entityType === "Attachment") {
-    const attachment = state.attachments.find((entry) => entry.id === entityId);
-    const version = attachment ? state.resultVersions.find((entry) => entry.id === attachment.resultVersionId) : undefined;
-    const result = version ? state.results.find((entry) => entry.id === version.resultId) : undefined;
-    const item = result ? state.items.find((entry) => entry.id === result.itemId) : undefined;
-    const request = item ? state.requests.find((entry) => entry.id === item.requestId) : undefined;
-    patientId = request?.patientId;
-    departmentCode = item?.departmentCode;
-  } else if (entityType === "ResultVersion") {
-    const resultId = typeof payload.resultId === "string" ? payload.resultId : typeof payload.versionId === "string" ? state.resultVersions.find((entry) => entry.id === payload.versionId)?.resultId : undefined;
-    const result = resultId ? state.results.find((entry) => entry.id === resultId) : undefined;
-    const item = result ? state.items.find((entry) => entry.id === result.itemId) : undefined;
-    const request = item ? state.requests.find((entry) => entry.id === item.requestId) : undefined;
-    patientId = request?.patientId;
-    departmentCode = item?.departmentCode;
-  }
-  if (!patientId && !departmentCode) return false;
-  return canAccessResource(actor, "realtime.connect", { patientId, departmentCode });
-}
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   return dispatch("GET", request, context);

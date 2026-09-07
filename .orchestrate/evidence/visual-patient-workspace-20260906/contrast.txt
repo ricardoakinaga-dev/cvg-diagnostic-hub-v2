@@ -1,0 +1,24 @@
+Design-director contrast checks — 2026-09-06
+
+Command: python3 /home/ricardo/.codex/skills/design-director/scripts/check_contrast.py
+Threshold: WCAG normal text 4.5:1
+
+PASS  #1D2A35 on #F5F7F6  = 13.60:1  (body ink)
+PASS  #60707C on #FFFFFF  = 5.11:1  (soft text)
+PASS  #62717A on #FFFFFF  = 5.05:1  (faint text token)
+PASS  #62717A on #F5F7F6  = 4.69:1  (faint text on page)
+PASS  #62717A on #F0F4F2  = 4.55:1  (faint text on muted surface)
+PASS  #8EAAA9 on #173D52  = 4.64:1  (sidebar secondary text/icon)
+PASS  #9FB9B8 on #173D52  = 5.54:1  (sidebar navigation)
+PASS  #8FB7B4 on #173D52  = 5.26:1  (sidebar brand)
+PASS  #76591F on #FFF9EC  = 6.22:1  (warning text)
+PASS  #88463C on #FFF0ED  = 6.34:1  (error text)
+PASS  #087269 on #FFFFFF  = 5.80:1  (teal link/action)
+PASS  #087269 on #F5F7F6  = 5.39:1  (eyebrow on page)
+PASS  #53636E on #EDF1F2  = 5.47:1  (neutral status)
+PASS  #53636E on #EEF1F1  = 5.47:1  (routine priority/watch)
+PASS  #76591F on #FFF6E5  = 6.08:1  (urgent/warning badge)
+
+The current route has no runtime content image, responsive-image asset, or
+media payload to audit. Screenshot PNGs in this directory are QA evidence,
+not application media.

@@ -165,6 +165,7 @@ export type Permission =
   | "patient.create"
   | "encounter.view"
   | "admission.view"
+  | "admission.context.manage"
   | "request.create"
   | "request.view"
   | "request.list"

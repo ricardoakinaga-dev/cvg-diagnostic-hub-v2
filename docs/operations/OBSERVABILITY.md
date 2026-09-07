@@ -1,6 +1,18 @@
 # Observability
 
-**Knowledge status:** `DECISION/PROPOSAL` de sinais e ownership; thresholds e nomes de plantão ainda são `OPEN QUESTION`.
+**Knowledge status:** `IMPLEMENTED LOCALLY / DECISION PENDING` — o boundary técnico, a redação e a correlação estão implementados; thresholds, owners e roteamento de plantão ainda dependem de D-05.
+
+## Current AAA-3 evidence (07/09/2026)
+
+O working tree corrente passou `npm run validate` com **725/725 testes em 86 arquivos**, cobertura 92,72% statements/lines, 85,82% branches e 94,31% functions na execução full corrente. A matriz browser corrente passou 60/60 sem retry em Chromium/tablet/mobile, incluindo 12/12 de acessibilidade. O packet corrente e suas limitações estão no [manifesto AAA-3](../../.orchestrate/aaa3-execution-20260907/evidence-manifest.json). A evidência é local/condicional: não prova workload representativo, alert routing, failover ou readiness produtivo.
+
+O boundary HTTP agora emite logs JSON estruturados somente com campos allowlisted (`event`, `level`, `component`, `method`, `route`, `status`, `durationMs` e correlação). Correlações controladas pelo chamador são emitidas como `external`; somente IDs `corr_<UUID>` gerados pelo servidor permanecem no log. Corpos, conteúdo clínico, credenciais, tokens, cookies, connection strings e payloads são descartados e labels têm limite de tamanho/cardinalidade. A emissão não altera o resultado de uma requisição quando o writer falha. O SBOM CycloneDX é gerado no CI pelo comando `npm run security:sbom` sob Node 22 e publicado como artefato de verificação.
+
+**AAA-2:** [barra](../build/AAA_2_QUALITY_BAR.md) · [plano](../build/AAA_2_EXECUTIVE_PLAN.md) · [roadmap](../build/AAA_2_ROADMAP.md) · [backlog](../build/AAA_2_BACKLOG.md) · [auditoria de 05/09/2026](../RELATORIO_AUDITORIA_2026-09-05.md)
+
+## Historical local evidence (05/09/2026)
+
+`npm run perf:synthetic` passou com 372 requisições virtuais determinísticas, p50/p95/p99, concorrência 12 e 0 erros inesperados (leitura p95 104 ms, busca exata 60 ms, textual 171 ms). O [packet AAA2-042/043](../../.orchestrate/evidence/aaa2-perf-local-20260905.md) preserva o dataset e as limitações; o [packet PostgreSQL](../../.orchestrate/evidence/aaa2-postgres-local-20260905.md) adiciona smoke HTTP em banco durável com 80 requests, 0 erros e p95 máximo 45,94 ms na última execução. Esses ensaios são evidência local `CONDITIONAL`: não provam workload representativo, p99 de rede/servidor, operação multi-instância, alert routing, runbooks exercitados ou readiness produtivo.
 
 ## 1. Separate signals
 
@@ -11,10 +23,12 @@
 
 Never use application logs as the clinical timeline source.
 
-## 2. Required metrics
+## 2. Metrics contract: implemented and proposed
 
-Technical: request count/latency/error by route, DB pool, storage failures, outbox depth/age/retries, SSE connections/reconnects, readiness failures, backup success.  
-Business: `diagnostic_requests_created`, `diagnostic_items_completed`, `diagnostic_turnaround_time`, `recollection_rate`, `critical_results`, `overdue_items`, `result_view_latency`.
+Technical (implemented locally): request count/latency/error by route, DB pool, storage failures, outbox depth/age/retries, SSE connections/reconnects, readiness failures and bounded backup signals exposed by the current metrics registry.
+Business (proposed/pilot, not yet emitted by the current runtime): `diagnostic_requests_created`, `diagnostic_items_completed`, `diagnostic_turnaround_time`, `recollection_rate`, `critical_results`, `overdue_items`, `result_view_latency`. These require an approved owner, aggregation policy, thresholds and pilot instrumentation before they can be treated as production signals.
+
+The local `GET /api/v1/metrics` implementation currently exposes the bounded technical registry; it does not claim to emit the business series above.
 
 Metrics use bounded labels (service code, department code, priority); never patient name, result value or unbounded ID.
 

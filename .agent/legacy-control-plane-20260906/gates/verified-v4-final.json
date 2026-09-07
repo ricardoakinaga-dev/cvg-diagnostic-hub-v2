@@ -1,0 +1,85 @@
+{
+  "record_id": "GATE-VERIFIED-V4-FINAL-001",
+  "timestamp": "2026-08-23T19:27:06Z",
+  "gate_id": "VERIFIED",
+  "scope": "Local synthetic MVP verification only",
+  "scope_ref": "TASK-V4-AUDIT-001",
+  "version": 1,
+  "criteria": [
+    {
+      "id": "V-001-ACCEPTANCE-EVIDENCE",
+      "description": "The locally authorized product journeys and acceptance evidence execute against the current artifact",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046", ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-044"],
+      "confidence": "HIGH",
+      "limitations": "Synthetic data, local adapters and disposable PostgreSQL do not constitute hospital acceptance or production evidence"
+    },
+    {
+      "id": "V-002-REGRESSION-RISK",
+      "description": "Regression, packaging, contract, persistence, browser and security checks are green for the local artifact",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046", ".agent/verification.jsonl#VER-V4-REG-GREEN-034", ".agent/verification.jsonl#VER-V4-DATA-GREEN-041", ".agent/verification.jsonl#VER-V4-DOC-GREEN-045"],
+      "confidence": "HIGH",
+      "limitations": "Representative workload, remote CI, production topology and operational recovery have not been proven"
+    },
+    {
+      "id": "V-003-LIMITATIONS-AUTHORITY",
+      "description": "Known limitations, external conditions and the authority boundary are explicit and prevent an unsafe release claim",
+      "required": true,
+      "status": "PASS",
+      "evidence_refs": [".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046", ".agent/verification.jsonl#VER-V4-CRITIC-GREEN-037", "docs/operations/PRODUCTION_READINESS.md", ".agent/authority.jsonl#AUTH-V4-VERIFY-001"],
+      "confidence": "HIGH",
+      "limitations": "The gate intentionally verifies only the local synthetic MVP boundary and withholds hospital/production release authority"
+    }
+  ],
+  "evidence": [
+    ".agent/verification.jsonl#VER-V4-AUDIT-GREEN-046",
+    ".agent/verification.jsonl#VER-V4-REG-GREEN-034",
+    ".agent/verification.jsonl#VER-V4-DATA-GREEN-029",
+    ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-030",
+    ".agent/verification.jsonl#VER-V4-JOURNEY-GREEN-035",
+    ".agent/verification.jsonl#VER-V4-DOC-GREEN-036",
+    ".agent/verification.jsonl#VER-V4-CRITIC-GREEN-037",
+    "docs/build/PREMIUM_MVP_V4.md",
+    "docs/operations/PRODUCTION_READINESS.md"
+  ],
+  "confidence": "HIGH",
+  "gaps": [],
+  "conditions": [
+    {
+      "id": "COND-EXTERNAL-RELEASE-001",
+      "description": "Hospital and production release evidence must be supplied before any real deployment or real clinical data use",
+      "non_blocking": true,
+      "impact": "Blocks RELEASE_READY and deployment, but does not invalidate the local VERIFIED artifact evidence",
+      "owner": "Hospital clinical owner and platform operations",
+      "due_or_trigger": "Before any release decision, production configuration or real-data onboarding",
+      "due_at": "2026-09-30T00:00:00Z",
+      "verification_method": "Signed clinical/privacy/identity policies, production configuration review, migration/restore/load/CI evidence and manual acceptance records",
+      "evidence_refs": ["docs/operations/PRODUCTION_READINESS.md", "docs/operations/RELEASE_CHECKLIST.md"],
+      "status": "OPEN",
+      "residual_risk": "MEDIUM",
+      "authority_state": "PENDING"
+    }
+  ],
+  "authority": {
+    "required": true,
+    "state": "CONFIRMED",
+    "actor": "Workspace owner (user)",
+    "scope": "Local synthetic MVP verification only",
+    "decision": "Accept local verification evidence while explicitly withholding hospital and production release authority",
+    "evidence_ref": ".agent/authority.jsonl#AUTH-V4-VERIFY-001",
+    "expires_or_revalidates": "Revalidate before real clinical data, external systems, production deployment or a release decision"
+  },
+  "residual_risk": "HIGH",
+  "decision": "PASS_WITH_CONDITIONS",
+  "next_action": "Resolve hospital identity/ownership and clinical policy, relational migration/EXPLAIN, production storage/AV/secrets, backup/RPO/RTO, load/CI and manual acceptance gates before RELEASE_READY",
+  "revalidation_triggers": [
+    "real clinical data or hospital identity integration",
+    "production deployment or external publication",
+    "relational clinical migration or destructive schema change",
+    "new CRITICAL/HIGH finding or material scope expansion"
+  ],
+  "supersedes": null
+}

@@ -5,6 +5,7 @@ import { PostgresStore } from "./postgres-store";
 import { createFileStoreFromEnv, type FileStore } from "../storage/file-store";
 import { createMalwareScannerFromEnv } from "../storage/malware-scanner";
 import { assertRateLimitConfiguration } from "../security/rate-limit";
+import { assertRealtimeNotificationConfiguration } from "../domain/realtime-configuration";
 
 declare global {
   var __cvgDiagnosticsStore: StateStore | undefined;
@@ -60,6 +61,9 @@ export function getRuntimeFileStore(): FileStore {
 
 export async function getRuntimeReadiness(): Promise<{ dataMode: string; storageMode: string }> {
   const dataMode = runtimeDataMode();
+  if (dataMode === "postgres" && process.env.NODE_ENV === "production") {
+    assertRealtimeNotificationConfiguration(process.env);
+  }
   const store = await getRuntimeStoreAsync();
   await store.healthcheck?.();
   const storage = getRuntimeFileStore();
@@ -67,6 +71,24 @@ export async function getRuntimeReadiness(): Promise<{ dataMode: string; storage
   createMalwareScannerFromEnv();
   assertRateLimitConfiguration();
   return { dataMode, storageMode: process.env.STORAGE_MODE ?? "local" };
+}
+
+/**
+ * Releases the process-scoped runtime store when a standalone worker exits.
+ * The web runtime intentionally keeps its pool for the process lifetime; a
+ * bounded worker must close it so --once and restart paths do not leave idle
+ * PostgreSQL clients behind.
+ */
+export async function closeRuntimeStore(): Promise<void> {
+  const store = globalThis.__cvgDiagnosticsStore;
+  try {
+    if (store && "close" in store && typeof store.close === "function") {
+      await store.close();
+    }
+  } finally {
+    globalThis.__cvgDiagnosticsStore = undefined;
+    globalThis.__cvgDiagnosticsStorePromise = undefined;
+  }
 }
 
 export function resetRuntimeStore(): void {

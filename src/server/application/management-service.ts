@@ -120,8 +120,6 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (input.confirm !== true) throw new ApiError("VALIDATION_ERROR", "A confirmação explícita da alteração é obrigatória.", 400);
         if (typeof input.reason !== "string") throw new ApiError("VALIDATION_ERROR", "reason é obrigatório para alterar uma role.", 400);
         const reason = requireText(input.reason, "reason", 500);
-        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A própria sessão não pode alterar seu role.", 400);
         if (!ROLES.includes(input.role)) throw new ApiError("VALIDATION_ERROR", "O role informado é inválido.", 400);
         const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
@@ -130,6 +128,8 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode) || !canManageUserTarget(currentActor, input.role, departmentCode)) {
           throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
         }
+        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
         const managedDepartmentCodes = input.role === "MANAGER"
           ? input.managedDepartmentCodes === undefined ? target.managedDepartmentCodes : normalizedManagedDepartments(input.managedDepartmentCodes)
@@ -161,12 +161,12 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         requireRecentReauthentication(currentActor);
         if (input.confirm !== true) throw new ApiError("VALIDATION_ERROR", "A confirmação explícita da criação é obrigatória.", 400);
         const reason = requireText(input.reason, "reason", 500);
-        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (!ROLES.includes(input.role)) throw new ApiError("VALIDATION_ERROR", "O role informado é inválido.", 400);
         const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
         if (!canManageUserTarget(currentActor, input.role, departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não pode provisionar este tipo de colaborador neste setor.", 404);
+        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const email = normalizedEmail(input.email);
         if (originalState.users.some((user) => user.email.toLowerCase() === email)) throw new ApiError("CONFLICT", "Já existe um colaborador com este e-mail.", 409);
         const displayName = requireText(input.displayName, "displayName", 160);
@@ -207,11 +207,11 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         requireRecentReauthentication(currentActor);
         if (input.confirm !== true) throw new ApiError("VALIDATION_ERROR", "A confirmação explícita da desativação é obrigatória.", 400);
         const reason = requireText(input.reason, "reason", 500);
-        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A própria sessão não pode ser desativada.", 400);
         const target = findOrThrow(originalState.users.find((user) => user.id === userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
+        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
         if (target.role === "ADMIN" && target.active && originalState.users.filter((user) => user.active && user.role === "ADMIN" && user.id !== target.id).length === 0) {
           throw new ApiError("CONFLICT", "O último administrador ativo não pode ser desativado.", 409);
@@ -269,16 +269,16 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const scope = "POST:/diagnostic-services";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
+        const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
+        if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
+        requirePermission(currentActor, "service.catalog.manage", { departmentCode });
         const idempotent = withIdempotency<DiagnosticService>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
-        requirePermission(currentActor, "service.catalog.manage", { departmentCode: input.departmentCode });
         const code = requireText(input.code, "code", 60).toUpperCase();
         if (!/^[A-Z][A-Z0-9_]{1,59}$/.test(code)) throw new ApiError("VALIDATION_ERROR", "Código de serviço inválido.", 400);
         if (originalState.services.some((service) => service.code === code)) throw new ApiError("CONFLICT", "Código de serviço já utilizado.", 409);
         validateServiceDefinition(input.category, input.workflowType);
         validateServiceResultSchema(input.category, input.workflowType, input.resultSchema);
-        const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
-        if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
         const service: DiagnosticService = {
           id: id("service"),
           code,
@@ -304,14 +304,14 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const scope = "PATCH:/diagnostic-services";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<DiagnosticService>(originalState, currentActor.id, scope, input.idempotencyKey, { serviceId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const service = findOrThrow(originalState.services.find((entry) => entry.id === serviceId));
         requirePermission(currentActor, "service.catalog.manage", { departmentCode: service.departmentCode });
         ensureExpectedVersion(service.version, input.expectedVersion);
         const departmentCode = input.departmentCode === undefined ? service.departmentCode : requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
         requirePermission(currentActor, "service.catalog.manage", { departmentCode });
+        const idempotent = withIdempotency<DiagnosticService>(originalState, currentActor.id, scope, input.idempotencyKey, { serviceId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const category = input.category ?? service.category;
         const workflowType = input.workflowType ?? service.workflowType;
         const requiresSample = input.requiresSample ?? service.requiresSample;
@@ -354,9 +354,9 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const scope = "POST:/reason-codes";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
+        requirePermission(currentActor, "reason_code.manage", {});
         const idempotent = withIdempotency<ReasonCode>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
-        requirePermission(currentActor, "reason_code.manage", {});
         const code = requireText(input.code, "code", 60).toUpperCase();
         if (!/^[A-Z][A-Z0-9_]{1,59}$/.test(code)) throw new ApiError("VALIDATION_ERROR", "Código de motivo inválido.", 400);
         if (originalState.reasonCodes.some((reason) => reason.type === input.type && reason.code === code)) throw new ApiError("CONFLICT", "Motivo já utilizado para este tipo.", 409);
@@ -371,10 +371,10 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const scope = "PATCH:/reason-codes";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ReasonCode>(originalState, currentActor.id, scope, input.idempotencyKey, { reasonId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const reason = findOrThrow(originalState.reasonCodes.find((entry) => entry.id === reasonId));
         requirePermission(currentActor, "reason_code.manage", {});
+        const idempotent = withIdempotency<ReasonCode>(originalState, currentActor.id, scope, input.idempotencyKey, { reasonId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(reason.version, input.expectedVersion);
         const updated: ReasonCode = { ...reason, label: input.label === undefined ? reason.label : requireText(input.label, "label", 160), active: input.active ?? reason.active, version: reason.version + 1 };
         const correlationId = input.correlationId ?? id("corr");

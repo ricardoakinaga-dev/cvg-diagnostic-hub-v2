@@ -1,144 +1,90 @@
 {
-  "record_id": "GATE-V2-LAB-CONDITIONAL-001",
-  "timestamp": "2026-08-25T13:33:00Z",
-  "gate_id": "V2-LAB-CONDITIONAL",
-  "scope": "V2 synthetic structured Laboratory vertical slice only",
+  "record_id": "GATE-VERIFIED-V2-LAB-001",
+  "timestamp": "2026-09-06T03:46:18.735Z",
+  "gate_id": "VERIFIED",
+  "scope": "V2 structured Laboratory conditional closure",
   "scope_ref": "TASK-V2-LAB-AUDIT-001",
   "version": 1,
   "criteria": [
     {
-      "id": "V2-LAB-01",
-      "description": "The versioned laboratory template is scoped and is the single definition source for domain, API and UI",
+      "id": "V-001-ACCEPTANCE-EVIDENCE",
+      "description": "The bounded local acceptance evidence executes against the current artifact",
       "required": true,
       "status": "PASS",
-      "evidence_refs": ["packages/contracts/src/index.ts", "packages/domain/src/laboratory-result.ts", "src/server/application/catalog.test.ts"],
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-CONTROL-LAB-AUDIT-GATE-001"
+      ],
       "confidence": "HIGH",
-      "limitations": "The current template is synthetic and its clinical content is pending human policy"
+      "limitations": "This criterion covers the local technical boundary only and does not assert clinical or production acceptance"
     },
     {
-      "id": "V2-LAB-02",
-      "description": "Typed observations fail closed on stale, duplicate, incomplete, invalid-type, invalid-unit or unknown-analyte input",
+      "id": "V-002-REGRESSION-RISK",
+      "description": "The available regression, persistence and evidence controls are reconciled for the bounded slice",
       "required": true,
       "status": "PASS",
-      "evidence_refs": ["packages/domain/src/laboratory-result.test.ts", ".agent/verification.jsonl#VER-V2-LAB-REMEDIATION-001", ".agent/verification.jsonl#VER-V2-LAB-REG-002"],
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-CONTROL-LAB-AUDIT-GATE-001"
+      ],
       "confidence": "HIGH",
-      "limitations": "Validation is against the synthetic Hemogram fixture, not an approved hospital catalog"
+      "limitations": "Target-environment workload, browser persistence and remote CI are not proven by this local gate"
     },
     {
-      "id": "V2-LAB-03",
-      "description": "Reference range and derived flag snapshots are auditable while clinical criticality is never inferred",
+      "id": "V-003-LIMITATIONS-AUTHORITY",
+      "description": "Limitations and authority boundaries are explicit and prevent an unsafe release claim",
       "required": true,
       "status": "PASS",
-      "evidence_refs": ["packages/domain/src/laboratory-result.ts", "src/server/store/fixtures.ts", "src/server/application/workflow-commands.test.ts"],
+      "evidence_refs": [
+        ".agent/verification.jsonl#VER-CONTROL-LAB-AUDIT-GATE-001",
+        "docs/v2/LABORATORY_VERTICAL.md",
+        "docs/v2/QUALITY_BAR.md"
+      ],
       "confidence": "HIGH",
-      "limitations": "All synthetic reference limits are PENDING_HUMAN_POLICY and values remain UNINTERPRETED"
-    },
-    {
-      "id": "V2-LAB-04",
-      "description": "The existing result lifecycle retains draft, release, amend, void, review, idempotency, concurrency, audit and outbox invariants",
-      "required": true,
-      "status": "PASS",
-      "evidence_refs": ["src/server/application/workflow-commands.test.ts", ".agent/verification.jsonl#VER-V2-LAB-REG-002"],
-      "confidence": "HIGH",
-      "limitations": "The lifecycle still runs on the transitional local persistence boundary"
-    },
-    {
-      "id": "V2-LAB-05",
-      "description": "The editor and result table use the server template and expose pending policy without accepting browser-derived flags",
-      "required": true,
-      "status": "PASS",
-      "evidence_refs": ["src/components/result-view.test.tsx", "tests/e2e/clinical-lifecycle.spec.ts", ".agent/verification.jsonl#VER-V2-LAB-BROWSER-001"],
-      "confidence": "HIGH",
-      "limitations": "Browser evidence is synthetic/local and does not constitute clinical acceptance"
-    },
-    {
-      "id": "V2-LAB-06",
-      "description": "Zod, OpenAPI, runtime responses and UI share the structured result shape",
-      "required": true,
-      "status": "PASS",
-      "evidence_refs": [".agent/verification.jsonl#VER-V2-LAB-CONTRACT-001", ".agent/verification.jsonl#VER-V2-LAB-CONTRACT-002", "docs/api/openapi.json"],
-      "confidence": "HIGH",
-      "limitations": "The public contract retains a legacy JSON alternative for migration drafts; active numeric release remains stricter"
-    },
-    {
-      "id": "V2-LAB-07",
-      "description": "Fresh criticism identified the release bypass, remediation closed it, and the final contract claim was independently checked against the generated artifact",
-      "required": true,
-      "status": "PASS",
-      "evidence_refs": [".agent/verification.jsonl#VER-V2-LAB-CRITIC-001", ".agent/verification.jsonl#VER-V2-LAB-CRITIC-002", ".agent/verification.jsonl#VER-V2-LAB-CRITIC-RETEST-001"],
-      "confidence": "MEDIUM",
-      "limitations": "The final coordinator retest is not a second independent approval; the raw final critic report remains recorded as FAIL_TO_CLOSE because it included a false-positive contract claim and a real next-wave authoring limitation"
+      "limitations": "No independent approval, hospital policy approval or production release authority is inferred"
     }
   ],
   "evidence": [
-    ".agent/verification.jsonl#VER-V2-LAB-REG-002",
-    ".agent/verification.jsonl#VER-V2-LAB-CONTRACT-002",
-    ".agent/verification.jsonl#VER-V2-LAB-BROWSER-001",
-    ".agent/verification.jsonl#VER-V2-LAB-CRITIC-RETEST-001",
+    ".agent/verification.jsonl#VER-CONTROL-LAB-AUDIT-GATE-001",
     "docs/v2/LABORATORY_VERTICAL.md",
     "docs/v2/QUALITY_BAR.md"
   ],
-  "confidence": "MEDIUM",
+  "confidence": "HIGH",
   "gaps": [],
   "conditions": [
     {
-      "id": "COND-V2-LAB-CLINICAL-POLICY-001",
-      "description": "Approve analytes, units, ranges, populations, critical thresholds, recipients, fallback and escalation before clinical use",
-      "non_blocking": false,
-      "impact": "Blocks hospital and production release; does not invalidate the synthetic technical slice",
-      "owner": "Clinical owner and laboratory governance",
-      "due_or_trigger": "Before clinical data or hospital workflow onboarding",
-      "verification_method": "Signed policy and approved versioned catalog evidence",
-      "evidence_refs": ["docs/v2/LABORATORY_VERTICAL.md", "docs/v2/QUALITY_BAR.md"],
+      "id": "COND-V2-LAB-CLINICAL-POLICY-20260906",
+      "description": "Approve the analyte catalog, ranges, critical-result policy, recipients, fallback and escalation before clinical use",
+      "non_blocking": true,
+      "impact": "Blocks hospital/production release or broader cutover, but does not invalidate the bounded local technical slice",
+      "owner": "Product, clinical governance and platform operations",
+      "due_or_trigger": "Before real clinical data, target cutover, production deployment or RELEASE_READY",
+      "due_at": "2026-10-06T03:46:18.735Z",
+      "verification_method": "Signed policy, target-environment evidence and a later gate record that cites the resolved condition",
+      "evidence_refs": [
+        "docs/v2/LABORATORY_VERTICAL.md",
+        "docs/v2/QUALITY_BAR.md"
+      ],
       "status": "OPEN",
-      "residual_risk": "HIGH",
-      "authority_state": "PENDING"
-    },
-    {
-      "id": "COND-V2-LAB-CONTEXT-001",
-      "description": "Add sample/accession lineage, Patient Workspace context and relational clinical persistence before broader lifecycle use",
-      "non_blocking": false,
-      "impact": "Blocks expansion beyond the synthetic local slice",
-      "owner": "Product, clinical and platform owners",
-      "due_or_trigger": "Before the next clinical-domain cutover",
-      "verification_method": "Approved model, migration, scoped journeys and representative persistence evidence",
-      "evidence_refs": ["docs/v2/MIGRATION_MAP.md", ".agent/backlog.json"],
-      "status": "OPEN",
-      "residual_risk": "HIGH",
-      "authority_state": "PENDING"
-    },
-    {
-      "id": "COND-V2-LAB-OPERATIONS-001",
-      "description": "Add approved template authoring/review, remote CI, representative load, manual acceptance and production controls",
-      "non_blocking": false,
-      "impact": "Blocks production readiness and clinical release",
-      "owner": "Platform operations and clinical governance",
-      "due_or_trigger": "Before RELEASE_READY",
-      "verification_method": "Production configuration review, CI/load evidence and signed acceptance",
-      "evidence_refs": ["docs/v2/LABORATORY_VERTICAL.md", ".agent/state.json"],
-      "status": "OPEN",
-      "residual_risk": "HIGH",
-      "authority_state": "PENDING"
+      "residual_risk": "MEDIUM",
+      "authority_state": "NOT_REQUIRED"
     }
   ],
   "authority": {
-    "required": true,
-    "state": "CONFIRMED",
-    "actor": "Workspace owner (user)",
-    "scope": "V2 synthetic structured Laboratory vertical slice only",
-    "decision": "Accept conditional local Laboratory verification while explicitly withholding hospital, production and clinical-policy authority",
-    "evidence_ref": ".agent/authority.jsonl#AUTH-V2-LAB-VERIFY-001",
-    "expires_or_revalidates": "Revalidate before real clinical data, hospital identity integration, clinical policy approval, production deployment or external publication"
+    "required": false,
+    "state": "NOT_REQUIRED",
+    "actor": "No external authority required for bounded local synthetic verification",
+    "scope": "V2 structured Laboratory conditional closure",
+    "decision": "Record local evidence while withholding clinical, hospital and production release authority",
+    "evidence_ref": "docs/v2/LABORATORY_VERTICAL.md",
+    "expires_or_revalidates": "Revalidate before real data, target cutover, production deployment or release"
   },
-  "residual_risk": "HIGH",
+  "residual_risk": "MEDIUM",
   "decision": "PASS_WITH_CONDITIONS",
-  "next_action": "Open TASK-V2-PATIENT-WORKSPACE-001 in SPEC while preserving this Laboratory gate",
+  "next_action": "Resolve the typed external conditions and obtain the required independent or human evidence before RELEASE_READY",
   "revalidation_triggers": [
-    "real clinical data or hospital identity/ownership integration",
-    "clinical reference-range or critical-result policy approval",
-    "template authoring or catalog cutover",
-    "relational clinical migration or production deployment",
-    "new CRITICAL/HIGH finding or material scope expansion"
+    "fresh independent criticism changes the local risk assessment",
+    "real clinical data, hospital identity or policy approval",
+    "target-environment migration, workload, recovery or browser persistence evidence",
+    "production deployment, external publication or material scope expansion"
   ],
   "supersedes": null
 }

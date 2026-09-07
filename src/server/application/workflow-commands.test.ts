@@ -31,7 +31,7 @@ describe("workflow commands", () => {
   });
 
   it("schedules, reschedules, performs and reports an ultrasound without sample states", async () => {
-    const { service, vet, us } = setup();
+    const { service, vet, us, store } = setup();
     const request = await service.createRequest(vet, {
       patientId: "patient-thor",
       encounterId: "encounter-thor",
@@ -50,6 +50,7 @@ describe("workflow commands", () => {
     expect(scheduled.item.status).toBe("SCHEDULED");
     expect(scheduled.procedure.status).toBe("SCHEDULED");
     expect(scheduled.schedule.resource).toBe("US-01");
+    expect(scheduled.schedule.version).toBe(1);
 
     const rescheduled = await service.rescheduleProcedure(us, scheduled.procedure.id, {
       startsAt: "2026-08-20T11:00:00.000Z",
@@ -60,14 +61,129 @@ describe("workflow commands", () => {
       idempotencyKey: "workflow-us-reschedule"
     });
     expect(rescheduled.schedule.startsAt).toBe("2026-08-20T11:00:00.000Z");
+    expect(rescheduled.schedule.version).toBe(1);
     expect(rescheduled.history).toHaveLength(2);
+    expect(rescheduled.history).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "CANCELLED", version: 2 }),
+      expect.objectContaining({ status: "SCHEDULED", version: 1 })
+    ]));
 
     const started = await service.startProcedure(us, item.id, { expectedVersion: rescheduled.item.version, idempotencyKey: "workflow-us-start" });
     expect(started.item.status).toBe("IN_PROGRESS");
     const performed = await service.markProcedurePerformed(us, item.id, { expectedVersion: started.item.version, idempotencyKey: "workflow-us-performed" });
     expect(performed.item.status).toBe("AWAITING_REPORT");
     expect(performed.procedure.status).toBe("PERFORMED");
+    expect(store.getState().schedules).toEqual(expect.arrayContaining([
+      expect.objectContaining({ status: "CANCELLED", version: 2 }),
+      expect.objectContaining({ status: "COMPLETED", version: 2 })
+    ]));
     expect((await service.timeline(vet, request.id)).items.some((event) => event.entityType === "Procedure")).toBe(true);
+  });
+
+  it("projects only the authorized department items from a multi-sector reschedule response", async () => {
+    const { service, vet, us } = setup();
+    const request = await service.createRequest(vet, {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE",
+      items: [{ serviceId: "service-hemogram" }, { serviceId: "service-ultrasound" }]
+    }, { idempotencyKey: "workflow-multi-sector-request" });
+    const ultrasoundItem = request.items.find((item) => item.serviceId === "service-ultrasound");
+    if (!ultrasoundItem) throw new Error("missing ultrasound item");
+    const scheduled = await service.scheduleProcedure(us, ultrasoundItem.id, {
+      startsAt: "2026-08-20T10:00:00.000Z",
+      endsAt: "2026-08-20T10:30:00.000Z",
+      resource: "US-SCOPE",
+      expectedVersion: ultrasoundItem.version,
+      idempotencyKey: "workflow-multi-sector-schedule"
+    });
+    const rescheduled = await service.rescheduleProcedure(us, scheduled.procedure.id, {
+      startsAt: "2026-08-20T11:00:00.000Z",
+      endsAt: "2026-08-20T11:30:00.000Z",
+      resource: "US-SCOPE",
+      expectedVersion: scheduled.procedure.version,
+      idempotencyKey: "workflow-multi-sector-reschedule"
+    });
+
+    expect(rescheduled.request.itemIds).toEqual([ultrasoundItem.id]);
+    expect(rescheduled.request.items).toEqual([expect.objectContaining({ id: ultrasoundItem.id, serviceId: "service-ultrasound" })]);
+    expect(rescheduled.request.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ serviceId: "service-hemogram" })]));
+  });
+
+  it("re-filters an idempotent reschedule projection after manager delegation is narrowed", async () => {
+    const { service, vet, manager, store } = setup();
+    const request = await service.createRequest(vet, {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE",
+      items: [{ serviceId: "service-hemogram" }, { serviceId: "service-ultrasound" }]
+    }, { idempotencyKey: "workflow-reschedule-replay-request" });
+    const ultrasoundItem = request.items.find((item) => item.serviceId === "service-ultrasound");
+    if (!ultrasoundItem) throw new Error("missing ultrasound item");
+    const scheduled = await service.scheduleProcedure(manager, ultrasoundItem.id, {
+      startsAt: "2026-08-20T10:00:00.000Z",
+      endsAt: "2026-08-20T10:30:00.000Z",
+      resource: "US-REPLAY-SCOPE",
+      expectedVersion: ultrasoundItem.version,
+      idempotencyKey: "workflow-reschedule-replay-schedule"
+    });
+    const input = {
+      startsAt: "2026-08-20T11:00:00.000Z",
+      endsAt: "2026-08-20T11:30:00.000Z",
+      resource: "US-REPLAY-SCOPE",
+      expectedVersion: scheduled.procedure.version,
+      idempotencyKey: "workflow-reschedule-replay"
+    };
+    const first = await service.rescheduleProcedure(manager, scheduled.procedure.id, input);
+    expect(first.request.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ serviceId: "service-hemogram" }),
+      expect.objectContaining({ serviceId: "service-ultrasound" })
+    ]));
+
+    await store.transaction((state) => ({
+      state: {
+        ...state,
+        users: state.users.map((user) => user.id === manager.id
+          ? { ...user, managedDepartmentCodes: ["ULTRASOUND"] }
+          : user)
+      },
+      result: undefined
+    }));
+    const narrowedManager = store.getState().users.find((user) => user.id === manager.id);
+    if (!narrowedManager) throw new Error("narrowed manager missing");
+
+    const replay = await service.rescheduleProcedure(narrowedManager, scheduled.procedure.id, input);
+    expect(replay.request.itemIds).toEqual([ultrasoundItem.id]);
+    expect(replay.request.items).toEqual([expect.objectContaining({ id: ultrasoundItem.id, serviceId: "service-ultrasound" })]);
+    expect(replay.request.items).not.toEqual(expect.arrayContaining([expect.objectContaining({ serviceId: "service-hemogram" })]));
+  });
+
+  it("does not let a manager create an item outside delegated executor departments", async () => {
+    const { service, manager, store } = setup();
+    const restrictedManager = { ...manager, managedDepartmentCodes: [] };
+
+    await expect(service.createRequest(restrictedManager, {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE",
+      items: [{ serviceId: "service-hemogram" }]
+    }, { idempotencyKey: "manager-cross-department-request" })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+
+    const replayInput = {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE" as const,
+      items: [{ serviceId: "service-hemogram" }]
+    };
+    const created = await service.createRequest(manager, replayInput, { idempotencyKey: "manager-scope-replay" });
+    expect(created.items).toHaveLength(1);
+    await store.transaction((state) => ({
+      state: { ...state, users: state.users.map((user) => user.id === manager.id ? { ...user, managedDepartmentCodes: [] } : user) },
+      result: undefined
+    }));
+    const revokedManager = store.getState().users.find((user) => user.id === manager.id);
+    if (!revokedManager) throw new Error("revoked manager missing");
+    await expect(service.createRequest(revokedManager, replayInput, { idempotencyKey: "manager-scope-replay" })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
   });
 
   it("rejects overlapping schedules and exposes cancellation as an audited state change", async () => {
@@ -79,6 +195,7 @@ describe("workflow commands", () => {
 
     const cancelled = await service.cancelItem(vet, first.items[0].id, { reasonCode: "CLINICAL_DECISION", reason: "Paciente encaminhado para outra conduta", expectedVersion: 2, idempotencyKey: "schedule-cancel" });
     expect(cancelled.item.status).toBe("CANCELLED");
+    expect(store.getState().schedules).toEqual([expect.objectContaining({ status: "CANCELLED", version: 2 })]);
     expect(store.getState().auditEvents.some((event) => event.eventType === "DiagnosticItemCancelled")).toBe(true);
   });
 
@@ -90,6 +207,60 @@ describe("workflow commands", () => {
 
     expect(recollection.items[0].currentSampleId).toBe(recollection.replacement.id);
     expect(recollection.replacement.status).toBe("EXPECTED");
+  });
+
+  it("rechecks item scope before replaying a received sample", async () => {
+    const { service, vet, lab, store } = setup();
+    const request = await service.createRequest(vet, {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE",
+      items: [{ serviceId: "service-hemogram" }]
+    }, { idempotencyKey: "sample-replay-scope-request" });
+    const input = {
+      accessionCode: "ACC-SAMPLE-REPLAY-SCOPE",
+      sampleType: "EDTA",
+      expectedVersion: request.items[0].version,
+      idempotencyKey: "sample-replay-scope"
+    };
+    await service.receiveSample(lab, [request.items[0].id], input);
+    await store.transaction((state) => ({
+      state: {
+        ...state,
+        users: state.users.map((user) => user.id === lab.id ? { ...user, serviceCodes: [] } : user)
+      },
+      result: undefined
+    }));
+    const revokedLab = store.getState().users.find((user) => user.id === lab.id);
+    if (!revokedLab) throw new Error("revoked lab missing");
+
+    await expect(service.receiveSample(revokedLab, [request.items[0].id], input)).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+  });
+
+  it("authorizes the item before exposing the recollection state", async () => {
+    const { service, vet, lab, rx } = setup();
+    const request = await service.createRequest(vet, {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE",
+      items: [{ serviceId: "service-hemogram" }]
+    }, { idempotencyKey: "recollection-oracle-request" });
+
+    await expect(service.requestRecollectionForItem(lab, request.items[0].id, {
+      reasonCode: "HEMOLYZED",
+      expectedVersion: request.items[0].version,
+      idempotencyKey: "recollection-oracle-no-sample"
+    })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION", status: 409 });
+    await expect(service.requestRecollectionForItem(rx, request.items[0].id, {
+      reasonCode: "HEMOLYZED",
+      expectedVersion: request.items[0].version,
+      idempotencyKey: "recollection-oracle-foreign"
+    })).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+    await expect(service.requestRecollectionForItem(lab, "item-does-not-exist", {
+      reasonCode: "HEMOLYZED",
+      expectedVersion: request.items[0].version,
+      idempotencyKey: "recollection-oracle-unknown"
+    })).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
   });
 
   it("keeps released versions immutable through amend, void and replacement release", async () => {

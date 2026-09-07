@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
 import type { StoreState } from "../domain/models";
 import { MemoryStore } from "../store/memory-store";
-import { createSafeConsoleSink, InProcessEventBus, processOutboxBatch } from "./outbox";
+import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, InProcessEventBus, processOutboxBatch } from "./outbox";
+import type { OutboxSink, OutboxSqlExecutor } from "./outbox";
 
 function stateWithMessage(): StoreState {
   const state = createDemoState();
@@ -14,6 +15,8 @@ function stateWithMessage(): StoreState {
       aggregateType: "DiagnosticRequest",
       aggregateId: "request-1",
       payload: { requestId: "request-1" },
+      consumerType: "DOMAIN_EVENT",
+      routingKey: "domain.diagnostic.updated",
       status: "PENDING" as const,
       attempts: 0,
       availableAt: "2026-08-20T10:00:00.000Z",
@@ -30,7 +33,8 @@ describe("durable outbox processing", () => {
     const summary = await processOutboxBatch(store, bus, {
       now: () => new Date("2026-08-20T10:01:00.000Z"),
       workerId: "worker-test",
-      batchSize: 1
+      batchSize: 1,
+      allowSyntheticDelivery: true
     });
 
     expect(summary).toMatchObject({ claimed: 1, processed: 1, retried: 0, failed: 0 });
@@ -42,19 +46,32 @@ describe("durable outbox processing", () => {
   it("marks a pending notification delivered only after the sink confirms publish", async () => {
     const state = stateWithMessage();
     state.notifications = [{ id: "notification-1", category: "ACTIONABLE", priority: "HIGH", recipientUserId: "user-vet", entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Ação necessária", body: "Atualização disponível.", dedupeKey: "request-1:update", state: "PENDING", createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1 }];
-    state.outbox[0] = { ...state.outbox[0], payload: { requestId: "request-1", notificationId: "notification-1" } };
+    state.outbox[0] = { ...state.outbox[0], payload: { requestId: "request-1", notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" };
     const store = new MemoryStore(state);
 
-    await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date("2026-08-20T10:01:00.000Z"), workerId: "worker-notification", batchSize: 1 });
+    await processOutboxBatch(store, new InProcessEventBus(), { now: () => new Date("2026-08-20T10:01:00.000Z"), workerId: "worker-notification", batchSize: 1, allowSyntheticDelivery: true });
 
     expect(store.getState().notifications[0]).toMatchObject({ state: "DELIVERED", version: 2 });
     expect(store.getState().auditEvents).toContainEqual(expect.objectContaining({ eventType: "NotificationDelivered", entityId: "notification-1", previousState: "PENDING", newState: "DELIVERED" }));
   });
 
+  it("never marks a synthetic confirmation as processed without an explicit local opt-in", async () => {
+    const store = new MemoryStore(stateWithMessage());
+    const summary = await processOutboxBatch(store, new InProcessEventBus(), {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "synthetic-guard-worker",
+      batchSize: 1,
+      maxAttempts: 2
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, processed: 0, retried: 1, failed: 0 });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "PENDING", lastError: expect.stringContaining("OUTBOX_DURABILITY_REQUIRED") });
+  });
+
   it("keeps a notification pending when the sink fails", async () => {
     const state = stateWithMessage();
     state.notifications = [{ id: "notification-1", category: "CRITICAL", priority: "URGENT", recipientUserId: "user-vet", entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Resultado crítico", body: "Confirmação necessária.", dedupeKey: "request-1:critical", state: "PENDING", createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1 }];
-    state.outbox[0] = { ...state.outbox[0], payload: { requestId: "request-1", notificationId: "notification-1" } };
+    state.outbox[0] = { ...state.outbox[0], payload: { requestId: "request-1", notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" };
     const store = new MemoryStore(state);
 
     await processOutboxBatch(store, { publish: async () => { throw new Error("sink indisponível"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 2, batchSize: 1 });
@@ -79,7 +96,7 @@ describe("durable outbox processing", () => {
   it("marks a notification failed when its delivery message is dead-lettered", async () => {
     const state = stateWithMessage();
     state.notifications = [{ id: "notification-dead", category: "CRITICAL", priority: "URGENT", recipientUserId: "user-vet", entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Resultado crítico", body: "Confirmação necessária.", dedupeKey: "request-1:dead", state: "PENDING", createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1 }];
-    state.outbox[0] = { ...state.outbox[0], payload: { notificationId: "notification-dead" } };
+    state.outbox[0] = { ...state.outbox[0], payload: { notificationId: "notification-dead" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" };
     const store = new MemoryStore(state);
     const sink = { publish: async () => { throw new Error("sink indisponível"); } };
 
@@ -95,10 +112,87 @@ describe("durable outbox processing", () => {
     const store = new MemoryStore(state);
     const bus = new InProcessEventBus();
 
-    const summary = await processOutboxBatch(store, bus, { now: () => new Date("2026-08-20T10:01:00.000Z"), leaseMs: 60_000, batchSize: 1 });
+    const summary = await processOutboxBatch(store, bus, { now: () => new Date("2026-08-20T10:01:00.000Z"), leaseMs: 60_000, batchSize: 1, allowSyntheticDelivery: true });
 
     expect(summary.processed).toBe(1);
     expect(store.getState().outbox[0]).toMatchObject({ status: "PROCESSED", attempts: 2 });
+  });
+
+  it("does not claim an active processing lease", async () => {
+    const state = stateWithMessage();
+    state.outbox = [{ ...state.outbox[0], status: "PROCESSING", attempts: 1, lockedAt: "2026-08-20T10:00:30.000Z", workerId: "active-worker", claimToken: "active-token" }];
+    const store = new MemoryStore(state);
+    const summary = await processOutboxBatch(store, new InProcessEventBus(), {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      leaseMs: 60_000,
+      batchSize: 1,
+      allowSyntheticDelivery: true
+    });
+
+    expect(summary).toEqual({ claimed: 0, processed: 0, retried: 0, failed: 0 });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "PROCESSING", attempts: 1, workerId: "active-worker", claimToken: "active-token" });
+  });
+
+  it("filters unsupported domain events before a PostgreSQL claim and processes a later notification", async () => {
+    const state = stateWithMessage();
+    const domainEvent = state.outbox[0];
+    const notificationId = "notification-postgres";
+    const notification = {
+      ...domainEvent,
+      id: "outbox-notification",
+      eventType: "ResultReleased",
+      payload: { notificationId },
+      consumerType: "NOTIFICATION_DELIVERY" as const,
+      routingKey: "notification.in_app"
+    };
+    state.notifications = [{ id: notificationId, category: "ACTIONABLE", priority: "HIGH", recipientUserId: "user-vet", entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Ação necessária", body: "Atualização disponível.", dedupeKey: "request-1:postgres", state: "PENDING", createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1 }];
+    state.outbox = [domainEvent, notification];
+    const store = new MemoryStore(state);
+    const query = vi.fn(async (_text: string, _values?: readonly unknown[]) => ({
+      rows: [{ id: `delivery-in_app-${notificationId}`, status: "DELIVERED" }],
+      rowCount: 1
+    }));
+    const sink = createPostgresOutboxSink({ query } satisfies OutboxSqlExecutor);
+
+    const summary = await processOutboxBatch(store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "postgres-route-worker",
+      batchSize: 2
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+    expect(store.getState().outbox).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: domainEvent.id, status: "PENDING", attempts: 0 }),
+      expect.objectContaining({ id: notification.id, status: "PROCESSED", attempts: 1 })
+    ]));
+    expect(store.getState().notifications[0]).toMatchObject({ id: notificationId, state: "DELIVERED", version: 2 });
+    expect(query).toHaveBeenCalledTimes(1);
+  });
+
+  it("assigns domain and notification routes before a worker can acknowledge them", async () => {
+    const state = stateWithMessage();
+    state.outbox[0] = {
+      ...state.outbox[0],
+      eventType: "ResultReleased",
+      payload: { notificationId: "notification-route" },
+      consumerType: "NOTIFICATION_DELIVERY",
+      routingKey: "notification.in_app"
+    };
+    const store = new MemoryStore(state);
+    const bus = new InProcessEventBus();
+
+    await processOutboxBatch(store, bus, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "route-worker",
+      batchSize: 1,
+      allowSyntheticDelivery: true
+    });
+
+    expect(bus.read()[0]).toMatchObject({
+      consumerType: "NOTIFICATION_DELIVERY",
+      routingKey: "notification.in_app"
+    });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "PROCESSED", consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" });
   });
 
   it("does not complete a message after another worker replaces its lease", async () => {
@@ -114,6 +208,12 @@ describe("durable outbox processing", () => {
           },
           result: undefined
         }));
+        return {
+          confirmed: true,
+          durability: "SYNTHETIC",
+          sink: "test",
+          deliveryId: "test:outbox-1"
+        } as const;
       }
     };
 
@@ -128,6 +228,130 @@ describe("durable outbox processing", () => {
     expect(store.getState().outbox[0]).toMatchObject({ status: "PROCESSING", workerId: "replacement-worker", claimToken: "replacement-token" });
   });
 
+  it("restarts from the durable pending state after a crash following sink publication", async () => {
+    const effects = new Set<string>();
+    let publishCalls = 0;
+    const crashAfterPublish: OutboxSink = {
+      publish: async (message) => {
+        publishCalls += 1;
+        effects.add(message.id);
+        if (publishCalls === 1) throw new Error("worker crashed after publish");
+        return { confirmed: true, durability: "DURABLE", sink: "test-durable", deliveryId: `delivery:${message.id}` };
+      }
+    };
+    const firstStore = new MemoryStore(stateWithMessage());
+    const first = await processOutboxBatch(firstStore, crashAfterPublish, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "worker-before-restart",
+      maxAttempts: 3,
+      baseDelayMs: 1_000,
+      batchSize: 1
+    });
+
+    expect(first).toMatchObject({ claimed: 1, processed: 0, retried: 1 });
+    expect(firstStore.getState().outbox[0]).toMatchObject({ status: "PENDING", attempts: 1 });
+
+    const restartedStore = new MemoryStore(firstStore.getState());
+    const second = await processOutboxBatch(restartedStore, crashAfterPublish, {
+      now: () => new Date("2026-08-20T10:01:02.000Z"),
+      workerId: "worker-after-restart",
+      maxAttempts: 3,
+      baseDelayMs: 1_000,
+      batchSize: 1
+    });
+
+    expect(second).toMatchObject({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+    expect(restartedStore.getState().outbox[0]).toMatchObject({ status: "PROCESSED", attempts: 2 });
+    expect(publishCalls).toBe(2);
+    expect(effects).toEqual(new Set(["outbox-1"]));
+  });
+
+  it("does not let a poison route block the next message in the batch", async () => {
+    const state = stateWithMessage();
+    const poison = {
+      ...state.outbox[0],
+      id: "outbox-poison",
+      consumerType: "DOMAIN_EVENT" as const,
+      routingKey: "notification.in_app"
+    };
+    const healthy = {
+      ...state.outbox[0],
+      id: "outbox-healthy",
+      eventType: "SampleReceived",
+      aggregateType: "Sample",
+      aggregateId: "sample-1",
+      routingKey: "domain.SampleReceived"
+    };
+    state.outbox = [poison, healthy];
+    const store = new MemoryStore(state);
+    const sink: OutboxSink = {
+      publish: vi.fn(async (message) => ({
+        confirmed: true as const,
+        durability: "SYNTHETIC" as const,
+        sink: "healthy-consumer",
+        deliveryId: `delivery:${message.id}`
+      }))
+    };
+
+    const summary = await processOutboxBatch(store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "poison-worker",
+      maxAttempts: 1,
+      batchSize: 2,
+      allowSyntheticDelivery: true
+    });
+
+    expect(summary).toMatchObject({ claimed: 2, processed: 1, retried: 0, failed: 1 });
+    expect(store.getState().outbox).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: "outbox-poison", status: "FAILED", attempts: 1, lastError: expect.stringContaining("OUTBOX_ROUTE_MISMATCH") }),
+      expect.objectContaining({ id: "outbox-healthy", status: "PROCESSED", attempts: 1 })
+    ]));
+    expect(sink.publish).toHaveBeenCalledTimes(1);
+    expect(sink.publish).toHaveBeenCalledWith(expect.objectContaining({ id: "outbox-healthy" }));
+  });
+
+  it("does not leave a route-probe exception silently pending", async () => {
+    const store = new MemoryStore(stateWithMessage());
+    const sink: OutboxSink = {
+      supportsRoute: () => { throw new Error("route registry unavailable"); },
+      publish: async () => ({ confirmed: true, durability: "DURABLE", sink: "durable-test", deliveryId: "delivery:outbox-1" })
+    };
+
+    const summary = await processOutboxBatch(store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "route-probe-worker",
+      batchSize: 1
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "PROCESSED", attempts: 1 });
+  });
+
+  it("keeps the previous claim behavior for a generic sink without route capability", async () => {
+    const state = stateWithMessage();
+    const store = new MemoryStore(state);
+    const sink: OutboxSink = {
+      publish: vi.fn(async (message) => ({
+        confirmed: true as const,
+        durability: "SYNTHETIC" as const,
+        sink: "generic-consumer",
+        deliveryId: `delivery:${message.id}`
+      }))
+    };
+
+    const summary = await processOutboxBatch(store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "generic-worker",
+      batchSize: 1,
+      allowSyntheticDelivery: true
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "PROCESSED", attempts: 1 });
+    expect(sink.supportsRoute).toBeUndefined();
+    expect(sink.publish).toHaveBeenCalledWith(expect.objectContaining({ id: "outbox-1", consumerType: "DOMAIN_EVENT" }));
+  });
+
   it("returns an empty summary when no message is available and keeps console output safe", async () => {
     const lines: string[] = [];
     const sink = createSafeConsoleSink((line) => lines.push(line));
@@ -135,8 +359,73 @@ describe("durable outbox processing", () => {
     const summary = await processOutboxBatch(store, sink, { batchSize: 1 });
 
     expect(summary).toEqual({ claimed: 0, processed: 0, retried: 0, failed: 0 });
-    await sink.publish({ id: "outbox-safe", eventType: "diagnostic.updated", aggregateType: "Patient", aggregateId: "patient-secret", payload: { displayName: "não deve logar" }, status: "PROCESSED", attempts: 1, availableAt: "2026-08-20T10:00:00.000Z", correlationId: "corr-safe" });
+    await sink.publish({ id: "outbox-safe", eventType: "diagnostic.updated", aggregateType: "Patient", aggregateId: "patient-secret", payload: { displayName: "não deve logar" }, consumerType: "DOMAIN_EVENT", routingKey: "domain.diagnostic.updated", status: "PROCESSED", attempts: 1, availableAt: "2026-08-20T10:00:00.000Z", correlationId: "corr-safe" });
     expect(lines[0]).not.toContain("patient-secret");
     expect(lines[0]).not.toContain("não deve logar");
+  });
+
+  it("requires an explicit sink and never allows the synthetic console sink in production", () => {
+    expect(() => createOutboxSinkFromEnv({ NODE_ENV: "production" })).toThrow(/OUTBOX_SINK_REQUIRED/);
+    expect(() => createOutboxSinkFromEnv({ NODE_ENV: "production", OUTBOX_SINK: "console" })).toThrow(/console.*produção/i);
+
+    const sink = createOutboxSinkFromEnv({ NODE_ENV: "development", OUTBOX_SINK: "console" });
+    expect(sink).toMatchObject({ kind: "console", durability: "SYNTHETIC" });
+  });
+
+  it("requires a PostgreSQL URL and connected SQL executor for the durable sink", () => {
+    expect(() => createOutboxSinkFromEnv({ NODE_ENV: "production", OUTBOX_SINK: "postgres" })).toThrow(/DATABASE_URL/);
+    expect(() => createOutboxSinkFromEnv({ NODE_ENV: "production", OUTBOX_SINK: "postgres", DATABASE_URL: "postgresql://db.example/cvg" })).toThrow(/executor/i);
+    expect(() => createOutboxSinkFromEnv({ NODE_ENV: "production", OUTBOX_SINK: "postgres", DATABASE_URL: "https://db.example/cvg" }, { sql: { query: vi.fn() } })).toThrow(/DATABASE_URL/);
+  });
+
+  it("confirms PostgreSQL notification delivery only after the durable row is returned", async () => {
+    const query = vi.fn(async (_text: string, _values?: readonly unknown[]) => ({
+      rows: [{ id: "delivery-in_app-notification-1", status: "DELIVERED" }],
+      rowCount: 1
+    }));
+    const sink = createPostgresOutboxSink({ query } satisfies OutboxSqlExecutor, { channel: "in_app" });
+    const configuredSink = createOutboxSinkFromEnv(
+      { NODE_ENV: "production", OUTBOX_SINK: "postgres", DATABASE_URL: "postgresql://db.example/cvg" },
+      { sql: { query } }
+    );
+    expect(configuredSink).toMatchObject({ kind: "postgres", durability: "DURABLE" });
+
+    await expect(sink.publish({ ...stateWithMessage().outbox[0], payload: { notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" })).resolves.toEqual({
+      confirmed: true,
+      durability: "DURABLE",
+      sink: "postgres",
+      deliveryId: "delivery-in_app-notification-1"
+    });
+    await expect(sink.publish({ ...stateWithMessage().outbox[0], payload: { notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" })).resolves.toEqual({
+      confirmed: true,
+      durability: "DURABLE",
+      sink: "postgres",
+      deliveryId: "delivery-in_app-notification-1"
+    });
+    expect(query).toHaveBeenCalledWith(expect.stringContaining("INSERT INTO notification_deliveries"), ["delivery-in_app-notification-1", "notification-1", "IN_APP"]);
+    expect(query.mock.calls[0]?.[0]).toMatch(/ON CONFLICT \(notification_id, channel\)/);
+    expect(query.mock.calls[0]?.[0]).toMatch(/RETURNING id, status/);
+  });
+
+  it("fails closed when the PostgreSQL sink cannot prove delivery or receives a non-notification event", async () => {
+    const sink = createPostgresOutboxSink({ query: vi.fn(async (_text: string, _values?: readonly unknown[]) => ({ rows: [], rowCount: 0 })) } satisfies OutboxSqlExecutor);
+    await expect(sink.publish({ ...stateWithMessage().outbox[0], payload: { notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" })).rejects.toThrow(/CONFIRMATION_MISSING/);
+    await expect(sink.publish(stateWithMessage().outbox[0])).rejects.toThrow(/OUTBOX_ROUTE_UNSUPPORTED/);
+  });
+
+  it("does not process a claimed message when a sink omits confirmation", async () => {
+    const store = new MemoryStore(stateWithMessage());
+    const unconfirmedSink = { publish: async () => undefined } as unknown as OutboxSink;
+
+    const summary = await processOutboxBatch(store, unconfirmedSink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"),
+      workerId: "unconfirmed-worker",
+      batchSize: 1,
+      maxAttempts: 2,
+      baseDelayMs: 1_000
+    });
+
+    expect(summary).toMatchObject({ claimed: 1, processed: 0, retried: 1, failed: 0 });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "PENDING", lastError: expect.stringContaining("OUTBOX_SINK_UNCONFIRMED") });
   });
 });

@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "candidate": "AAA-3-local-candidate-2026-09-07",
+  "generated_at": "2026-09-07T15:00:22-03:00",
+  "status": "BLOCKED_REVIEW_REQUIRED",
+  "local_automated_status": "PASS_WITH_CONDITIONS",
+  "aaa3_verdict": "BLOCKED_REVIEW_REQUIRED",
+  "release_claim": false,
+  "quality_bar": {
+    "path": ".orchestrate/aaa3-execution-20260907/quality-bar.json",
+    "sha256": "b0e25c410ed5b21a96af9b5b92a5eef18fc3dba8ac1fba9f9c676f62c62d4ee9",
+    "required_criteria": 11,
+    "release_claim": false
+  },
+  "candidate_fingerprint": {
+    "captured_at": "2026-09-07T15:00:22-03:00",
+    "git_head": "01bb1804682b4bb503e00e41c1361dc704d2294d",
+    "status_and_tracked_diff_sha256": "67ed8a837b7239db7145314996134e24fca74bb8062905ac819348d647920419",
+    "working_tree_scope": "Dirty working tree intentionally preserved; the digest covers porcelain status, tracked binary diff and sorted SHA-256 hashes of untracked files at capture time, excluding this manifest to avoid self-reference."
+  },
+  "repository_boundary": {
+    "workspace": "/home/ricardo/cvg-diagnostic-hub-v2",
+    "working_tree_was_dirty": true,
+    "preexisting_changes_preserved": true,
+    "persistent_postgresql_touched": false,
+    "node_observed": "v22.23.2 (clean nvm runtime; host default v24.20.0)",
+    "declared_node_engine": ">=22.0.0 <23"
+  },
+  "verification": [
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm run validate",
+      "status": "PASS",
+      "evidence": "Node 22.23.2 typecheck and lint pass; 86 test files and 725 tests pass; 92.72% statements/lines, 85.82% branches, 94.31% functions in the latest full run; docs, OpenAPI, traceability and migrations pass. Details: node22-current-revalidation-race-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm ci",
+      "status": "PASS",
+      "evidence": "clean dependency install under Node 22.23.2; 560 packages installed and npm audit reported 0 vulnerabilities"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm run build",
+      "status": "PASS",
+      "evidence": "Node 22.23.2 Next.js 16.3.0 Turbopack production build completed with 15 application routes (11 static and 4 dynamic)"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 env ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://ricardo@127.0.0.1:55495/postgres npm run test:postgres -- --run --reporter=dot",
+      "status": "PASS_WITH_CONDITIONS",
+      "evidence": "Previous packet: 6 PostgreSQL integration files and 39/39 tests passed against a fresh disposable PostgreSQL 16.15 cluster on Node 22.23.2; cluster stopped after the run and persistent 127.0.0.1:5432 was untouched. This is conditional evidence from before the current SAA-015 source changes; current rerun condition: postgres-current-rerun-node22-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 env ALLOW_POSTGRES_INTEGRATION_TESTS=true POSTGRES_TEST_ADMIN_URL=postgresql://ricardo@127.0.0.1:55490/postgres npm run test:postgres -- --run --reporter=dot tests/postgres/relational-migration-upgrade.integration.test.ts",
+      "status": "PASS",
+      "evidence": "Dedicated SAA-022 upgrade packet passed 5/5 scenarios on a fresh disposable PostgreSQL 16.15 cluster; raw log SHA-256 5f875a9c7a6ee2e83accb8c717285fb82eac5cefd76f5394f6256f1f51b16522; persistent 127.0.0.1:5432 was untouched. Details: migration-upgrade-node22-local-20260907.md"
+    },
+    {
+      "command": "npm run security:scan",
+      "status": "PASS",
+      "evidence": "no versionable secret pattern found"
+    },
+    {
+      "command": "npm audit --audit-level=high",
+      "status": "PASS",
+      "evidence": "full dependency tree audit found 0 vulnerabilities"
+    },
+    {
+      "command": "npm run test:recovery",
+      "status": "PASS",
+      "evidence": "5/5 recovery manifest tests"
+    },
+    {
+      "command": "npm run test:perf",
+      "status": "PASS",
+      "evidence": "7/7 deterministic workload and tail-latency tests"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm run test:mutation",
+      "status": "PASS",
+      "evidence": "Temporary-copy mutation sentinel detected 7/7 deliberately injected failures across authorization, optimistic version, migration checksum, upload MIME, outbox lease, realtime replay and recovery checksum; working tree was not mutated. Details: mutation-controls-node22-20260907.md"
+    },
+    {
+      "command": "npm --silent run coverage:report",
+      "status": "PASS_WITH_CONDITIONS",
+      "evidence": "Global coverage report is 92.72% lines, 94.31% functions and 85.82% branches in the latest full run against 90/90/85 thresholds; report retains 35 files below at least one per-file threshold. No module was excluded by this report."
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm --silent run security:sbom",
+      "status": "PASS",
+      "evidence": "CycloneDX 1.5 SBOM JSON validated under Node 22 with 560 components; CI verification job publishes the SBOM artifact. Supply-chain review, provenance signing and target approval remain open."
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && E2E_PORT_BASE=6120 nvm exec 22 npx playwright test tests/e2e/core-flows.spec.ts --retries=0 --fail-on-flaky-tests",
+      "status": "PASS",
+      "evidence": "36/36 across Chromium, tablet and mobile, with retries disabled and fail-on-flaky-tests enabled; current packet: browser-e2e-node22-no-retry-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && E2E_PORT_BASE=6160 nvm exec 22 npx playwright test tests/e2e/clinical-lifecycle.spec.ts --retries=0 --fail-on-flaky-tests",
+      "status": "PASS",
+      "evidence": "9/9 across Chromium, tablet and mobile, with retries disabled and fail-on-flaky-tests enabled; current packet: browser-e2e-node22-no-retry-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && E2E_PORT_BASE=6540 nvm exec 22 npm run test:e2e -- tests/e2e/accessibility.spec.ts --retries=0 --fail-on-flaky-tests",
+      "status": "PASS",
+      "evidence": "12/12 across Chromium, tablet and mobile, with retries disabled and fail-on-flaky-tests enabled; selected axe rules, including color-contrast, report no violations across clinical, management and administration routes; final packet: browser-e2e-node22-accessibility-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && E2E_PORT_BASE=6550 nvm exec 22 npm run test:e2e -- --retries=0 --fail-on-flaky-tests",
+      "status": "PASS",
+      "evidence": "60/60 in 5.7 minutes across Chromium, tablet and mobile with retries disabled and fail-on-flaky-tests enabled; includes core, clinical, accessibility 12/12 and realtime after async-action, stale-response and breadcrumb-contrast hardening; details: browser-e2e-node22-accessibility-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npx vitest run src/server/observability/realtime.test.ts src/server/observability/realtime-stream.test.ts 'src/app/api/v1/[...path]/route.test.ts' src/components/app-shell.test.tsx src/components/dashboard.test.tsx src/components/notifications-view.test.tsx src/components/result-view.test.tsx",
+      "status": "PASS",
+      "evidence": "7 focused files and 98/98 tests passed; realtime capacity, unavailable adapter, snapshot fallback, replay states, reconnect retry and visible open-screen reconciliation are covered; details: saa-015-realtime-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && E2E_PORT_BASE=6400 nvm exec 22 npm run test:postgres -- --run",
+      "status": "BLOCKED_ENVIRONMENT",
+      "evidence": "Current source rerun not executed because this host has no initdb/pg_ctl and no Docker; the failed attempt did not apply migrations and persistent 127.0.0.1:5432 was not touched. Details: postgres-current-rerun-node22-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 env CI=1 E2E_REUSE_EXISTING_SERVER=true BASE_URL=http://127.0.0.1:5730 npm run test:e2e -- --retries=0 --fail-on-flaky-tests",
+      "status": "PASS",
+      "evidence": "Production-like local lane passed 51/51 without retry across Chromium, tablet and mobile against next start with disposable PostgreSQL, synthetic S3/HTTPS scanner services and durable PostgreSQL outbox; clean process-group shutdown completed without worker errors. Details: browser-postgres-synthetic-local-20260907.md"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 env ALLOW_DB_RESTORE_SMOKE=true POSTGRES_DIRECT_URL=postgresql://ricardo@127.0.0.1:55482/cvg_test_restore_source npm run db:restore:smoke",
+      "status": "PASS",
+      "evidence": "PostgreSQL-only restore smoke passed with custom dump, checksum verification and isolated restored database containing runtime/audit/outbox rows; object storage, configuration/secrets, application recovery and approved RPO/RTO remain untested. Details: postgres-restore-smoke-node22-local-20260907.md"
+    },
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "evidence": "no whitespace errors"
+    },
+    {
+      "command": "source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm run validate:aaa3",
+      "status": "PASS",
+      "evidence": "Candidate verifier passed: required AAA-3 artifacts exist, current coverage is 92.72/85.82/94.31, fresh review is round8 BLOCKED, release_claim is false and the working-tree fingerprint matches."
+    }
+  ],
+  "implemented_slices": [
+    "Same-service executor peers cannot amend or void another executor's released result; state, audit and outbox remain unchanged on denial.",
+    "Admission reads and patient diagnostics filter by the actor's admission department scope.",
+    "Item authorization precedes recollection-state lookup, removing a foreign-item state oracle.",
+    "Manager mobile navigation has one query-aware active route.",
+    "Compact logout is available in the topbar at every breakpoint.",
+    "Queue cards are the source of truth through 960px; workflow confirmation surfaces above fixed navigation.",
+    "Degraded patient-workspace copy reflects the authorized request snapshot instead of claiming a confirmed flow.",
+    "Auxiliary Patient Workspace reads have an explicit failure boundary that returns DEGRADED while preserving authorized requests; injected failure is covered by a focused test.",
+    "Released reports expose only clean finalized attachments; pending and quarantined attachment metadata is denied by regression coverage.",
+    "Post-critic mobile readability pass increases Patient Workspace secondary text sizes and reserves safe bottom space for fixed navigation; core and accessibility E2E remain green.",
+    "All application command replay paths now reauthorize the actor/resource boundary before returning a cached idempotent response; actor-scoped request projection is centralized in request-projection.ts and focused HTTP, workflow and result regressions cover representative revocation cases.",
+    "The durable outbox worker now closes its cached PostgreSQL LISTEN/NOTIFY adapter before the runtime store during graceful shutdown; focused architecture, realtime and runtime tests remain green.",
+    "External malware scanner configuration now fails closed without an exact approved-host allowlist, rejects unsafe URL components/unapproved IP literals and disables redirect following; boundary tests cover the policy.",
+    "Realtime snapshot/stream replay now includes committed PENDING or PROCESSED domain events while suppressing PROCESSING and FAILED delivery rows; HTTP and stream regressions cover all three delivery states.",
+    "AppShell preserves the native EventSource reconnect cursor, announces bounded polling fallback, and the current browser matrix proves an open screen reconciles a committed mutation without reload.",
+    "PostgreSQL rate-limit coverage now includes twelve concurrent attempts against a quota of three, window reset and invalid URL/pool fail-fast configuration.",
+    "HTTP structured logger emits only allowlisted bounded fields, normalizes caller-controlled correlation to external, redacts clinical/sensitive values and swallows writer failure without changing the request response; focused tests cover normalization and disablement.",
+    "The local mutation sentinel detects 7/7 deliberate auth, version, migration, upload, outbox, realtime and recovery mutations in an isolated temporary copy.",
+    "The shared ActionButton primitive now exposes an explicit idle/pending/confirmed/failed/unknown/denied state contract, blocks duplicate pending/denied activation, and is consumed by workflow, patient creation, login, logout, notification acknowledgement and administration command surfaces with focused UI coverage.",
+    "ResultView now derives busy from a per-action pendingAction, so release, review, upload and editor/invalidation controls expose aria-busy only on the active transaction; 19 component tests cover the pending/idle and duplicate-submission contract.",
+    "Focused service, projection-SQL, PostgresStore, S3 adapter and relational-read tests extend current behavior evidence without touching live infrastructure.",
+    "The CI verify job now invokes the same mutation sentinel after coverage; remote execution remains an open gate until a clean CI run is observed.",
+    "Coverage report aggregates executable layers, applies global 90/90/85 thresholds and exposes 39 below-threshold files without silently excluding hard persistence/UI layers.",
+    "The AAA-3 candidate verifier fails closed on artifact, coverage, fresh-review, release-disposition and working-tree fingerprint drift.",
+    "CI verification now generates and uploads a CycloneDX 1.5 SBOM with 560 components under Node 22 after JSON parsing validation.",
+    "Incident, outbox, storage/scanner, realtime, security and closure runbooks are documented locally with explicit non-claims for target RPO/RTO, failover and production release."
+  ],
+  "visual_evidence": {
+    "directory": ".orchestrate/evidence/visual-patient-workspace-20260907",
+    "profiles": ["chromium", "tablet", "mobile"],
+    "states": ["ready", "loading", "empty", "partial", "stale", "error-denied", "dense-collapsed", "dense-expanded"],
+    "source": "fresh Playwright captures copied from the final Node 22 60/60 browser run after dashboard search, workflow transaction-state, notification filter race and breadcrumb contrast hardening"
+    ,"hash_manifest": ".orchestrate/evidence/visual-patient-workspace-20260907/sha256-manifest.json"
+    ,"hash_manifest_sha256": "e74167ff49ae2e165e039de8fef003948ed37271a0304c6629e2a19da43f2f95"
+    ,"captured_at": "2026-09-07T14:49:00-03:00"
+    ,"file_count": 20
+  },
+  "open_gates": [
+    "D-01 identity, ownership, discharge and admission-context policy",
+    "D-02 result state and amendment/void authority policy",
+    "D-03 critical-result policy approval",
+    "D-04 SLA ownership and escalation policy",
+    "D-05 target infrastructure, PostgreSQL, backup, restore, RPO/RTO and multi-instance authority",
+    "D-06 pilot, training, support and release authority",
+    "The previous disposable PostgreSQL proof covers migrations, relational projection/reconciliation and integration contracts, and the current PostgreSQL-only restore smoke covers checksum plus an isolated database; a source-current rerun awaits a disposable cluster, JSONB remains authoritative and target relational/production authority has not been exercised.",
+    "The production-like local lane covers 51/51 browser scenarios with synthetic S3/HTTPS scanning, PostgreSQL and outbox, but target deployment load, failover, real malware scanner/object storage, alerting and complete restore drills were not executed.",
+    "The local scanner boundary now requires an exact approved-host allowlist and rejects unapproved IPs/redirects; real egress controls, secrets manager, DNS rebinding and scanner approval remain untested.",
+    "Realtime replay now accepts only committed PENDING/PROCESSED outbox rows; two-worker receiver-effect dedupe under crash/failover remains unproven.",
+    "SAA-022 has a current 5/5 synthetic upgrade proof, but representative volume/skew, partial 010 interruption, target cutover/rollback authority and production relational ownership remain unproven.",
+    "Logger thresholds, retention, access, alert routing and named on-call ownership remain unexercised; the local runbooks are not a production operations drill.",
+    "Per-file coverage remains below at least one local threshold for 35 files, especially UI, realtime and relational storage; aggregate thresholds must not be treated as file-level closure.",
+    "Manual screen-reader, touch-device and clinical/hospital acceptance review remains outstanding.",
+    "Remote clean-checkout CI was not executed in this workspace."
+  ],
+  "independent_review": {
+    "path": ".orchestrate/aaa3-execution-20260907/independent-critic-report.md",
+    "status": "BLOCKED",
+    "latest_recheck_path": ".orchestrate/aaa3-execution-20260907/independent-critic-report-round2.md",
+    "latest_recheck_status": "BLOCKED",
+    "fresh_recheck_path": ".orchestrate/aaa3-execution-20260907/independent-critic-report-round8.md",
+    "fresh_recheck_status": "BLOCKED",
+    "fresh_recheck_independence": "PEER",
+    "local_hardening_supplement_path": "docs/security/ADVERSARIAL_REVIEW_SUPPLEMENT_2026-09-07.md",
+    "scores": {
+      "scope_truth": 58,
+      "authorization_confidentiality": 72,
+      "contracts_runtime": 76,
+      "integrity_migration": 30,
+      "clinical_workflow": 42,
+      "distributed_operations": 32,
+      "visual_accessibility_responsive": 68,
+      "regression_verification": 64,
+      "architecture_supply_chain": 69,
+      "traceability": 52,
+      "release_authority": 0
+    },
+    "actionable_findings_closed_this_round": [
+    "released report attachment boundary now filters CLEAN and FINALIZED",
+      "Patient Workspace has an executable auxiliary degraded-read boundary",
+      "same-service executor peers cannot release another executor's draft",
+      "reschedule responses project only authorized multi-sector request items",
+      "manager request creation enforces delegated executor departments",
+      "scoped read identifiers normalize unknown resources to the same 404 denial",
+      "mobile context geometry, touch target height and color contrast have executable checks",
+      "all command idempotency replays reauthorize current actor/resource scope before returning cached responses"
+    ],
+    "remaining_findings": [
+      "relational authority/cutover and PostgreSQL target proof",
+      "target distributed operations, approved recovery drill and RPO/RTO",
+      "institutional clinical authority and pilot",
+      "formal release authority and signed D-06 decision",
+      "manual accessibility and touch acceptance",
+      "target volume/skew and cutover/rollback evidence for the relational authority decision",
+      "manual command inventory review and human accessibility/clinical acceptance after the new replay reauthorization hardening"
+    ]
+  },
+  "verdict_rule": "Local evidence is strong and current, but no AAA release approval is asserted while a required external or human gate remains open."
+}

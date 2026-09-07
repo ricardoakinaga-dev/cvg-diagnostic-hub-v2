@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "captured_at": "2026-09-06T19:31:53Z",
+  "target": "/patients/{patientId}/diagnostics",
+  "result": "PASS_WITH_CONDITIONS",
+  "command": "CI=1 npx playwright test tests/e2e/core-flows.spec.ts --grep \"renders the Patient Workspace as a responsive, server-derived snapshot\" --fail-on-flaky-tests --retries=0 --reporter=line",
+  "result_detail": "3/3 responsive projects passed with no retries after removing the development indicator, strengthening loading-skeleton contrast, flowing the mobile realtime alert, and stacking the mobile stale notice; the executable scenario asserted loading, error/denied, empty, partial, stale and ready states, horizontal overflow <= 1px and no console errors.",
+  "source": {
+    "test_file": "tests/e2e/core-flows.spec.ts",
+    "sha256": "2f9f4796b2c67112df7d175b27d7893c8afe9e7705f85408742084baf1046f91",
+    "styles_file": "src/app/globals.css",
+    "styles_sha256": "584ac679e78680e0482d2e7361522f49428e221f213d6e4a362d1e605dbba21c",
+    "config_file": "next.config.mjs",
+    "config_sha256": "75b2a83344fb7ce4d425f8cb6fab116231ff17bd2dc09a605b05c66ba03eb63d"
+  },
+  "full_matrix_recheck": {
+    "command": "CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0",
+    "result": "51/51 passed in 4.6 minutes with no retries after the final responsive polish",
+    "verification": ".agent/verification.jsonl#VER-V2-G4-FINAL-023"
+  },
+  "runtime": "Next.js memory E2E fixture with synthetic repository data; Chromium, tablet and mobile Playwright projects.",
+  "limitations": [
+    "Automated local visual evidence is not a manual screen-reader/touch review.",
+    "No product screenshot/golden, target Web Vitals, clinical sign-off or production workload is represented.",
+    "The mobile PNG width is device-scale output (1031px) for a 375px CSS viewport."
+  ],
+  "states": [
+    {
+      "state": "ready",
+      "assertions": "Complete server-derived workspace; mobile capture retains the dense expanded timeline after the 8-to-12 event interaction.",
+      "artifacts": [
+        {"project": "chromium", "css_width": 1440, "css_height": 1000, "png_width": 1440, "png_height": 1038, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-chromium-ready-1440-20260906.png", "sha256": "6399490186b575038c49e1cf800af2fa61c170edc9128ed29105dd08efe8b6f3"},
+        {"project": "tablet", "css_width": 834, "css_height": 1194, "png_width": 834, "png_height": 1529, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-tablet-ready-834-20260906.png", "sha256": "e076786ebb8fe3583704c2dfcc99d91af941a202c1211679633994bb7a05331a"},
+        {"project": "mobile", "css_width": 375, "css_height": 812, "png_width": 1031, "png_height": 6933, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-mobile-ready-375-20260906.png", "sha256": "ef45245670ac19fe2965b860e16ce44769b948600c95b85632f9f9afd26a7452"}
+      ]
+    },
+    {
+      "state": "loading",
+      "assertions": "Named workspace skeleton is visible while the diagnostic request is held, then the ready state is restored.",
+      "artifacts": [
+        {"project": "chromium", "css_width": 1440, "css_height": 1000, "png_width": 1440, "png_height": 1220, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-chromium-loading-1440-20260906.png", "sha256": "bf4dab5c914340ea9a4183a49f0ea8d35287b30533d552bdaa27b98cad355d06"},
+        {"project": "tablet", "css_width": 834, "css_height": 1194, "png_width": 834, "png_height": 1850, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-tablet-loading-834-20260906.png", "sha256": "715ac9be18c138a42ac11d3b983c913d1833efbdfb71d3326d33e472f518fe4c"},
+        {"project": "mobile", "css_width": 375, "css_height": 812, "png_width": 1031, "png_height": 5580, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-mobile-loading-375-20260906.png", "sha256": "eddb00504f4049dbf989f2afcef0f19e96c4322c3ba557fb4815c4438bd34959"}
+      ]
+    },
+    {
+      "state": "error-denied",
+      "assertions": "A 404 diagnostic response renders the patient-unavailable alert and retry action.",
+      "artifacts": [
+        {"project": "chromium", "css_width": 1440, "css_height": 1000, "png_width": 1440, "png_height": 1000, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-chromium-error-denied-1440-20260906.png", "sha256": "8e846fb6d2f9cb19e5296b0ce746dbe89ffcd236a1246ae4afc8777bcd85f41b"},
+        {"project": "tablet", "css_width": 834, "css_height": 1194, "png_width": 834, "png_height": 1194, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-tablet-error-denied-834-20260906.png", "sha256": "20488f7168e11bf1bd803ca74546339e6c830328094a0f2e68e0729e95ef37af"},
+        {"project": "mobile", "css_width": 375, "css_height": 812, "png_width": 1031, "png_height": 2233, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-mobile-error-denied-375-20260906.png", "sha256": "ffa62ca6988aedffbba5e66cc0b4c8443934a357afaa3c6e7834e3b56fa92ded"}
+      ]
+    },
+    {
+      "state": "empty",
+      "assertions": "The identity/context remains visible while requests, next actions and audit events render their explicit empty copy.",
+      "artifacts": [
+        {"project": "chromium", "css_width": 1440, "css_height": 1000, "png_width": 1440, "png_height": 1000, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-chromium-empty-1440-20260906.png", "sha256": "b6870501ce8db8a0d4a0f19938d32d20af904b057e3871166552ac69a19d87f9"},
+        {"project": "tablet", "css_width": 834, "css_height": 1194, "png_width": 834, "png_height": 1343, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-tablet-empty-834-20260906.png", "sha256": "7490452637ecd453437f1441d9175582d46c1ff872544d4a3322663fa4955a79"},
+        {"project": "mobile", "css_width": 375, "css_height": 812, "png_width": 1031, "png_height": 4384, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-mobile-empty-375-20260906.png", "sha256": "c18871777d15116f15f2f9f660b394f4377ddde7706760e1a7628ffea15b8b01"}
+      ]
+    },
+    {
+      "state": "partial",
+      "assertions": "An in-progress item visibly communicates execution state and missing result/sample/attachment data.",
+      "artifacts": [
+        {"project": "chromium", "css_width": 1440, "css_height": 1000, "png_width": 1440, "png_height": 1038, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-chromium-partial-1440-20260906.png", "sha256": "e48d9531e466dd6e34c5f5568bf84a765408481e9fb8c9616016e57961351518"},
+        {"project": "tablet", "css_width": 834, "css_height": 1194, "png_width": 834, "png_height": 1467, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-tablet-partial-834-20260906.png", "sha256": "992b67a60ad230aea729dc26b0d2c33afa860064ef6c8ff5ccb987f08c4520c4"},
+        {"project": "mobile", "css_width": 375, "css_height": 812, "png_width": 1031, "png_height": 4914, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-mobile-partial-375-20260906.png", "sha256": "1fa0ddd20fb234689b1f5022db4945178ab0962723b4f4d88733c737c29288b5"}
+      ]
+    },
+    {
+      "state": "stale",
+      "assertions": "A failed refresh preserves the confirmed snapshot, exposes the stale notice and offers reconciliation.",
+      "artifacts": [
+        {"project": "chromium", "css_width": 1440, "css_height": 1000, "png_width": 1440, "png_height": 1120, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-chromium-stale-1440-20260906.png", "sha256": "28a96967b58ba6230c149d9ea7699726903bd24b110d2b2b06cb7b46cc0e1459"},
+        {"project": "tablet", "css_width": 834, "css_height": 1194, "png_width": 834, "png_height": 1611, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-tablet-stale-834-20260906.png", "sha256": "1dbb880bc35794be5d3b123781f02b37049585be08ee10444f8435ba86f61ee3"},
+        {"project": "mobile", "css_width": 375, "css_height": 812, "png_width": 1031, "png_height": 6718, "path": ".orchestrate/evidence/visual-patient-workspace-20260906/state-mobile-stale-375-20260906.png", "sha256": "aff6fb454d4e41b2c95edaae8ff66796327562c022c5aacffe23204c4710ec86"}
+      ]
+    }
+  ]
+}

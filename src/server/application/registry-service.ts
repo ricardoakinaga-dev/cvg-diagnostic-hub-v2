@@ -105,7 +105,10 @@ export function createRegistryService({ store }: ApplicationServiceContext) {
         const admission = ward && bed ? createAdmission(encounter, currentActor, ward, bed, openedAt) : undefined;
         const persistedUser = findOrThrow(originalState.users.find((user) => user.id === currentActor.id));
         const patientIds = Array.from(new Set([...(persistedUser.patientIds ?? []), patient.id]));
-        const updatedUser = { ...persistedUser, patientIds };
+        // Patient scope is part of the authorization snapshot. Bump the user
+        // version so every long-lived session must reread the new scope before
+        // it can access the newly registered patient.
+        const updatedUser = { ...persistedUser, patientIds, version: persistedUser.version + 1 };
         const correlationId = meta.correlationId ?? id("corr");
         const audits = [
           createAudit("PatientCreated", currentActor.id, "Patient", patient.id, correlationId, undefined, "ACTIVE", { externalId: patient.externalId, encounterType: encounter.type }),

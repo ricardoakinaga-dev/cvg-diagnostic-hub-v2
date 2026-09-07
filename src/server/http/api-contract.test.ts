@@ -24,6 +24,7 @@ const EXPECTED_PERMISSION_ANCHORS = Object.freeze({
   deactivateUser: ["user_role.manage"],
   reauthenticate: [],
   getPatientDiagnostics: ["patient.view", "diagnostic.timeline.view"],
+  updateAdmissionContext: ["admission.context.manage"],
   viewResult: ["result.view", "result.view.record"],
   downloadAttachment: ["attachment.download", "attachment.view"],
   getManagementOverview: ["dashboard.view", "user_role.manage"]
@@ -158,8 +159,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(64);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 59);
+    expect(API_OPERATIONS).toHaveLength(65);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 60);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 
@@ -393,6 +394,14 @@ describe("exact OpenAPI contract", () => {
     expect(object(object(schedule.properties).startsAt)).toMatchObject({ type: "string", format: "date-time", maxLength: 100, pattern: expect.any(String) });
     expect(object(object(schedule.properties).endsAt)).toMatchObject({ type: "string", format: "date-time", maxLength: 100, pattern: expect.any(String) });
     expect(schedule["x-cross-field-constraints"]).toEqual(["endsAt must be after startsAt", "endsAt - startsAt must be at most 24 hours"]);
+
+    const procedureSchedule = object(schemas.ProcedureSchedule);
+    expect(procedureSchedule.required).toContain("version");
+    expect(object(procedureSchedule.properties).version).toMatchObject({ type: "integer", minimum: 1 });
+    const sample = object(schemas.Sample);
+    expect(object(sample.properties).accessionCode).toMatchObject({ minLength: 3, maxLength: 40, pattern: "^[A-Z0-9][A-Z0-9-]{2,39}$" });
+    const patientSample = object(schemas.PatientWorkspaceSampleSummary);
+    expect(object(patientSample.properties).accessionCode).toMatchObject({ minLength: 3, maxLength: 40, pattern: "^[A-Z0-9][A-Z0-9-]{2,39}$" });
 
     expect(object(object(object(schemas.AttachmentUploadSessionRequest).properties).mimeType).enum).toEqual(["application/pdf", "image/jpeg", "image/png"]);
     const managedUser = object(schemas.ManagedUserCreate);

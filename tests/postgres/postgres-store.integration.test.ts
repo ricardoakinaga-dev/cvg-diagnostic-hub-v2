@@ -1,10 +1,13 @@
 import type { StoreState } from "../../src/server/domain/models";
 import { describe, expect, it, vi } from "vitest";
 import { createApplicationService } from "../../src/server/application/service";
+import { createPostgresOutboxSink, processOutboxBatch } from "../../src/server/operations/outbox";
 import { assertRateLimit, closeRateLimitBackend } from "../../src/server/security/rate-limit";
 import { authenticateRequest, authorizationSnapshotIsCurrent, loginUser, revokeSession } from "../../src/server/security/session";
 import { createDemoState } from "../../src/server/store/fixtures";
 import type { PostgresStore } from "../../src/server/store/postgres-store";
+import { RelationalClinicalCoreAdapter } from "../../src/server/store/relational/clinical-core-adapter";
+import type { RelationalClinicalCoreRuntime } from "../../src/server/store/relational/clinical-core-contracts";
 import { withDisposablePostgresDatabase } from "../support/postgres-test-harness";
 
 const TEST_PASSWORD = "postgres-integration-password";
@@ -195,6 +198,75 @@ describe("PostgresStore multi-instance integration", () => {
     });
   });
 
+  it("projects default snapshot notifications before durable outbox delivery", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      const store = await database.createStore(createDemoState(TEST_PASSWORD));
+      const notificationId = "notification-relational-delivery-projection";
+      const availableAt = "2026-09-06T12:00:00.000Z";
+
+      await store.transaction((state) => ({
+        state: {
+          ...state,
+          notifications: [...state.notifications, {
+            id: notificationId,
+            category: "CRITICAL" as const,
+            priority: "URGENT" as const,
+            recipientUserId: "user-vet",
+            entityType: "RESULT_VERSION" as const,
+            entityId: "result-version-relational-delivery",
+            deepLink: "/results/result-relational-delivery",
+            title: "Resultado crítico requer confirmação",
+            body: "Resultado sintético para a prova de entrega durável.",
+            dedupeKey: "relational-delivery-projection",
+            state: "PENDING" as const,
+            createdAt: availableAt,
+            attempts: 0,
+            version: 1
+          }],
+          outbox: [...state.outbox, {
+            id: "outbox-relational-delivery-projection",
+            eventType: "ResultReleased",
+            aggregateType: "Result",
+            aggregateId: "result-relational-delivery",
+            payload: { notificationId },
+            consumerType: "NOTIFICATION_DELIVERY" as const,
+            routingKey: "notification.in_app",
+            status: "PENDING" as const,
+            attempts: 0,
+            availableAt,
+            correlationId: "correlation-relational-delivery-projection"
+          }]
+        },
+        result: undefined
+      }));
+
+      const projected = await database.query(
+        "SELECT id, recipient_user_id, state, version FROM notifications WHERE id = $1",
+        [notificationId]
+      );
+      expect(projected.rows).toEqual([{ id: notificationId, recipient_user_id: "user-vet", state: "PENDING", version: 1 }]);
+
+      const sink = createPostgresOutboxSink({
+        query: async (text, values) => {
+          const result = await database.query(text, values);
+          return { rows: result.rows as Record<string, unknown>[], rowCount: result.rowCount };
+        }
+      });
+      await expect(processOutboxBatch(store, sink, {
+        now: () => new Date(availableAt),
+        workerId: "relational-delivery-projection-worker"
+      })).resolves.toMatchObject({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+
+      const delivery = await database.query(
+        "SELECT notification_id, channel, status, attempts FROM notification_deliveries WHERE notification_id = $1",
+        [notificationId]
+      );
+      expect(delivery.rows).toEqual([{ notification_id: notificationId, channel: "IN_APP", status: "DELIVERED", attempts: 1 }]);
+      const delivered = await asFreshReadable(store).readState();
+      expect(delivered.notifications.find((notification) => notification.id === notificationId)).toMatchObject({ state: "DELIVERED", version: 2 });
+    });
+  });
+
   it("repeats an authorized reset while retaining audit history and replacing the outbox projection", async () => {
     vi.stubEnv("ALLOW_DB_SMOKE_RESET", "true");
     try {
@@ -273,6 +345,41 @@ describe("PostgresStore multi-instance integration", () => {
     });
   });
 
+  it("rolls back relational writes and the JSON snapshot when the relational adapter fails", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      const realAdapter = new RelationalClinicalCoreAdapter();
+      const failingAdapter: RelationalClinicalCoreRuntime = {
+        assertReady: (client) => realAdapter.assertReady(client),
+        repairSampleMembership: (client, state) => realAdapter.repairSampleMembership(client, state),
+        validateSampleMembership: (client) => realAdapter.validateSampleMembership(client),
+        readRequest: (client, requestId) => realAdapter.readRequest(client, requestId),
+        projectStateDelta: async (client, _before, _after) => {
+          await client.query(
+            "INSERT INTO departments (id, code, name, kind) VALUES ($1,$2,$3,$4)",
+            ["department-atomicity-probe", "ATOMICITY_PROBE", "Atomicity probe", "CLINICAL"]
+          );
+          throw new Error("POSTGRES_RELATIONAL_TEST_FAILURE");
+        }
+      };
+      const store = await database.createRelationalStore(createDemoState(TEST_PASSWORD), failingAdapter);
+      const initialSequence = store.getState().protocolSequence;
+
+      await expect(store.transaction((state) => ({
+        state: { ...state, protocolSequence: state.protocolSequence + 1 },
+        result: undefined
+      }))).rejects.toThrow("POSTGRES_RELATIONAL_TEST_FAILURE");
+
+      expect(store.getState().protocolSequence).toBe(initialSequence);
+      const durableState = await asFreshReadable(store).readState();
+      expect(durableState.protocolSequence).toBe(initialSequence);
+      const relationalProbe = await database.query(
+        "SELECT id FROM departments WHERE id = $1",
+        ["department-atomicity-probe"]
+      );
+      expect(relationalProbe.rows).toEqual([]);
+    });
+  });
+
   it("blocks TRUNCATE against the relational audit projection", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       await database.createStore(createDemoState(TEST_PASSWORD));
@@ -299,6 +406,46 @@ describe("PostgresStore multi-instance integration", () => {
         await expect(assertRateLimit("integration-rate-limit", 2, 60_000, timestamp + 2)).rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
         const bucket = await database.query("SELECT request_count FROM rate_limit_buckets WHERE bucket_key = $1", ["integration-rate-limit"]);
         expect(bucket.rows).toEqual([{ request_count: 3 }]);
+      } finally {
+        await closeRateLimitBackend();
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+
+  it("keeps a concurrent distributed quota atomic and resets it at the next window", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      await database.createStore(createDemoState(TEST_PASSWORD));
+      vi.stubEnv("DATABASE_URL", database.connectionString());
+      vi.stubEnv("RATE_LIMIT_MODE", "postgres");
+      vi.stubEnv("RATE_LIMIT_DB_POOL_MAX", "8");
+      const bucketKey = `integration-rate-limit-concurrent-${process.pid}`;
+      const timestamp = Date.parse("2026-08-23T13:00:00.000Z");
+
+      try {
+        const attempts = await Promise.allSettled(
+          Array.from({ length: 12 }, () => assertRateLimit(bucketKey, 3, 60_000, timestamp))
+        );
+        const allowed = attempts.filter((attempt) => attempt.status === "fulfilled");
+        const rejected = attempts.filter((attempt) => attempt.status === "rejected");
+
+        expect(allowed).toHaveLength(3);
+        expect(rejected).toHaveLength(9);
+        expect(rejected.every((attempt) => attempt.status === "rejected" && attempt.reason?.code === "RATE_LIMITED")).toBe(true);
+
+        const bucket = await database.query(
+          "SELECT request_count FROM rate_limit_buckets WHERE bucket_key = $1",
+          [bucketKey]
+        );
+        expect(bucket.rows).toEqual([{ request_count: 4 }]);
+
+        await expect(assertRateLimit(bucketKey, 3, 60_000, timestamp + 60_000)).resolves.toBeUndefined();
+        const resetBucket = await database.query(
+          "SELECT request_count, window_started_at FROM rate_limit_buckets WHERE bucket_key = $1",
+          [bucketKey]
+        );
+        expect(resetBucket.rows).toEqual([expect.objectContaining({ request_count: 1 })]);
+        expect(new Date(String((resetBucket.rows[0] as { window_started_at: string }).window_started_at)).getTime()).toBe(timestamp + 60_000);
       } finally {
         await closeRateLimitBackend();
         vi.unstubAllEnvs();

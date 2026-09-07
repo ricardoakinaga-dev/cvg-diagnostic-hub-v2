@@ -29,6 +29,8 @@ describe("diagnostic application service", () => {
     expect(result.items).toHaveLength(2);
     expect(result.items.map((item) => item.status)).toEqual(["REQUESTED", "REQUESTED"]);
     expect(result.requesterId).toBe(actor.id);
+    expect(result.items[0]).toMatchObject({ slaPolicyVersion: 1, slaStartedAt: expect.any(String), dueAt: expect.any(String) });
+    expect(Date.parse(result.items[0].dueAt) - Date.parse(result.items[0].slaStartedAt)).toBe(4 * 60 * 60 * 1000);
   });
 
   it("returns the committed request for a repeated idempotency key", async () => {
@@ -69,8 +71,8 @@ describe("diagnostic application service", () => {
     expect(override.items).toHaveLength(1);
   });
 
-  it("preserves a rejected sample chain and makes replacement actionable", async () => {
-    const { service, actor, labActor } = setup();
+  it("preserves a replaced sample chain and makes replacement actionable", async () => {
+    const { service, actor, labActor, store } = setup();
     const request = await service.createRequest(actor, {
       patientId: "patient-thor",
       encounterId: "encounter-thor",
@@ -91,10 +93,51 @@ describe("diagnostic application service", () => {
       idempotencyKey: "sample-recollect"
     });
 
-    expect(recollection.sample.status).toBe("REJECTED");
+    expect(recollection.sample.status).toBe("REPLACED");
+    expect(recollection.sample.version).toBe(2);
     expect(recollection.replacement.replacesSampleId).toBe(received.sample.id);
+    expect(recollection.replacement.status).toBe("EXPECTED");
     expect(recollection.items.every((item) => item.status === "RECOLLECTION_REQUIRED")).toBe(true);
+    expect(store.getState().samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: received.sample.id, status: "REPLACED", version: 2 }),
+      expect.objectContaining({ id: recollection.replacement.id, status: "EXPECTED", version: 1, replacesSampleId: received.sample.id })
+    ]));
+    await expect(service.receiveReplacement(labActor, recollection.replacement.id, {
+      accessionCode: "bad accession",
+      sampleType: "EDTA",
+      expectedVersion: recollection.items[0].version,
+      idempotencyKey: "sample-replacement-invalid-accession"
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    const replacement = await service.receiveReplacement(labActor, recollection.replacement.id, {
+      accessionCode: "ACC-0002",
+      sampleType: "EDTA",
+      expectedVersion: recollection.items[0].version,
+      idempotencyKey: "sample-replacement-receive"
+    });
+    expect(replacement.sample).toMatchObject({ status: "RECEIVED", version: 2, replacesSampleId: received.sample.id });
+    expect(store.getState().samples).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: received.sample.id, status: "REPLACED", version: 2 }),
+      expect.objectContaining({ id: replacement.sample.id, status: "RECEIVED", version: 2 })
+    ]));
     expect((await service.timeline(actor, request.id)).items.some((event) => event.entityType === "Sample")).toBe(true);
+  });
+
+  it("rejects duplicate item IDs before creating a sample or links", async () => {
+    const { service, actor, labActor, store } = setup();
+    const request = await service.createRequest(actor, {
+      patientId: "patient-thor",
+      encounterId: "encounter-thor",
+      priority: "ROUTINE",
+      items: [{ serviceId: "service-hemogram" }]
+    }, { idempotencyKey: "request-duplicate-sample-items" });
+
+    await expect(service.receiveSample(labActor, [request.items[0].id, request.items[0].id], {
+      accessionCode: "ACC-DUPLICATE-ITEM",
+      sampleType: "EDTA",
+      expectedVersion: request.items[0].version,
+      idempotencyKey: "sample-duplicate-item"
+    })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(store.getState().samples).toHaveLength(0);
   });
 
   it("rejects stale item versions across sample receipt and recollection", async () => {

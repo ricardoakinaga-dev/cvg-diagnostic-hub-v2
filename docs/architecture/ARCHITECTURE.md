@@ -45,9 +45,9 @@ The former 2,800-line application service is split into modules; production sour
 
 ## 4. Persistence boundary
 
-PostgreSQL is required for the disposable integration harness and the configured runtime mode. Migrations `001`–`006` create the ledger, snapshot row, audit/outbox projections, outbox claim ownership, distributed rate-limit buckets and `runtime_storage_boundaries`. The latter records the current contract (`StoreState-v1`) and its transitional status so a future relational migration cannot silently change the source of truth.
+PostgreSQL is required for the disposable integration harness and the configured runtime mode. Migrations `001`–`006` create the ledger, snapshot row, audit/outbox projections, outbox claim ownership, distributed rate-limit buckets and `runtime_storage_boundaries`; migrations `007`–`009` add the expand-only relational clinical/sample-lineage seam and its readiness contract. The latter records the current contract (`StoreState-v1`) and its transitional status so a future relational migration cannot silently change the source of truth.
 
-Clinical release, void/amend, sample lineage and audit/outbox writes are exercised in transactions and reloaded from PostgreSQL. A production decision still requires relational constraints/indexes for the clinical entities, representative `EXPLAIN` evidence and a tested expand/contract migration plan.
+Clinical release, void/amend, sample lineage (including complete item membership, exact replay and rollback) and audit/outbox writes are exercised in transactions and reloaded from PostgreSQL. A production decision still requires relational constraints/indexes for the clinical entities, representative `EXPLAIN` evidence and a tested expand/contract migration plan.
 
 ## 5. External boundaries
 

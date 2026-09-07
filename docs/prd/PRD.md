@@ -78,6 +78,7 @@ Os acceptance criteria prioritários cobrem A — Laboratório normal, B — Rec
 | ID | Requirement | Priority |
 | --- | --- | --- |
 | FR-CORE-001 | Criar solicitação a partir de paciente + atendimento, preenchendo actor, setor/contexto e timestamp do servidor quando conhecidos. | MUST |
+| FR-REG-001 | Permitir cadastrar um paciente e seu primeiro atendimento dentro do fluxo de solicitação, preservando origem, escopo e vínculo contextual no servidor. | MUST |
 | FR-CORE-002 | Permitir múltiplos `DiagnosticRequestItem` em uma mesma solicitação; cada item mantém serviço, workflow, prioridade e status próprios. | MUST |
 | FR-CORE-003 | Gerar protocolo humano único, curto e buscável, separado da PK técnica. | MUST |
 | FR-CORE-004 | Alertar duplicidade ativa por paciente/serviço em janela configurável e permitir override autorizado com motivo. | MUST |
@@ -200,6 +201,11 @@ Os critérios são contratos de produto; o `TEST_PLAN` mapeia cada um para unit/
 Given um usuário autorizado está no contexto de um paciente/atendimento válido  
 When seleciona um ou mais serviços e confirma  
 Then o servidor cria uma solicitação com protocolo único, actor/contexto corretos, itens independentes e evento de auditoria.
+
+**AC-FR-REG-001-01**
+Given um veterinário autorizado não encontra o paciente no contexto atual
+When cadastra o paciente e o primeiro atendimento durante a solicitação
+Then o servidor cria os registros com escopo/origem auditáveis, devolve o atendimento aberto e mantém o paciente selecionado para a confirmação dos serviços.
 
 **AC-FR-CORE-002-01**  
 Given uma solicitação contém cinco serviços  

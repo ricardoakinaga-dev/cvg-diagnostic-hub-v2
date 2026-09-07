@@ -1,5 +1,6 @@
 import { Pool } from "pg";
 import { ApiError } from "../http/envelope";
+import { isPostgresConnectionString } from "../domain/realtime-configuration";
 
 interface Bucket { count: number; resetAt: number }
 const buckets = new Map<string, Bucket>();
@@ -19,7 +20,9 @@ const POSTGRES_CONSUME_SQL = `
             THEN 1
           ELSE LEAST(rate_limit_buckets.request_count + 1, $4 + 1)
         END
-  RETURNING request_count, (EXTRACT(EPOCH FROM window_started_at) * 1000)::bigint AS reset_at, request_count <= $4 AS allowed
+  RETURNING request_count,
+    (EXTRACT(EPOCH FROM (window_started_at + ($3 * interval '1 millisecond'))) * 1000)::bigint AS reset_at,
+    request_count <= $4 AS allowed
 `;
 
 export async function assertRateLimit(key: string, limit: number, windowMs: number, timestamp = Date.now()): Promise<void> {
@@ -37,8 +40,19 @@ export function assertRateLimitConfiguration(environment: Partial<NodeJS.Process
   const mode = environment.RATE_LIMIT_MODE ?? (environment.NODE_ENV === "production" ? "postgres" : "memory");
   if (mode !== "memory" && mode !== "postgres") throw new Error("RATE_LIMIT_MODE deve ser memory ou postgres.");
   if (mode === "memory" && environment.NODE_ENV === "production") throw new Error("RATE_LIMIT_MODE=memory não é permitido em produção.");
-  if (mode === "postgres" && !environment.DATABASE_URL) throw new Error("DATABASE_URL é obrigatório quando RATE_LIMIT_MODE=postgres.");
+  if (mode === "postgres" && (!environment.DATABASE_URL?.trim() || !isPostgresConnectionString(environment.DATABASE_URL))) {
+    throw new Error("DATABASE_URL deve ser uma URL PostgreSQL quando RATE_LIMIT_MODE=postgres.");
+  }
+  if (mode === "postgres") assertRateLimitPoolMax(environment.RATE_LIMIT_DB_POOL_MAX);
   return mode;
+}
+
+function assertRateLimitPoolMax(value: string | undefined): number {
+  if (value === undefined) return 4;
+  if (!/^[1-9][0-9]*$/.test(value)) throw new Error("RATE_LIMIT_DB_POOL_MAX deve ser um inteiro positivo.");
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed > 100) throw new Error("RATE_LIMIT_DB_POOL_MAX deve estar entre 1 e 100.");
+  return parsed;
 }
 
 function assertMemoryRateLimit(key: string, limit: number, windowMs: number, timestamp: number): void {
@@ -57,7 +71,7 @@ async function assertPostgresRateLimit(key: string, limit: number, windowMs: num
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL é obrigatório quando RATE_LIMIT_MODE=postgres.");
   try {
     if (!databasePool) {
-      databasePool = new Pool({ connectionString: process.env.DATABASE_URL, max: Number(process.env.RATE_LIMIT_DB_POOL_MAX ?? 4), idleTimeoutMillis: 30_000 });
+      databasePool = new Pool({ connectionString: process.env.DATABASE_URL, max: assertRateLimitPoolMax(process.env.RATE_LIMIT_DB_POOL_MAX), idleTimeoutMillis: 30_000 });
       if (typeof databasePool.on === "function") {
         databasePool.on("error", () => {
           // The next bucket query will fail closed with DEPENDENCY_UNAVAILABLE.

@@ -1,0 +1,60 @@
+{
+  "packet": "visual-patient-workspace-20260906-v6",
+  "capturedAt": "2026-09-06T18:03:10-03:00",
+  "scope": "local visual evidence only; not production, clinical, or human acceptance",
+  "captureCommand": "npx playwright test tests/e2e/core-flows.spec.ts -g \"renders the Patient Workspace as a responsive\" --project=chromium --project=tablet --project=mobile --retries=0",
+  "captureResult": "PASS 3/3, no retries",
+  "dimensionsNote": "PNG dimensions reflect device scale factor; mobile captures are 1031 px wide for 375 CSS px.",
+  "independentCritic": {
+    "status": "COMPLETE",
+    "agent": "Bernoulli",
+    "verdict": "APPROVED_LOCAL",
+    "findings": [
+      "No material visual defect across 1440, 834, and 375 CSS px; hierarchy, responsive stacking, state banners, dense timeline expansion, action grouping, and clipping/overflow are coherent.",
+      "The previous mobile-loading realtime-banner inconsistency is resolved in the captured state.",
+      "Low advisory: secondary metadata is small and muted on mobile.",
+      "Medium verification limitation: the green global live-update indicator beside stale/degraded notices requires DOM/runtime verification."
+    ],
+    "report": "critic-report.md"
+  },
+  "sourceHashes": {
+    "tests/e2e/core-flows.spec.ts": "b0dcc90ce83a2328e426790e931c3320e5cf7a96a99c63367251a9045e3fa921",
+    "src/components/patient-diagnostics.tsx": "1e0a0fabcede3fafbcef89bf83da1214d38cd69336ace00e006abd69b05550c4",
+    "src/components/use-dialog-focus.ts": "f1826e1abe5c598eac576cbfe03091419cfc3e2a3c2acca413ab2a7751cb4c72",
+    "src/components/patient-dialog.tsx": "49aba464e47a7f5a309a5cfe0bcaba08b1e2b53c82c50a7cad6b86b7c9edb8e6",
+    "src/components/dashboard.tsx": "19accea8ca055c493027e402e6a6cc95d8f313969a1ea8923e9a84fd3e7c5076",
+    "src/app/globals.css": "bb042a4dfab51aff5e8ffaeb9996e63005e66d92e28c8cab7a5123f30d95798e",
+    "src/server/application/request-service.ts": "c09e9b8461d364f4a01df4d8822bafa4b28b2027d975fe5b6c11708c16eb68b5",
+    "src/server/application/service-types.ts": "730544456431bb7f5261b581e5255685b53fb917aa1a62ca49b777221b8ce253",
+    "scripts/validate-openapi.mjs": "d6aa9d7904939c864fa2a2875bb73fcaeab596b6e1d42ee87aa10621c2a257dc",
+    "tests/postgres/relational-sample-lineage.integration.test.ts": "78b4d7438cd88adf709100800a699bae11193954de40080fe81667e07f0cb86f",
+    "src/components/patient-dialog.test.tsx": "733f9627feeb0901bf07875e7b04c0166cef23505aab82e572201289f873ccdd"
+  },
+  "artifacts": [
+    { "file": "mobile-dense-collapsed.png", "bytes": 520972, "sha256": "3520688eb00b1f0edf46e9d8106af820e37b4864294322cbb75b62a8a84a105a", "width": 1031, "height": 6317 },
+    { "file": "mobile-dense-expanded.png", "bytes": 580783, "sha256": "546aa6bbc3a34f2aec06374f71f48a658f9af87404bd00bca2f625e86c625279", "width": 1031, "height": 6933 },
+    { "file": "chromium-empty.png", "bytes": 114850, "sha256": "b57dddeedd8a1c24ca62eca9b4e396f975044fd748b2af2fbd6e4d463e351f56", "width": 1440, "height": 1000 },
+    { "file": "chromium-error.png", "bytes": 44448, "sha256": "6e951f256a775888beb3a271e8feab0990ffffef3ff25c0a4cbc90c915318372", "width": 1440, "height": 1000 },
+    { "file": "chromium-loading.png", "bytes": 72820, "sha256": "93fe41da6ffb2b0e5206f046d8d6accf99b73dca3bf984a6aea297ed75973a07", "width": 1440, "height": 1220 },
+    { "file": "chromium-partial.png", "bytes": 135902, "sha256": "41237d59ce06465bc4c8c8127b6a9e559dd5c803e4514e209d2efb6c319481b1", "width": 1440, "height": 1120 },
+    { "file": "chromium-ready.png", "bytes": 131645, "sha256": "80ab51a1a4ba81c156d786888a7b9e160d74b93b140ef130bb9ee0a38651c99a", "width": 1440, "height": 1038 },
+    { "file": "chromium-stale.png", "bytes": 142640, "sha256": "2323760e9de5c2bcbf972a5adbe855692051ed5e892b77f112f8789dca6ea4ce", "width": 1440, "height": 1120 },
+    { "file": "mobile-empty.png", "bytes": 352307, "sha256": "1a3c6d1caf73e205f910369824778c706255bd1a62da912198b2bff2e30bf703", "width": 1031, "height": 4384 },
+    { "file": "mobile-error.png", "bytes": 80557, "sha256": "60cde3662ee8db93db3d9038188d0862dff8b0e6c9c81267f96afebd5a222b30", "width": 1031, "height": 2233 },
+    { "file": "mobile-loading.png", "bytes": 391748, "sha256": "214507ded2e1dc383220445fe9557cdc2ea309e7e1517a55572d69d54bfdccc6", "width": 1031, "height": 5187 },
+    { "file": "mobile-partial.png", "bytes": 435788, "sha256": "25395ce2640bf1b679ea8e881851b187aea2b10251a968eb80cdcf09be5535f5", "width": 1031, "height": 5316 },
+    { "file": "mobile-ready.png", "bytes": 579116, "sha256": "5f94025253c3f02ec526758e0068b021d70ea03c5ddb5e7ff604551e583c6fc4", "width": 1031, "height": 6933 },
+    { "file": "mobile-stale.png", "bytes": 555283, "sha256": "11eea1a4271d807c6a45717f6b1086a9fcf9e521957ebdfee612cc412b32eef5", "width": 1031, "height": 6718 },
+    { "file": "tablet-empty.png", "bytes": 116296, "sha256": "01bc85d98bf305a99a713a97c724c615b9cbe2a84512b4b47003f1a0820395ca", "width": 834, "height": 1343 },
+    { "file": "tablet-error.png", "bytes": 42589, "sha256": "4a34b5dda621628322ea907d60c977172ada046ef025bbc4fe89562cc0a08131", "width": 834, "height": 1194 },
+    { "file": "tablet-loading.png", "bytes": 60011, "sha256": "1aa51a98bb48bf945745fcd2a2172cd73a2263fbfaf2e31403bb0fb9d42a665d", "width": 834, "height": 1850 },
+    { "file": "tablet-partial.png", "bytes": 138651, "sha256": "5f98aee36f5771ecb75d662d2e5071866d90f0f34e9a3914e64e1537ea2f9db3", "width": 834, "height": 1549 },
+    { "file": "tablet-ready.png", "bytes": 133984, "sha256": "e21845e5ae97994f3d44f5817db034ed4ffae2bb105b3c948a8c61a0b4e99c48", "width": 834, "height": 1529 },
+    { "file": "tablet-stale.png", "bytes": 145533, "sha256": "9c6d0a1fe0aa4758ccb85ed2ff3ea70e367d76c0246f9a9aade8d91187ac74ad", "width": 834, "height": 1611 }
+  ],
+  "knownLimits": [
+    "Raster evidence cannot prove keyboard focus, dialog focus restoration/trapping, touch targets, DOM semantics, live regions, scrollWidth, network/console behavior, retry behavior, performance, production correctness, or clinical acceptance.",
+    "This packet waits for the connected live-update indicator before the loading capture; runtime realtime behavior still requires DOM/network review beyond the raster packet.",
+    "The green live-update indicator remains visible beside stale/degraded notices; this requires DOM/runtime semantics review beyond the raster packet."
+  ]
+}

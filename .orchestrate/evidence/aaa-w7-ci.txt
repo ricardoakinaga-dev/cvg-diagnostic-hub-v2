@@ -1,0 +1,7 @@
+AAA-W7-CI evidence — 2026-09-04
+Scope: .github/workflows/ci.yml.
+
+Static YAML validation
+Result: PASS — workflow parsed with available YAML parsers; Playwright and accessibility commands include --fail-on-flaky-tests; coverage and browser artifacts upload on failure/always.
+The workflow retains the opt-in PostgreSQL service configuration and fail-closed integration gate.
+No remote CI run was available from this host.

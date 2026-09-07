@@ -1,13 +1,15 @@
 # UX user flows and wireflows
 
-**Knowledge status:** `IMPLEMENTED LOCALLY / CONDITIONAL FOR PRODUCTION` — os wireflows abaixo têm implementação em `src/components`, evidência Playwright 39/39 em Chromium/tablet/mobile (incluindo resultado, anexos e acknowledgement crítico) e smoke real com seed sintético em PostgreSQL descartável; aceitação clínica, carga representativa e inspeção manual continuam abertas.
+**Knowledge status (05/09/2026):** `IMPLEMENTED LOCALLY / CONDITIONAL FOR PRODUCTION` — os wireflows abaixo têm implementação em `src/components`. Os 51 casos Playwright passam em uma corrida única sem retry, com servidores de memória sintética isolados por projeto. A acessibilidade automatizada passou 6/6. O shell agora reconcilia atualizações por SSE e usa uma cadência de 30 s quando a conexão degrada; o Patient Workspace preserva o último snapshot confirmado quando um refresh fica indisponível; o browser usa memória sintética e não prova PostgreSQL. Aceitação clínica, carga representativa e inspeção manual continuam abertas.
+
+**AAA-1:** [barra](../build/STATE_OF_ART_QUALITY_BAR.md) · [plano](../build/EXECUTIVE_IMPROVEMENT_PLAN.md) · [roadmap](../build/STATE_OF_ART_ROADMAP.md) · [backlog](../build/STATE_OF_ART_BACKLOG.md) · [auditoria de 04/09/2026](../PROJECT_STATUS_REPORT.md)
 
 ## 0. Current implementation evidence
 
 - `RequestDetail` e `QueueView` usam a mesma `WorkflowAction` e refetch após mutações.
 - Ações implementadas na UI: receber amostra, processamento, agenda, remarcação quando o procedimento expõe sua versão, execução, resultado draft, recoleta e recebimento de substituta.
 - `ResultView` registra visualização, revisão, edição/liberação de draft, emenda, invalidação, anexos com checksum/MIME/scanner e download apenas após release/scan limpo.
-- Loading, partial failure, permission/not-found, retry/reconcile e realtime degradado têm estados visíveis. O E2E executado localmente usa seed sintético em memória ou PostgreSQL descartável; não é evidência de prontuário hospitalar ou teste clínico.
+- Loading, partial failure, permission/not-found, retry/reconcile e realtime degradado têm estados visíveis. O E2E atual usa seed sintético em memória; a integração PostgreSQL não foi executada porque o comando permanece condicionado a opt-in e banco vivo, e a evidência não representa prontuário hospitalar ou teste clínico.
 
 ## 1. Create request
 

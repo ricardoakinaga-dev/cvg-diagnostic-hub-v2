@@ -1,0 +1,52 @@
+{
+  "packet": "visual-patient-workspace-20260906-v4",
+  "capturedAt": "2026-09-06T17:40:00-03:00",
+  "scope": "local visual evidence only; not production, clinical, or human acceptance",
+  "captureCommand": "npx playwright test tests/e2e/core-flows.spec.ts -g \"renders the Patient Workspace as a responsive\" --project=chromium --project=tablet --project=mobile --retries=0",
+  "captureResult": "PASS 3/3, no retries",
+  "dimensionsNote": "PNG dimensions reflect device scale factor; mobile captures are 1031 px wide for 375 CSS px.",
+  "independentCritic": {
+    "status": "PENDING",
+    "agent": "Pasteur",
+    "verdict": null
+  },
+  "sourceHashes": {
+    "tests/e2e/core-flows.spec.ts": "00d9eed42d25eb1f906dc06a4e5a14cf0bd2ea12f1cce777b7433294553750a5",
+    "src/components/patient-diagnostics.tsx": "1e0a0fabcede3fafbcef89bf83da1214d38cd69336ace00e006abd69b05550c4",
+    "src/components/use-dialog-focus.ts": "f1826e1abe5c598eac576cbfe03091419cfc3e2a3c2acca413ab2a7751cb4c72",
+    "src/components/patient-dialog.tsx": "49aba464e47a7f5a309a5cfe0bcaba08b1e2b53c82c50a7cad6b86b7c9edb8e6",
+    "src/components/dashboard.tsx": "19accea8ca055c493027e402e6a6cc95d8f313969a1ea8923e9a84fd3e7c5076",
+    "src/app/globals.css": "1ad8bf2fe7a3ef80cf654c6c85d53c8d84dd27c6cda4084ec67eea75df523468",
+    "src/server/application/request-service.ts": "c09e9b8461d364f4a01df4d8822bafa4b28b2027d975fe5b6c11708c16eb68b5",
+    "src/server/application/service-types.ts": "730544456431bb7f5261b581e5255685b53fb917aa1a62ca49b777221b8ce253",
+    "scripts/validate-openapi.mjs": "d6aa9d7904939c864fa2a2875bb73fcaeab596b6e1d42ee87aa10621c2a257dc",
+    "tests/postgres/relational-sample-lineage.integration.test.ts": "78b4d7438cd88adf709100800a699bae11193954de40080fe81667e07f0cb86f",
+    "src/components/patient-dialog.test.tsx": "733f9627feeb0901bf07875e7b04c0166cef23505aab82e572201289f873ccdd"
+  },
+  "artifacts": [
+    { "file": "mobile-dense-collapsed-375-20260906-v4.png", "bytes": 521129, "sha256": "3a472959047f18d9efa77078a6bc662ce5a8e02a8fb4865df956c1db10a6b049", "width": 1031, "height": 6317 },
+    { "file": "mobile-dense-expanded-375-20260906-v4.png", "bytes": 580929, "sha256": "5c6350432d7b38b5b1a97e928d9d3308200980a48aeffc9eb1a74a67433521d5", "width": 1031, "height": 6933 },
+    { "file": "state-chromium-empty-1440-20260906-v4.png", "bytes": 114938, "sha256": "ade27e321f5f8fce451dfd0f650c1a41730fc1418979c48515fda190a281a947", "width": 1440, "height": 1000 },
+    { "file": "state-chromium-error-denied-1440-20260906-v4.png", "bytes": 44208, "sha256": "4297c906947f49a8da05bd9aa8f54b4efdabc272163a5e7ade7f5567d7fd959c", "width": 1440, "height": 1000 },
+    { "file": "state-chromium-loading-1440-20260906-v4.png", "bytes": 61288, "sha256": "3fecfea5d35bb3cff9266355b4ad1fdf828f5ec802eba0e16205c4366470c975", "width": 1440, "height": 1220 },
+    { "file": "state-chromium-partial-1440-20260906-v4.png", "bytes": 136075, "sha256": "f692d5cd58a053f1eec5f076abd8153b29feca373762b7250fe7eeac15d396d2", "width": 1440, "height": 1120 },
+    { "file": "state-chromium-ready-1440-20260906-v4.png", "bytes": 131712, "sha256": "010798fb94a9ed8627563ac724a82b6aefc189568ae7f8e6b0d2421ed4cd4b62", "width": 1440, "height": 1038 },
+    { "file": "state-chromium-stale-1440-20260906-v4.png", "bytes": 142805, "sha256": "1d040bb0b35349d9600e1b72b856283531720b0e369e2f393b0a5ad9ecd8e849", "width": 1440, "height": 1120 },
+    { "file": "state-mobile-empty-375-20260906-v4.png", "bytes": 352588, "sha256": "c698b1e69926409829ade452a0d29189e62c087522e5ffc74315b6f2a486c24f", "width": 1031, "height": 4384 },
+    { "file": "state-mobile-error-denied-375-20260906-v4.png", "bytes": 80557, "sha256": "60cde3662ee8db93db3d9038188d0862dff8b0e6c9c81267f96afebd5a222b30", "width": 1031, "height": 2233 },
+    { "file": "state-mobile-loading-375-20260906-v4.png", "bytes": 113653, "sha256": "e3ec3a2ddcb133bf2a3b13aeedb4e45dae569508625a4baa6e8d5a01defd9537", "width": 1031, "height": 5187 },
+    { "file": "state-mobile-partial-375-20260906-v4.png", "bytes": 435926, "sha256": "2afe917172045749278113973cfc59a12d1557b88423a3d9a79f6a2b2129378c", "width": 1031, "height": 5316 },
+    { "file": "state-mobile-ready-375-20260906-v4.png", "bytes": 579261, "sha256": "de0d2b6e8382e9cef736990d6b37e066fc1dbb013d5fe4f11d19383a331fa784", "width": 1031, "height": 6933 },
+    { "file": "state-mobile-stale-375-20260906-v4.png", "bytes": 555255, "sha256": "1274325c1f55e36e1720f4424040c03bb587833364d011621fa44f2fe6ace2dc", "width": 1031, "height": 6718 },
+    { "file": "state-tablet-empty-834-20260906-v4.png", "bytes": 116368, "sha256": "b550dc3b7dacb8ccddf4a6592bb31348788698b6055f80ba9382efe6c285da70", "width": 834, "height": 1343 },
+    { "file": "state-tablet-error-denied-834-20260906-v4.png", "bytes": 42882, "sha256": "a2f42384f2c4d350bb19d5914b4585e15572b3997e963f19d65601a279d3e46e", "width": 834, "height": 1194 },
+    { "file": "state-tablet-loading-834-20260906-v4.png", "bytes": 60141, "sha256": "c7b7648699d4695a4aa16e6afb218efbea60cdcfacf5b8a3f1904e322aec7bb4", "width": 834, "height": 1850 },
+    { "file": "state-tablet-partial-834-20260906-v4.png", "bytes": 138788, "sha256": "034f9d4f53695bd5bb05aeb453fe7c3a8dace8a550c484f3f80547385092b89e", "width": 834, "height": 1549 },
+    { "file": "state-tablet-ready-834-20260906-v4.png", "bytes": 134114, "sha256": "9aaa508943b24761beb50c05b43758ce1f952af58d77c6b793c3b7b93bc71086", "width": 834, "height": 1529 },
+    { "file": "state-tablet-stale-834-20260906-v4.png", "bytes": 145662, "sha256": "60a71f8968ac38807e76ff7675264025bb46c7d92f2f83eccab06efa55ea9064", "width": 834, "height": 1611 }
+  ],
+  "knownLimits": [
+    "Raster evidence cannot prove keyboard focus, dialog focus restoration/trapping, touch targets, DOM semantics, live regions, scrollWidth, network/console behavior, retry behavior, performance, production correctness, or clinical acceptance.",
+    "The green live-update indicator remains visible beside stale/degraded notices; this requires DOM/runtime semantics review beyond the raster packet."
+  ]
+}

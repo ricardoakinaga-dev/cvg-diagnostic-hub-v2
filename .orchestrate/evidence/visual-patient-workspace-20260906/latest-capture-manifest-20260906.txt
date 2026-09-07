@@ -1,0 +1,54 @@
+Patient Workspace ready-state capture archive — 2026-09-06T18:10:20Z; retained as historical ready-state evidence. Superseded as the current all-state packet by [`../visual-patient-workspace-20260906-v6/manifest.json`](../visual-patient-workspace-20260906-v6/manifest.json), which records 20 artifacts and the Bernoulli `APPROVED_LOCAL` review.
+
+The earlier all-state evidence below is an 18-PNG state/viewport matrix and is
+historical; the v6 packet is the current local all-state evidence. Neither is a
+production, clinical or human visual sign-off.
+
+Command: CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0
+Result: 51/51 passed; the responsive Patient Workspace scenario is 3/3 across Chromium, tablet and mobile; no retries.
+Scope: ready-state responsive capture after the mobile navigation label CSS fix. This supplements the full state/stress matrix; it is not an independent visual sign-off.
+
+Keyboard recheck: the same responsive scenario now verifies named navigation attributes and the computed 3px focus ring at 375px; the mobile branch also verifies a deterministic 12-event timeline collapsed to 8 events and expanded to all 12; `CI=1 npm run test:e2e -- --grep "renders the Patient Workspace as a responsive, server-derived snapshot" --fail-on-flaky-tests --retries=0` — 3/3 passed across Chromium, tablet and mobile.
+
+Artifacts:
+7d8515dc377ddc97658b6e010ced698c5d516b108ac44a3dceaa5be544b4947a  latest-chromium-1440.png  1440x2229
+4feb6d4946df759b0dec37aab55f474d4e29e950eef38a8803512a2eb8aa9e5b  latest-tablet-834.png  834x3153
+d14f344c303858137133aaa796d5d6a2abf37b34f45ee95e9bc81c6ba868d1df  latest-mobile-375.png  1031x8775
+842b2d32d7103c67879a13a8bac24e45a561f1db9b34f7571959d8fcf565c116  dense-mobile-collapsed-375-20260906.png  1031x8159
+9e82762faa8d9a85dcd360987099b39a3c71c6997d47f6395ff94eebd64cd2a5  dense-mobile-expanded-375-20260906.png  1031x8775
+
+Production-like clean captures from the 51/51 disposable PostgreSQL matrix
+(next start, PostgreSQL 55450, Next 3115, synthetic S3/scanner and durable
+outbox worker; no persistent PostgreSQL instance):
+a415367b6110cf1edca4b3a407d684065d949461df8df055ab1d6a64209285a2  production-chromium-1440-20260906.png  1440x2229
+2cb8d955be650d76ec4bd7016e5303a6d706abf3a17fb87c231d54f489700c1c  production-tablet-834-20260906.png  834x4474
+3d7647ef6ff71841fd3d65f917182bc738bdc5008a3a9278b638a51e96772b5b  production-mobile-375-20260906.png  1031x16368
+3bd8fefbf08efa2a5961ce7a6a7eae919741d4566cc1e9bfdc267ea02cb65b93  production-dense-mobile-collapsed-375-20260906.png  1031x15755
+6b675820b55664ddcdbca0a8cc2728167a285f411070038f760ec77461cb29e2  production-dense-mobile-expanded-375-20260906.png  1031x16368
+
+Historical source hashes for the archived ready-state capture:
+695e07d4b6b4d081905c334076c920a5d7b2ef781f41b8e3a371b5ce15556e25  src/app/globals.css
+f219860d1e28a1512553e5b030d78de3304df69f234f00bd04a98fad13533dfc  src/components/app-shell.tsx
+099e159918df4ab60b5e5bd7945c0acad15873e36552f62c4571985a6e153729  src/components/patient-diagnostics.tsx
+2f9f4796b2c67112df7d175b27d7893c8afe9e7705f85408742084baf1046f91  tests/e2e/core-flows.spec.ts
+
+State/viewport supplement:
+state-matrix-manifest-20260906.json records 18 PNGs covering ready, loading,
+error/denied, empty, partial and stale states at 1440, 834 and 375 CSS pixels.
+Fresh sealed critic report:
+v2-patient-workspace-state-matrix-independent-critic-20260906.md — APPROVE for
+the local matrix; two low-severity loading/sidebar polish notes are recorded.
+
+Final current state/viewport matrix — 2026-09-06T19:31:53Z
+Command: CI=1 npx playwright test tests/e2e/core-flows.spec.ts --grep "renders the Patient Workspace as a responsive, server-derived snapshot" --fail-on-flaky-tests --retries=0 --reporter=line
+Focused result: 3/3 responsive projects passed with no retries.
+Full result: CI=1 npm run test:e2e -- --fail-on-flaky-tests --retries=0 — 51/51 passed in 4.6 minutes with no retries.
+Manifest: state-matrix-manifest-20260906.json  sha256 6e772715d157ef38e51bd46f929a8d7a280514a043eeb338b77097a303025eb9
+Current source hashes:
+584ac679e78680e0482d2e7361522f49428e221f213d6e4a362d1e605dbba21c  src/app/globals.css
+75b2a83344fb7ce4d425f8cb6fab116231ff17bd2dc09a605b05c66ba03eb63d  next.config.mjs
+099e159918df4ab60b5e5bd7945c0acad15873e36552f62c4571985a6e153729  src/components/patient-diagnostics.tsx
+2f9f4796b2c67112df7d175b27d7893c8afe9e7705f85408742084baf1046f91  tests/e2e/core-flows.spec.ts
+Fresh critic: v2-patient-workspace-independent-critic-final-matrix-20260906.md — APPROVE; no material local visual defect, no Next.js development overlay, loading contrast and mobile banner/stale flows verified.
+
+Limitations: archived and current captures use synthetic memory data; production-* captures use disposable PostgreSQL/next start with synthetic S3/scanner and a durable outbox worker. Local Node 24 rather than the repository Node 22 pin, no product golden, no screen-reader/touch/manual acceptance, no target-production Web Vitals, and no human clinical/release authority. VIS-004 and VIS-014 are FIXED for the bounded local visual scope; VIS-016 remains OPEN; VIS-015 is FIXED by deterministic collapsed/expanded dense timeline evidence.

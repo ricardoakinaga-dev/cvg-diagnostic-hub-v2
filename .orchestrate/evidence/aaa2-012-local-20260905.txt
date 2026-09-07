@@ -1,0 +1,21 @@
+AAA2-012 local slice evidence
+Observed: 2026-09-05
+Environment: Node/npm repository baseline; no PostgreSQL connection was used.
+
+PASS — npm run validate:migrations
+Validated the exact ordered production set 001_initial through 008_outbox_routing, including the seven-migration AAA2-012 baseline, and printed the eight SHA-256 checksums.
+
+PASS — npx vitest run src/server/store/migrations.test.ts
+38 tests passed. Coverage includes production manifest order/checksum shape, empty-ledger bootstrap simulation, populated 001–006 → 007 and 001–007 → 008 upgrade simulations, checksum drift preflight, gapped/unknown ledger guards, legacy checksum backfill, and failed-migration rollback/unlock behavior.
+
+PASS — npx vitest run --config vitest.postgres.config.ts tests/postgres/postgres-test-harness.test.ts
+6 guardrail tests passed. This validates environment rejection/loopback rules only; it is not a live PostgreSQL run.
+
+PASS — npm run typecheck
+The current working tree typechecks successfully.
+
+BLOCKED — npm run test:postgres / PostgreSQL-backed migration/constraint/rollback execution
+The harness guard rejected all 10 live integration cases because `ALLOW_POSTGRES_INTEGRATION_TESTS=true` and `POSTGRES_TEST_ADMIN_URL` were not configured. No live disposable PostgreSQL service or explicit integration opt-in was available in this host. No claim is made about SQL execution, FK/check/index rejection, lock behavior, or database rollback/roll-forward.
+
+LIMITATION
+The local checks remain database-free; PostgreSQL constraints/indexes, live lock behavior, and database rollback/roll-forward still require the disposable integration environment.

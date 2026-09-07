@@ -9,6 +9,7 @@ import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
+import { reprojectCommandRequest } from "./request-projection";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -137,18 +138,38 @@ function supersedeCriticalNotifications(state: StoreState, resultVersionId: stri
   };
 }
 
+function requireResultMutationPermission(
+  actor: User,
+  permission: Permission,
+  view: ReturnType<typeof helpers.resultView>
+): void {
+  requirePermission(actor, permission, {
+    patientId: view.request.patientId,
+    departmentCode: view.service.departmentCode,
+    serviceCode: view.service.code
+  });
+
+  // A released result belongs to the actor who authored its current version.
+  // Service peers may work in the same department, but they must not amend or
+  // invalidate one another's clinical record. Managers retain the explicit
+  // department-scoped policy path represented by the permission matrix.
+  if (isExecutorRole(actor) && view.version.authorId !== actor.id) {
+    throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+  }
+}
+
 export function createResultService({ store, storage }: ApplicationServiceContext) {
   const service = {
     async createResultDraft(actor: User, itemId: string, input: ResultDraftInput) {
       const scope = "POST:/results/draft";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ResultDraftCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const item = itemFor(originalState, itemId);
         const service = serviceFor(originalState, item.serviceId);
         const request = requestFor(originalState, item.requestId);
         requirePermission(currentActor, "result.draft.create", { departmentCode: service.departmentCode, serviceCode: service.code });
+        const idempotent = withIdempotency<ResultDraftCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         if (!["IN_PROGRESS", "AWAITING_REPORT", "RESULT_VOIDED"].includes(item.status)) {
           throw new ApiError("RESULT_RELEASE_BLOCKED", "O item ainda não está pronto para receber um resultado.", 422);
@@ -223,11 +244,11 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       const scope = "PATCH:/results/draft";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const idempotent = withIdempotency<ResultDraftCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const result = resultFor(originalState, resultId);
         const view = resultView(originalState, result);
         requirePermission(currentActor, "result.draft.edit_own", { departmentCode: view.service.departmentCode, serviceCode: view.service.code, ownerId: view.version.authorId });
+        const idempotent = withIdempotency<ResultDraftCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(result.version, input.expectedVersion);
         if (view.version.status !== "DRAFT" || result.lifecycleStatus !== "DRAFT") {
           throw new ApiError("INVALID_STATE_TRANSITION", "Somente o draft atual e não liberado pode ser editado.", 409);
@@ -248,11 +269,14 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<ResultReleaseCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const result = resultFor(originalState, resultId);
         const view = resultView(originalState, result);
-        requirePermission(currentActor, "result.release", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+        requireResultMutationPermission(currentActor, "result.release", view);
+        // Re-check the resource boundary before replaying a stored response.
+        // A permission or service assignment may have been revoked since the
+        // original command was committed.
+        const idempotent = withIdempotency<ResultReleaseCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(result.version, input.expectedVersion);
         if (view.version.status !== "DRAFT") throw new ApiError("INVALID_STATE_TRANSITION", "Somente um draft pode ser liberado.", 409);
         const normalizedReleaseContent = normalizedResultContent(view.service, view.version.content, { requireStructured: true });
@@ -325,11 +349,11 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<AmendCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const result = resultFor(originalState, resultId);
         const view = resultView(originalState, result);
-        requirePermission(currentActor, "result.amend", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+        requireResultMutationPermission(currentActor, "result.amend", view);
+        const idempotent = withIdempotency<AmendCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(result.version, input.expectedVersion);
         if (!["RELEASED", "REVIEWED", "COMPLETED"].includes(view.version.status) || !["RESULT_AVAILABLE", "REVIEWED", "COMPLETED"].includes(view.item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Somente um resultado liberado pode ser emendado.", 409);
         const reason = requireText(input.reason, "reason", 500);
@@ -351,11 +375,11 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<VoidCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const result = resultFor(originalState, resultId);
         const view = resultView(originalState, result);
-        requirePermission(currentActor, "result.void", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+        requireResultMutationPermission(currentActor, "result.void", view);
+        const idempotent = withIdempotency<VoidCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(result.version, input.expectedVersion);
         if (!["RELEASED", "REVIEWED"].includes(view.version.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Somente uma versão liberada pode ser invalidada.", 409);
         const reason = requireText(input.reason, "reason", 500);
@@ -402,8 +426,6 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<ReviewCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const result = resultFor(originalState, resultId);
         const view = resultView(originalState, result);
         requirePermission(currentActor, "result.review", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
@@ -413,6 +435,8 @@ export function createResultService({ store, storage }: ApplicationServiceContex
             throw new ApiError("CRITICAL_ACK_REQUIRED", "Confirme a notificação crítica antes de revisar o resultado.", 409, { retryable: false });
           }
         }
+        const idempotent = withIdempotency<ReviewCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { resultId, input });
+        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         if (view.version.id !== input.versionId || view.item.status !== "RESULT_AVAILABLE") throw new ApiError("REVIEW_STALE", "O resultado mudou. Abra a versão atual antes de revisar.", 409);
         ensureExpectedVersion(view.item.version, input.expectedVersion);
         const wasViewed = originalState.auditEvents.some((event) => event.eventType === "ResultViewed" && event.entityId === input.versionId && event.actorId === currentActor.id);
@@ -449,7 +473,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         requireCurrentResultRead(currentActor, view);
         requirePermission(currentActor, "attachment.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
         const attachments = state.attachments
-          .filter((attachment) => attachment.resultVersionId === view.version.id)
+          .filter((attachment) => attachment.resultVersionId === view.version.id && attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED")
           .map(publicAttachment);
         const response = { ...view, request: requestViewForActor(state, currentActor, view.request), attachments };
         const audit = createAudit("ReportRead", currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id, attachmentCount: attachments.length });

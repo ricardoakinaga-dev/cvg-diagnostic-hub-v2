@@ -1,12 +1,13 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
-import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
+import { outboxEnvelopeFor, type Admission, type Attachment, type AuditEvent, type DiagnosticItem, type DiagnosticRequest, type DiagnosticService, type Notification, type Procedure, type ProcedureSchedule, type ReasonCode, type Result, type ResultVersion, type Sample, type StateStore, type StoreState, type User } from "../domain/models";
 import type { FileStore } from "../storage/file-store";
 import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
 import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { aggregateRequestStatus, transitionItem } from "../domain/state-machine";
-
+import { legacyServiceSlaPolicy, startSlaClock } from "./sla-policy";
+import { criticalPolicyFromEnvironment } from "./critical-result-policy";
 export { transitionItem };
 
 export const MAX_NOTE_LENGTH = 2000;
@@ -49,9 +50,7 @@ export const INDICATOR_DEFINITIONS: Record<DashboardIndicatorKey, Omit<Dashboard
 };
 
 export function criticalPolicyIsReady(): boolean {
-  if (process.env.CRITICAL_POLICY_ENABLED !== "true") return false;
-  if (!process.env.CRITICAL_POLICY_VERSION?.trim() || !process.env.CRITICAL_POLICY_APPROVAL_REF?.trim()) return false;
-  return Boolean(process.env.CRITICAL_POLICY_APPROVED_AT && !Number.isNaN(Date.parse(process.env.CRITICAL_POLICY_APPROVED_AT)));
+  return criticalPolicyFromEnvironment() !== undefined;
 }
 
 export function now(): string {
@@ -221,8 +220,22 @@ export function isExecutorRole(actor: User): boolean {
   return ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"].includes(actor.role);
 }
 
+function itemResource(state: StoreState, item: DiagnosticItem) {
+  const request = requestFor(state, item.requestId);
+  const service = serviceFor(state, item.serviceId);
+  return { patientId: request.patientId, departmentCode: item.departmentCode, serviceCode: service.code };
+}
+
+export function canViewItem(state: StoreState, actor: User, item: DiagnosticItem): boolean {
+  return canAccessResource(actor, "item.view", itemResource(state, item));
+}
+
+export function requireItemPermission(state: StoreState, actor: User, permission: Permission, item: DiagnosticItem): void {
+  requirePermission(actor, permission, itemResource(state, item));
+}
+
 export function hasServicePatientContext(state: StoreState, actor: User, patientId: string): boolean {
-  return state.requests.some((request) => request.patientId === patientId && request.itemIds.some((itemId) => state.items.find((item) => item.id === itemId)?.departmentCode === actor.departmentCode));
+  return state.requests.some((request) => request.patientId === patientId && request.itemIds.some((itemId) => canViewItem(state, actor, itemFor(state, itemId))));
 }
 
 export function hasManagerRequestContext(state: StoreState, actor: User, request: DiagnosticRequest): boolean {
@@ -234,40 +247,40 @@ export function hasManagerPatientContext(state: StoreState, actor: User, patient
 }
 
 export function requirePatientPermission(state: StoreState, actor: User, permission: Permission, patientId: string): void {
-  if (isExecutorRole(actor)) {
-    if (!hasServicePatientContext(state, actor, patientId)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
-    requirePermission(actor, permission, { departmentCode: actor.departmentCode });
-    return;
-  }
   if (actor.role === "MANAGER") {
     if (!hasManagerPatientContext(state, actor, patientId)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
     requirePermission(actor, permission, { departmentCode: actor.departmentCode });
+    return;
+  }
+  if (isExecutorRole(actor)) {
+    const visibleItem = state.items.find((item) => requestFor(state, item.requestId).patientId === patientId && canViewItem(state, actor, item));
+    if (!visibleItem) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+    requireItemPermission(state, actor, permission, visibleItem);
     return;
   }
   requirePermission(actor, permission, { patientId });
 }
 
 export function requireRequestPermission(state: StoreState, actor: User, permission: Permission, request: DiagnosticRequest): void {
-  if (isExecutorRole(actor)) {
-    const serviceItem = request.itemIds.map((itemId) => itemFor(state, itemId)).find((item) => item.departmentCode === actor.departmentCode);
-    if (!serviceItem) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
-    requirePermission(actor, permission, { departmentCode: serviceItem.departmentCode });
-    return;
-  }
   if (actor.role === "MANAGER") {
     if (!hasManagerRequestContext(state, actor, request)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
     requirePermission(actor, permission, { departmentCode: actor.departmentCode });
+    return;
+  }
+  if (isExecutorRole(actor)) {
+    const visibleItem = request.itemIds.map((itemId) => itemFor(state, itemId)).find((item) => canViewItem(state, actor, item));
+    if (!visibleItem) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+    requireItemPermission(state, actor, permission, visibleItem);
     return;
   }
   requirePermission(actor, permission, { patientId: request.patientId, departmentCode: request.requestingDepartmentCode });
 }
 
 export function findOrThrow<T>(value: T | undefined, code = "NOT_FOUND", message = "Recurso não encontrado."): T {
-  if (!value) {
-    throw new ApiError(code, message, 404);
-  }
-  return value;
+  if (!value) throw new ApiError(code, message, 404); return value;
 }
+
+export function findOrThrowScoped<T>(value: T | undefined, message = "Você não tem acesso a este recurso."): T { if (!value) throw new ApiError("SCOPE_DENIED", message, 404); return value; }
 
 export function createAudit(
   eventType: string,
@@ -294,12 +307,14 @@ export function createAudit(
 }
 
 export function createOutbox(eventType: string, aggregateType: string, aggregateId: string, correlationId: string, payload: Record<string, unknown>): StoreState["outbox"][number] {
+  const envelope = outboxEnvelopeFor(eventType, payload);
   return {
     id: id("outbox"),
     eventType,
     aggregateType,
     aggregateId,
     payload,
+    ...envelope,
     status: "PENDING",
     attempts: 0,
     availableAt: now(),
@@ -544,20 +559,16 @@ export function requestView(state: StoreState, request: DiagnosticRequest): Requ
 
 export function requestViewForActor(state: StoreState, actor: User, request: DiagnosticRequest): RequestView {
   const view = requestView(state, request);
-  if (!isExecutorRole(actor) && actor.role !== "MANAGER") return view;
-  const items = view.items.filter((item) => actor.role === "MANAGER" ? managerCanAccessDepartment(actor, item.departmentCode) : item.departmentCode === actor.departmentCode);
-  return { ...view, itemIds: items.map((item) => item.id), items };
+  const items = view.items.filter((item) => canViewItem(state, actor, item));
+  const itemIds = items.map((item) => item.id);
+  if (items.length === view.items.length) return { ...view, itemIds, items };
+  const timestamps = items.flatMap((item) => [item.requestedAt, item.receivedAt, item.startedAt, item.performedAt, item.releasedAt, item.reviewedAt, item.completedAt]).filter((timestamp): timestamp is string => Boolean(timestamp));
+  return { ...view, aggregateStatus: aggregateRequestStatus(items), itemIds, items, updatedAt: timestamps.sort((left, right) => right.localeCompare(left))[0] ?? request.createdAt, version: Math.max(1, ...items.map((item) => item.version)) };
 }
 
 export function canViewRequest(state: StoreState, actor: User, request: DiagnosticRequest): boolean {
-  if (actor.role === "ADMIN") return false;
-  if (isExecutorRole(actor)) {
-    return request.itemIds.some((itemId) => itemFor(state, itemId).departmentCode === actor.departmentCode);
-  }
-  if (actor.role === "MANAGER") {
-    return hasManagerRequestContext(state, actor, request) && canAccessResource(actor, "request.view", { departmentCode: request.requestingDepartmentCode });
-  }
-  return Boolean(actor.patientIds?.includes(request.patientId)) && canAccessResource(actor, "request.view", { patientId: request.patientId });
+  if (actor.role === "MANAGER") return hasManagerRequestContext(state, actor, request) && canAccessResource(actor, "request.view", {});
+  return request.itemIds.some((itemId) => canViewItem(state, actor, itemFor(state, itemId)));
 }
 
 export function requestForAuditEvent(state: StoreState, event: AuditEvent): DiagnosticRequest | undefined {
@@ -773,11 +784,9 @@ export function ensureExpectedVersion(actual: number, expectedVersion: number | 
     throw new ApiError("STALE_VERSION", "O registro mudou enquanto você trabalhava. Atualize a tela para continuar.", 409, { currentVersion: actual, retryable: false });
   }
 }
-
 export function calculateDueAt(startedAt: string, service: DiagnosticService, priority: Priority): string {
-  return new Date(new Date(startedAt).getTime() + service.slaHours[priority] * 60 * 60 * 1000).toISOString();
+  return startSlaClock(legacyServiceSlaPolicy(service, priority), { type: "REQUESTED", occurredAt: startedAt }).dueAt;
 }
-
 export function nextRequestState(state: StoreState, request: DiagnosticRequest, itemUpdates: DiagnosticItem[]): StoreState {
   const nextItems = state.items.map((item) => itemUpdates.find((updated) => updated.id === item.id) ?? item);
   const nextStatus = aggregateRequestStatus(request.itemIds.map((itemId) => nextItems.find((item) => item.id === itemId)!));
@@ -787,7 +796,4 @@ export function nextRequestState(state: StoreState, request: DiagnosticRequest, 
     items: nextItems,
     requests: state.requests.map((entry) => (entry.id === request.id ? nextRequest : entry))
   };
-}
-
-
-export { operationalContextFor, nextActionFor } from "./operational-context";
+} export { operationalContextFor, nextActionFor } from "./operational-context";

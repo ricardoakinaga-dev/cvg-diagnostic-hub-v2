@@ -1,0 +1,8 @@
+AAA-W0-SUPPLY evidence — 2026-09-04
+Scope: package-lock.json supply-chain remediation.
+
+package-lock.json: node_modules/fast-uri resolved at 3.1.7.
+npm audit --audit-level=high
+Result: PASS — found 0 vulnerabilities.
+
+typecheck, lint, OpenAPI validation, unit tests, and production build passed in the integrated verification wave.

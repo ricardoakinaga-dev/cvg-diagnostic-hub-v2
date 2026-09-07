@@ -102,14 +102,14 @@ export function createAttachmentService({ store, storage, scanner }: Application
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<AttachmentSessionResult>(originalState, currentActor.id, scope, input.idempotencyKey, { versionId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const version = findOrThrow(originalState.resultVersions.find((entry) => entry.id === versionId));
         const result = resultFor(originalState, version.resultId);
         const view = resultView(originalState, result);
         const metadata = assertAttachmentMetadata(input);
         requirePermission(currentActor, "attachment.upload_session", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
         requireAttachmentOwner(currentActor, version);
+        const idempotent = withIdempotency<AttachmentSessionResult>(originalState, currentActor.id, scope, input.idempotencyKey, { versionId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(version.version, input.expectedVersion);
         if (!view.service.allowsAttachment) throw new ApiError("VALIDATION_ERROR", "Este serviço não aceita anexos.", 400);
         if (version.status !== "DRAFT") throw new ApiError("INVALID_STATE_TRANSITION", "Anexos só podem ser preparados em um draft.", 409);
@@ -231,14 +231,14 @@ export function createAttachmentService({ store, storage, scanner }: Application
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const idempotent = withIdempotency<AttachmentFinalizationResult>(originalState, currentActor.id, scope, input.idempotencyKey, { attachmentId, input });
-        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const attachment = attachmentFor(originalState, attachmentId);
         const version = findOrThrow(originalState.resultVersions.find((entry) => entry.id === attachment.resultVersionId));
         const result = resultFor(originalState, version.resultId);
         const view = resultView(originalState, result);
         requirePermission(currentActor, "attachment.finalize", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
         requireAttachmentOwner(currentActor, version, attachment);
+        const idempotent = withIdempotency<AttachmentFinalizationResult>(originalState, currentActor.id, scope, input.idempotencyKey, { attachmentId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(version.version, input.expectedVersion);
         if (attachment.uploadStatus !== "UPLOADED") throw new ApiError("INVALID_STATE_TRANSITION", "O arquivo ainda não foi enviado.", 409);
         if (attachment.expiresAt && new Date(attachment.expiresAt).getTime() < Date.now()) throw new ApiError("UPLOAD_EXPIRED", "A sessão de upload expirou.", 409);

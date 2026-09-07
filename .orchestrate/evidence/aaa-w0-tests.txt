@@ -1,0 +1,11 @@
+AAA-W0-TESTS evidence — 2026-09-04
+Scope: vitest.postgres.config.ts, tests/postgres/**, PostgreSQL fixture contract.
+
+npm run test:postgres -- --reporter=dot
+Result: FAIL CLOSED because ALLOW_POSTGRES_INTEGRATION_TESTS=true and a live PostgreSQL admin URL were not available on this host.
+Collection/result: 1 test file failed at the explicit opt-in guard; 1 harness file passed; 10 integration tests were discovered and 6 harness tests passed.
+No database-backed claim is made.
+
+npm test -- --reporter=dot
+Result: PASS — 49 test files, 299 tests.
+The readiness fixture now includes relational_clinical_core_ready=true.

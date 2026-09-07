@@ -1,0 +1,8 @@
+AAA-W0-DOCS evidence — 2026-09-04
+Scope: normative documentation, traceability, migration map, agent state.
+
+npm run validate:docs
+Result: PASS — 56 required files and cross-document gates checked.
+git diff --check
+Result: PASS.
+The current documentation records 299 unit tests, 96.08% statements/lines, 84.04% branches, 97.19% functions, 45/45 independent E2E without retry, and the explicit PostgreSQL/clinical/production blockers.

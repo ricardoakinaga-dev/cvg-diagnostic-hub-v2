@@ -66,11 +66,11 @@ Não preencher timestamps só para “ter todos”: cada campo representa evento
 
 ### Sample
 
-Sample/accession pode atender múltiplos itens. Campos: `id`, `request_id`, `accession_code`, `sample_type`, `collected_at/by`, `received_at/by`, `status`, `replaces_sample_id`, rejection reason, version. `sample_item_link` registra item, adequacy/status e timestamps.
+Sample/accession pode atender múltiplos itens. Campos: `id`, `request_id`, `accession_code`, `sample_type`, `collected_at/by`, `received_at/by`, `status`, `replaces_sample_id`, rejection reason, version. Recoleta preserva a amostra histórica como `REPLACED` e cria um novo sample; `sample_item_link` registra item, status derivado, adequacy e timestamps. Na seam relacional transitória, a projeção também carrega a membership declarada para verificar que nenhum item esperado ficou sem vínculo ou recebeu vínculo extra.
 
 ### Procedure and schedule
 
-Para workflows de imagem: `Procedure` referencia item e workflow-specific metadata; `ProcedureSchedule` preserva cada reserva/reagendamento com start/end, resource, status, reason e actor. Não é uma agenda clínica geral.
+Para workflows de imagem: `Procedure` referencia item e workflow-specific metadata; `ProcedureSchedule` preserva cada reserva/reagendamento com start/end, resource, status, reason, actor e `version` otimista. Não é uma agenda clínica geral.
 
 ### Result / ResultVersion / Report
 

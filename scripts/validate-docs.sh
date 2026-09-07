@@ -37,6 +37,12 @@ required_files=(
   docs/api/API_SPEC.md docs/security/SECURITY.md docs/security/THREAT_MODEL.md docs/testing/TEST_PLAN.md
   docs/operations/BACKUP_RESTORE.md docs/operations/OBSERVABILITY.md docs/operations/PRODUCTION_READINESS.md docs/operations/RELEASE_CHECKLIST.md
   docs/build/BUILD_PLAN.md docs/build/BACKLOG.md
+  docs/build/AAA_2_BACKLOG.md docs/build/AAA_2_DECISION_REGISTER.md docs/build/AAA_2_EXECUTIVE_PLAN.md
+  docs/build/AAA_2_QUALITY_BAR.md docs/build/AAA_2_ROADMAP.md docs/build/EXECUTIVE_IMPROVEMENT_PLAN.md
+  docs/build/STATE_OF_ART_BACKLOG.md docs/build/STATE_OF_ART_QUALITY_BAR.md docs/build/STATE_OF_ART_ROADMAP.md
+  docs/v2/MIGRATION_MAP.md docs/v2/PATIENT_WORKSPACE.md docs/v2/QUALITY_BAR.md docs/v2/RELATIONAL_SAMPLE_LINEAGE.md
+  docs/testing/POSTGRES_INTEGRATION.md docs/PROJECT_STATUS_REPORT.md docs/RELATORIO_AUDITORIA_2026-09-05.md
+  docs/api/openapi.json
   docs/adr/README.md docs/adr/ADR-001-modular-monolith.md docs/adr/ADR-002-postgresql.md
   docs/adr/ADR-003-realtime-sse.md docs/adr/ADR-004-storage.md docs/adr/ADR-005-authentication.md
   docs/adr/ADR-006-result-versioning.md docs/adr/ADR-007-outbox.md docs/adr/ADR-008-identifiers.md

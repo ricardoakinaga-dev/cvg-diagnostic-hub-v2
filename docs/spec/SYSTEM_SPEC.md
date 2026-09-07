@@ -31,7 +31,7 @@ Runtime implementado para o MVP local:
 - web/API: Next.js + React + TypeScript em processo modular do mesmo repositório;
 - banco: PostgreSQL;
 - object storage: file store local no MVP; S3-compatible/MinIO é a evolução de produção;
-- realtime: SSE autenticado com snapshot dos eventos; reconnect/fallback exige a próxima slice;
+- realtime: SSE autenticado com snapshot, replay `Last-Event-ID`, reconexão limitada e fallback por reconciliação durável; o adaptador PostgreSQL `LISTEN/NOTIFY` e o fallback process-local estão implementados localmente, enquanto carga multi-instância, operação alvo e aceite clínico permanecem gates abertos;
 - fila: outbox/intents persistidos no snapshot PostgreSQL; worker durável ainda é gate de produção.
 
 `DECISION`: a escolha favorece uma equipe pequena, debugging simples e boundaries claros. O snapshot JSONB atual é uma base transacional de MVP, não substitui as tabelas/projeções de produção previstas na migração evolutiva. O ADR de arquitetura deve ser atualizado se benchmark ou equipe mostrarem que outra alternativa é superior.
@@ -129,7 +129,7 @@ Cancelamento tem regra por fase: `SCHEDULED`, `RECOLLECTION_REQUIRED` e `FAILED`
 
 ## 11. Observability contract
 
-Toda request interna recebe `correlationId`; logs estruturados têm `requestId`, `actorId` pseudonimizado quando possível, módulo, action, latency e error code. Audit events são separados, imutáveis e consultáveis por suporte autorizado. `/livez` testa processo; `/readyz` testa dependências necessárias para servir tráfego.
+Toda request interna recebe `correlationId`. O log de acesso HTTP atual emite somente evento, nível, componente, método, rota normalizada, status, duração e correlação server-generated; uma correlação controlada pelo chamador é registrada como `external`, nunca com seu valor bruto. Logs de domínio/integração que adicionarem `requestId`, `actorId` pseudonimizado, módulo, action ou error code devem manter a mesma allowlist e redaction. Audit events são separados, imutáveis e consultáveis por suporte autorizado. `/livez` testa processo; `/readyz` testa dependências necessárias para servir tráfego.
 
 ## 12. Definition of technical completeness
 

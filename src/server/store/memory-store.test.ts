@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDemoState } from "./fixtures";
+import { createDemoState, passwordFingerprint } from "./fixtures";
 import { MemoryStore } from "./memory-store";
 
 describe("MemoryStore fresh reads", () => {
@@ -52,5 +52,18 @@ describe("MemoryStore fresh reads", () => {
     await transaction;
 
     expect((await read).protocolSequence).toBe(initialState.protocolSequence + 1);
+  });
+
+  it("resets to a cloned state and exposes deterministic fixture fingerprints", async () => {
+    const store = new MemoryStore(createDemoState("memory-reset-password"));
+    const replacement = createDemoState("memory-replacement-password");
+    replacement.protocolSequence = 42;
+
+    await store.reset(replacement);
+    replacement.protocolSequence = 99;
+
+    expect((await store.readState()).protocolSequence).toBe(42);
+    expect(passwordFingerprint("memory-reset-password")).toHaveLength(64);
+    expect(passwordFingerprint("memory-reset-password")).toBe(passwordFingerprint("memory-reset-password"));
   });
 });

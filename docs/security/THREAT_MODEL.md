@@ -1,6 +1,6 @@
 # Threat model
 
-**Knowledge status:** `ASSUMPTION` de ameaça inicial + `DECISION` de mitigação proposta; workshop com TI/clinical owner ainda é `OPEN QUESTION`.
+**Knowledge status:** `ASSUMPTION` de ameaça inicial + `DECISION` de mitigação proposta; workshop com TI/clinical owner ainda é `OPEN QUESTION`. A revisão adversarial local de 07/09/2026 está em [`ADVERSARIAL_REVIEW_2026-09-07.md`](ADVERSARIAL_REVIEW_2026-09-07.md) e continua `REVIEW_REQUIRED`.
 
 Method: trust boundaries + abuse cases, with mitigation and verification. Severity is preliminary until threat workshop with TI/clinical owner.
 
@@ -21,6 +21,9 @@ Method: trust boundaries + abuse cases, with mitigation and verification. Severi
 | THR-013 | Ransomware/deletion | compromised app/admin/storage | availability/integrity | least privilege, immutable/offline backup, restore runbook | tabletop/restore drill |
 | THR-014 | Stale realtime | client treats event as truth | wrong action | version/refetch, degraded banner | network/reconnect E2E |
 | THR-015 | External integration spoof | unsigned import/webhook | false result/status | signature, provenance, idempotency, quarantine | contract tests |
+| THR-016 | Scanner SSRF/redirect | endpoint points to an unapproved, private or redirecting host | secret exfiltration/internal reachability | exact `MALWARE_SCANNER_ALLOWED_HOSTS` allowlist, HTTPS in production, IP approval, URL component validation, `redirect: error` | scanner boundary tests; target egress test |
+| THR-017 | Secrets lifecycle failure | scanner/storage credentials in process environment or stale secret | credential exposure/service compromise | fail-closed required keys, redacted errors, approved secrets manager and rotation policy | local configuration tests; target secret review |
+| THR-018 | Supply-chain compromise | malicious dependency, compromised build or unverified artifact | code execution/data compromise | lockfile, `npm audit`, CI pinning, secret scan and CycloneDX SBOM artifact | local scans/SBOM; provenance, dependency policy and pentest |
 
 ## Abuse cases to exercise
 
@@ -32,6 +35,8 @@ Method: trust boundaries + abuse cases, with mitigation and verification. Severi
 6. worker crashes after commit and before delivery;
 7. two users review/amend the same version;
 8. expired/disabled user keeps SSE connection.
+9. scanner endpoint is changed to loopback/private IP, unapproved hostname or a redirect target;
+10. scanner API key is exposed through configuration, logs, dependency output or a build artifact.
 
 ## Residual risk
 

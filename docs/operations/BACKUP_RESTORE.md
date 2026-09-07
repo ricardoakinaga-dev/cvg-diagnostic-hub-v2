@@ -2,9 +2,15 @@
 
 **Knowledge status:** `DECISION/PROPOSAL` operacional; RPO/RTO e retenção aguardam aprovação de TI/gestão.
 
+**AAA-2:** [barra](../build/AAA_2_QUALITY_BAR.md) · [plano](../build/AAA_2_EXECUTIVE_PLAN.md) · [roadmap](../build/AAA_2_ROADMAP.md) · [backlog](../build/AAA_2_BACKLOG.md) · [auditoria de 05/09/2026](../RELATORIO_AUDITORIA_2026-09-05.md)
+
+## Current audit evidence (05/09/2026)
+
+O contrato local de manifesto/checksum/plano dry-run está registrado no packet [`aaa2-recovery-local-20260905.md`](../../.orchestrate/evidence/aaa2-recovery-local-20260905.md). O packet AAA-2 [`aaa2-postgres-local-20260905.md`](../../.orchestrate/evidence/aaa2-postgres-local-20260905.md) permanece histórico e registra uma execução anterior em cluster PostgreSQL 16.15 descartável, `db:smoke` e `db:restore:smoke` direto. O packet V2 [`v2-relational-sample-lineage-backfill-20260906.md`](../../.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md) registra a execução atual 30/30 em cluster efêmero, incluindo migration 010, projection/read/reconciliation, `EXPLAIN` estrutural e wake-up PostgreSQL real; isso não é um restore. O packet browser production-like acrescenta um banco e serviços S3/scan sintéticos descartáveis, mas também não é um restore. Restore de object storage, metadados reais de chaves, aplicação restaurada, RPO/RTO aprovado e evidência de ambiente produtivo continuam ausentes. Este runbook permanece proposta operacional e não sustenta readiness de produção.
+
 ## 1. Scope
 
-Backup must cover PostgreSQL data, object storage attachments, encryption/key metadata required to decrypt, configuration needed to rebuild and documented external references. A database-only backup is insufficient for released result attachments.
+Backup must cover PostgreSQL data, object storage attachments, encryption/key metadata required to decrypt, configuration needed to rebuild and documented external references. The local manifest contract records these categories and marks uncaptured object inventory as `NOT_CAPTURED`; it does not collect provider data automatically. A database-only backup is insufficient for released result attachments.
 
 ## 2. Proposed pilot targets
 
@@ -22,12 +28,13 @@ Backup must cover PostgreSQL data, object storage attachments, encryption/key me
 
 1. declare incident and freeze writes if integrity is uncertain;
 2. identify recovery point and scope (DB/files/config);
-3. provision isolated target with approved credentials;
-4. restore PostgreSQL and object storage;
-5. verify checksums, migrations/schema, request/result counts and attachment links;
-6. run smoke tests: login, scoped request view, result/version/timeline, notification queue;
-7. compare RPO/RTO and record gaps;
-8. approve cutover/rollback; preserve incident/audit evidence.
+3. run the dry-run plan and verify that the target is isolated;
+4. provision the isolated target with approved credentials before any destructive command;
+5. restore PostgreSQL and object storage;
+6. verify checksums, migrations/schema, request/result counts and attachment links;
+7. run smoke tests: login, scoped request view, result/version/timeline, notification queue;
+8. compare approved RPO/RTO and record gaps;
+9. approve cutover/rollback; preserve incident/audit evidence.
 
 ## 5. Drill cadence and evidence
 

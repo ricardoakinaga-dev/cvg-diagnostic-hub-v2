@@ -1,0 +1,9 @@
+AAA2-017/018/019 and AAA2-037/041 local slice evidence — 2026-09-05
+
+PASS — `npx vitest run src/server/operations/outbox.test.ts src/server/store/migrations.test.ts src/server/security/rate-limit.test.ts src/server/observability/metrics.test.ts 'src/app/api/v1/[...path]/route.test.ts' src/server/store/relational/backfill.test.ts`: 111 tests in 6 files.
+
+Covered locally:
+- explicit domain/notification envelope and route validation, migration 008 backfill/constraints, durable in-app sink confirmation, worker pool closure, lease/token ownership, retry/backoff, dedupe and poison-message isolation;
+- PostgreSQL rate-limit SQL boundary, fail-closed dependency behavior, trusted proxy/header tests, readiness ordering and bounded realtime/HTTP metrics labels.
+
+LIMITATION — These are mocked, memory-store or static-contract tests. No live PostgreSQL, two-process shared bucket, alert delivery, approved SLO, or multi-instance realtime fanout was executed. The slices remain local/conditional until AAA2-011/016/018/040/041 external and operational evidence exists.

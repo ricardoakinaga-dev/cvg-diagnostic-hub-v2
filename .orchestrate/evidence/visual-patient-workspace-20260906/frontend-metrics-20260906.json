@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "target": "/patients/{patientId}/diagnostics",
+  "observed_at": "2026-09-06T11:57:50Z",
+  "environment": {
+    "browser": "system Google Chrome via Playwright",
+    "runtime": "Next.js 16.3.0 dev server, synthetic memory store, current working tree",
+    "authentication": "vet@cvg.local synthetic fixture",
+    "capture_method": "PerformanceObserver for LCP/CLS, computed style and DOM geometry after workspace ready"
+  },
+  "viewports": [
+    {
+      "name": "desktop",
+      "css": [1440, 1000],
+      "horizontal_overflow": false,
+      "visible_controls": 11,
+      "minimum_control_css_px": [30, 30],
+      "lcp_ms": 892,
+      "cls": 0,
+      "fonts": {"status": "loaded", "faces": 4},
+      "reduced_motion": "not_requested"
+    },
+    {
+      "name": "tablet",
+      "css": [834, 1194],
+      "horizontal_overflow": false,
+      "visible_controls": 11,
+      "minimum_control_css_px": [30, 30],
+      "lcp_ms": 464,
+      "cls": 0,
+      "fonts": {"status": "loaded", "faces": 4},
+      "reduced_motion": "not_requested"
+    },
+    {
+      "name": "mobile",
+      "css": [375, 812],
+      "horizontal_overflow": false,
+      "visible_controls": 11,
+      "minimum_control_css_px": [30, 24],
+      "lcp_ms": 404,
+      "cls": 0,
+      "fonts": {"status": "loaded", "faces": 4},
+      "reduced_motion": "not_requested"
+    },
+    {
+      "name": "reduced-motion",
+      "css": [375, 812],
+      "horizontal_overflow": false,
+      "visible_controls": 11,
+      "minimum_control_css_px": [30, 24],
+      "lcp_ms": 388,
+      "cls": 0,
+      "fonts": {"status": "loaded", "faces": 4},
+      "reduced_motion": {"animation_duration": "0.01ms", "transition_duration": "0.01ms"}
+    }
+  ],
+  "limitations": [
+    "These metrics are local synthetic-memory dev-server evidence, not production or target-environment Web Vitals.",
+    "The reflow evidence uses an explicit 188px extreme proxy plus a 320px floor; exact browser zoom semantics and manual screen-reader/touch ergonomics were not executed.",
+    "LCP/CLS were measured after authenticated navigation to the ready workspace; no claim is made for other routes or cold production infrastructure."
+  ]
+}

@@ -1,7 +1,43 @@
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import type { StateStore, StoreState } from "../domain/models";
+import { outboxEnvelopeFor, type StateStore, type StoreState } from "../domain/models";
 import { assertRuntimeSchemaReady } from "./migrations";
+import { projectDurableNotificationRows } from "./postgres-notification-projection";
+import {
+  RelationalClinicalCoreAdapter,
+  type RelationalClinicalCoreRuntime,
+  type RelationalClinicalRequestRead,
+  type RelationalSqlClient
+} from "./relational/clinical-core-adapter";
+import {
+  backfillFailureCode,
+  checkpointRelationalClinicalCoreBackfillRun,
+  completeRelationalClinicalCoreBackfillRun,
+  emptyRelationalClinicalCoreState,
+  failRelationalClinicalCoreBackfillRun,
+  insertRelationalClinicalCoreBackfillRun,
+  normalizeRelationalClinicalCoreBackfillOptions,
+  readRelationalClinicalCoreBackfillRun,
+  relationalClinicalCoreRequestIds,
+  relationalClinicalCoreRowCount,
+  relationalClinicalCoreSourceHash,
+  resumeRelationalClinicalCoreBackfillRun,
+  stateForRelationalClinicalRequest,
+  verifyRelationalClinicalCoreCompleteness,
+  type RelationalClinicalCoreBackfillOptions,
+  type RelationalClinicalCoreBackfillReport,
+  type RelationalClinicalCoreBackfillRun
+} from "./relational/clinical-core-backfill";
+import {
+  assertReconciliationClean,
+  reconcileRelationalRequest,
+  type RelationalRequestReconciliation
+} from "./relational/cutover";
+
+export type {
+  RelationalClinicalCoreBackfillOptions,
+  RelationalClinicalCoreBackfillReport
+} from "./relational/clinical-core-backfill";
 
 const CURRENT_STATE_SQL = "SELECT state, version FROM cvg_runtime_state WHERE id = 1";
 const LOCKED_STATE_SQL = `${CURRENT_STATE_SQL} FOR UPDATE`;
@@ -48,6 +84,25 @@ export interface PostgresAdministrativeResetOptions {
 
 export interface PostgresInitializationOptions {
   authorization: DatabaseOperationAuthorization;
+}
+
+export type PostgresRelationalClinicalCoreReadiness = "STRICT" | "BACKFILL";
+
+/**
+ * Explicit opt-in for the 007–009 relational shadow seam. The default PostgresStore
+ * remains the transitional StoreState snapshot until the aggregate contract is
+ * split and a live backfill/cutover has been proven.
+ */
+export interface PostgresRelationalClinicalCoreOptions {
+  readonly adapter?: RelationalClinicalCoreRuntime;
+  readonly fallbackState?: StoreState;
+  readonly initialization?: PostgresInitializationOptions;
+  /**
+   * BACKFILL is an explicit migration-only mode. It permits only the sample
+   * membership constraint to remain unvalidated until the backfill repairs and
+   * validates every projected sample; normal runtime opens stay STRICT.
+   */
+  readonly relationalReadiness?: PostgresRelationalClinicalCoreReadiness;
 }
 
 interface AuthorizedAdministrativeResetTarget {
@@ -234,14 +289,18 @@ function stateForAdministrativeReset(
 export class PostgresStore implements StateStore {
   private readonly pool: Pool;
   private readonly connectionString: string;
+  private readonly relationalClinicalCore?: RelationalClinicalCoreRuntime;
+  private readonly relationalReadiness: PostgresRelationalClinicalCoreReadiness;
   private state: StoreState;
   private queue: Promise<unknown> = Promise.resolve();
   private isClosing = false;
   private closePromise?: Promise<void>;
 
-  private constructor(pool: Pool, connectionString: string, state: StoreState) {
+  private constructor(pool: Pool, connectionString: string, state: StoreState, relationalClinicalCore?: RelationalClinicalCoreRuntime, relationalReadiness: PostgresRelationalClinicalCoreReadiness = "STRICT") {
     this.pool = pool;
     this.connectionString = connectionString;
+    this.relationalClinicalCore = relationalClinicalCore;
+    this.relationalReadiness = relationalReadiness;
     this.state = cloneState(state);
   }
 
@@ -256,6 +315,25 @@ export class PostgresStore implements StateStore {
     fallbackState?: StoreState,
     initialization?: PostgresInitializationOptions
   ): Promise<PostgresStore> {
+    return PostgresStore.open(connectionString, fallbackState, initialization);
+  }
+
+  /**
+   * Opens the same store with an explicit, transaction-participating
+   * relational shadow adapter. This does not change read authority: readState
+   * remains the JSONB-compatible StateStore contract, while
+   * readRelationalClinicalRequest exposes the normalized read seam for staged
+   * cutover work. Parent/reference rows must already be backfilled; this path
+   * never invents or seeds them.
+   */
+  static async createWithRelationalClinicalCore(
+    connectionString: string,
+    options: PostgresRelationalClinicalCoreOptions = {}
+  ): Promise<PostgresStore> {
+    return PostgresStore.open(connectionString, options.fallbackState, options.initialization, options.adapter ?? new RelationalClinicalCoreAdapter(), options.relationalReadiness ?? "STRICT");
+  }
+
+  private static async open(connectionString: string, fallbackState?: StoreState, initialization?: PostgresInitializationOptions, relationalClinicalCore?: RelationalClinicalCoreRuntime, relationalReadiness: PostgresRelationalClinicalCoreReadiness = "STRICT"): Promise<PostgresStore> {
     const pool = new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX ?? 10), idleTimeoutMillis: 30_000 });
     if (typeof pool.on === "function") {
       pool.on("error", () => {
@@ -282,7 +360,10 @@ export class PostgresStore implements StateStore {
         initialState = runtimeStateFromRow(result.rows[0]);
       }
       await assertRuntimeSchemaReady({ query: (text, values) => pool.query(text, values) });
-      return new PostgresStore(pool, connectionString, initialState);
+      if (relationalClinicalCore) {
+        await relationalClinicalCore.assertReady({ query: (text, values) => pool.query(text, values) }, { allowUnvalidatedSampleMembership: relationalReadiness === "BACKFILL" });
+      }
+      return new PostgresStore(pool, connectionString, initialState, relationalClinicalCore, relationalReadiness);
     } catch (error) {
       await pool.end();
       throw new Error(`Não foi possível abrir o estado PostgreSQL. Execute npm run db:migrate antes de iniciar. ${(error as Error).message}`);
@@ -303,12 +384,220 @@ export class PostgresStore implements StateStore {
     });
   }
 
+  async readRelationalClinicalRequest(requestId: string): Promise<RelationalClinicalRequestRead | undefined> {
+    if (!this.relationalClinicalCore) {
+      throw new Error("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
+    }
+    return this.enqueue(() => this.relationalClinicalCore!.readRequest({ query: (text, values) => this.pool.query(text, values) }, requestId));
+  }
+
+  /**
+   * Performs a repeatable dual-read probe over one database snapshot. The
+   * JSONB state remains the source of truth; this method only returns a
+   * sanitised hash/mismatch report for cutover evidence and never changes
+   * authority or writes either representation.
+   */
+  async reconcileRelationalClinicalRequest(requestId: string): Promise<RelationalRequestReconciliation> {
+    if (!this.relationalClinicalCore) {
+      throw new Error("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
+    }
+    return this.enqueue(async () => {
+      const client = await this.pool.connect();
+      try {
+        await client.query("BEGIN");
+        await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+        const snapshot = await client.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
+        if (snapshot.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
+        const currentState = runtimeStateFromRow(snapshot.rows[0]);
+        const relational = await this.relationalClinicalCore!.readRequest(relationalClient(client), requestId);
+        const report = reconcileRelationalRequest(currentState, requestId, relational);
+        await client.query("COMMIT");
+        return report;
+      } catch (error) {
+        await client.query("ROLLBACK").catch(() => undefined);
+        throw error;
+      } finally {
+        client.release();
+      }
+    });
+  }
+
+  /**
+   * Backfills the ten currently mappable clinical-core tables from one stable
+   * JSONB snapshot into the relational shadow. Each batch commits its clinical
+   * aggregates and checkpoint together; a source version/hash change stops the
+   * run before it can mix two snapshot representations. This method never
+   * writes cvg_runtime_state and never changes the runtime authority.
+   */
+  async backfillRelationalClinicalCore(
+    options: RelationalClinicalCoreBackfillOptions = {}
+  ): Promise<RelationalClinicalCoreBackfillReport> {
+    if (!this.relationalClinicalCore) {
+      throw new Error("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
+    }
+    const normalized = normalizeRelationalClinicalCoreBackfillOptions(options);
+    const runId = normalized.runId ?? randomUUID();
+    return this.enqueue(async () => {
+      const lockClient = await this.pool.connect();
+      const client = relationalClient(lockClient);
+      let runInitialized = false;
+      let transactionOpen = false;
+      try {
+        await lockClient.query("SELECT pg_advisory_lock(hashtext($1))", [`cvg_relational_backfill:${runId}`]);
+        await this.relationalClinicalCore!.assertReady(client, {
+          allowUnvalidatedSampleMembership: this.relationalReadiness === "BACKFILL"
+        });
+
+        const initial = await lockClient.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
+        if (initial.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
+        const sourceSnapshotVersion = versionFromRow(initial.rows[0]?.version);
+        const sourceState = runtimeStateFromRow(initial.rows[0]);
+        const sourceSnapshotHash = relationalClinicalCoreSourceHash(sourceState);
+        const requestIds = relationalClinicalCoreRequestIds(sourceState);
+        const existing = await readRelationalClinicalCoreBackfillRun(client, runId);
+        let run: RelationalClinicalCoreBackfillRun;
+        if (!existing) {
+          run = await insertRelationalClinicalCoreBackfillRun(client, {
+            runId,
+            transformVersion: normalized.transformVersion,
+            sourceSnapshotVersion,
+            sourceSnapshotHash
+          });
+        } else {
+          runInitialized = true;
+          assertBackfillRunCompatible(existing, normalized.transformVersion, sourceSnapshotVersion, sourceSnapshotHash);
+          if (existing.status === "FAILED") await resumeRelationalClinicalCoreBackfillRun(client, runId);
+          run = existing.status === "FAILED"
+            ? { ...existing, status: "RUNNING", failureCode: undefined, completedAt: undefined }
+            : existing;
+        }
+        runInitialized = true;
+
+        if (run.status === "COMPLETED") {
+          await lockClient.query("BEGIN");
+          transactionOpen = true;
+          try {
+            await lockClient.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+            const current = await lockClient.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
+            assertBackfillSourceStable(current.rows[0], sourceSnapshotVersion, sourceSnapshotHash);
+            for (const requestId of requestIds) {
+              await this.relationalClinicalCore!.repairSampleMembership(
+                client,
+                stateForRelationalClinicalRequest(sourceState, requestId)
+              );
+            }
+            await verifyRelationalClinicalCoreTarget(this.relationalClinicalCore!, client, sourceState, requestIds);
+            await this.relationalClinicalCore!.validateSampleMembership(client);
+            await this.relationalClinicalCore!.assertReady(client);
+            await lockClient.query("COMMIT");
+            transactionOpen = false;
+          } catch (error) {
+            await lockClient.query("ROLLBACK").catch(() => undefined);
+            transactionOpen = false;
+            throw error;
+          }
+          return backfillReport(run, requestIds.length, run.lastRequestId);
+        }
+
+        const resumeCursor = run.lastRequestId;
+        const cursorIndex = resumeCursor === undefined ? -1 : requestIds.indexOf(resumeCursor);
+        if (resumeCursor !== undefined && cursorIndex < 0) {
+          throw new Error("POSTGRES_RELATIONAL_BACKFILL_CHECKPOINT_CURSOR_INVALID");
+        }
+        let requestsProcessed = run.requestsProcessed;
+        let rowsProjected = run.rowsProjected;
+        let requestsReconciled = run.requestsReconciled;
+        const firstRequestIndex = cursorIndex + 1;
+
+        for (let batchStart = firstRequestIndex; batchStart < requestIds.length; batchStart += normalized.batchSize) {
+          assertBackfillNotAborted(normalized.signal);
+          const batchIds = requestIds.slice(batchStart, batchStart + normalized.batchSize);
+          await lockClient.query("BEGIN");
+          transactionOpen = true;
+          try {
+            await lockClient.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+            const current = await lockClient.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
+            assertBackfillSourceStable(current.rows[0], sourceSnapshotVersion, sourceSnapshotHash);
+            await lockClient.query("SET CONSTRAINTS ALL DEFERRED");
+            let batchRowsProjected = 0;
+            for (const requestId of batchIds) {
+              assertBackfillNotAborted(normalized.signal);
+              const scopedState = stateForRelationalClinicalRequest(sourceState, requestId);
+              await this.relationalClinicalCore!.repairSampleMembership(client, scopedState);
+              await this.relationalClinicalCore!.projectStateDelta(
+                client,
+                emptyRelationalClinicalCoreState(scopedState),
+                scopedState
+              );
+              const relational = await this.relationalClinicalCore!.readRequest(client, requestId);
+              const reconciliation = reconcileRelationalRequest(scopedState, requestId, relational);
+              assertReconciliationClean(reconciliation);
+              batchRowsProjected += relationalClinicalCoreRowCount(scopedState);
+              requestsProcessed += 1;
+              requestsReconciled += 1;
+            }
+            rowsProjected += batchRowsProjected;
+            const lastRequestId = batchIds.at(-1);
+            if (!lastRequestId) throw new Error("POSTGRES_RELATIONAL_BACKFILL_BATCH_EMPTY");
+            await checkpointRelationalClinicalCoreBackfillRun(
+              client,
+              runId,
+              lastRequestId,
+              requestsProcessed,
+              rowsProjected,
+              requestsReconciled
+            );
+            await lockClient.query("COMMIT");
+            transactionOpen = false;
+          } catch (error) {
+            await lockClient.query("ROLLBACK").catch(() => undefined);
+            transactionOpen = false;
+            throw error;
+          }
+        }
+
+        assertBackfillNotAborted(normalized.signal);
+        await lockClient.query("BEGIN");
+        transactionOpen = true;
+        try {
+          await lockClient.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
+          const current = await lockClient.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
+          assertBackfillSourceStable(current.rows[0], sourceSnapshotVersion, sourceSnapshotHash);
+          await verifyRelationalClinicalCoreTarget(this.relationalClinicalCore!, client, sourceState, requestIds);
+          await this.relationalClinicalCore!.validateSampleMembership(client);
+          await this.relationalClinicalCore!.assertReady(client);
+          await completeRelationalClinicalCoreBackfillRun(client, runId);
+          await lockClient.query("COMMIT");
+          transactionOpen = false;
+        } catch (error) {
+          await lockClient.query("ROLLBACK").catch(() => undefined);
+          transactionOpen = false;
+          throw error;
+        }
+
+        const completed = await readRelationalClinicalCoreBackfillRun(client, runId);
+        if (!completed || completed.status !== "COMPLETED") {
+          throw new Error("POSTGRES_RELATIONAL_BACKFILL_COMPLETE_STATE_INVALID");
+        }
+        return backfillReport(completed, requestIds.length, resumeCursor);
+      } catch (error) {
+        if (transactionOpen) await lockClient.query("ROLLBACK").catch(() => undefined);
+        if (runInitialized) await failRelationalClinicalCoreBackfillRun(client, runId, backfillFailureCode(error)).catch(() => undefined);
+        throw error;
+      } finally {
+        await lockClient.query("SELECT pg_advisory_unlock(hashtext($1))", [`cvg_relational_backfill:${runId}`]).catch(() => undefined);
+        lockClient.release();
+      }
+    });
+  }
+
   async transaction<T>(operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T> {
     return this.runTransaction(operation);
   }
 
   async reset(state: StoreState, options?: PostgresAdministrativeResetOptions): Promise<void> {
     const authorizedTarget = assertAdministrativeResetAuthorized(this.connectionString, options);
+    if (this.relationalClinicalCore) throw new Error("POSTGRES_RELATIONAL_RESET_UNSUPPORTED");
     const target = stateFromRow(state);
     await this.runTransaction((current) => ({
       state: stateForAdministrativeReset(current, target, administrativeResetAuditEvent(authorizedTarget)),
@@ -330,6 +619,11 @@ export class PostgresStore implements StateStore {
   async healthcheck(): Promise<void> {
     await this.enqueue(async () => {
       await assertRuntimeSchemaReady({ query: (text, values) => this.pool.query(text, values) });
+      if (this.relationalClinicalCore) {
+        await this.relationalClinicalCore.assertReady({
+          query: (text, values) => this.pool.query(text, values)
+        });
+      }
     });
   }
 
@@ -347,6 +641,14 @@ export class PostgresStore implements StateStore {
         const outcome = await operation(currentState);
         const nextState = stateFromRow(outcome.state);
         assertAuditEventsAppendOnly(currentState, nextState);
+        if (this.relationalClinicalCore) {
+          await client.query("SET CONSTRAINTS ALL DEFERRED");
+          await this.relationalClinicalCore.projectStateDelta(
+            relationalClient(client),
+            currentState,
+            nextState
+          );
+        }
         const updated = await client.query<{ version: unknown }>(
           "UPDATE cvg_runtime_state SET state = $1::jsonb, version = version + 1, updated_at = now() WHERE id = 1 RETURNING version",
           [JSON.stringify(nextState)]
@@ -380,6 +682,12 @@ export class PostgresStore implements StateStore {
   }
 
   private async projectCommittedEvents(client: PoolClient, before: StoreState, after: StoreState): Promise<void> {
+    // The default runtime still uses the JSONB aggregate as its clinical
+    // authority.  The durable in-app outbox sink nevertheless has a foreign
+    // key to the relational notification table.  Keep that narrow delivery
+    // seam synchronized without pretending that the full clinical cutover is
+    // complete; the opt-in relational adapter owns its broader projection.
+    if (!this.relationalClinicalCore) await projectDurableNotificationRows(client, before, after);
     const previousAuditIds = new Set(before.auditEvents.map((event) => event.id));
     for (const event of after.auditEvents.filter((entry) => !previousAuditIds.has(entry.id))) {
       const inserted = await client.query(
@@ -390,20 +698,96 @@ export class PostgresStore implements StateStore {
     }
     const previousOutbox = new Map(before.outbox.map((event) => [event.id, event]));
     for (const message of after.outbox.filter((entry) => !previousOutbox.has(entry.id))) {
+      const envelope = outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey);
       const inserted = await client.query(
-        "INSERT INTO outbox_messages (id, event_type, aggregate_type, aggregate_id, payload, status, attempts, available_at, correlation_id, locked_at, worker_id, claim_token, last_error) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING RETURNING id",
-        [message.id, message.eventType, message.aggregateType, message.aggregateId, JSON.stringify(message.payload), message.status, message.attempts, message.availableAt, message.correlationId, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
+        "INSERT INTO outbox_messages (id, event_type, aggregate_type, aggregate_id, payload, consumer_type, routing_key, status, attempts, available_at, correlation_id, locked_at, worker_id, claim_token, last_error) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (id) DO NOTHING RETURNING id",
+        [message.id, message.eventType, message.aggregateType, message.aggregateId, JSON.stringify(message.payload), envelope.consumerType, envelope.routingKey, message.status, message.attempts, message.availableAt, message.correlationId, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
       );
       if (inserted.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }
     for (const message of after.outbox) {
       const previous = previousOutbox.get(message.id);
       if (!previous || JSON.stringify(previous) === JSON.stringify(message)) continue;
+      const envelope = outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey);
       const updated = await client.query(
-        "UPDATE outbox_messages SET status = $2, attempts = $3, available_at = $4, locked_at = $5, worker_id = $6, claim_token = $7, last_error = $8 WHERE id = $1",
-        [message.id, message.status, message.attempts, message.availableAt, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
+        "UPDATE outbox_messages SET consumer_type = $2, routing_key = $3, status = $4, attempts = $5, available_at = $6, locked_at = $7, worker_id = $8, claim_token = $9, last_error = $10 WHERE id = $1",
+        [message.id, envelope.consumerType, envelope.routingKey, message.status, message.attempts, message.availableAt, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
       );
       if (updated.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }
   }
+}
+
+function relationalClient(client: PoolClient): RelationalSqlClient {
+  return {
+    query: (text, values) => client.query(text, values)
+  };
+}
+
+async function verifyRelationalClinicalCoreTarget(
+  runtime: RelationalClinicalCoreRuntime,
+  client: RelationalSqlClient,
+  sourceState: StoreState,
+  requestIds: readonly string[]
+): Promise<void> {
+  await verifyRelationalClinicalCoreCompleteness(client, sourceState);
+  for (const requestId of requestIds) {
+    const relational = await runtime.readRequest(client, requestId);
+    const reconciliation = reconcileRelationalRequest(sourceState, requestId, relational);
+    assertReconciliationClean(reconciliation);
+  }
+}
+
+function assertBackfillRunCompatible(
+  run: RelationalClinicalCoreBackfillRun,
+  transformVersion: string,
+  sourceSnapshotVersion: number,
+  sourceSnapshotHash: string
+): void {
+  if (
+    run.transformVersion !== transformVersion
+    || run.sourceSnapshotVersion !== sourceSnapshotVersion
+    || run.sourceSnapshotHash !== sourceSnapshotHash
+  ) {
+    throw new Error("POSTGRES_RELATIONAL_BACKFILL_SOURCE_CHANGED");
+  }
+}
+
+function assertBackfillSourceStable(
+  row: { readonly state: unknown; readonly version: unknown } | undefined,
+  sourceSnapshotVersion: number,
+  sourceSnapshotHash: string
+): void {
+  if (!row) throw new Error("PostgreSQL runtime state row is missing.");
+  const currentState = runtimeStateFromRow(row);
+  if (
+    versionFromRow(row.version) !== sourceSnapshotVersion
+    || relationalClinicalCoreSourceHash(currentState) !== sourceSnapshotHash
+  ) {
+    throw new Error("POSTGRES_RELATIONAL_BACKFILL_SOURCE_CHANGED");
+  }
+}
+
+function assertBackfillNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) throw new Error("POSTGRES_RELATIONAL_BACKFILL_ABORTED");
+}
+
+function backfillReport(
+  run: RelationalClinicalCoreBackfillRun,
+  requestCount: number,
+  resumedFromRequestId: string | undefined
+): RelationalClinicalCoreBackfillReport {
+  return {
+    runId: run.runId,
+    scope: run.scope,
+    sourceAuthority: run.sourceAuthority,
+    targetAuthority: run.targetAuthority,
+    transformVersion: run.transformVersion,
+    sourceSnapshotVersion: run.sourceSnapshotVersion,
+    requestCount,
+    requestsProcessed: run.requestsProcessed,
+    rowsProjected: run.rowsProjected,
+    requestsReconciled: run.requestsReconciled,
+    ...(resumedFromRequestId ? { resumedFromRequestId } : {})
+  };
 }

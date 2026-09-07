@@ -27,6 +27,34 @@ eles não reabrem nem apagam o histórico da onda 1.
 | V2-LAB-06 | OpenAPI, Zod, runtime e UI compartilham o shape estruturado | drift, AJV de respostas reais e request schema tests |
 | V2-LAB-07 | Crítica independente identifica bypasses, limitações e não confunde fixture com aceite clínico | relatório read-only, correções/reteste e checkpoint |
 
+## Critérios adicionais da fatia Patient Workspace
+
+O contrato congelado e a matriz de escopo estão em
+`docs/v2/PATIENT_WORKSPACE.md`. Estes critérios atravessam o read model
+existente, sem abrir uma rota paralela:
+
+| ID | Critério | Evidência mínima |
+| --- | --- | --- |
+| V2-PATIENT-01 | Paciente, encounter, admission, request, item e contexto operacional aparecem como um snapshot escopado | contrato, read model e teste de aplicação |
+| V2-PATIENT-02 | Sample, resultado liberado e anexos limpos/finalizados são vinculados ao item sem vazar recursos ocultos | fixtures de lifecycle, testes allow/deny e invariantes de vínculo |
+| V2-PATIENT-03 | Draft, resultado invalidado, storage key e tokens nunca aparecem na projeção | teste negativo de segurança e schema sem propriedades extras |
+| V2-PATIENT-04 | A UI prioriza contexto atual, próximas ações e reconciliação temporal, com vazio/erro/parcial/stale | componente, copy e jornada browser |
+| V2-PATIENT-05 | A jornada é acessível e responsiva em mobile, tablet e desktop sem duplicar árvore de conteúdo | axe, keyboard, screenshots e overflow assertions |
+| V2-PATIENT-06 | Rota existente, envelope, OpenAPI e tipos compartilham o shape `workspace` | drift validator, AJV/runtime response e teste de rota |
+| V2-PATIENT-07 | Crítica independente separa qualidade local de aceite hospitalar | relatório fresco, correções/reteste ou `NOT_RUN` documentado |
+
+## Critérios da fatia relacional de sample/accession
+
+O contrato técnico congelado está em `docs/v2/RELATIONAL_SAMPLE_LINEAGE.md`.
+Esta fatia permanece shadow-only e não altera a autoridade do snapshot.
+
+| ID | Critério | Evidência mínima |
+| --- | --- | --- |
+| V2-REL-SAMPLE-01 | Recoleta preserva a cadeia `RECEIVED → REPLACED` e `EXPECTED → RECEIVED` sem reutilizar accession | teste de application com versões e lineage completa |
+| V2-REL-SAMPLE-02 | Accession direto e item IDs são validados contra duplicidade, formato e normalização | testes RED/GREEN de service e schemas |
+| V2-REL-SAMPLE-03 | Adapter, read boundary e reconciliação rejeitam links órfãos, cross-request, ciclos e metadata divergente | testes estáticos/mocked de leitura, projeção e cutover |
+| V2-REL-SAMPLE-04 | A projeção relacional é versionada/otimista e mantém links históricos sem habilitar cutover | SQL, testes de conflito, migrations e limitation evidence |
+
 ## Critérios obrigatórios da onda 1
 
 | ID | Critério | Evidência mínima |
@@ -62,7 +90,9 @@ Estes itens não serão simulados para fechar a onda 1:
 - aprovação hospitalar de identidade, ownership, transferência, alta e escopo;
 - thresholds, destinatários, fallback e escalonamento de resultado crítico;
 - dados reais, produção, secrets, TLS, storage/antimalware, retenção e RPO/RTO;
-- migração relacional clínica, backfill, dual-write, cutover e carga representativa;
+- migração relacional clínica completa, backfill amplo/contínuo, dual-write,
+  cutover e carga representativa; o backfill shadow local request-scoped é
+  evidência limitada e não fecha estes gates;
 - módulos profundos de Laboratório, Radiologia, Ultrassom, Resultados e
   Notificações, quando ainda não tiverem sua jornada completa;
 - aceite clínico/manual, CI remoto, piloto e aprovação de release.
