@@ -56,7 +56,7 @@ require_text() {
 
 required_files=(
   README.md QUESTIONS.md docs/README.md docs/GLOSSARY.md docs/DECISION_LOG.md docs/TRACEABILITY_MATRIX.md
-  docs/operations/DEPLOYMENT.md
+  docs/operations/DEPLOYMENT.md docs/RELATORIO_AUDITORIA_2026-10-02.md docs/build/PRODUCTION_PLAN.md docs/build/PRODUCTION_ROADMAP.md docs/build/PRODUCTION_BACKLOG.md
   docs/discovery/DISCOVERY.md docs/discovery/STAKEHOLDERS.md docs/discovery/PERSONAS.md
   docs/discovery/JOBS_TO_BE_DONE.md docs/discovery/USER_JOURNEYS.md docs/discovery/SERVICE_BLUEPRINT.md
   docs/discovery/EVENT_STORMING.md docs/discovery/ASSUMPTIONS.md docs/discovery/OPEN_QUESTIONS.md

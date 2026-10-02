@@ -19,6 +19,19 @@ export class ApiError extends Error {
   }
 }
 
+interface ApiErrorLike extends Error {
+  code: string;
+  status: number;
+  details?: Record<string, unknown>;
+}
+
+function isApiErrorLike(error: unknown): error is ApiErrorLike {
+  if (error instanceof ApiError) return true;
+  if (!(error instanceof Error) || error.name !== "ApiError") return false;
+  const candidate = error as Partial<ApiErrorLike>;
+  return typeof candidate.code === "string" && Number.isInteger(candidate.status);
+}
+
 export function createSuccessResponse<T>(
   data: T,
   correlationId: string,
@@ -49,7 +62,7 @@ export function toApiErrorResponse(
   correlationId: string,
   _requestId: string
 ): { status: number; body: ApiErrorBody } {
-  if (error instanceof ApiError) {
+  if (isApiErrorLike(error)) {
     const safeDetails = error.details
       ? Object.fromEntries(
           Object.entries(error.details).filter(([key]) => ["currentVersion", "retryable", "existingRequestCodes", "nextAction"].includes(key))

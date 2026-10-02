@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
-import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ItemState, ManagedSession, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
-import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, SessionRevokeInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
@@ -32,6 +32,7 @@ const {
   normalizedManagedDepartments,
   revokeUserSessions,
   requireRecentReauthentication,
+  managedSession,
   requireActiveUser,
   requirePermission,
   isExecutorRole,
@@ -107,6 +108,46 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         .slice()
         .sort((left, right) => left.displayName.localeCompare(right.displayName, "pt-BR"))
         .map(managedUser);
+    },
+
+    async listManagedSessions(actor: User): Promise<ManagedSession[]> {
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      requirePermission(currentActor, "user_role.manage", {});
+      return state.sessions
+        .map((session) => ({ session, user: state.users.find((user) => user.id === session.userId) }))
+        .filter((entry): entry is { session: typeof state.sessions[number]; user: User } => Boolean(entry.user && canManageUserTarget(currentActor, entry.user.role, entry.user.departmentCode)))
+        .sort((left, right) => right.session.createdAt.localeCompare(left.session.createdAt))
+        .map(({ session, user }) => managedSession(session, user, currentActor.sessionId));
+    },
+
+    async revokeManagedSession(actor: User, sessionId: string, input: SessionRevokeInput): Promise<ManagedSession> {
+      const scope = "POST:/sessions/revoke";
+      return store.transaction(async (originalState) => {
+        const currentActor = requireActiveUser(originalState, actor);
+        requireIdempotencyKey(input.idempotencyKey);
+        requirePermission(currentActor, "user_role.manage", {});
+        requireRecentReauthentication(currentActor);
+        if (input.confirm !== true) throw new ApiError("VALIDATION_ERROR", "A confirmação explícita da revogação é obrigatória.", 400);
+        const reason = requireText(input.reason, "reason", 500);
+        const targetSession = findOrThrow(originalState.sessions.find((session) => session.id === sessionId));
+        const targetUser = findOrThrow(originalState.users.find((user) => user.id === targetSession.userId));
+        if (!canManageUserTarget(currentActor, targetUser.role, targetUser.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a esta sessão.", 404);
+        const idempotent = withIdempotency<ManagedSession>(originalState, currentActor.id, scope, input.idempotencyKey, { sessionId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        if (targetSession.id === currentActor.sessionId) throw new ApiError("VALIDATION_ERROR", "A sessão atual deve ser encerrada pelo fluxo de logout.", 400);
+        if (targetSession.revokedAt) throw new ApiError("SESSION_ALREADY_REVOKED", "A sessão já foi revogada.", 409);
+        const revokedAt = now();
+        const updatedSession = { ...targetSession, revokedAt, version: targetSession.version + 1 };
+        const correlationId = input.correlationId ?? id("corr");
+        const nextState = {
+          ...originalState,
+          sessions: originalState.sessions.map((session) => session.id === targetSession.id ? updatedSession : session),
+          auditEvents: [...originalState.auditEvents, createAudit("SessionRevoked", currentActor.id, "Session", targetSession.id, correlationId, "ACTIVE", "REVOKED", { targetUserId: targetUser.id, reason })]
+        };
+        const result = managedSession(updatedSession, targetUser, currentActor.sessionId);
+        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { sessionId, input }), result };
+      });
     },
 
     async updateUserRole(actor: User, userId: string, input: UserRoleUpdateInput): Promise<ManagedUser> {

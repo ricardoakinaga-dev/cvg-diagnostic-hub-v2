@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
-import { loginUser, reauthenticateUser, revokeSession } from "../security/session";
+import { authenticateRequest, loginUser, reauthenticateUser, revokeSession } from "../security/session";
 
 function setup() {
   const store = new MemoryStore(createDemoState("management-test-password"));
@@ -122,6 +122,31 @@ describe("management control center", () => {
     expect(store.getState().sessions.find((session) => session.tokenHash === store.getState().sessions.find((entry) => entry.userId === created.id)?.tokenHash)?.revokedAt).toBeTruthy();
     await expect(loginUser(store, "new.lab.tech@cvg.local", "secure-lab-password-123")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
     expect(store.getState().auditEvents.map((event) => event.eventType)).toEqual(expect.arrayContaining(["UserCreated", "UserDeactivated"]));
+  });
+
+  it("lists sessions without secret material and revokes a target session idempotently", async () => {
+    const { store, service, admin, vet } = setup();
+    const targetLogin = await loginUser(store, vet.email, "management-test-password");
+    const actor = { ...admin, reauthenticatedAt: new Date().toISOString() };
+    const targetSessionId = store.getState().sessions.find((session) => session.userId === vet.id)?.id;
+    if (!targetSessionId) throw new Error("target session missing");
+
+    const sessions = await service.listManagedSessions(actor);
+    expect(sessions.find((session) => session.id === targetSessionId)).toMatchObject({
+      userEmail: vet.email,
+      status: "ACTIVE",
+      current: false
+    });
+    expect(sessions[0]).not.toHaveProperty("tokenHash");
+
+    const command = { reason: "Encerramento operacional", confirm: true as const, idempotencyKey: "revoke-target-session", correlationId: "corr-session-revoke" };
+    const revoked = await service.revokeManagedSession(actor, targetSessionId, command);
+    const replay = await service.revokeManagedSession(actor, revoked.id, command);
+
+    expect(revoked).toMatchObject({ userEmail: vet.email, status: "REVOKED", revokedAt: expect.any(String) });
+    expect(replay).toEqual(revoked);
+    await expect(authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${targetLogin.sessionToken}` } }))).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+    expect(store.getState().auditEvents).toContainEqual(expect.objectContaining({ eventType: "SessionRevoked", entityId: revoked.id, actorId: admin.id }));
   });
 
   it("keeps delegated managers away from technical roles and outside departments", async () => {

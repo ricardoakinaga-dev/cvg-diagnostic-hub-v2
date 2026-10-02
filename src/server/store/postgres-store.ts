@@ -700,8 +700,8 @@ export class PostgresStore implements StateStore {
     for (const message of after.outbox.filter((entry) => !previousOutbox.has(entry.id))) {
       const envelope = outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey);
       const inserted = await client.query(
-        "INSERT INTO outbox_messages (id, event_type, aggregate_type, aggregate_id, payload, consumer_type, routing_key, status, attempts, available_at, correlation_id, locked_at, worker_id, claim_token, last_error) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) ON CONFLICT (id) DO NOTHING RETURNING id",
-        [message.id, message.eventType, message.aggregateType, message.aggregateId, JSON.stringify(message.payload), envelope.consumerType, envelope.routingKey, message.status, message.attempts, message.availableAt, message.correlationId, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
+        "INSERT INTO outbox_messages (id, event_type, aggregate_type, aggregate_id, payload, consumer_type, routing_key, status, attempts, available_at, correlation_id, locked_at, worker_id, claim_token, last_error, dead_lettered_at, discarded_at, discarded_by, discard_reason) VALUES ($1,$2,$3,$4,$5::jsonb,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT (id) DO NOTHING RETURNING id",
+        [message.id, message.eventType, message.aggregateType, message.aggregateId, JSON.stringify(message.payload), envelope.consumerType, envelope.routingKey, message.status, message.attempts, message.availableAt, message.correlationId, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null, message.deadLetteredAt ?? null, message.discardedAt ?? null, message.discardedBy ?? null, message.discardReason ?? null]
       );
       if (inserted.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }
@@ -710,8 +710,8 @@ export class PostgresStore implements StateStore {
       if (!previous || JSON.stringify(previous) === JSON.stringify(message)) continue;
       const envelope = outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey);
       const updated = await client.query(
-        "UPDATE outbox_messages SET consumer_type = $2, routing_key = $3, status = $4, attempts = $5, available_at = $6, locked_at = $7, worker_id = $8, claim_token = $9, last_error = $10 WHERE id = $1",
-        [message.id, envelope.consumerType, envelope.routingKey, message.status, message.attempts, message.availableAt, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null]
+        "UPDATE outbox_messages SET consumer_type = $2, routing_key = $3, status = $4, attempts = $5, available_at = $6, locked_at = $7, worker_id = $8, claim_token = $9, last_error = $10, dead_lettered_at = $11, discarded_at = $12, discarded_by = $13, discard_reason = $14 WHERE id = $1",
+        [message.id, envelope.consumerType, envelope.routingKey, message.status, message.attempts, message.availableAt, message.lockedAt ?? null, message.workerId ?? null, message.claimToken ?? null, message.lastError ?? null, message.deadLetteredAt ?? null, message.discardedAt ?? null, message.discardedBy ?? null, message.discardReason ?? null]
       );
       if (updated.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }

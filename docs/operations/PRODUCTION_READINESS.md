@@ -8,23 +8,25 @@ Deploy path: [DEPLOYMENT.md](DEPLOYMENT.md) (images, first-admin bootstrap, migr
 
 Status: `NOT READY` until implementation, operational validation and human gates exist. This checklist defines what “ready” must prove.
 
-## Current local evidence (01/10/2026)
+## Current local evidence (02/10/2026)
 
-> Current AUDIT-2026-10 snapshot: 745 unit tests in 89 files plus 39 PostgreSQL
-> tests in 6 files; 94.90% lines, 95.45% functions and 89.31% branches in the
-> merged coverage run. The file-level `coverage:gate` passes with 28 declared
-> exceptions and no uncovered or stale entries. Browser is 63/63 without retry,
-> including visual 3/3 and accessibility 12/12; typecheck, lint, build, security,
-> OpenAPI 65/60, traceability 43/43, mutation 7/7 and the negative coverage-gate
-> tests pass. PostgreSQL evidence uses a disposable loopback cluster and does not
-> touch the persistent 5432 instance. The candidate remains `NOT READY`: target
-> load/failover, real storage/AV, full restore/RPO/RTO, remote CI and human/clinical
-> acceptance remain open.
+> **Audit 02/10/2026:** [report](../RELATORIO_AUDITORIA_2026-10-02.md) — new critical finding F-01: the JSONB snapshot serializes every store operation per process and grows without pruning (~0.6 s CPU per request at 100k audit events). The item "JSONB snapshot replaced or formally approved" below can no longer be closed by approval alone; it is tracked as PROD-101…111 in the [production backlog](../build/PRODUCTION_BACKLOG.md).
+
+> Current AUDIT-2026-10 candidate: `npm test` passes 768/768 tests in 91 files;
+> the unit-only coverage run records 92.79% lines, 94.23% functions and 86.12%
+> branches. The merged PostgreSQL coverage run passes 809/809 tests in 98 files
+> with 94.98% lines, 95.30% functions and 89.09% branches; `coverage:gate` passes
+> with 29 declared temporary exceptions and no uncovered or stale entries.
+> `npm run test:postgres` passes 41/41. Migration/docs/OpenAPI (70/65),
+> traceability, security scan, typecheck, lint, build, browser 63/63 and mutation
+> 7/7 pass. The candidate
+> remains `NOT READY`: target load/failover, real storage/AV, full restore/RPO/RTO,
+> remote CI and human/clinical acceptance remain open.
 > The current candidate is `NOT READY` and the checklist below remains open.
 
 ## Historical local evidence (06/09/2026; superseded)
 
-> **AUD-022 (01/10/2026): a linha `614/614` abaixo é histórica — era AAA-2 de 06/09/2026 — e não é a baseline corrente.** A baseline corrente é `npm run test:coverage` com **745 testes unitários em 89 arquivos + 39 testes PostgreSQL em 6 arquivos** e cobertura **94,90% lines, 95,45% functions e 89,31% branches** (valores medidos; veja “Current local evidence” acima).
+> **AUD-022 (01/10/2026): a linha `614/614` abaixo é histórica — era AAA-2 de 06/09/2026 — e a execução integrada de 01/10 também foi supersedida pela candidata de 02/10.** A candidata atual passa `npm test` em **768/768 testes de 91 arquivos** e a cobertura agregada PostgreSQL passa 809/809 em 98 arquivos.
 >
 > O pacote desta era registra `npm run
 > test:coverage` at 614/614 tests in 75 files and 92.01% statements/lines, 85.00%
@@ -39,7 +41,7 @@ Status: `NOT READY` until implementation, operational validation and human gates
 > adds 51/51 no-retry scenarios across Chromium, tablet and mobile against `next start`, PostgreSQL, synthetic
 > S3/HTTPS scan services and a durable PostgreSQL outbox worker.
 
-The local synthetic artifact has executable evidence for session/RBAC/CSRF/scope, patient registration with initial encounter/admission, request-flow patient creation and user account, API envelopes and health, core Lab/RX/US/result/file flows, scoped search/filter/timeline/dashboard contracts, scoped cancellation and delegated-manager revocation, ADMIN/delegated-MANAGER versioned collaborator administration with recent re-authentication and soft deactivation, manager control/catalog/reason surfaces, bounded metrics, private local/S3-compatible storage adapters, explicit external malware-scanner and production-storage fail-closed factories, distributed-rate-limit schema readiness, token-owned outbox leases, transfer-context commands gated by D-01, bounded SLA calculation fallback, scoped identity normalization, stable queue cursors and focused registry/API/UI tests. The current local validation is 745 unit tests in 89 files plus 39 PostgreSQL tests in 6 files, with 94.90% lines, 89.31% branches and 95.45% functions. `npm ci`, typecheck, lint, build, `npm run validate:openapi` (65 operations/60 paths), `npm run validate:docs`, `npm run security:scan`, `npm audit --audit-level=high` and the structural traceability validator pass. The browser matrix is 63/63 without retry, with visual 3/3 and accessibility 12/12; the file-level coverage gate and mutation 7/7 also pass. PostgreSQL evidence uses a disposable loopback cluster. The program continues REJECT because target multi-instance evidence, complete SLA/transfer policy and release approvals are absent.
+The local synthetic artifact has executable evidence for session/RBAC/CSRF/scope, patient registration with initial encounter/admission, request-flow patient creation and user account, API envelopes and health, core Lab/RX/US/result/file flows, scoped search/filter/timeline/dashboard contracts, scoped cancellation and delegated-manager revocation, ADMIN/delegated-MANAGER versioned collaborator administration with recent re-authentication and soft deactivation, session listing/revocation, audited outbox dead-letter controls, manager control/catalog/reason surfaces, bounded metrics, private local/S3-compatible storage adapters, explicit external malware-scanner and production-storage fail-closed factories, distributed-rate-limit schema readiness, token-owned outbox leases, transfer-context commands gated by D-01, bounded SLA calculation fallback, scoped identity normalization, stable queue cursors and focused registry/API/UI tests. The current candidate passes 768/768 unit/API/UI tests in 91 files and 41/41 PostgreSQL integration tests; aggregate coverage and the gate pass. Build and browser evidence now pass. The program continues REJECT because target load/failover, complete SLA/transfer policy and release approvals are absent.
 
 O alias PostgreSQL está corrigido. O packet V2 de backfill [`v2-relational-sample-lineage-backfill-20260906.md`](../../.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md) registra a execução populada, request-scoped e resumível da migration 010, com 9/9 focado e 30/30 na suíte PostgreSQL 16.15 descartável, mantendo JSONB como autoridade; o packet HTTP [`aaa3-http-multi-instance-20260906.md`](../../.orchestrate/evidence/aaa3-http-multi-instance-20260906.md) mantém sua própria evidência de duas instâncias HTTP em `next dev` e `next start`, sessão cross-process, fanout SSE autorizado e replay `Last-Event-ID`. O packet browser production-like [`aaa3-browser-postgres-production-s3-20260906.md`](../../.orchestrate/evidence/aaa3-browser-postgres-production-s3-20260906.md) adiciona 51/51 sem retry nos projetos Chromium, tablet e mobile com `next start`, PostgreSQL, S3/scan sintéticos e worker outbox durável. O packet AAA-2 anterior permanece histórico e registra também `db:smoke`, `db:restore:smoke` direto e `perf:smoke`. Os 51 casos Playwright passam em uma corrida única sem retry, usando servidores de memória sintética isolados por projeto; o Patient Workspace inclui a preservação do snapshot confirmado quando o refresh fica indisponível; `npm run test:accessibility` passou 6/6. Esses gates locais não são aceite representativo: object storage/chaves reais, workload aprovado, restart/failover, RPO/RTO, CI remoto e decisões humanas continuam abertos. Esta evidência não marca nenhum item do checklist como concluído.
 

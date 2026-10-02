@@ -4,6 +4,8 @@ import { signInAs } from "./support/auth";
 
 async function expectNoAxeViolations(page: Page, name: string): Promise<void> {
   const rules = ["aria-allowed-attr", "aria-required-attr", "aria-valid-attr", "button-name", "document-title", "duplicate-id-aria", "html-has-lang", "heading-order", "label", "landmark-one-main", "link-name", "nested-interactive", "role-img-alt", "tabindex"];
+  // Pages render per request (CSP nonce); wait for the landmark instead of racing navigation.
+  await page.locator("main").first().waitFor({ state: "visible", timeout: 15_000 });
   const results = await new AxeBuilder({ page }).include("main").withRules(rules).setLegacyMode(true).analyze();
   expect(results.violations, `${name}: ${results.violations.map((violation) => `${violation.id}: ${violation.help}`).join("; ")}`).toEqual([]);
 }

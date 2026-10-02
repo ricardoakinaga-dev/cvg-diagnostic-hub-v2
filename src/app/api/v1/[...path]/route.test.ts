@@ -484,6 +484,74 @@ describe("versioned API boundary", () => {
     expect(denied.status).toBe(404);
   });
 
+  it("exposes scoped session revocation and an audited dead-letter control surface", async () => {
+    const admin = await login("admin@cvg.local");
+    const vet = await login("vet@cvg.local");
+    const sessionsResponse = await GET(new Request("http://localhost/api/v1/sessions", { headers: { cookie: admin.cookie } }), params(["sessions"]));
+    expect(sessionsResponse.status).toBe(200);
+    const sessionsBody = await sessionsResponse.json();
+    const targetSession = sessionsBody.data.find((session: { userEmail: string }) => session.userEmail === "vet@cvg.local");
+    expect(targetSession).toMatchObject({ status: "ACTIVE", current: false });
+    expect(targetSession).not.toHaveProperty("tokenHash");
+
+    const reauth = await POST(new Request("http://localhost/api/v1/session/reauth", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: admin.cookie, "x-csrf-token": admin.csrf },
+      body: JSON.stringify({ password: "api-test-password" })
+    }), params(["session", "reauth"]));
+    expect(reauth.status).toBe(200);
+
+    const revoked = await POST(new Request(`http://localhost/api/v1/sessions/${targetSession.id}/revoke`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: admin.cookie, "x-csrf-token": admin.csrf, "idempotency-key": "api-session-revoke" },
+      body: JSON.stringify({ reason: "Encerramento operacional", confirm: true })
+    }), params(["sessions", targetSession.id, "revoke"]));
+    expect(revoked.status).toBe(200);
+    expect((await revoked.json()).data).toMatchObject({ id: targetSession.id, status: "REVOKED" });
+    expect((await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]))).status).toBe(401);
+
+    const store = await getRuntimeStoreAsync();
+    await store.transaction((state) => ({
+      state: {
+        ...state,
+        outbox: [...state.outbox, {
+          id: "api-dead-letter",
+          eventType: "UnsupportedEvent",
+          aggregateType: "DiagnosticRequest",
+          aggregateId: "request-1",
+          payload: { requestId: "request-1" },
+          consumerType: "DOMAIN_EVENT",
+          routingKey: "domain.UnsupportedEvent",
+          status: "FAILED" as const,
+          attempts: 5,
+          availableAt: "2026-08-20T10:00:00.000Z",
+          correlationId: "corr-api-dead-letter",
+          lastError: "sink unavailable",
+          deadLetteredAt: "2026-08-20T10:00:00.000Z"
+        }]
+      },
+      result: undefined
+    }));
+
+    const deadLetters = await GET(new Request("http://localhost/api/v1/outbox/dead-letters", { headers: { cookie: admin.cookie } }), params(["outbox", "dead-letters"]));
+    expect(deadLetters.status).toBe(200);
+    expect((await deadLetters.json()).data).toMatchObject([{ id: "api-dead-letter", status: "FAILED" }]);
+
+    const reauthAgain = await POST(new Request("http://localhost/api/v1/session/reauth", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: admin.cookie, "x-csrf-token": admin.csrf },
+      body: JSON.stringify({ password: "api-test-password" })
+    }), params(["session", "reauth"]));
+    expect(reauthAgain.status).toBe(200);
+    const discarded = await POST(new Request("http://localhost/api/v1/outbox/dead-letters/api-dead-letter/discard", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: admin.cookie, "x-csrf-token": admin.csrf, "idempotency-key": "api-dead-letter-discard" },
+      body: JSON.stringify({ reason: "Evento inválido para entrega", confirm: true })
+    }), params(["outbox", "dead-letters", "api-dead-letter", "discard"]));
+    expect(discarded.status).toBe(200);
+    expect((await discarded.json()).data).toMatchObject({ action: "DISCARDED", message: { status: "DISCARDED" } });
+  });
+
   it("supports delegated collaborator creation, operational overview and soft deactivation", async () => {
     const manager = await login("manager@cvg.local");
     const reauth = await POST(new Request("http://localhost/api/v1/session/reauth", {

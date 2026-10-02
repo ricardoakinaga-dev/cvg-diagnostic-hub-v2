@@ -6,9 +6,9 @@
 
 Use for every pilot/production release; checkboxes require evidence link or command output.
 
-## Current local evidence (01/10/2026)
+## Current local evidence (02/10/2026)
 
-The current AUDIT-2026-10 candidate passes 745 unit tests in 89 files plus 39 PostgreSQL tests in 6 files, with 94.90/89.31/95.45 coverage (lines/branches/functions). Build, security scan, OpenAPI 65/60, traceability 43/43, migrations 001–010, mutation 7/7 and the negative coverage-gate tests pass. Browser evidence is 63/63 without retry, including visual 3/3 and accessibility 12/12. PostgreSQL evidence uses a disposable loopback cluster; no persistent 5432 database was touched. No release item below is marked complete by these local results.
+The current AUDIT-2026-10 candidate passes `npm test` with 768/768 tests in 91 files. Unit-only coverage is 92.79/86.12/94.23 (lines/branches/functions); the merged PostgreSQL coverage run passes 809/809 tests in 98 files with 94.98/89.09/95.30 aggregate coverage, and the full coverage gate passes with 29 declared temporary exceptions and no uncovered/stale entries. `npm run test:postgres` passes 41/41. Migration validation, security scan, OpenAPI 70/65, traceability 43/43, typecheck, lint, build, E2E 63/63 without retry and mutation 7/7 pass. No release item below is marked complete by these local results.
 
 ## Historical local evidence (06/09/2026; superseded)
 

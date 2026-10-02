@@ -314,7 +314,7 @@ export interface OutboxMessage {
   payload: Record<string, unknown>;
   consumerType: OutboxConsumerType;
   routingKey: string;
-  status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED";
+  status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED" | "DISCARDED";
   attempts: number;
   availableAt: Timestamp;
   correlationId: string;
@@ -322,6 +322,10 @@ export interface OutboxMessage {
   workerId?: string;
   claimToken?: string;
   lastError?: string;
+  deadLetteredAt?: Timestamp;
+  discardedAt?: Timestamp;
+  discardedBy?: string;
+  discardReason?: string;
 }
 
 export interface IdempotencyRecord {

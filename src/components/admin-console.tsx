@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ROLES, type AuditEvent, type DiagnosticService, type ReasonCode, type RoleCode, type ManagedUser, type SessionResponse } from "@cvg/contracts";
+import { ROLES, type AuditEvent, type DeadLetterMessage, type DiagnosticService, type ManagedSession, type ReasonCode, type RoleCode, type ManagedUser, type SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, createClientUniqueId, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
@@ -66,6 +66,8 @@ export function AdminConsole() {
   const [services, setServices] = useState<CatalogService[]>([]);
   const [reasons, setReasons] = useState<ReasonCode[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
+  const [sessions, setSessions] = useState<ManagedSession[]>([]);
+  const [deadLetters, setDeadLetters] = useState<DeadLetterMessage[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [currentRole, setCurrentRole] = useState<RoleCode | null>(null);
   const [error, setError] = useState("");
@@ -78,24 +80,29 @@ export function AdminConsole() {
     setLoading(true);
     setError("");
     setAccessDenied(false);
-    const [serviceResult, reasonResult, userResult, auditResult, identityResult] = await Promise.allSettled([
+    const [serviceResult, reasonResult, userResult, auditResult, identityResult, sessionResult, deadLetterResult] = await Promise.allSettled([
       apiFetch<CatalogService[]>("/diagnostic-services?includeInactive=true"),
       apiFetch<ReasonCode[]>("/reason-codes"),
       apiFetch<ManagedUser[]>("/users"),
       apiFetch<AuditEvent[]>("/audit-events?limit=20"),
-      apiFetch<SessionResponse>("/session/me")
+      apiFetch<SessionResponse>("/session/me"),
+      apiFetch<ManagedSession[]>("/sessions"),
+      apiFetch<DeadLetterMessage[]>("/outbox/dead-letters")
     ]);
     if (loadVersion.current !== version) return;
     if (serviceResult.status === "fulfilled") setServices(serviceResult.value);
     if (reasonResult.status === "fulfilled") setReasons(reasonResult.value);
     if (userResult.status === "fulfilled") setUsers(userResult.value);
     if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value);
-    if (identityResult.status === "fulfilled" && identityResult.value.user.role !== "VET") setCurrentRole(identityResult.value.user.role);
-    const results = [serviceResult, reasonResult, userResult, auditResult];
+    if (sessionResult.status === "fulfilled") setSessions(sessionResult.value);
+    if (deadLetterResult.status === "fulfilled") setDeadLetters(deadLetterResult.value);
+    if (identityResult.status === "fulfilled") setCurrentRole(identityResult.value.user.role === "VET" ? null : identityResult.value.user.role);
+    const results = [serviceResult, reasonResult, userResult, auditResult, sessionResult];
     const failures = results.filter((result) => result.status === "rejected");
+    const deadLetterFailed = identityResult.status === "fulfilled" && identityResult.value.user.role === "ADMIN" && deadLetterResult.status === "rejected";
     const denied = failures.length === results.length && failures.every((result) => result.status === "rejected" && result.reason instanceof ApiClientError && result.reason.code === "SCOPE_DENIED");
     setAccessDenied(denied);
-    if (failures.length > 0 && !denied) setError("Parte da configuração está indisponível; alterações não confirmadas permanecem sem efeito.");
+    if ((failures.length > 0 || deadLetterFailed) && !denied) setError("Parte da configuração está indisponível; alterações não confirmadas permanecem sem efeito.");
     if (loadVersion.current === version) setLoading(false);
   }, []);
 
@@ -104,7 +111,7 @@ export function AdminConsole() {
     return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
 
-  if (loading && services.length === 0 && reasons.length === 0 && users.length === 0 && auditEvents.length === 0) return <LoadingState label="Carregando administração" />;
+  if (loading && services.length === 0 && reasons.length === 0 && users.length === 0 && sessions.length === 0 && auditEvents.length === 0 && deadLetters.length === 0) return <LoadingState label="Carregando administração" />;
 
   return (
     <div className="admin-page">
@@ -114,11 +121,58 @@ export function AdminConsole() {
       <div className="admin-columns">
          <section className="panel" id="catalog"><div className="panel-heading"><div><p className="eyebrow">Catálogo customizável</p><h2>Serviços diagnósticos</h2></div><span className="timeline-count">{services.length}</span></div><ServiceCreateForm onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço ou revise o escopo delegado." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={service.id} service={service} onSaved={() => void load()} />)}</div>}</section>
          <section className="panel" id="reasons"><div className="panel-heading"><div><p className="eyebrow">Motivos auditáveis</p><h2>Códigos de motivo</h2></div><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Novos códigos devem ser aprovados antes de serem usados em comandos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={reason.id} reason={reason} onSaved={() => void load()} />)}</div>}</section>
-         <section className="panel" id="users"><div className="panel-heading"><div><p className="eyebrow">Acesso institucional</p><h2>Colaboradores e roles</h2></div><span className="timeline-count">{users.length}</span></div><UserCreateForm canCreateTechnicalRoles={currentRole === "ADMIN"} onSaved={() => void load()} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="O gestor só visualiza identidades dentro do escopo delegado; nenhuma credencial é exibida." /> : <div className="admin-list">{users.map((user) => <UserRow key={`${user.id}:${user.version}:${user.active}`} user={user} canEditTechnicalScope={currentRole === "ADMIN"} onSaved={() => void load()} />)}</div>}</section>
-      </div>
-       <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><div><p className="eyebrow">Fonte de verdade</p><h2>Auditoria recente</h2></div><span className="timeline-count">{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento de configuração no escopo" message="As alterações aparecerão aqui quando houver atividade auditável." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType.replaceAll("_", " ").toLowerCase()} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="text-success">{event.newState?.replaceAll("_", " ").toLowerCase() ?? "registrado"}</span></li>)}</ul>}</section>
+          <section className="panel" id="users"><div className="panel-heading"><div><p className="eyebrow">Acesso institucional</p><h2>Colaboradores e roles</h2></div><span className="timeline-count">{users.length}</span></div><UserCreateForm canCreateTechnicalRoles={currentRole === "ADMIN"} onSaved={() => void load()} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="O gestor só visualiza identidades dentro do escopo delegado; nenhuma credencial é exibida." /> : <div className="admin-list">{users.map((user) => <UserRow key={`${user.id}:${user.version}:${user.active}`} user={user} canEditTechnicalScope={currentRole === "ADMIN"} onSaved={() => void load()} />)}</div>}</section>
+       </div>
+        <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><div><p className="eyebrow">Sessões opacas</p><h2>Dispositivos e acessos ativos</h2></div><span className="timeline-count">{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="Sessões exibem apenas metadados operacionais; tokens nunca são retornados." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={`${session.id}:${session.status}`} session={session} onSaved={() => void load()} />)}</div>}</section>
+        {currentRole === "ADMIN" && <section className="panel admin-audit-panel" id="dead-letters"><div className="panel-heading"><div><p className="eyebrow">Entrega durável</p><h2>Dead-letter do outbox</h2></div><span className="timeline-count">{deadLetters.length}</span></div>{deadLetters.length === 0 ? <EmptyState title="Nenhuma mensagem retida" message="Mensagens exauridas aparecem aqui sem expor o payload clínico." /> : <div className="admin-list">{deadLetters.map((message) => <DeadLetterRow key={`${message.id}:${message.status}`} message={message} onSaved={() => void load()} />)}</div>}</section>}
+        <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><div><p className="eyebrow">Fonte de verdade</p><h2>Auditoria recente</h2></div><span className="timeline-count">{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento de configuração no escopo" message="As alterações aparecerão aqui quando houver atividade auditável." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType.replaceAll("_", " ").toLowerCase()} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="text-success">{event.newState?.replaceAll("_", " ").toLowerCase() ?? "registrado"}</span></li>)}</ul>}</section>
     </div>
   );
+}
+
+function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSaved: () => void }) {
+  const [reason, setReason] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function revoke(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (session.current || session.status === "REVOKED" || !window.confirm(`Revogar a sessão de ${session.userEmail}?`)) return;
+    setBusy(true); setError("");
+    try {
+      await apiFetch("/session/reauth", { method: "POST", body: JSON.stringify({ password }) });
+      await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({ reason: reason.trim(), confirm: true }) });
+      onSaved();
+    } catch (cause) {
+      setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão."));
+    } finally { setBusy(false); }
+  }
+
+  return <form className="admin-row" onSubmit={(event) => void revoke(event)}><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span className={session.status === "ACTIVE" ? "text-success" : session.status === "REVOKED" ? "text-danger" : "text-muted"}>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {roleLabels[session.userRole]} · {departmentLabel(session.departmentCode)} · criada {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small className="field-hint">Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" ? <><label>Motivo da revogação<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required /></label><label>Senha para reautenticar<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password}>{busy ? "Revogando…" : "Revogar sessão"}</ActionButton></> : null}</form>;
+}
+
+function DeadLetterRow({ message, onSaved }: { message: DeadLetterMessage; onSaved: () => void }) {
+  const [reason, setReason] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function act(action: "reprocess" | "discard") {
+    if (message.status !== "FAILED" || !reason.trim() || !password) return;
+    const label = action === "discard" ? "descartar" : "reprocessar";
+    if (!window.confirm(`${label[0].toUpperCase()}${label.slice(1)} a mensagem ${message.id}?`)) return;
+    setBusy(true); setError("");
+    try {
+      await apiFetch("/session/reauth", { method: "POST", body: JSON.stringify({ password }) });
+      await apiFetch(`/outbox/dead-letters/${message.id}/${action}`, { method: "POST", body: JSON.stringify({ reason: reason.trim(), confirm: true }) });
+      onSaved();
+    } catch (cause) {
+      setError(getSafeErrorMessage(cause, "Não foi possível operar a dead-letter."));
+    } finally { setBusy(false); }
+  }
+
+  return <div className="admin-row"><div className="admin-row-heading"><strong>{message.eventType}</strong><span className={message.status === "FAILED" ? "text-danger" : "text-muted"}>{message.status === "FAILED" ? "Retida" : "Descartada"}</span></div><small>{message.id} · {message.aggregateType}/{message.aggregateId} · tentativas {message.attempts}</small>{message.lastError && <small className="field-hint">Falha: {message.lastError}</small>}{message.status === "FAILED" && <><label>Motivo operacional<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required /></label><label>Senha para reautenticar<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password} onClick={() => void act("reprocess")}>{busy ? "Processando…" : "Reprocessar"}</ActionButton><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password} onClick={() => void act("discard")}>Descartar</ActionButton></div></>}</div>;
 }
 
 function ServiceCreateForm({ onSaved }: { onSaved: () => void }) {

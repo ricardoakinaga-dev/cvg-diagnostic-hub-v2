@@ -95,6 +95,8 @@ const requestSchemas = {
     }, ["role", "departmentCode", "reason", "confirm"]),
     "x-role-constraints": { managedDepartmentCodes: "allowed only when role is MANAGER" }
   },
+  SessionRevoke: strictObject({ reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }, ["reason", "confirm"]),
+  DeadLetterCommand: strictObject({ reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }, ["reason", "confirm"]),
   DiagnosticServiceCreate: {
     ...strictObject({
     code: normalizedCatalogCodeSchema, name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
@@ -381,6 +383,17 @@ const responseDataSchemas = {
   JsonObject: { type: "object", additionalProperties: schemaReference("JsonValue"), maxProperties: 100 },
   PublicUser: publicUserSchema,
   ManagedUser: managedUserSchema,
+  ManagedSession: strictObject({
+    id: identifier, userId: identifier, userDisplayName: stringSchema(1, 160), userEmail: { type: "string", format: "email", maxLength: 320 },
+    userRole: { type: "string", enum: roleCodes }, departmentCode: stringSchema(1, 60), createdAt: timestamp, expiresAt: timestamp,
+    status: { type: "string", enum: ["ACTIVE", "EXPIRED", "REVOKED"] }, current: { type: "boolean" }, revokedAt: timestamp
+  }, ["id", "userId", "userDisplayName", "userEmail", "userRole", "departmentCode", "createdAt", "expiresAt", "status", "current"]),
+  DeadLetterMessage: strictObject({
+    id: identifier, eventType: stringSchema(1, 200), aggregateType: stringSchema(1, 200), aggregateId: identifier,
+    status: { type: "string", enum: ["PENDING", "FAILED", "DISCARDED"] }, attempts: nonNegativeInteger, availableAt: timestamp,
+    correlationId: stringSchema(1, 100), lastError: stringSchema(1, 240), deadLetteredAt: timestamp, discardedAt: timestamp,
+    discardedBy: identifier, discardReason: stringSchema(1, 500)
+  }, ["id", "eventType", "aggregateType", "aggregateId", "status", "attempts", "availableAt", "correlationId"]),
   Patient: patientSchema,
   Encounter: encounterSchema,
   Admission: admissionSchema,
@@ -421,6 +434,9 @@ const responseDataSchemas = {
   LogoutData: strictObject({ loggedOut: { type: "boolean", const: true } }, ["loggedOut"]),
   ReauthenticationData: strictObject({ user: schemaReference("PublicUser"), reauthenticatedAt: timestamp }, ["user", "reauthenticatedAt"]),
   ManagedUserList: arrayOf(schemaReference("ManagedUser")),
+  ManagedSessionList: arrayOf(schemaReference("ManagedSession"), { maxItems: 100 }),
+  DeadLetterList: arrayOf(schemaReference("DeadLetterMessage"), { maxItems: 100 }),
+  DeadLetterMutation: strictObject({ message: schemaReference("DeadLetterMessage"), action: { type: "string", enum: ["REPROCESSED", "DISCARDED"] } }, ["message", "action"]),
   DiagnosticServiceList: arrayOf(schemaReference("DiagnosticService")),
   ReasonCodeList: arrayOf(schemaReference("ReasonCode")),
   PatientList: arrayOf(schemaReference("Patient"), { maxItems: 100 }),
@@ -656,7 +672,7 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  if (API_OPERATIONS.length !== 65 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 60) throw new Error("The audited API surface must remain exactly 65 operations across 60 paths.");
+  if (API_OPERATIONS.length !== 70 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 65) throw new Error("The audited API surface must remain exactly 70 operations across 65 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

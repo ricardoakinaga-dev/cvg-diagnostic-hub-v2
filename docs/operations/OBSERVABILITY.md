@@ -2,9 +2,9 @@
 
 **Knowledge status:** `IMPLEMENTED LOCALLY / DECISION PENDING` — o boundary técnico, a redação e a correlação estão implementados; thresholds, owners e roteamento de plantão ainda dependem de D-05.
 
-## Current AUDIT-2026-10 evidence (01/10/2026)
+## Current AUDIT-2026-10 evidence (02/10/2026)
 
-O working tree corrente passou `npm run test:coverage` com **745 testes unitários em 89 arquivos** e **39 testes PostgreSQL em 6 arquivos**, cobertura 94,90% lines, 95,45% functions e 89,31% branches. A matriz browser passou **63/63** sem retry, incluindo visual 3/3 e acessibilidade 12/12. Typecheck, lint, build, security scan, OpenAPI 65/60, traceabilidade 43/43, mutation 7/7 e o `coverage:gate` passaram. A evidência é local/condicional: não prova workload representativo, alert routing, failover ou readiness produtivo.
+O working tree corrente passou `npm test` com **768/768 testes em 91 arquivos**. A leitura unit-only registrou 92,79% lines, 94,23% functions e 86,12% branches. A cobertura agregada PostgreSQL passou **809/809 testes em 98 arquivos**, com 94,98% lines, 95,30% functions e 89,09% branches; `coverage:gate` passou com 29 exceções temporárias sem entradas stale. `npm run test:postgres` passou 41/41. Migration/docs/OpenAPI 70/65, traceabilidade 43/43, security scan, typecheck, lint, build, E2E 63/63 sem retry e mutation 7/7 passam. A evidência é local/condicional: não prova workload representativo, alert routing, failover ou readiness produtivo.
 
 O boundary HTTP agora emite logs JSON estruturados somente com campos allowlisted (`event`, `level`, `component`, `method`, `route`, `status`, `durationMs` e correlação). Correlações controladas pelo chamador são emitidas como `external`; somente IDs `corr_<UUID>` gerados pelo servidor permanecem no log. Corpos, conteúdo clínico, credenciais, tokens, cookies, connection strings e payloads são descartados e labels têm limite de tamanho/cardinalidade. A emissão não altera o resultado de uma requisição quando o writer falha. O SBOM CycloneDX é gerado no CI pelo comando `npm run security:sbom` sob Node 22 e publicado como artefato de verificação.
 

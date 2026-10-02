@@ -27,4 +27,12 @@ describe("API envelope", () => {
     });
     expect(JSON.stringify(response.body)).not.toContain("stack");
   });
+
+  it("maps structured errors from lower operation layers without importing HTTP", () => {
+    const error = Object.assign(new Error("Mensagem não disponível."), { name: "ApiError", code: "OUTBOX_NOT_DEAD_LETTERED", status: 409 });
+    const response = toApiErrorResponse(error, "corr_outbox", "req_outbox");
+
+    expect(response.status).toBe(409);
+    expect(response.body.error).toMatchObject({ code: "OUTBOX_NOT_DEAD_LETTERED", message: "Mensagem não disponível.", correlationId: "corr_outbox" });
+  });
 });

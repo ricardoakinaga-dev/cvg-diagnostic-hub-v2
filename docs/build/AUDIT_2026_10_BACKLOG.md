@@ -1,5 +1,7 @@
 # Backlog Pós-Auditoria — CVG Diagnostics Hub
 
+> **Substituído para execução em 02/10/2026** pelo [backlog PROD-2026-10](PRODUCTION_BACKLOG.md). Este documento fica como registro da onda AUDIT-2026-10.
+
 **Versão:** AUDIT-2026-10
 **Data:** 01/10/2026
 **Estado:** execução local concluída com aceite técnico condicionado; gates humanos, de ambiente-alvo e de revisão independente permanecem abertos
@@ -100,7 +102,7 @@ Referência de achados: [relatório de 01/10/2026](../RELATORIO_AUDITORIA_2026-1
 | AUD-037 | P0 | BLOCKED | QA / M | Re-execução integral dos gates (typecheck, lint, cobertura, browser, integração PostgreSQL, segurança, documentação, rastreabilidade) com packet novo e hash; depende dos itens P0 anteriores. |
 | AUD-038 | P0 | BLOCKED | Patrocinador / M | Revisão independente com contexto novo e veredito registrado em packet com hash; nenhum parecer anterior reaproveitado; nota mínima 85 e zero achado crítico/alto aberto. |
 | AUD-039 | P1 | DONE | Produto / S | Índice `docs/README.md` alcança `v2/*`, `GLOSSARY.md` e `DECISION_LOG.md`; glossário e decision log ampliados para o tamanho do acervo; zero documentos inalcançáveis. Achado §3.4. |
-| AUD-040 | P1 | DONE | Engenharia / M | Dívida de arquitetura endereçada: roteamento do dispatcher derivado do manifesto (elimina as ~49 condições e os schemas duplicados), divisão de `service-common.ts` abaixo do teto e configuração de ambiente tipada; testes de fronteira de arquitetura continuam verdes. Achado §3.1. |
+| AUD-040 | P1 | READY | Engenharia / M | Dívida de arquitetura endereçada: roteamento do dispatcher derivado do manifesto (elimina as ~49 condições e os schemas duplicados), divisão de `service-common.ts` abaixo do teto e configuração de ambiente tipada; testes de fronteira de arquitetura continuam verdes. Achado §3.1. **Reaberto em 02/10/2026:** o matching usa o manifesto, mas o handling ainda tem 71 comparações `operationId ===` (`route.ts` com 777/800 linhas). Continua como [PROD-108](PRODUCTION_BACKLOG.md). |
 
 ## 7.1 G6 — caminho de deploy verificado (achados de 01/10/2026, revisão de prontidão)
 
@@ -113,23 +115,28 @@ Achados novos encontrados ao exercitar o stack em modo produção; nenhum deles 
 | AUD-043 | P0 | DONE | Engenharia / M | **Migrations e worker fora da imagem:** a imagem runner não continha `tsx` nem os scripts. Novo target `ops` no `Dockerfile`, `docker-compose.prod.yml` (proxy TLS, app, worker, migrate, bootstrap) e runbook [DEPLOYMENT.md](../operations/DEPLOYMENT.md). Prova: stack subiu em modo produção, login via TLS, `readyz` 200 com `postgres`/`s3`, outbox processando. |
 | AUD-044 | P1 | DONE | Engenharia / S | `/readyz` passa a falhar em produção sem `SESSION_SECRET` ou sem proxy confiável com segredo de 32+ caracteres (antes, o primeiro sintoma era um 500 ao criar usuário). Prova: `runtime-security.test.ts`. |
 | AUD-045 | P1 | DONE | Engenharia / S | `.env.production` não era ignorado pelo git; `.gitignore` agora ignora `.env.*` exceto os exemplos. |
-| AUD-046 | P1 | READY | Produto + segurança / M | Troca de senha self-service e redefinição pelo ADMIN não existem; hoje a única saída é desativar e recriar a conta. Decidir fluxo (com step-up e auditoria) antes do piloto. |
+| AUD-046 | P1 | READY | Produto + segurança / M | Troca de senha self-service e redefinição pelo ADMIN não existem; hoje a única saída é desativar e recriar a conta. Decidir fluxo (com step-up e auditoria) antes do piloto. Continua como PROD-200…203 no [backlog PROD-2026-10](PRODUCTION_BACKLOG.md). |
 
 ## 8. Resumo por status
 
 | Status | Quantidade | Itens |
 | --- | ---: | --- |
-| `DONE` | 37 | AUD-001…005, 007…019, 021…028, 030…032, 035, 039, 040, 041…045 |
-| `READY` | 1 | AUD-046 |
+| `DONE` | 36 | AUD-001…005, 007…019, 021…028, 030…032, 035, 039, 041…045 |
+| `READY` | 2 | AUD-040 (reaberto), AUD-046 |
 | `BLOCKED` | 8 | AUD-006, 020, 029, 033, 034, 036, 037, 038 |
 
 `DONE` nesta tabela significa implementação local e evidência automatizada reproduzível; não significa aceite clínico, hospitalar ou produtivo. `AUD-004` foi exercitado localmente após a matriz E2E e a rotina também está conectada ao CI/pós-E2E. `AUD-029` exige inspeção manual. Os demais itens `BLOCKED` dependem de autoridade, ambiente ou revisão independente.
 
-## 9. Evidência da execução local — 01/10/2026
+## 9. Evidência da execução local — 02/10/2026
 
-- `npm run test:coverage` — 745 testes unitários em 89 arquivos e 39 testes PostgreSQL em 6 arquivos; 94,90% lines, 95,45% functions e 89,31% branches; `coverage:gate` PASS com 28 exceções declaradas, sem arquivos uncovered ou stale.
+- `npm test` — 768/768 testes em 91 arquivos — PASS.
+- `npm run test:coverage:unit` — 92,79% lines, 94,23% functions e 86,12% branches; leitura unit-only.
+- `npm run test:coverage` — 809/809 testes em 98 arquivos, 94,98% lines, 95,30% functions e 89,09% branches — PASS; `coverage:gate` PASS com 29 exceções temporárias, sem arquivos uncovered/stale.
+- `npm run test:postgres` — 41/41 testes de integração em 7 arquivos — PASS.
 - `node --test scripts/coverage-report.test.mjs` — 5/5, incluindo falha negativa para arquivo abaixo do limiar sem exceção.
-- `npm run test:e2e -- --retries=0 --fail-on-flaky-tests` — 63/63 na matriz; visual 3/3 e acessibilidade 12/12.
+- `npm run test:e2e -- --retries=0 --fail-on-flaky-tests` — 63/63 sem retry — PASS.
 - `npm run test:mutation` — 7/7 controles detectados; relatório é publicado como artefato no CI.
-- `npm run typecheck`, `npm run lint`, `npm run build`, `npm run security:scan`, `npm run validate:openapi` (65 operações/60 paths) e `npm run validate:traceability` (43/43) — PASS.
-- `npm audit --audit-level=high` — sem advisories `critical`/`high`; permanecem advisories `moderate` do Vitest, sem upgrade breaking autorizado nesta onda.
+- `npm run typecheck`, `npm run lint`, `npm run security:scan`, `npm run validate:docs`, `npm run validate:openapi` (70 operações/65 paths), `npm run validate:traceability` (43/43) e `npm run validate:migrations` (001–011) — PASS.
+- `npm run build` — PASS; 12 rotas geradas e `ƒ Proxy (Middleware)` presente.
+- `npm audit --audit-level=high` — sem advisories `critical`/`high`; permanecem 3 advisories `moderate` do Vitest, com correção disponível apenas via upgrade breaking.
+- `npm run validate:aaa3` — reprova de forma fail-closed porque o candidato atual diverge do fingerprint/contagens congelados do packet AAA-3 histórico; não se atualizou o manifesto histórico.

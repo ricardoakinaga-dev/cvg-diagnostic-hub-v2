@@ -13,6 +13,8 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   logout: "LogoutData",
   reauthenticate: "ReauthenticationData",
   listUsers: "ManagedUserList",
+  listSessions: "ManagedSessionList",
+  revokeSession: "ManagedSession",
   createUser: "ManagedUser",
   deactivateUser: "ManagedUser",
   updateUserRole: "ManagedUser",
@@ -67,7 +69,10 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   searchDiagnostics: "SearchResultList",
   getTimeline: "TimelineEventList",
   getDashboard: "DashboardView",
-  getManagementOverview: "ManagementOverview"
+  getManagementOverview: "ManagementOverview",
+  listDeadLetters: "DeadLetterList",
+  reprocessDeadLetter: "DeadLetterMutation",
+  discardDeadLetter: "DeadLetterMutation"
 } as const);
 
 export type ApiSuccessDataSchema = (typeof API_SUCCESS_DATA_SCHEMAS)[keyof typeof API_SUCCESS_DATA_SCHEMAS];
@@ -127,6 +132,8 @@ export type ApiAuthorizationCondition =
   | "delegated MANAGER only creates operational-role targets in managed departments"
   | "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department"
   | "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments"
+  | "delegated MANAGER only revokes sessions for operational-role targets in managed departments"
+  | "role must be ADMIN"
   | "download is limited to released or superseded results and a finalized CLEAN attachment"
   | "current and destination departments must remain inside manager delegation and responsibility never grants patient scope";
 
@@ -295,9 +302,11 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/session/reauth", "reauthenticate", "Refresh privileged-action authentication", "Session", jsonBody("ReauthenticationRequest"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
 
   read("/users", "listUsers", "List managed users", "Administration"),
+  read("/sessions", "listSessions", "List managed sessions", "Administration"),
   command("POST", "/users", "createUser", "Create a managed user", "Administration", jsonBody("ManagedUserCreate"), { headers: [IDEMPOTENCY_REQUIRED], successStatus: 201 }),
   command("DELETE", "/users/{userId}", "deactivateUser", "Deactivate a managed user", "Administration", jsonBody("ManagedUserDeactivate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/users/{userId}/roles", "updateUserRole", "Update a managed user's role", "Administration", jsonBody("UserRoleUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
+  command("POST", "/sessions/{sessionId}/revoke", "revokeSession", "Revoke a managed session", "Administration", jsonBody("SessionRevoke"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
 
   read("/diagnostic-services", "listDiagnosticServices", "List diagnostic services", "Catalog", { queryParameters: [{ name: "includeInactive", schema: "Boolean" }] }),
   read("/diagnostic-services/{serviceId}/result-template", "getResultTemplate", "Read the configured laboratory result template", "Catalog"),
@@ -387,6 +396,9 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   }),
   read("/dashboard", "getDashboard", "Read the operational dashboard", "Operations"),
   read("/management/overview", "getManagementOverview", "Read the management overview", "Operations"),
+  read("/outbox/dead-letters", "listDeadLetters", "List outbox dead-letter messages", "Operations", { queryParameters: [{ name: "limit", schema: "Limit" }] }),
+  command("POST", "/outbox/dead-letters/{messageId}/reprocess", "reprocessDeadLetter", "Reprocess an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
+  command("POST", "/outbox/dead-letters/{messageId}/discard", "discardDeadLetter", "Discard an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
   read("/realtime/events", "streamRealtimeEvents", "Stream authorized realtime events", "Realtime", {
     queryParameters: [{ name: "snapshot", schema: "Boolean" }], requestHeaders: [LAST_EVENT_ID],
     successMediaTypes: ["text/event-stream"], successHeaders: ["x-correlation-id", "cache-control", "connection"],
@@ -428,9 +440,11 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   logout: authorization([], SESSION),
   reauthenticate: authorization([], SESSION),
   listUsers: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only sees operational-role targets in managed departments"]),
+  listSessions: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only sees operational-role targets in managed departments"]),
   createUser: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only creates operational-role targets in managed departments"], true),
   deactivateUser: authorization(["user_role.manage"], [...ROLE, "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments"], true),
   updateUserRole: authorization(["user_role.manage"], [...ROLE, "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department"], true),
+  revokeSession: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only revokes sessions for operational-role targets in managed departments"], true),
   listDiagnosticServices: authorization([], [...ROLE, "includeInactive=true substitutes service.catalog.manage for service.catalog.view", "MANAGER catalog visibility is limited to delegated departments"], false, [
     { when: "includeInactive is false or omitted", allOf: ["service.catalog.view"] },
     { when: "includeInactive is true", allOf: ["service.catalog.manage"] }
@@ -495,15 +509,18 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getTimeline: authorization(["timeline.view"], REQUEST),
   getDashboard: authorization(["dashboard.view"], DEPARTMENT),
   getManagementOverview: authorization(["dashboard.view", "user_role.manage"], [...DEPARTMENT, "role must be MANAGER"]),
+  listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
+  reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"], true),
+  discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"], true),
   streamRealtimeEvents: authorization(["realtime.connect"], ROLE)
 } satisfies Record<string, ApiAuthorization>);
 
 const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getLiveness: [429, 500], getReadiness: [429, 500, 503], getMetrics: [401, 404, 429, 500],
   login: [400, 401, 415, 429, 500], getCurrentSession: [401, 429, 500], logout: [401, 403, 429, 500],
-  reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500],
+  reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500], listSessions: [401, 404, 429, 500],
   createUser: [400, 401, 403, 404, 409, 415, 429, 500], deactivateUser: [400, 401, 403, 404, 409, 415, 429, 500],
-  updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
+  updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], revokeSession: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
   getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
@@ -527,7 +544,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getReport: [401, 404, 429, 500], listAuditEvents: [400, 401, 404, 429, 500], listNotifications: [400, 401, 404, 429, 500],
   acknowledgeNotification: [400, 401, 403, 404, 409, 415, 429, 500], listQueueItems: [400, 401, 404, 429, 500],
   searchDiagnostics: [400, 401, 404, 429, 500], getTimeline: [400, 401, 404, 429, 500], getDashboard: [401, 404, 429, 500],
-  getManagementOverview: [401, 404, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500]
+  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500]
 } satisfies Record<string, ReadonlyArray<number>>);
 
 export const API_OPERATIONS: ReadonlyArray<ApiOperation> = Object.freeze(operations.map((operation) => {

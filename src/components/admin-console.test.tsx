@@ -155,4 +155,36 @@ describe("AdminConsole", () => {
     fireEvent.click(within(userRow).getByRole("button", { name: "Desativar acesso" }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/users/user-vet", expect.objectContaining({ method: "DELETE" })));
   });
+
+  it("keeps session and dead-letter actions behind reauthentication and explicit confirmation", async () => {
+    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+      if (path === "/diagnostic-services?includeInactive=true") return Promise.resolve([]) as never;
+      if (path === "/reason-codes") return Promise.resolve([]) as never;
+      if (path === "/users") return Promise.resolve([]) as never;
+      if (path === "/audit-events?limit=20") return Promise.resolve([]) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "ADMIN" } }) as never;
+      if (path === "/sessions") return Promise.resolve([{ id: "session-vet", userId: "user-vet", userDisplayName: "Dra. Marina Costa", userEmail: "vet@cvg.local", userRole: "VETERINARIAN", departmentCode: "INPATIENT", createdAt: "2026-10-02T00:00:00.000Z", expiresAt: "2026-10-02T08:00:00.000Z", status: "ACTIVE", current: false }]) as never;
+      if (path === "/outbox/dead-letters") return Promise.resolve([{ id: "outbox-1", eventType: "ResultReleased", aggregateType: "Result", aggregateId: "result-1", status: "FAILED", attempts: 5, availableAt: "2026-10-02T00:00:00.000Z", correlationId: "corr-1", lastError: "sink unavailable" }]) as never;
+      if (path === "/session/reauth" && init?.method === "POST") return Promise.resolve({ user: { role: "ADMIN" } }) as never;
+      if (path === "/sessions/session-vet/revoke" && init?.method === "POST") return Promise.resolve({ status: "REVOKED" }) as never;
+      if (path === "/outbox/dead-letters/outbox-1/discard" && init?.method === "POST") return Promise.resolve({ action: "DISCARDED" }) as never;
+      return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    render(<AdminConsole />);
+
+    expect(await screen.findByText("Dra. Marina Costa")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Motivo da revogação"), { target: { value: "Encerramento operacional" } });
+    fireEvent.change(screen.getAllByLabelText("Senha para reautenticar")[0], { target: { value: "AdminPassword1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Revogar sessão" }));
+
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/sessions/session-vet/revoke", expect.objectContaining({ method: "POST" })));
+    expect(apiFetchMock).toHaveBeenCalledWith("/session/reauth", expect.objectContaining({ method: "POST" }));
+
+    fireEvent.change(screen.getByLabelText("Motivo operacional"), { target: { value: "Evento inválido" } });
+    fireEvent.change(screen.getAllByLabelText("Senha para reautenticar")[1], { target: { value: "AdminPassword1" } });
+    fireEvent.click(screen.getByRole("button", { name: "Descartar" }));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/outbox/dead-letters/outbox-1/discard", expect.objectContaining({ method: "POST" })));
+  });
 });

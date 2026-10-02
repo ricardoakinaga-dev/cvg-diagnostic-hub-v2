@@ -70,7 +70,7 @@ describe("database migration runner", () => {
     );
 
     expect(migrations.map((migration) => migration.version)).toEqual([...RUNTIME_MIGRATION_VERSIONS]);
-    expect(migrations).toHaveLength(10);
+    expect(migrations).toHaveLength(RUNTIME_MIGRATION_VERSIONS.length);
     expect(Object.fromEntries(migrations.map((migration) => [migration.version, migration.checksum]))).toEqual(RUNTIME_MIGRATION_CHECKSUMS);
   });
 
@@ -107,7 +107,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("010_relational_backfill_control");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("011_outbox_dead_letter");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -160,7 +160,7 @@ describe("database migration runner", () => {
     );
   });
 
-  it("upgrades a populated 001–009 baseline by applying only 010", async () => {
+  it("upgrades a populated 001–010 baseline by applying only 011", async () => {
     const migrationDirectory = path.resolve(process.cwd(), "db/migrations");
     const migrations = await readMigrationSet(migrationDirectory, RUNTIME_MIGRATION_VERSIONS);
     const baseline = migrations.slice(0, -1).map(({ version, checksum }) => ({ version, checksum }));
@@ -169,7 +169,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["010_relational_backfill_control"],
+      applied: ["011_outbox_dead_letter"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -177,6 +177,12 @@ describe("database migration runner", () => {
       text: migrations.at(-1)?.sql,
       values: []
     });
+  });
+
+  it("advances the relational readiness marker with the dead-letter migration", async () => {
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations", "011_outbox_dead_letter.sql"), "utf8");
+
+    expect(sql).toMatch(/UPDATE relational_schema_markers[\s\S]*011_outbox_dead_letter/i);
   });
 
   it("registers durable, shadow-only relational backfill control metadata as migration 010", async () => {
@@ -306,6 +312,7 @@ describe("runtime schema readiness", () => {
     event_projection_ready: true,
     outbox_claim_ownership_ready: true,
     outbox_routing_ready: true,
+    outbox_dead_letter_ready: true,
     rate_limit_schema_ready: true,
     relational_clinical_core_ready: true,
     transitional_storage_boundary_ready: true,

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "010_relational_backfill_control";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "011_outbox_dead_letter";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -19,7 +19,8 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "007_relational_clinical_core",
   "008_outbox_routing",
   "009_relational_sample_lineage",
-  "010_relational_backfill_control"
+  "010_relational_backfill_control",
+  "011_outbox_dead_letter"
 ] as const;
 
 /**
@@ -37,7 +38,8 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "007_relational_clinical_core": "59799c7880140036e500160bae84bd21bceb83894b7a98c6568e6577c5d29767",
   "008_outbox_routing": "3bf712b2b2bcccb1a51a1a03fd22a4a349c9e4362b75a4e0e42f70eca1a08eff",
   "009_relational_sample_lineage": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c",
-  "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f"
+  "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f",
+  "011_outbox_dead_letter": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -89,6 +91,7 @@ interface RuntimeSchemaRow {
   readonly event_projection_ready: boolean;
   readonly outbox_claim_ownership_ready: boolean;
   readonly outbox_routing_ready: boolean;
+  readonly outbox_dead_letter_ready: boolean;
   readonly rate_limit_schema_ready: boolean;
   readonly relational_clinical_core_ready: boolean;
   readonly transitional_storage_boundary_ready: boolean;
@@ -202,6 +205,20 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
          AND conname = 'outbox_messages_route_consistency_check'
     )
   ) AS outbox_routing_ready,
+  (
+    (SELECT count(*) = 4
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'outbox_messages'
+        AND column_name IN ('dead_lettered_at', 'discarded_at', 'discarded_by', 'discard_reason'))
+    AND EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conrelid = 'outbox_messages'::regclass
+         AND conname = 'outbox_messages_status_check'
+         AND pg_get_constraintdef(oid) ILIKE '%DISCARDED%'
+    )
+  ) AS outbox_dead_letter_ready,
   EXISTS (
     SELECT 1
       FROM information_schema.columns
@@ -576,6 +593,7 @@ function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
     || typeof row.event_projection_ready !== "boolean"
     || typeof row.outbox_claim_ownership_ready !== "boolean"
     || typeof row.outbox_routing_ready !== "boolean"
+    || typeof row.outbox_dead_letter_ready !== "boolean"
     || typeof row.rate_limit_schema_ready !== "boolean"
     || typeof row.relational_clinical_core_ready !== "boolean"
     || typeof row.transitional_storage_boundary_ready !== "boolean"

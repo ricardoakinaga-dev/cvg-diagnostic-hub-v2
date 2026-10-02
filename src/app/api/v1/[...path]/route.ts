@@ -5,12 +5,13 @@ import { createApplicationService } from "../../../../server/application/service
 import { createSuccessResponse, toApiErrorResponse } from "../../../../server/http/envelope";
 import { getRuntimeFileStore, getRuntimeReadiness, getRuntimeStoreAsync } from "../../../../server/store/runtime";
 import { authenticateRequest, authorizationSnapshotIsCurrent, clearSessionCookies, getCookieValue, loginUser, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
+import { requireRecentReauthentication } from "../../../../server/application/service-common";
 import type { CommandMeta, SearchResultType } from "../../../../server/application/service";
 import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
 import { eventVisible } from "../../../../server/application/realtime-visibility";
 import { assertRateLimit } from "../../../../server/security/rate-limit";
-import { createSafeConsoleSink, processOutboxBatch } from "../../../../server/operations/outbox";
+import { createSafeConsoleSink, discardDeadLetterMessage, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "../../../../server/operations/outbox";
 import { recordHttpRequest, recordReadinessFailure, refreshOperationalMetrics, renderPrometheus, routeMetricLabel } from "../../../../server/observability/metrics";
 import { createStructuredLogger, logHttpRequest } from "../../../../server/observability/structured-logger";
 import { notifyRealtimeMutation } from "../../../../server/observability/realtime";
@@ -95,6 +96,8 @@ const managedDepartmentCodesSchema = z.array(departmentCodeSchema).max(20).optio
 const userRoleSchema = z.object({ role: z.enum(ROLES), departmentCode: departmentCodeSchema, managedDepartmentCodes: managedDepartmentCodesSchema, active: z.boolean().optional(), expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
 const userCreateSchema = z.object({ email: z.string().email().refine((value) => codePointLength(value) <= 320), displayName: normalizedText(2, 160), password: boundedString(12, 200), role: z.enum(ROLES), departmentCode: departmentCodeSchema, managedDepartmentCodes: managedDepartmentCodesSchema, timezone: normalizedText(1, 80), reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
 const userDeactivateSchema = z.object({ expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
+const sessionRevokeSchema = z.object({ reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
+const deadLetterCommandSchema = z.object({ reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
 
 function correlationFrom(request: Request): string {
   const supplied = request.headers.get("x-correlation-id")?.trim();
@@ -340,6 +343,7 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     }
 
     if (operationId === "listUsers") return responseFor(await service.listManagedUsers(actor), correlationId, id);
+    if (operationId === "listSessions") return responseFor(await service.listManagedSessions(actor), correlationId, id);
     if (operationId === "createUser") {
       const body = await objectBody(request);
       const parsed = userCreateSchema.safeParse(body);
@@ -357,6 +361,12 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       const parsed = userRoleSchema.safeParse(body);
       if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Os dados de role são inválidos.", 400);
       return responseFor(await service.updateUserRole(actor, path[1], { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id);
+    }
+    if (operationId === "revokeSession") {
+      const body = await objectBody(request);
+      const parsed = sessionRevokeSchema.safeParse(body);
+      if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Os dados de revogação de sessão são inválidos.", 400);
+      return responseFor(await service.revokeManagedSession(actor, path[1], { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id);
     }
 
     if (operationId === "listDiagnosticServices") {
@@ -619,6 +629,22 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     }
     if (operationId === "getDashboard") return responseFor(await service.dashboard(actor), correlationId, id);
     if (operationId === "getManagementOverview") return responseFor(await service.managementOverview(actor), correlationId, id);
+    if (operationId === "listDeadLetters") {
+      if (!canAccessResource(actor, "outbox.manage", {})) throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
+      return responseFor(await listDeadLetterMessages(store, parseLimit(new URL(request.url).searchParams.get("limit"))), correlationId, id);
+    }
+    if (operationId === "reprocessDeadLetter" || operationId === "discardDeadLetter") {
+      if (!canAccessResource(actor, "outbox.manage", {})) throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
+      requireRecentReauthentication(actor);
+      const body = await objectBody(request);
+      const parsed = parseCommandBody(body, deadLetterCommandSchema, "Os dados da dead-letter são inválidos.");
+      const meta = commandMeta(request, body, operation);
+      const command = { actorId: actor.id, correlationId, idempotencyKey: meta.idempotencyKey!, reason: parsed.reason };
+      const result = operationId === "reprocessDeadLetter"
+        ? await reprocessDeadLetterMessage(store, path[2], command)
+        : await discardDeadLetterMessage(store, path[2], command);
+      return responseFor(result, correlationId, id);
+    }
     if (operationId === "streamRealtimeEvents") {
       if (!canAccessResource(actor, "realtime.connect", {})) throw new ApiError("SCOPE_DENIED", "Você não tem acesso ao canal em tempo real.", 404);
       const snapshot = parseBooleanFilter(new URL(request.url).searchParams.get("snapshot"), "snapshot") ?? false;

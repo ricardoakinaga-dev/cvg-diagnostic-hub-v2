@@ -6,6 +6,7 @@
     { "file": "src/app/api/v1/[...path]/route.ts", "reason": "Large catch-all boundary retains defensive branches and requires the browser and PostgreSQL lanes for the remaining paths." },
     { "file": "src/app/error.tsx", "reason": "Framework error boundary branches require a rendered Next runtime failure to exercise." },
     { "file": "src/components/account-view.tsx", "reason": "Account failure and reconciliation branches require browser fault injection." },
+    { "file": "src/components/admin-console.tsx", "reason": "Administrative session and dead-letter recovery branches require authenticated browser actions and explicit confirmation flows." },
     { "file": "src/components/dashboard.tsx", "reason": "Dashboard degraded and realtime branches require browser/runtime failure scenarios." },
     { "file": "src/components/indicators-view.tsx", "reason": "Indicator fallback branches are validated by the responsive browser lane, not isolated component fixtures." },
     { "file": "src/components/notifications-view.tsx", "reason": "Notification recovery and empty-state branches require browser interaction coverage." },

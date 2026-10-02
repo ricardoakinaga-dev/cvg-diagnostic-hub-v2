@@ -676,6 +676,7 @@ em { color: var(--teal-dark); font-family: var(--font-display); font-weight: 400
 .indicator-muted { padding-top: 12px; border-top: 1px solid var(--line); color: var(--ink-faint); }
 .text-success { color: #23755d; }
 .text-danger { color: #a6493e; }
+.text-muted { color: var(--ink-faint); }
 .admin-policy-banner { display: grid; gap: 5px; margin-bottom: 14px; padding: 15px 18px; border: 1px solid #efd7a7; border-radius: 10px; color: var(--amber-dark); background: #fff9ec; font-size: 11px; }
 .admin-policy-banner strong { color: var(--amber-dark); font-size: 12px; }
 .admin-policy-banner p { max-width: 920px; }

@@ -1,4 +1,4 @@
-import type { ItemState, OperationalContext, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ItemState, ManagedSession, OperationalContext, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StoreState, User } from "../domain/models";
 
 export interface CommandMeta {
@@ -199,6 +199,13 @@ export interface ManagedUserDeactivateInput extends CommandMeta {
   reason: string;
   confirm: true;
 }
+
+export interface SessionRevokeInput extends CommandMeta {
+  reason: string;
+  confirm: true;
+}
+
+export type { ManagedSession };
 
 export interface ManagedUser {
   id: string;

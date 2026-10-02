@@ -212,6 +212,7 @@ export type Permission =
   | "search.execute"
   | "health.liveness"
   | "health.readiness"
+  | "outbox.manage"
   | "realtime.connect";
 
 export interface ApiMeta {
@@ -260,6 +261,49 @@ export interface SessionUser {
 export interface SessionResponse {
   user: SessionUser;
 }
+
+export type ManagedSessionStatus = "ACTIVE" | "EXPIRED" | "REVOKED";
+
+export interface ManagedSession {
+  id: string;
+  userId: string;
+  userDisplayName: string;
+  userEmail: string;
+  userRole: RoleCode;
+  departmentCode: string;
+  createdAt: string;
+  expiresAt: string;
+  status: ManagedSessionStatus;
+  current: boolean;
+  revokedAt?: string;
+}
+
+export type ManagedSessionList = ManagedSession[];
+
+export type DeadLetterStatus = "PENDING" | "FAILED" | "DISCARDED";
+
+export interface DeadLetterMessage {
+  id: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  status: DeadLetterStatus;
+  attempts: number;
+  availableAt: string;
+  correlationId: string;
+  lastError?: string;
+  deadLetteredAt?: string;
+  discardedAt?: string;
+  discardedBy?: string;
+  discardReason?: string;
+}
+
+export interface DeadLetterMutationResult {
+  message: DeadLetterMessage;
+  action: "REPROCESSED" | "DISCARDED";
+}
+
+export type DeadLetterList = DeadLetterMessage[];
 
 export interface Patient {
   id: string;

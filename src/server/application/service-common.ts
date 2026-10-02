@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ItemState, ManagedSession, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import { outboxEnvelopeFor, type Admission, type Attachment, type AuditEvent, type DiagnosticItem, type DiagnosticRequest, type DiagnosticService, type Notification, type Procedure, type ProcedureSchedule, type ReasonCode, type Result, type ResultVersion, type Sample, type StateStore, type StoreState, type User } from "../domain/models";
 import type { FileStore } from "../storage/file-store";
 import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
@@ -81,6 +81,28 @@ export function managedUser(user: User): ManagedUser {
     active: user.active !== false,
     createdAt: user.createdAt,
     version: user.version
+  };
+}
+
+export function managedSession(session: StoreState["sessions"][number], user: User, currentSessionId?: string): ManagedSession {
+  const nowMs = Date.now();
+  const status = session.revokedAt
+    ? "REVOKED"
+    : Date.parse(session.expiresAt) <= nowMs || user.active === false
+      ? "EXPIRED"
+      : "ACTIVE";
+  return {
+    id: session.id,
+    userId: user.id,
+    userDisplayName: user.displayName,
+    userEmail: user.email,
+    userRole: user.role,
+    departmentCode: user.departmentCode,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+    status,
+    current: session.id === currentSessionId,
+    ...(session.revokedAt ? { revokedAt: session.revokedAt } : {})
   };
 }
 

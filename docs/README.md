@@ -13,6 +13,7 @@
 | Arquitetura/UX | `architecture/*`, `ux/*`, `adr/*` | Como organizar módulos, telas e decisões duráveis? |
 | Segurança/testes/operações | `security/*`, `testing/*`, [operations/*](operations/OBSERVABILITY.md), [deploy de produção](operations/DEPLOYMENT.md), [runbooks](operations/INCIDENT_RUNBOOKS.md) | Como operar com segurança e saber que está correto? |
 | Build | `build/*` | Em que ordem construir e validar? |
+| Plano até produção (corrente) | [Plano](build/PRODUCTION_PLAN.md), [roadmap](build/PRODUCTION_ROADMAP.md), [backlog](build/PRODUCTION_BACKLOG.md), [auditoria de 02/10/2026](RELATORIO_AUDITORIA_2026-10-02.md) | O que falta, em que ordem e com que critério, para declarar o programa pronto para produção? |
 | Barra de qualidade histórica (95) | `build/QUALITY_SCORECARD_95.md`, `build/ROADMAP_95.md`, `build/BACKLOG_95.md` | O que significava 95/100 e qual era a sequência histórica? |
 | State of Art / AAA-2 histórico | [Barra](build/AAA_2_QUALITY_BAR.md), [plano executivo](build/AAA_2_EXECUTIVE_PLAN.md), [roadmap](build/AAA_2_ROADMAP.md), [backlog](build/AAA_2_BACKLOG.md) | Qual foi a execução histórica que antecedeu o AAA-3? |
 | State of Art / Triplo AAA (AAA-3 atual) | [Plano executivo](build/STATE_OF_ART_TRIPLE_AAA_EXECUTIVE_PLAN.md), [roadmap](build/STATE_OF_ART_TRIPLE_AAA_ROADMAP.md), [backlog](build/STATE_OF_ART_TRIPLE_AAA_BACKLOG.md) | Como conduzir o candidato técnico até aceite clínico, piloto e release governado? |
@@ -31,9 +32,9 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Snapshot executável corrente — AUDIT-2026-10 (01/10/2026)
+## Snapshot executável corrente — AUDIT-2026-10 (02/10/2026)
 
-O working tree corrente passou `npm run test:coverage` com **745 testes unitários em 89 arquivos** e **39 testes PostgreSQL em 6 arquivos**, totalizando **784 testes** na cobertura agregada. A cobertura foi 94,90% lines, 95,45% functions e 89,31% branches; o `coverage:gate` passou com 28 exceções versionadas, sem arquivos `uncovered` ou `stale`. A matriz Playwright passou **63/63** sem retry, incluindo visual 3/3 e acessibilidade 12/12. Typecheck, lint, build, security scan, OpenAPI 65/60, traceabilidade 43/43, mutation 7/7 e testes negativos do coverage gate passaram. O candidato continua `CONDITIONAL PASS LOCAL / BLOCKED` para produção clínica: inspeção manual, autoridade operacional, CI remoto, workload/failover, RPO/RTO, secret manager, cutover e aceite hospitalar permanecem abertos.
+O working tree corrente passou `npm test` com **768/768 testes em 91 arquivos**. O recálculo unitário registrou **92,79% lines, 94,23% functions e 86,12% branches**. A cobertura agregada PostgreSQL passou **809/809 testes em 98 arquivos**, com **94,98% lines, 95,30% functions e 89,09% branches**; `coverage:gate` passou com 29 exceções declaradas, sem arquivos `uncovered` ou `stale`. `npm run test:postgres` passou 41/41. `validate:migrations`, `validate:docs`, `validate:openapi` (70 operações/65 paths), `validate:traceability`, `security:scan`, typecheck, lint, build, E2E `63/63` sem retry e mutation `7/7` passaram. O candidato continua `CONDITIONAL PASS LOCAL / BLOCKED` para produção clínica.
 
 ## Snapshot AAA-3 histórico (07/09/2026)
 

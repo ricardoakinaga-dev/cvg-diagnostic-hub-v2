@@ -35,7 +35,8 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "user_role.manage",
     "audit.view",
     "health.liveness",
-    "health.readiness"
+    "health.readiness",
+    "outbox.manage"
   ],
   MANAGER: [
     ...commonRead,

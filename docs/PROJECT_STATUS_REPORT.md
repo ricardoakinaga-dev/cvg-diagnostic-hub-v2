@@ -1,5 +1,7 @@
 # Relatório de status de construção — CVG Diagnostics Hub V2
 
+> **Status corrente (02/10/2026):** ver a [auditoria de 02/10/2026](RELATORIO_AUDITORIA_2026-10-02.md) (nota 77/100), o [roadmap](build/PRODUCTION_ROADMAP.md) e o [backlog PROD-2026-10](build/PRODUCTION_BACKLOG.md). Linha de base: 809/809 testes, cobertura de 94,98%/95,30%/89,10% (lines/functions/branches), migrations 001–011, caminho de deploy verificado em modo produção. Bloqueador técnico principal: o teto de escala do snapshot JSONB (F-01). O texto abaixo é histórico.
+
 **Auditoria realizada:** 04/09/2026  
 **Revisão observada:** `01bb1804682b4bb503e00e41c1361dc704d2294d`  
 **Escopo:** documentação completa em `docs/`, código, configuração de testes, migrations, CI e evidência executável local.
@@ -21,7 +23,7 @@ e os gates humanos/ambiente-alvo permanecem abertos.
 Consulte o [relatório corrente](RELATORIO_AUDITORIA_2026-09-07.md) e o
 [manifesto AAA-3](../.orchestrate/aaa3-execution-20260907/evidence-manifest.json).
 
-**Atualização corrente AUDIT-2026-10:** em 01/10/2026, a cobertura integrada passou
+**Snapshot anterior AUDIT-2026-10 (01/10/2026):** a cobertura integrada passou
 745 testes unitários em 89 arquivos e 39 testes PostgreSQL em 6 arquivos, com
 94,90% lines, 95,45% functions e 89,31% branches. O `coverage:gate` passou com
 28 exceções versionadas; a matriz browser passou 63/63 sem retry, incluindo
@@ -29,6 +31,18 @@ visual 3/3 e acessibilidade 12/12. Typecheck, lint, build, security scan,
 OpenAPI 65/60, traceabilidade 43/43, mutation 7/7 e os testes negativos do gate
 de cobertura passaram. Esta evidência é local e não fecha inspeção manual,
 ambiente-alvo, RPO/RTO, failover, revisão independente ou aceite clínico.
+
+**Candidata corrente de 02/10/2026:** `npm test` passou **768/768 testes em 91
+arquivos** após a migration `011_outbox_dead_letter`, os controles administrativos
+de sessões/dead-letter e a atualização do contrato OpenAPI para 70 operações/65
+paths. O recálculo unitário registrou 92,79% lines, 86,12% branches e 94,23%
+functions. A cobertura agregada PostgreSQL passou **809/809 testes em 98 arquivos**,
+com 94,98% lines, 89,09% branches e 95,30% functions; `coverage:gate` passou com
+29 exceções temporárias sem arquivos uncovered/stale. `npm run test:postgres`
+passou 41/41. O build passou, assim como E2E 63/63 sem retry e mutation 7/7.
+`validate:migrations`, `validate:docs`, `validate:openapi`, `validate:traceability`,
+`security:scan`, typecheck e lint passam. O status
+continua `NOT READY`.
 
 ## Veredito executivo
 

@@ -46,14 +46,17 @@ Reproduzido com EXIT=0: typecheck, lint, 725/725 testes (86 arquivos), cobertura
 
 Nada deste levantamento altera os 45 gates abertos de `PRODUCTION_READINESS.md`, `RELEASE_CHECKLIST.md` e `OPEN_QUESTIONS.md`.
 
-## 2.1 Estado corrente da onda — 01/10/2026
+## 2.1 Estado corrente da onda — 02/10/2026
 
-O backlog corrente registra **32 itens `DONE`** e **8 `BLOCKED`**. A execução local passou 745 testes unitários em 89 arquivos e
-39 testes PostgreSQL em 6 arquivos, com 94,90% lines, 95,45% functions e 89,31%
-branches; browser 63/63 sem retry, visual 3/3, acessibilidade 12/12, mutation
-7/7, OpenAPI 65/60 e traceabilidade 43/43. Esses números substituem somente a
-baseline numérica corrente; a nota histórica de 76/100 e os gates humanos não
-são reclassificados por testes locais.
+O backlog corrente mantém os itens DONE/BLOCKED definidos no backlog; a candidata
+de 02/10 passou **768/768 testes locais em 91 arquivos**. A execução unitária
+registrou 92,79% lines, 86,12% branches e 94,23% functions. A cobertura agregada
+PostgreSQL passou 809/809 testes em 98 arquivos, com 94,98% lines, 89,09% branches
+e 95,30% functions; o coverage gate passou com 29 exceções temporárias sem arquivos
+uncovered/stale. Migrations, docs, security scan, typecheck, lint, build, E2E 63/63
+sem retry, mutation 7/7, traceabilidade 43/43 e OpenAPI 70/65 passaram.
+Esses números atualizam apenas a evidência local e não reclassificam a nota
+histórica de 76/100 nem os gates humanos.
 
 ## 3. Resultado contratado
 
@@ -88,7 +91,7 @@ Ao final desta onda, o repositório deverá permitir afirmar, com evidência rep
 1. **Um número, uma fonte.** Toda métrica citada em documento aponta para comando, ambiente, data e limitação.
 2. **Gate honesto antes de gate verde.** Nenhum script de garantia pode aprovar silenciosamente quando sua dependência falta.
 3. **Correção por prova.** Item só vira `DONE` com evidência nova e reproduzível; packet histórico não fecha item.
-4. **Zero regressão.** A suíte corrente de 784 testes (745 unitários + 39 PostgreSQL), a matriz browser 63/63, typecheck, lint e rastreabilidade 43/43 permanecem verdes em cada gate de fase.
+4. **Zero regressão.** A candidata corrente preserva 768/768 testes locais; a suíte PostgreSQL 41/41 e os gates de cobertura agregada foram repetidos com ambiente descartável.
 5. **Evidência local é local.** A onda não altera o estado `CONDITIONAL PASS / BLOCKED` do candidato.
 
 ## 6. Critérios de aceite globais

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
 import type { StoreState } from "../domain/models";
 import { MemoryStore } from "../store/memory-store";
-import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, InProcessEventBus, processOutboxBatch } from "./outbox";
+import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, discardDeadLetterMessage, InProcessEventBus, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "./outbox";
 import type { OutboxSink, OutboxSqlExecutor } from "./outbox";
 
 function stateWithMessage(): StoreState {
@@ -104,6 +104,36 @@ describe("durable outbox processing", () => {
 
     expect(store.getState().notifications[0]).toMatchObject({ state: "FAILED", version: 2 });
     expect(store.getState().auditEvents).toContainEqual(expect.objectContaining({ eventType: "NotificationDeliveryFailed", entityId: "notification-dead", newState: "FAILED" }));
+  });
+
+  it("reprocesses a dead-lettered notification through an audited idempotent command", async () => {
+    const state = stateWithMessage();
+    state.notifications = [{ id: "notification-reprocess", category: "CRITICAL", priority: "URGENT", recipientUserId: "user-vet", entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Resultado crítico", body: "Confirmação necessária.", dedupeKey: "request-1:reprocess", state: "PENDING", createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1 }];
+    state.outbox[0] = { ...state.outbox[0], payload: { notificationId: "notification-reprocess" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" };
+    const store = new MemoryStore(state);
+    await processOutboxBatch(store, { publish: async () => { throw new Error("downstream unavailable"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 1, batchSize: 1 });
+
+    const command = { actorId: "user-admin", correlationId: "corr-reprocess", idempotencyKey: "reprocess-1", reason: "Dependência recuperada", now: () => new Date("2026-08-20T10:02:00.000Z") };
+    const first = await reprocessDeadLetterMessage(store, "outbox-1", command);
+    const auditCount = store.getState().auditEvents.length;
+    const replay = await reprocessDeadLetterMessage(store, "outbox-1", command);
+
+    expect(first).toEqual(replay);
+    expect(first).toMatchObject({ action: "REPROCESSED", message: { id: "outbox-1", status: "PENDING", attempts: 0 } });
+    expect(store.getState().notifications[0]).toMatchObject({ state: "PENDING", version: 3 });
+    expect(store.getState().auditEvents.length).toBe(auditCount);
+    expect(store.getState().auditEvents).toContainEqual(expect.objectContaining({ eventType: "OutboxDeadLetterReprocessed", actorId: "user-admin", entityId: "outbox-1" }));
+  });
+
+  it("lists and explicitly discards dead letters without allowing the worker to reclaim them", async () => {
+    const store = new MemoryStore(stateWithMessage());
+    await processOutboxBatch(store, { publish: async () => { throw new Error("poison route"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 1, batchSize: 1 });
+
+    expect(await listDeadLetterMessages(store)).toMatchObject([{ id: "outbox-1", status: "FAILED", attempts: 1 }]);
+    const discarded = await discardDeadLetterMessage(store, "outbox-1", { actorId: "user-admin", correlationId: "corr-discard", idempotencyKey: "discard-1", reason: "Evento inválido e sem destinatário", now: () => new Date("2026-08-20T10:02:00.000Z") });
+
+    expect(discarded).toMatchObject({ action: "DISCARDED", message: { status: "DISCARDED", discardedBy: "user-admin", discardReason: "Evento inválido e sem destinatário" } });
+    expect((await processOutboxBatch(store, { publish: async () => ({ confirmed: true, durability: "DURABLE", sink: "test", deliveryId: "delivery" }) }, { now: () => new Date("2026-08-20T10:03:00.000Z"), batchSize: 1 })).claimed).toBe(0);
   });
 
   it("reclaims an expired processing lease but not an active lease", async () => {

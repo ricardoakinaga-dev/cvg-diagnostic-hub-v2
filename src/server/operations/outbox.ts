@@ -1,5 +1,17 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { outboxEnvelopeFor, OUTBOX_NOTIFICATION_ROUTING_KEY, type Notification, type OutboxMessage, type StateStore } from "../domain/models";
+
+class OutboxApiError extends Error {
+  public readonly code: string;
+  public readonly status: number;
+
+  constructor(code: string, message: string, status: number) {
+    super(message);
+    this.name = "ApiError";
+    this.code = code;
+    this.status = status;
+  }
+}
 
 export interface PublishedEvent {
   id: string;
@@ -72,6 +84,35 @@ export interface OutboxProcessSummary {
   processed: number;
   retried: number;
   failed: number;
+}
+
+export interface DeadLetterMessage {
+  id: string;
+  eventType: string;
+  aggregateType: string;
+  aggregateId: string;
+  status: Extract<OutboxMessage["status"], "PENDING" | "FAILED" | "DISCARDED">;
+  attempts: number;
+  availableAt: string;
+  correlationId: string;
+  lastError?: string;
+  deadLetteredAt?: string;
+  discardedAt?: string;
+  discardedBy?: string;
+  discardReason?: string;
+}
+
+export interface DeadLetterCommand {
+  actorId: string;
+  correlationId: string;
+  idempotencyKey: string;
+  reason: string;
+  now?: () => Date;
+}
+
+export interface DeadLetterMutationResult {
+  message: DeadLetterMessage;
+  action: "REPROCESSED" | "DISCARDED";
 }
 
 interface ClaimedMessage {
@@ -273,6 +314,7 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
       const retryDelay = baseDelayMs * (2 ** Math.max(0, claimed.message.attempts - 1));
       const nextAvailableAt = new Date(now().getTime() + Math.min(retryDelay, 15 * 60_000)).toISOString();
       const safeMessage = normalizeError(error);
+      const failedAt = now().toISOString();
       const finished = await finishMessage(store, routedMessage, claimed.leaseMs, (message) => ({
         ...message,
         status: permanentlyFailed ? "FAILED" : "PENDING",
@@ -280,7 +322,11 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
         lockedAt: undefined,
         workerId: undefined,
         claimToken: undefined,
-        lastError: safeMessage
+        lastError: safeMessage,
+        deadLetteredAt: permanentlyFailed ? failedAt : undefined,
+        discardedAt: undefined,
+        discardedBy: undefined,
+        discardReason: undefined
       }), now());
       if (!finished) continue;
       if (permanentlyFailed) summary.failed += 1;
@@ -289,6 +335,143 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
   }
 
   return summary;
+}
+
+export async function listDeadLetterMessages(store: StateStore, limit = 100): Promise<DeadLetterMessage[]> {
+  const state = await store.readState();
+  return state.outbox
+    .filter((message): message is OutboxMessage & { status: "FAILED" | "DISCARDED" } => message.status === "FAILED" || message.status === "DISCARDED")
+    .sort((left, right) => (right.deadLetteredAt ?? right.availableAt).localeCompare(left.deadLetteredAt ?? left.availableAt))
+    .slice(0, Math.min(Math.max(Math.trunc(limit), 1), 100))
+    .map(deadLetterProjection);
+}
+
+export async function reprocessDeadLetterMessage(store: StateStore, messageId: string, command: DeadLetterCommand): Promise<DeadLetterMutationResult> {
+  return mutateDeadLetter(store, messageId, command, "REPROCESSED");
+}
+
+export async function discardDeadLetterMessage(store: StateStore, messageId: string, command: DeadLetterCommand): Promise<DeadLetterMutationResult> {
+  return mutateDeadLetter(store, messageId, command, "DISCARDED");
+}
+
+async function mutateDeadLetter(
+  store: StateStore,
+  messageId: string,
+  command: DeadLetterCommand,
+  action: DeadLetterMutationResult["action"]
+): Promise<DeadLetterMutationResult> {
+  const now = command.now ?? (() => new Date());
+  const normalizedReason = command.reason.trim();
+  if (!messageId || messageId.length > 200) throw new OutboxApiError("VALIDATION_ERROR", "A mensagem do outbox é inválida.", 400);
+  if (!normalizedReason || normalizedReason.length > 500) throw new OutboxApiError("VALIDATION_ERROR", "Informe um motivo operacional válido.", 400);
+  if (!command.actorId || !command.correlationId || !command.idempotencyKey) throw new OutboxApiError("VALIDATION_ERROR", "Metadados de auditoria são obrigatórios.", 400);
+  const payloadHash = createHash("sha256").update(JSON.stringify({ messageId, reason: normalizedReason })).digest("hex");
+  const scope = `POST:/outbox/dead-letters/${action.toLowerCase()}`;
+
+  return store.transaction((state) => {
+    const existing = state.idempotency.find((entry) => entry.actorId === command.actorId && entry.scope === scope && entry.key === command.idempotencyKey);
+    if (existing) {
+      if (existing.payloadHash !== payloadHash) throw new OutboxApiError("IDEMPOTENCY_KEY_REUSED", "A chave de idempotência já foi usada com outro comando.", 409);
+      return { state, result: existing.response as DeadLetterMutationResult };
+    }
+
+    const current = state.outbox.find((message) => message.id === messageId);
+    if (!current) throw new OutboxApiError("NOT_FOUND", "Mensagem do outbox não encontrada.", 404);
+    if (current.status === "DISCARDED") throw new OutboxApiError("OUTBOX_DEAD_LETTER_ALREADY_DISCARDED", "A mensagem já foi descartada.", 409);
+    if (current.status !== "FAILED") throw new OutboxApiError("OUTBOX_NOT_DEAD_LETTERED", "A mensagem não está disponível na dead-letter queue.", 409);
+
+    const occurredAt = now().toISOString();
+    const updatedMessage: OutboxMessage = action === "REPROCESSED"
+      ? {
+          ...current,
+          status: "PENDING",
+          attempts: 0,
+          availableAt: occurredAt,
+          lockedAt: undefined,
+          workerId: undefined,
+          claimToken: undefined,
+          lastError: undefined,
+          deadLetteredAt: undefined,
+          discardedAt: undefined,
+          discardedBy: undefined,
+          discardReason: undefined
+        }
+      : {
+          ...current,
+          status: "DISCARDED",
+          lockedAt: undefined,
+          workerId: undefined,
+          claimToken: undefined,
+          discardedAt: occurredAt,
+          discardedBy: command.actorId,
+          discardReason: normalizedReason
+        };
+    const notificationId = typeof current.payload.notificationId === "string" ? current.payload.notificationId : undefined;
+    const notification = notificationId ? state.notifications.find((entry) => entry.id === notificationId) : undefined;
+    const notifications = action === "REPROCESSED" && notification?.state === "FAILED"
+      ? state.notifications.map((entry) => entry.id === notification.id ? { ...entry, state: "PENDING" as const, version: entry.version + 1 } : entry)
+      : state.notifications;
+    const auditEvents = [
+      ...state.auditEvents,
+      {
+        id: `audit-outbox-${action.toLowerCase()}-${randomUUID()}`,
+        eventType: action === "REPROCESSED" ? "OutboxDeadLetterReprocessed" : "OutboxDeadLetterDiscarded",
+        actorId: command.actorId,
+        entityType: "OutboxMessage",
+        entityId: current.id,
+        previousState: current.status,
+        newState: updatedMessage.status,
+        correlationId: command.correlationId,
+        metadata: { reason: normalizedReason, attempts: current.attempts, ...(notificationId ? { notificationId } : {}) },
+        occurredAt
+      },
+      ...(action === "REPROCESSED" && notification?.state === "FAILED" ? [{
+        id: `audit-notification-requeued-${randomUUID()}`,
+        eventType: "NotificationDeliveryRequeued",
+        actorId: command.actorId,
+        entityType: "Notification",
+        entityId: notification.id,
+        previousState: "FAILED",
+        newState: "PENDING",
+        correlationId: command.correlationId,
+        metadata: { outboxId: current.id },
+        occurredAt
+      }] : [])
+    ];
+    const result: DeadLetterMutationResult = { message: deadLetterProjection(updatedMessage), action };
+    const idempotency = [...state.idempotency, { actorId: command.actorId, scope, key: command.idempotencyKey, payloadHash, response: result, createdAt: occurredAt }];
+    return {
+      state: {
+        ...state,
+        outbox: state.outbox.map((message) => message.id === current.id ? updatedMessage : message),
+        notifications,
+        auditEvents,
+        idempotency
+      },
+      result
+    };
+  });
+}
+
+function deadLetterProjection(message: OutboxMessage): DeadLetterMessage {
+  if (message.status !== "PENDING" && message.status !== "FAILED" && message.status !== "DISCARDED") {
+    throw new Error("OUTBOX_DEAD_LETTER_PROJECTION_INVALID_STATUS");
+  }
+  return {
+    id: message.id,
+    eventType: message.eventType,
+    aggregateType: message.aggregateType,
+    aggregateId: message.aggregateId,
+    status: message.status,
+    attempts: message.attempts,
+    availableAt: message.availableAt,
+    correlationId: message.correlationId,
+    ...(message.lastError ? { lastError: message.lastError } : {}),
+    ...(message.deadLetteredAt ? { deadLetteredAt: message.deadLetteredAt } : {}),
+    ...(message.discardedAt ? { discardedAt: message.discardedAt } : {}),
+    ...(message.discardedBy ? { discardedBy: message.discardedBy } : {}),
+    ...(message.discardReason ? { discardReason: message.discardReason } : {})
+  };
 }
 
 async function claimNext(store: StateStore, currentTime: Date, workerId: string, leaseMs: number, sink: OutboxSink): Promise<ClaimedMessage | undefined> {
