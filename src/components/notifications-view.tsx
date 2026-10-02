@@ -2,22 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Notification } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { Icon } from "./ui-icons";
-
-interface Notification {
-  id: string;
-  category: string;
-  priority: string;
-  title: string;
-  body: string;
-  createdAt: string;
-  state: "PENDING" | "DELIVERED" | "SEEN" | "ACKNOWLEDGED" | "FAILED" | "SUPERSEDED" | "ESCALATED";
-  deepLink: string;
-  version: number;
-}
 
 interface NotificationActionsProps {
   item: Notification;

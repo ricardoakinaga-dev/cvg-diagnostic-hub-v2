@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
+import type { SessionResponse, SessionUser } from "@cvg/contracts";
 import { apiFetch } from "./api-client";
+import { LoadingState } from "./feedback-states";
 import { Icon, type IconName } from "./ui-icons";
 
-interface SessionUser { id: string; email: string; displayName: string; role: string; departmentCode: string; timezone: string }
 type LiveStatus = "connecting" | "connected" | "degraded";
 const REALTIME_FALLBACK_INTERVAL_MS = 30_000;
 const roleLabels: Record<string, string> = {
@@ -26,12 +27,7 @@ function roleLabel(role: string): string {
 }
 
 function ShellLoadingState() {
-  return (
-    <div className="screen-center" role="status" aria-label="Carregando o espaço operacional." aria-live="polite" aria-busy="true">
-      <div className="loading-mark" aria-hidden="true" />
-      <span className="sr-only">Carregando o espaço operacional.</span>
-    </div>
-  );
+  return <LoadingState className="screen-center" label="Carregando o espaço operacional." />;
 }
 
 export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -56,7 +52,7 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
   }, []);
 
   useEffect(() => {
-    apiFetch<{ user: SessionUser }>("/session/me")
+    apiFetch<SessionResponse>("/session/me")
       .then((result) => setUser(result.user))
       .catch(() => router.replace("/login"))
       .finally(() => setLoading(false));

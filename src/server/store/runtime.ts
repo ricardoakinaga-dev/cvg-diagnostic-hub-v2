@@ -59,9 +59,24 @@ export function getRuntimeFileStore(): FileStore {
   return globalThis.__cvgDiagnosticsFileStore;
 }
 
+/**
+ * Secrets that are only read on specific request paths must still block
+ * readiness, otherwise a misconfigured instance accepts traffic and fails later
+ * with a 500 in the middle of a privileged workflow.
+ */
+function assertProductionSecrets(environment: Partial<NodeJS.ProcessEnv>): void {
+  if ((environment.SESSION_SECRET?.trim().length ?? 0) < 32) {
+    throw new Error("SESSION_SECRET deve conter ao menos 32 caracteres em produção.");
+  }
+  if (environment.TRUST_PROXY?.trim() !== "true" || (environment.TRUST_PROXY_SHARED_SECRET?.trim().length ?? 0) < 32) {
+    throw new Error("TRUST_PROXY=true e TRUST_PROXY_SHARED_SECRET (32+ caracteres) são obrigatórios em produção.");
+  }
+}
+
 export async function getRuntimeReadiness(): Promise<{ dataMode: string; storageMode: string }> {
   const dataMode = runtimeDataMode();
   if (dataMode === "postgres" && process.env.NODE_ENV === "production") {
+    assertProductionSecrets(process.env);
     assertRealtimeNotificationConfiguration(process.env);
   }
   const store = await getRuntimeStoreAsync();

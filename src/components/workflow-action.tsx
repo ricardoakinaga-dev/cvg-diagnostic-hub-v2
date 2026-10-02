@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { ItemState, WorkflowType } from "@cvg/contracts";
+import type { QueueItem } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { Icon } from "./ui-icons";
@@ -21,16 +21,7 @@ export type WorkflowActionKind =
 
 type WorkflowPendingAction = "submit" | "release" | null;
 
-export interface WorkflowActionItem {
-  id: string;
-  status: ItemState;
-  workflowType: WorkflowType;
-  version: number;
-  currentResultId?: string;
-  currentSampleId?: string;
-  procedureId?: string;
-  procedureVersion?: number;
-}
+export type WorkflowActionItem = Pick<QueueItem, "id" | "status" | "workflowType" | "version" | "currentResultId" | "currentSampleId" | "procedureId" | "procedureVersion">;
 
 export function workflowActionFor(item: Pick<WorkflowActionItem, "status" | "workflowType" | "currentResultId" | "currentSampleId">): WorkflowActionKind | undefined {
   if (item.status === "REQUESTED" && item.workflowType === "LABORATORY") return "RECEIVE_SAMPLE";

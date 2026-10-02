@@ -14,19 +14,27 @@ export function useDialogFocus(
   initialFocusRef?: RefObject<HTMLElement | null>
 ): void {
   const closeRef = useRef(onClose);
+  const openerRef = useRef<HTMLElement | null>(null);
+  const restoreFocusTimer = useRef<number | null>(null);
   useEffect(() => {
     closeRef.current = onClose;
   }, [onClose]);
 
   useEffect(() => {
+    if (restoreFocusTimer.current !== null) {
+      window.clearTimeout(restoreFocusTimer.current);
+      restoreFocusTimer.current = null;
+    }
     const dialog = dialogRef.current;
     if (!dialog) return undefined;
-    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const ownsDialogLayer = !dialog.hasAttribute("data-dialog-layer");
+    if (ownsDialogLayer) dialog.setAttribute("data-dialog-layer", "true");
+    if (openerRef.current === null) openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const focusInitial = () => {
       const initial = initialFocusRef?.current ?? dialog.querySelector<HTMLElement>("[autofocus]") ?? focusableElements(dialog)[0];
       initial?.focus();
     };
-    const frame = window.requestAnimationFrame(focusInitial);
+    focusInitial();
     const isTopmostDialog = () => {
       const dialogs = Array.from(document.querySelectorAll<HTMLElement>("[data-dialog-layer='true']"));
       return dialogs.at(-1) === dialog;
@@ -59,9 +67,12 @@ export function useDialogFocus(
     };
     window.addEventListener("keydown", onKeyDown);
     return () => {
-      window.cancelAnimationFrame(frame);
       window.removeEventListener("keydown", onKeyDown);
-      window.setTimeout(() => opener?.focus(), 0);
+      if (ownsDialogLayer) dialog.removeAttribute("data-dialog-layer");
+      restoreFocusTimer.current = window.setTimeout(() => {
+        restoreFocusTimer.current = null;
+        if (openerRef.current?.isConnected) openerRef.current.focus();
+      }, 0);
     };
   }, [dialogRef, initialFocusRef]);
 }

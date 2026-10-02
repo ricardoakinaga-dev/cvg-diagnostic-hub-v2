@@ -12,8 +12,8 @@ async function signOut(page: import("@playwright/test").Page): Promise<void> {
 }
 
 async function expectNoAxeViolations(page: import("@playwright/test").Page, name: string): Promise<void> {
-  const rules = ["aria-allowed-attr", "aria-required-attr", "aria-valid-attr", "button-name", "color-contrast", "document-title", "duplicate-id-aria", "html-has-lang", "heading-order", "label", "landmark-one-main", "link-name", "nested-interactive", "role-img-alt", "tabindex"];
-  const results = await new AxeBuilder({ page }).include("main").withRules(rules).setLegacyMode(true).analyze();
+  const rules = ["aria-allowed-attr", "aria-command-name", "aria-prohibited-attr", "aria-required-attr", "aria-required-children", "aria-required-parent", "aria-roles", "aria-valid-attr", "aria-valid-attr-value", "button-name", "color-contrast", "document-title", "duplicate-id-aria", "html-has-lang", "heading-order", "label", "landmark-one-main", "landmark-unique", "link-name", "nested-interactive", "region", "role-img-alt", "tabindex"];
+  const results = await new AxeBuilder({ page }).include("body").withRules(rules).setLegacyMode(true).analyze();
   expect(results.violations, `${name}: ${results.violations.map((violation) => `${violation.id}: ${violation.help}`).join("; ")}`).toEqual([]);
 }
 
@@ -94,6 +94,7 @@ test.describe("accessible operational surfaces", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
     await page.goto("/patients", { waitUntil: "domcontentloaded" });
+    await expect(page.locator(".topbar")).toBeVisible();
 
     const navigation = page.getByRole("navigation", { name: "Navegação rápida" });
     await expect(navigation).toBeVisible();
@@ -110,5 +111,6 @@ test.describe("accessible operational surfaces", () => {
       const style = getComputedStyle(element);
       return `${style.outlineWidth} ${style.outlineStyle}`;
     })).toBe("3px solid");
+    await expectNoAxeViolations(page, "mobile patients");
   });
 });

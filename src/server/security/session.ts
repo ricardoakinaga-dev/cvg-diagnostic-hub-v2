@@ -1,11 +1,12 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { StateStore, StoreState, User } from "../domain/models";
 import { ApiError } from "../http/envelope";
-import { verifyPassword } from "./password";
+import * as passwordSecurity from "./password";
 
 const SESSION_COOKIE = "cvg_session";
 const CSRF_COOKIE = "cvg_csrf";
 const SESSION_TTL_MS = 8 * 60 * 60 * 1000;
+const DUMMY_PASSWORD_HASH = "cvg-dummy-salt:fc81e88c18ea45b82209799aa84e44e5ad0fc2b898030079a3e8150af5121a36d7008c3a6ab0d31378dda1d4473e277fec45bf24617aed6cd62bbf26ef484308";
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -20,13 +21,22 @@ function sameScope(left: readonly string[] | undefined, right: readonly string[]
 
 function parseCookies(request: Request): Record<string, string> {
   const header = request.headers.get("cookie") ?? "";
-  return Object.fromEntries(
-    header
-      .split(";")
-      .map((part) => part.trim().split("="))
-      .filter(([key, value]) => Boolean(key && value))
-      .map(([key, value]) => [key, decodeURIComponent(value)])
-  );
+  const cookies: Record<string, string> = {};
+  const malformedKeys = new Set<string>();
+  for (const part of header.split(";")) {
+    const separator = part.indexOf("=");
+    if (separator <= 0) continue;
+    const key = part.slice(0, separator).trim();
+    if (!key || malformedKeys.has(key)) continue;
+    const encodedValue = part.slice(separator + 1).trim();
+    try {
+      cookies[key] = decodeURIComponent(encodedValue);
+    } catch {
+      malformedKeys.add(key);
+      delete cookies[key];
+    }
+  }
+  return cookies;
 }
 
 export function getSessionCookieName(): string {
@@ -40,7 +50,8 @@ export function getCsrfCookieName(): string {
 export async function loginUser(store: StateStore, email: string, password: string) {
   return store.transaction(async (state) => {
     const user = state.users.find((candidate) => candidate.email.toLowerCase() === email.trim().toLowerCase() && candidate.active);
-    if (!user || !verifyPassword(password, user.passwordHash)) {
+    const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !passwordValid) {
       throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
     }
     const sessionToken = randomBytes(32).toString("base64url");
@@ -107,7 +118,8 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
       throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
     }
     const user = state.users.find((entry) => entry.id === session.userId && entry.active);
-    if (!user || !verifyPassword(password, user.passwordHash)) {
+    const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+    if (!user || !passwordValid) {
       throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
     }
     const reauthenticatedAt = new Date().toISOString();

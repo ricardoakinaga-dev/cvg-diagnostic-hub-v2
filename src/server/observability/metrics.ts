@@ -12,7 +12,33 @@ const realtimeStreamClosures = new Map<string, number>();
 const realtimeResyncs = new Map<string, number>();
 const realtimeConnectionRejections = new Map<string, number>();
 const gauges = new Map<string, number>();
-const allowedGauges = new Set(["outbox_pending", "outbox_oldest_age_seconds", "readiness_failures", "sse_connections"]);
+const allowedGauges = new Set([
+  "outbox_pending",
+  "outbox_oldest_age_seconds",
+  "readiness_failures",
+  "sse_connections",
+  "diagnostic_requests_created",
+  "diagnostic_items_completed",
+  "diagnostic_turnaround_time_seconds",
+  "recollection_rate",
+  "critical_results",
+  "overdue_items",
+  "result_view_latency_seconds"
+]);
+const gaugeHelp = new Map([
+  ["outbox_pending", "Pending outbox messages."],
+  ["outbox_oldest_age_seconds", "Age in seconds of the oldest pending outbox message."],
+  ["readiness_failures", "Readiness checks that failed."],
+  ["sse_connections", "Active realtime stream connections."],
+  ["diagnostic_requests_created", "Current snapshot count of diagnostic requests."],
+  ["diagnostic_items_completed", "Current snapshot count of completed diagnostic items."],
+  ["diagnostic_turnaround_time_seconds", "Average seconds from item request to release or completion."],
+  ["recollection_rate", "Fraction of requests with at least one recollection request."],
+  ["critical_results", "Current released critical result versions."],
+  ["overdue_items", "Current active diagnostic items past their due time."],
+  ["result_view_latency_seconds", "Average seconds from result release to recorded view."]
+]);
+const terminalItemStates = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const allowedRealtimePollModes = new Set<RealtimePollMode>(["stream", "snapshot"]);
 const allowedRealtimePollOutcomes = new Set<RealtimePollOutcome>(["success", "failure"]);
 const allowedRealtimePollFailureReasons = new Set([
@@ -114,6 +140,46 @@ export function refreshOperationalMetrics(state: StoreState, now = new Date()): 
     .sort((left, right) => left - right)[0];
   const oldestAgeSeconds = oldestAvailableAt === undefined ? 0 : Math.max(0, (now.getTime() - oldestAvailableAt) / 1_000);
   setGauge("outbox_oldest_age_seconds", oldestAgeSeconds);
+
+  // Business measures are bounded snapshot gauges; rates and latency need event policy and timestamps.
+  setGauge("diagnostic_requests_created", state.requests.length);
+  setGauge("diagnostic_items_completed", state.items.filter((item) => item.status === "COMPLETED").length);
+  const currentVersionIds = new Set(state.results.map((result) => result.currentVersionId).filter((id): id is string => Boolean(id)));
+  setGauge("critical_results", state.resultVersions.filter((version) => version.status === "RELEASED" && version.critical && currentVersionIds.has(version.id)).length);
+  const nowMs = now.getTime();
+  const overdueItems = state.items.filter((item) => {
+    if (terminalItemStates.has(item.status)) return false;
+    const dueAtMs = Date.parse(item.dueAt);
+    return Number.isFinite(dueAtMs) && dueAtMs < nowMs;
+  });
+  setGauge("overdue_items", overdueItems.length);
+
+  const turnaroundSamples = state.items
+    .map((item) => elapsedSeconds(item.requestedAt, item.completedAt ?? item.releasedAt))
+    .filter((value): value is number => value !== undefined);
+  setOptionalGauge("diagnostic_turnaround_time_seconds", average(turnaroundSamples));
+
+  const recollectedRequestIds = new Set(
+    state.auditEvents
+      .filter((event) => event.eventType === "RecollectionRequested")
+      .map((event) => state.samples.find((sample) => sample.id === event.entityId)?.requestId)
+      .filter((requestId): requestId is string => Boolean(requestId))
+  );
+  setOptionalGauge(
+    "recollection_rate",
+    state.requests.length > 0 ? recollectedRequestIds.size / state.requests.length : undefined
+  );
+
+  const releasedAtByVersionId = new Map(
+    state.resultVersions
+      .filter((version) => version.releasedAt)
+      .map((version) => [version.id, version.releasedAt as string])
+  );
+  const viewLatencySamples = state.auditEvents
+    .filter((event) => event.eventType === "ResultViewed")
+    .map((event) => elapsedSeconds(releasedAtByVersionId.get(event.entityId), event.occurredAt))
+    .filter((value): value is number => value !== undefined);
+  setOptionalGauge("result_view_latency_seconds", average(viewLatencySamples));
 }
 
 export function renderPrometheus(): string {
@@ -148,7 +214,10 @@ export function renderPrometheus(): string {
   appendCounter(lines, "cvg_realtime_stream_closures_total", "Realtime stream closures by bounded reason.", realtimeStreamClosures, ["reason"]);
   appendCounter(lines, "cvg_realtime_resyncs_total", "Realtime resync signals emitted.", realtimeResyncs, ["reason"]);
   appendCounter(lines, "cvg_realtime_connection_rejections_total", "Realtime connection attempts rejected by bounded capacity.", realtimeConnectionRejections, ["reason"]);
-  for (const [name, value] of [...gauges.entries()].sort(([left], [right]) => left.localeCompare(right))) lines.push(`cvg_${name} ${value}`);
+  for (const [name, value] of [...gauges.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    const metricName = `cvg_${name}`;
+    lines.push(`# HELP ${metricName} ${gaugeHelp.get(name) ?? "Bounded application gauge."}`, `# TYPE ${metricName} gauge`, `${metricName} ${value}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -171,6 +240,26 @@ export function routeMetricLabel(path: readonly string[]): string {
 function addMetric(target: Map<string, HttpMetric>, key: string, durationMs: number): void {
   const current = target.get(key) ?? { count: 0, totalDurationMs: 0, maxDurationMs: 0 };
   target.set(key, { count: current.count + 1, totalDurationMs: current.totalDurationMs + durationMs, maxDurationMs: Math.max(current.maxDurationMs, durationMs) });
+}
+
+function setOptionalGauge(name: string, value: number | undefined): void {
+  if (value === undefined) {
+    gauges.delete(name);
+    return;
+  }
+  setGauge(name, value);
+}
+
+function elapsedSeconds(start: string | undefined, end: string | undefined): number | undefined {
+  if (!start || !end) return undefined;
+  const startMs = Date.parse(start);
+  const endMs = Date.parse(end);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) return undefined;
+  return Math.max(0, (endMs - startMs) / 1_000);
+}
+
+function average(values: readonly number[]): number | undefined {
+  return values.length === 0 ? undefined : values.reduce((total, value) => total + value, 0) / values.length;
 }
 
 function incrementCounter(target: Map<string, number>, key: string): void {

@@ -1192,3 +1192,42 @@ body {
 .queue-card-actions .workflow-action-link {
   min-height: 44px;
 }
+
+/* AUD-026: keep every navigation, recovery and command target usable at
+   compact widths without relying on the visible glyph size. */
+.text-link,
+.text-button,
+.search-popover a,
+.admin-create summary,
+.toggle,
+.queue-cell-button,
+.queue-card-patient,
+.queue-card-service-button,
+.priority-picker button {
+  min-height: 44px;
+}
+.text-button { padding-inline: 8px; }
+.search-popover a,
+.admin-create summary {
+  display: flex;
+  align-items: center;
+}
+.search-bar input { min-height: 44px; }
+.queue-filter-bar input,
+.queue-filter-bar select,
+.dialog select,
+.dialog input:not([type="checkbox"]):not([type="radio"]),
+.admin-row input:not([type="checkbox"]),
+.admin-row select,
+.admin-create-form input:not([type="checkbox"]),
+.admin-create-form select,
+.admin-service-fields input,
+.admin-service-fields select,
+.workflow-form input {
+  min-height: 44px;
+}
+.dialog select,
+.dialog input:not([type="checkbox"]):not([type="radio"]) { height: 44px; }
+.workflow-form textarea { min-height: 88px; }
+.feedback-state__actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; }
+.feedback-state__actions > .button { min-height: 44px; }

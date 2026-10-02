@@ -1,43 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import type { OperationalContext, OperationalEscalationLevel, Priority } from "@cvg/contracts";
+import type { DashboardAttentionItem, DashboardDepartment, DashboardView, OperationalEscalationLevel } from "@cvg/contracts";
 import { Surface } from "@cvg/ui";
 import { formatRelativeTime } from "@/components/api-client";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { Icon } from "@/components/ui-icons";
 
-export interface CommandCenterAttentionItem {
-  id: string;
-  requestId: string;
-  requestCode: string;
-  patient: { id: string; displayName: string; species: string; externalId: string };
-  service: { id: string; name: string; workflowType: "LABORATORY" | "RADIOLOGY" | "ULTRASOUND" };
-  departmentCode: string;
-  status: Parameters<typeof StatusBadge>[0]["status"];
-  priority: Priority;
-  dueAt: string;
-  overdue: boolean;
-  nextAction: string;
-  operationalContext: OperationalContext;
-  deepLink: string;
-}
-
-export interface CommandCenterDepartment {
-  departmentCode: string;
-  label: string;
-  activeItems: number;
-  overdue: number;
-  attention: number;
-  state: "CLEAR" | "ACTIVE" | "ATTENTION";
-}
-
-export interface CommandCenterData {
-  attention?: CommandCenterAttentionItem[];
-  departments?: CommandCenterDepartment[];
-  dataQuality?: { status: "FRESH" | "DEGRADED"; asOf: string; note?: string };
-  updatedAt?: string;
-}
+export type CommandCenterAttentionItem = DashboardAttentionItem;
+export type CommandCenterDepartment = DashboardDepartment;
+export type CommandCenterData = Partial<Pick<DashboardView, "attention" | "departments" | "dataQuality" | "updatedAt">>;
 
 const escalationLabels: Record<OperationalEscalationLevel, string> = {
   NONE: "No prazo",

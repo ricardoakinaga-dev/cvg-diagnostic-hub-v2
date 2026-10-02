@@ -4,6 +4,7 @@ import { getRuntimeStoreAsync, resetRuntimeStore } from "../../../../server/stor
 import { renderPrometheus, resetMetrics } from "../../../../server/observability/metrics";
 import { resetRateLimits } from "../../../../server/security/rate-limit";
 import { syntheticHemogramContent } from "../../../../server/store/fixtures";
+import * as structuredLogger from "../../../../server/observability/structured-logger";
 
 process.env.APP_DATA_MODE = "memory";
 process.env.DEMO_PASSWORD = "api-test-password";
@@ -28,6 +29,7 @@ describe("versioned API boundary", () => {
   beforeEach(() => {
     resetRuntimeStore();
     resetMetrics();
+    resetRateLimits();
   });
 
   afterEach(() => {
@@ -165,6 +167,58 @@ describe("versioned API boundary", () => {
     expect(body.data).toMatchObject({ status: "ready", dataMode: "memory" });
   });
 
+  it("logs unexpected dependency failures with a safe code and keeps the client response generic", async () => {
+    const admin = await login("admin@cvg.local");
+    const store = await getRuntimeStoreAsync();
+    const failure = vi.fn();
+    vi.spyOn(structuredLogger, "createStructuredLogger").mockReturnValue({
+      log: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: failure
+    });
+    vi.spyOn(store, "readState").mockRejectedValue(new Error("clinical payload and stack must stay server-side"));
+    const correlationId = "corr_123e4567-e89b-12d3-a456-426614174000";
+
+    const response = await GET(new Request("http://localhost/api/v1/metrics", {
+      headers: { cookie: admin.cookie, "x-correlation-id": correlationId }
+    }), params(["metrics"]));
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body.error).toMatchObject({ code: "INTERNAL_ERROR", correlationId });
+    expect(body.error).not.toHaveProperty("stack");
+    expect(JSON.stringify(body)).not.toContain("clinical payload");
+    expect(failure).toHaveBeenCalledWith("http.failure", {
+      component: "http",
+      requestId: expect.stringMatching(/^req_/),
+      correlationId,
+      errorCode: "INTERNAL",
+      status: 500
+    });
+  });
+
+  it("isolates health budgets from each other and from authenticated traffic", async () => {
+    vi.stubEnv("HEALTH_RATE_LIMIT", "1");
+    resetRateLimits();
+    try {
+      const firstLiveness = await GET(new Request("http://localhost/api/v1/livez"), params(["livez"]));
+      const secondLiveness = await GET(new Request("http://localhost/api/v1/livez"), params(["livez"]));
+      const readiness = await GET(new Request("http://localhost/api/v1/readyz"), params(["readyz"]));
+      const auth = await login();
+      const session = await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: auth.cookie } }), params(["session", "me"]));
+
+      expect(firstLiveness.status).toBe(200);
+      expect(secondLiveness.status).toBe(429);
+      expect(readiness.status).toBe(200);
+      expect(session.status).toBe(200);
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("fails readiness closed when distributed rate limiting lacks its shared backend", async () => {
     vi.stubEnv("RATE_LIMIT_MODE", "postgres");
     vi.stubEnv("DATABASE_URL", "");
@@ -177,6 +231,61 @@ describe("versioned API boundary", () => {
       expect(JSON.stringify(body)).not.toContain("postgresql://");
     } finally {
       vi.unstubAllEnvs();
+      resetRuntimeStore();
+    }
+  });
+
+  it("rate limits unauthenticated protected traffic before session lookup", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    vi.stubEnv("UNAUTHENTICATED_RATE_LIMIT", "1");
+    resetRateLimits();
+    try {
+      const first = await GET(new Request("http://localhost/api/v1/diagnostic-services"), params(["diagnostic-services"]));
+      const second = await GET(new Request("http://localhost/api/v1/diagnostic-services"), params(["diagnostic-services"]));
+
+      expect(first.status).toBe(401);
+      expect(second.status).toBe(429);
+      expect((await second.json()).error.code).toBe("RATE_LIMITED");
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("fails closed before touching runtime dependencies when production proxy identity is unavailable", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("TRUST_PROXY", undefined);
+    vi.stubEnv("TRUST_PROXY_SHARED_SECRET", undefined);
+    delete globalThis.__cvgDiagnosticsStore;
+    delete globalThis.__cvgDiagnosticsStorePromise;
+    try {
+      const response = await GET(new Request("http://localhost/api/v1/diagnostic-services"), params(["diagnostic-services"]));
+      const body = await response.json();
+
+      expect(response.status).toBe(503);
+      expect(body.error.code).toBe("RATE_LIMIT_UNAVAILABLE");
+      expect(globalThis.__cvgDiagnosticsStore).toBeUndefined();
+    } finally {
+      vi.unstubAllEnvs();
+      resetRuntimeStore();
+    }
+  });
+
+  it("consumes the readiness budget before a failing dependency probe", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    vi.stubEnv("HEALTH_RATE_LIMIT", "1");
+    vi.stubEnv("STORAGE_MODE", "s3");
+    vi.stubEnv("STORAGE_ENDPOINT", undefined);
+    resetRateLimits();
+    try {
+      const first = await GET(new Request("http://localhost/api/v1/readyz"), params(["readyz"]));
+      const second = await GET(new Request("http://localhost/api/v1/readyz"), params(["readyz"]));
+
+      expect(first.status).toBe(503);
+      expect(second.status).toBe(429);
+    } finally {
+      vi.unstubAllEnvs();
+      resetRateLimits();
       resetRuntimeStore();
     }
   });
@@ -205,8 +314,44 @@ describe("versioned API boundary", () => {
       expect(trustedSecond.status).toBe(429);
       expect(trustedOther.status).toBe(400);
       expect(forgedFirst.status).toBe(400);
-      expect(forgedSecond.status).toBe(429);
-      expect((await forgedSecond.json()).error.code).toBe("RATE_LIMITED");
+      expect(forgedSecond.status).toBe(400);
+      expect((await forgedSecond.json()).error.code).toBe("VALIDATION_ERROR");
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps login budgets independent per email when the client identity is unavailable", async () => {
+    vi.stubEnv("LOGIN_RATE_LIMIT", "1");
+    vi.stubEnv("TRUST_PROXY", undefined);
+    vi.stubEnv("TRUST_PROXY_SHARED_SECRET", undefined);
+    resetRateLimits();
+    try {
+      const vet = await login("vet@cvg.local");
+      const admin = await login("admin@cvg.local");
+
+      expect(vet.cookie).toContain("cvg_session=");
+      expect(admin.cookie).toContain("cvg_session=");
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps authenticated budgets independent per session", async () => {
+    vi.stubEnv("AUTHENTICATED_RATE_LIMIT", "1");
+    resetRateLimits();
+    try {
+      const vet = await login("vet@cvg.local");
+      const admin = await login("admin@cvg.local");
+      const vetFirst = await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]));
+      const vetSecond = await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]));
+      const adminFirst = await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: admin.cookie } }), params(["session", "me"]));
+
+      expect(vetFirst.status).toBe(200);
+      expect(vetSecond.status).toBe(429);
+      expect(adminFirst.status).toBe(200);
     } finally {
       resetRateLimits();
       vi.unstubAllEnvs();
@@ -238,6 +383,29 @@ describe("versioned API boundary", () => {
     expect(response.status).toBe(401);
     expect(body.error.code).toBe("UNAUTHENTICATED");
     expect(JSON.stringify(body)).not.toContain("stack");
+  });
+
+  it("treats a malformed session cookie as an unauthenticated request", async () => {
+    const response = await GET(new Request("http://localhost/api/v1/session/me", {
+      headers: { cookie: "cvg_session=%E0%A4%A" }
+    }), params(["session", "me"]));
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error).toMatchObject({ code: "UNAUTHENTICATED", message: "Sessão necessária." });
+  });
+
+  it("returns the same generic login error for an unknown user", async () => {
+    const response = await POST(new Request("http://localhost/api/v1/session/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "missing@cvg.local", password: "wrong-password" })
+    }), params(["session", "login"]));
+    const body = await response.json();
+
+    expect(response.status).toBe(401);
+    expect(body.error).toMatchObject({ code: "UNAUTHENTICATED", message: "Credenciais inválidas." });
+    expect(JSON.stringify(body)).not.toContain("missing@cvg.local");
   });
 
   it("rejects a mutation when matching CSRF cookie and header tokens belong to another session", async () => {
@@ -723,12 +891,21 @@ describe("versioned API boundary", () => {
   it("fails closed when an unsupported notification adapter is selected", async () => {
     const previousAdapter = process.env.REALTIME_NOTIFICATION_ADAPTER;
     process.env.REALTIME_NOTIFICATION_ADAPTER = "postgres-listen";
+    const failure = vi.fn();
+    vi.spyOn(structuredLogger, "createStructuredLogger").mockReturnValue({
+      log: vi.fn(),
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error: failure
+    });
     try {
       const auth = await login();
       const response = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
       expect(response.status).toBe(500);
       expect((await response.json()).error.code).toBe("REALTIME_ADAPTER_UNAVAILABLE");
       expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="adapter_unavailable"} 1');
+      expect(failure).toHaveBeenCalledWith("http.failure", expect.objectContaining({ errorCode: "REALTIME_ADAPTER_UNAVAILABLE", status: 500 }));
     } finally {
       if (previousAdapter === undefined) delete process.env.REALTIME_NOTIFICATION_ADAPTER;
       else process.env.REALTIME_NOTIFICATION_ADAPTER = previousAdapter;

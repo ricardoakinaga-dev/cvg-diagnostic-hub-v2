@@ -244,3 +244,401 @@ export interface PatientSummary {
   ownerLabel?: string;
   externalId?: string;
 }
+
+export type SessionRole = RoleCode | "VET";
+
+export interface SessionUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: SessionRole;
+  departmentCode: string;
+  managedDepartmentCodes?: string[];
+  timezone: string;
+}
+
+export interface SessionResponse {
+  user: SessionUser;
+}
+
+export interface Patient {
+  id: string;
+  displayName: string;
+  species: string;
+  breed: string;
+  sex: string;
+  birthDate?: string;
+  ownerLabel: string;
+  externalId: string;
+  active: boolean;
+}
+
+export interface Encounter {
+  id: string;
+  patientId: string;
+  externalId: string;
+  type: "INPATIENT" | "EMERGENCY" | "OUTPATIENT";
+  status: "OPEN" | "CLOSED";
+  openedAt: string;
+  closedAt?: string;
+}
+
+export interface Admission {
+  id: string;
+  encounterId: string;
+  departmentCode: string;
+  ward: string;
+  bed: string;
+  admittedAt: string;
+  dischargedAt?: string;
+  version?: number;
+}
+
+export interface DiagnosticService {
+  id: string;
+  code: string;
+  name: string;
+  category: "LABORATORY" | "IMAGING";
+  departmentCode: string;
+  workflowType: WorkflowType;
+  requiresSample: boolean;
+  requiresSchedule: boolean;
+  allowsAttachment: boolean;
+  resultSchema: "NUMERIC_PANEL" | "NARRATIVE";
+  resultTemplate?: LaboratoryPanelTemplate;
+  active: boolean;
+  version: number;
+  slaHours: Record<Priority, number>;
+}
+
+export interface ReasonCode {
+  id: string;
+  type: "RECOLLECTION" | "CANCEL" | "REJECT" | "AMEND";
+  code: string;
+  label: string;
+  active: boolean;
+  version: number;
+}
+
+export interface ManagedUser {
+  id: string;
+  email: string;
+  displayName: string;
+  role: RoleCode;
+  departmentCode: string;
+  managedDepartmentCodes?: string[];
+  active: boolean;
+  timezone: string;
+  createdAt: string;
+  version: number;
+}
+
+export interface AuditEvent {
+  id: string;
+  eventType: string;
+  actorId?: string;
+  entityType: string;
+  entityId: string;
+  previousState?: string;
+  newState?: string;
+  occurredAt: string;
+  metadata: Record<string, string | number | boolean | null>;
+}
+
+export interface Notification {
+  id: string;
+  category: "INFORMATIONAL" | "ACTIONABLE" | "CRITICAL" | "ADMINISTRATIVE";
+  priority: "NORMAL" | "HIGH" | "URGENT";
+  recipientUserId: string;
+  entityType: "REQUEST" | "ITEM" | "RESULT_VERSION" | "SAMPLE";
+  entityId: string;
+  deepLink: string;
+  title: string;
+  body: string;
+  state: "PENDING" | "DELIVERED" | "SEEN" | "ACKNOWLEDGED" | "FAILED" | "SUPERSEDED" | "ESCALATED";
+  createdAt: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  attempts: number;
+  version: number;
+}
+
+export type AggregateStatus =
+  | "REQUESTED"
+  | "IN_PROGRESS"
+  | "PARTIALLY_AVAILABLE"
+  | "RESULTS_AVAILABLE"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export interface DashboardRequestItem {
+  id: string;
+  status: ItemState;
+  priority: Priority;
+  dueAt: string;
+  service: { name: string; code: string };
+  note?: string;
+}
+
+export interface DashboardRequest {
+  id: string;
+  requestCode: string;
+  patient: { displayName: string; species: string; sex: string; externalId: string };
+  priority: Priority;
+  aggregateStatus: AggregateStatus;
+  createdAt: string;
+  items: DashboardRequestItem[];
+}
+
+export interface DashboardService {
+  id: string;
+  name: string;
+  code: string;
+  workflowType: WorkflowType;
+  category: "LABORATORY" | "IMAGING";
+  requiresSample: boolean;
+  requiresSchedule: boolean;
+}
+
+export interface QueueItem {
+  id: string;
+  requestId: string;
+  status: ItemState;
+  workflowType: WorkflowType;
+  priority: Priority;
+  version: number;
+  currentResultId?: string;
+  currentSampleId?: string;
+  procedureId?: string;
+  procedureVersion?: number;
+  dueAt: string;
+  createdAt: string;
+  requestCode: string;
+  nextAction: string;
+  overdue: boolean;
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  service: { id: string; code: string; name: string };
+  operationalContext: OperationalContext;
+}
+
+export type IndicatorQueueItem = Pick<QueueItem, "id" | "status" | "priority" | "overdue" | "nextAction">;
+
+export interface ManagementOverview {
+  asOf: string;
+  scope: { departments: string[]; label: string };
+  summary: { totalRequests: number; activeItems: number; overdue: number; recollections: number; newResults: number; critical: number; pendingRequests: number; completedToday: number };
+  departments: Array<{ departmentCode: string; serviceCount: number; totalRequests: number; activeItems: number; overdue: number; pending: number }>;
+  pending: Array<{ id: string; requestId: string; requestCode: string; patient: string; service: string; departmentCode: string; status: ItemState; priority: Priority; dueAt: string; overdue: boolean; nextAction: string; deepLink: string }>;
+  recentRequests: Array<{ id: string; requestCode: string; patient: string; aggregateStatus: AggregateStatus; priority: Priority; updatedAt: string; itemCount: number; deepLink: string }>;
+}
+
+export type DashboardIndicatorKey = "overdue" | "recollections" | "newResults" | "critical" | "totalActive";
+
+export interface DashboardIndicator {
+  key: DashboardIndicatorKey;
+  label: string;
+  count: number;
+  denominator: number;
+  denominatorDefinition: string;
+  definition: string;
+  nextAction: string;
+}
+
+export interface DashboardWindow {
+  kind: "CURRENT_STATE";
+  label: string;
+  timezone: string;
+  asOf: string;
+}
+
+export interface DashboardAttentionItem {
+  id: string;
+  requestId: string;
+  requestCode: string;
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  service: { id: string; name: string; workflowType: WorkflowType };
+  departmentCode: string;
+  status: ItemState;
+  priority: Priority;
+  dueAt: string;
+  overdue: boolean;
+  nextAction: string;
+  operationalContext: OperationalContext;
+  deepLink: string;
+}
+
+export interface DashboardDepartment {
+  departmentCode: string;
+  label: string;
+  activeItems: number;
+  overdue: number;
+  attention: number;
+  state: "CLEAR" | "ACTIVE" | "ATTENTION";
+}
+
+export interface DashboardView {
+  overdue: number;
+  recollections: number;
+  newResults: number;
+  critical: number;
+  totalActive: number;
+  updatedAt: string;
+  window: DashboardWindow;
+  indicators: DashboardIndicator[];
+  attention: DashboardAttentionItem[];
+  departments: DashboardDepartment[];
+  dataQuality: { status: "FRESH" | "DEGRADED"; asOf: string; note?: string };
+}
+
+export interface SearchResult {
+  type: "REQUEST" | "ITEM";
+  id: string;
+  label: string;
+  patient: string;
+  status: ItemState | AggregateStatus;
+  priority: Priority;
+  updatedAt: string;
+  departmentCode: string;
+  deepLink: string;
+}
+
+export interface DiagnosticRequestDetail {
+  id: string;
+  requestCode: string;
+  priority: Priority;
+  aggregateStatus: AggregateStatus;
+  createdAt: string;
+  patient: Patient;
+  items: Array<{
+    id: string;
+    status: ItemState;
+    workflowType: WorkflowType;
+    priority: Priority;
+    dueAt: string;
+    version: number;
+    currentResultId?: string;
+    currentSampleId?: string;
+    service: { name: string; workflowType: WorkflowType };
+  }>;
+}
+
+export interface TimelineEvent {
+  id: string;
+  eventType: string;
+  newState?: string;
+  occurredAt: string;
+}
+
+export interface PatientCreateResult {
+  patient: Patient;
+  encounter: Encounter;
+  admission?: Admission;
+}
+
+export interface PatientWorkspaceSample {
+  id: string;
+  requestId: string;
+  accessionCode: string;
+  sampleType: string;
+  status: "EXPECTED" | "RECEIVED" | "REJECTED" | "REPLACED";
+  collectedAt?: string;
+  receivedAt?: string;
+}
+
+export interface PatientWorkspaceResult {
+  id: string;
+  versionId: string;
+  status: "RELEASED";
+  releasedAt?: string;
+  needsReReview: boolean;
+}
+
+export interface PatientWorkspaceAttachment {
+  id: string;
+  safeName: string;
+  detectedMime: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+export interface PatientWorkspaceItemContext {
+  operationalContext: OperationalContext;
+  sample: PatientWorkspaceSample | null;
+  result: PatientWorkspaceResult | null;
+  attachments: PatientWorkspaceAttachment[];
+}
+
+export interface PatientWorkspaceRequest {
+  id: string;
+  requestCode: string;
+  priority: Priority;
+  aggregateStatus: AggregateStatus;
+  createdAt: string;
+  encounter: { id: string; externalId: string; type: string };
+  items: Array<{
+    id: string;
+    requestId: string;
+    status: ItemState;
+    workflowType: WorkflowType;
+    currentResultId?: string;
+    service: { name: string };
+    workspaceContext: PatientWorkspaceItemContext;
+  }>;
+}
+
+export interface PatientWorkspaceSummary {
+  asOf: string;
+  dataQuality?: { status: "FRESH" | "DEGRADED"; asOf: string; note?: string };
+  currentContext: { encounterId: string | null; admissionId: string | null; departmentCode: string | null; ward: string | null; bed: string | null; responsibleLabel: string | null };
+  summary: { requestCount: number; itemCount: number; activeItemCount: number; availableResultCount: number; sampleCount: number; attachmentCount: number };
+}
+
+export interface PatientNextAction {
+  id: string;
+  requestId: string;
+  requestCode: string;
+  itemId: string;
+  label: string;
+  deepLink: string;
+  status: ItemState;
+  priority: Priority;
+  dueAt: string;
+  departmentCode: string;
+}
+
+export interface PatientDiagnosticsResult {
+  patient: Patient;
+  encounters: Encounter[];
+  admissions: Admission[];
+  items: PatientWorkspaceRequest[];
+  events: TimelineEvent[];
+  nextActions: PatientNextAction[];
+  workspace: PatientWorkspaceSummary;
+  nextCursor?: string;
+  limit: number;
+  total: number;
+}
+
+export interface ResultView {
+  result: { id: string; lifecycleStatus: string; needsReReview: boolean; version: number };
+  version: { id: string; sequence: number; status: ResultVersionState; narrative: string; conclusion?: string; authorId: string; createdAt: string; releasedAt?: string; critical: boolean; needsReReview: boolean; version: number; content: Record<string, unknown> };
+  item: { id: string; status: ItemState; version: number; serviceId: string };
+  request: { id: string; requestCode: string };
+  patient: { displayName: string; species: string; sex: string; externalId: string };
+  service: { name: string; workflowType: WorkflowType; allowsAttachment?: boolean; resultSchema?: "NUMERIC_PANEL" | "NARRATIVE"; resultTemplate?: LaboratoryPanelTemplate };
+}
+
+export interface PublicAttachment {
+  id: string;
+  safeName: string;
+  detectedMime: string;
+  sizeBytes: number;
+  scanStatus: "PENDING" | "CLEAN" | "QUARANTINED" | "FAILED";
+  uploadStatus: "INITIATED" | "UPLOADED" | "FINALIZED";
+}
+
+export interface AttachmentSession {
+  attachment: PublicAttachment;
+  uploadUrl: string;
+  expiresAt: string;
+}

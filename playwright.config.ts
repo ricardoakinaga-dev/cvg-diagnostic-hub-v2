@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 
 const systemChrome = process.env.PLAYWRIGHT_EXECUTABLE_PATH ?? (existsSync("/usr/bin/google-chrome") ? "/usr/bin/google-chrome" : undefined);
 const e2eLoginRateLimit = 100;
-const e2eProxySecret = "e2e-proxy-secret-2026";
+const e2eProxySecret = "e2e-proxy-secret-2026-0123456789abcdef";
 const e2eProxyHeaders = (clientAddress: string) => ({
   "x-cvg-proxy-secret": e2eProxySecret,
   "x-forwarded-for": clientAddress

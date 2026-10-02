@@ -9,7 +9,7 @@ Method: trust boundaries + abuse cases, with mitigation and verification. Severi
 | THR-001 | Unauthorized result access | guessed request/result/attachment ID (IDOR) | confidentiality/clinical harm | opaque IDs, resource/scope auth, safe 404 | integration security tests |
 | THR-002 | Privilege escalation | client modifies role/department/actor fields | integrity | server derives actor; admin-only role commands; audit | negative API tests |
 | THR-003 | Session theft/fixation | cookie/token exposure | account takeover | secure cookie, TLS, rotation, revocation, headers | session tests/pen test |
-| THR-004 | Brute force | login/search/reconnect flood | availability/access | rate limit, lockout/backoff, alerting | load/abuse test |
+| THR-004 | Brute force | login/search/reconnect flood | availability/access | rate limit de janela fixa (60 s) em bucket por endereço de cliente e bucket por credencial de login, com backend PostgreSQL obrigatório em produção e falha fechado na indisponibilidade; alerta é decisão de D-05. **Lockout e backoff progressivo não existem**: nenhuma operação de lockout/redefinição consta em `src/server/http/api-operation-manifest.ts`, então ficam registrados aqui como decisão pendente, não como controle implementado | load/abuse test |
 | THR-005 | Malicious upload | MIME spoof, executable/polyglot, oversized file | RCE/data loss | allowlist, sniff, limit, quarantine/scan, private storage | upload corpus tests |
 | THR-006 | XSS/injection | note/result/service text | session/clinical display | output encoding, schema, CSP, parameterized SQL | XSS/SQLi tests |
 | THR-007 | Audit manipulation | privileged update/delete | loss of accountability | append-only table, restricted access, compensating events | audit tamper test |

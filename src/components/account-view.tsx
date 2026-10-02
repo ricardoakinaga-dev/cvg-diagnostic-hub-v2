@@ -3,19 +3,11 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import type { SessionResponse, SessionUser } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
-
-interface SessionUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: string;
-  departmentCode: string;
-  managedDepartmentCodes?: string[];
-  timezone: string;
-}
 
 const roleLabels: Record<string, string> = {
   ADMIN: "Administração técnica",
@@ -48,7 +40,7 @@ export function AccountView() {
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
-    void apiFetch<{ user: SessionUser }>("/session/me")
+    void apiFetch<SessionResponse>("/session/me")
       .then(({ user: currentUser }) => setUser(currentUser))
       .catch((cause) => setError(getSafeErrorMessage(cause, "Não foi possível carregar sua conta.")))
       .finally(() => setLoading(false));
@@ -60,8 +52,8 @@ export function AccountView() {
     finally { router.replace("/login"); }
   }
 
-  if (loading) return <div className="loading-state" role="status">Carregando sua conta…</div>;
-  if (!user) return <div className="error-state" role="alert"><strong>Conta indisponível</strong><span>{error}</span><Link className="button button-ghost" href="/">Voltar ao início</Link></div>;
+  if (loading) return <LoadingState label="Carregando sua conta" />;
+  if (!user) return <ErrorState title="Conta indisponível" message={error} onRetry={() => window.location.reload()} action={<Link className="button button-ghost" href="/">Voltar ao início</Link>} />;
 
   const managedDepartments = user.managedDepartmentCodes?.map((code) => labelFor(departmentLabels, code)).join(" · ");
   const canAccessClinical = user.role !== "ADMIN";

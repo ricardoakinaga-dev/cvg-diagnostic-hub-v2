@@ -10,8 +10,8 @@ no packet PostgreSQL anterior 39/39, com crítica independente e limites externo
 registrados na seção final.
 
 **Fechamento técnico local:** 07/09/2026 — a execução corrente passou 725/725
-testes em 86 arquivos, com 92,72% statements/lines, 85,82% branches e 94,31%
-functions; build, OpenAPI 65/60, rastreabilidade 43/43, migrations 001–010,
+testes em 86 arquivos, com 92,72% statements/lines, 85,79% branches e 94,37%
+functions (valores medidos, reconciliados em 01/10/2026); build, OpenAPI 65/60, rastreabilidade 43/43, migrations 001–010,
 security scan, SBOM CycloneDX com 560 componentes sob Node 22, audit de produção,
 recovery 5/5, performance 7/7 e browser 60/60 na matriz completa, sem retry,
 em Chromium/tablet/mobile. O packet PostgreSQL descartável anterior passou 39/39
@@ -20,6 +20,15 @@ ausência de `initdb`/`pg_ctl`/Docker e não tocou 5432. JSONB continua autorida
 e os gates humanos/ambiente-alvo permanecem abertos.
 Consulte o [relatório corrente](RELATORIO_AUDITORIA_2026-09-07.md) e o
 [manifesto AAA-3](../.orchestrate/aaa3-execution-20260907/evidence-manifest.json).
+
+**Atualização corrente AUDIT-2026-10:** em 01/10/2026, a cobertura integrada passou
+745 testes unitários em 89 arquivos e 39 testes PostgreSQL em 6 arquivos, com
+94,90% lines, 95,45% functions e 89,31% branches. O `coverage:gate` passou com
+28 exceções versionadas; a matriz browser passou 63/63 sem retry, incluindo
+visual 3/3 e acessibilidade 12/12. Typecheck, lint, build, security scan,
+OpenAPI 65/60, traceabilidade 43/43, mutation 7/7 e os testes negativos do gate
+de cobertura passaram. Esta evidência é local e não fecha inspeção manual,
+ambiente-alvo, RPO/RTO, failover, revisão independente ou aceite clínico.
 
 ## Veredito executivo
 
@@ -149,8 +158,8 @@ Continuam bloqueados: identidade institucional e ownership, transferência/alta,
 | --- | --- | --- |
 | PostgreSQL/harness | `vitest.postgres.config.ts` agora espelha os aliases dos testes principais; o packet descartável anterior registra **39/39** em 6 arquivos, com upgrade SAA-022 001→010 e retomada após `009` já aplicado, migration 009/010, reparação BACKFILL-only, backfill populado/resumível, lock de origem, serialização entre pools, projection/read/reconciliation, regressão de notificação/delivery, HTTP multi-instância, wake-up real e EXPLAIN estrutural indexado, em cluster descartável; a leitura relacional também tem `EXPLAIN` estrutural indexado. A repetição current-source aguarda `initdb`/`pg_ctl`/Docker e não tocou 5432 | A prova é local e sintética; cutover, browser contra PostgreSQL em conjunto com a seam relacional, fanout HTTP sob carga, repetição em CI/ambiente-alvo e operação produtiva permanecem abertos |
 | Supply chain | `fast-uri` está em 3.1.7; `npm audit --audit-level=high` passa com 0 vulnerabilidades; npm ci, typecheck, OpenAPI, testes e build continuam verdes | Permanecem apenas avisos de depreciação/scripts do npm, sem gate HIGH aberto |
-| Browser | servidor E2E é descartável e os projetos têm buckets de rate limit separados; a matriz AAA-3 current-source passou 57/57 com `--retries=0 --fail-on-flaky-tests`, incluindo fluxo principal, ciclo clínico, acessibilidade e realtime; Patient Workspace responsivo e refresh stale/degraded cobertos; packets production-like anteriores são condicionais | A evidência durable/browser do CI não foi executada remotamente; serviços reais, aceitação manual e ambiente alvo permanecem abertos |
-| Relacional expand-only | migrations 007–010 e readiness contract adicionam tabelas/constraints para o núcleo clínico; a suíte ampla corrente passa **725/725** em 86 arquivos, com cobertura 92,72/85,82/94,31 na execução full corrente, incluindo app/UI, domínio, runtime e persistência; o PostgreSQL descartável anterior **39/39** em Node 22/PostgreSQL 16.15 é evidência local condicional e a repetição atual aguarda host descartável; a matriz browser passou 57/57, o lane production-like passou 51/51 e o restore smoke PostgreSQL-only passou com checksum em banco isolado | O runtime continua autoritativo em JSONB e não há migração clínica completa, dual-read contínuo, cutover, rollback de autoridade, workload aprovado/representativo, restore de object storage/configuração/chaves ou aceite de ambiente-alvo |
+| Browser | servidor E2E é descartável e os projetos têm buckets de rate limit separados; a matriz AAA-3 current-source passou **60/60** com `--retries=0 --fail-on-flaky-tests` (a corrida intermediária de 57/57 foi superseded pela rodada final de acessibilidade), incluindo fluxo principal, ciclo clínico, acessibilidade e realtime; Patient Workspace responsivo e refresh stale/degraded cobertos; packets production-like anteriores são condicionais | A evidência durable/browser do CI não foi executada remotamente; serviços reais, aceitação manual e ambiente alvo permanecem abertos |
+| Relacional expand-only | migrations 007–010 e readiness contract adicionam tabelas/constraints para o núcleo clínico; a suíte ampla corrente passa **725/725** em 86 arquivos, com cobertura 92,72/85,79/94,37 na execução full corrente (valores medidos, reconciliados em 01/10/2026), incluindo app/UI, domínio, runtime e persistência; o PostgreSQL descartável anterior **39/39** em Node 22/PostgreSQL 16.15 é evidência local condicional e a repetição atual aguarda host descartável; a matriz browser passou 60/60, o lane production-like passou 51/51 e o restore smoke PostgreSQL-only passou com checksum em banco isolado | O runtime continua autoritativo em JSONB e não há migração clínica completa, dual-read contínuo, cutover, rollback de autoridade, workload aprovado/representativo, restore de object storage/configuração/chaves ou aceite de ambiente-alvo |
 | CI/evidence | workflow fixa Node 22, adiciona `browser-postgres` com banco por run, build/start de produção, readiness PostgreSQL/S3 configurada, retries explícitos zero e artefatos preservados em falha; YAML/flags foram validados estaticamente | Não houve execução CI remota; release e ambiente hospitalar continuam sem prova |
 | Documentação/ledger | docs validator e `git diff --check` passam; métricas, fatos de Git, barra AAA e blockers foram reconciliados | A matriz ainda exige fechamento independente requisito→código→teste→digest; gates clínicos e de produção permanecem externos |
 

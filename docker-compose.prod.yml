@@ -1,0 +1,121 @@
+# Production stack: TLS edge -> web app, outbox worker and PostgreSQL.
+# Object storage (S3-compatible) and the malware scanner are external managed
+# services configured through .env.production; see docs/operations/DEPLOYMENT.md.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm bootstrap   # first deploy only
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  APP_DATA_MODE: postgres
+  DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set}
+  APP_ORIGIN: https://${APP_DOMAIN:?APP_DOMAIN must be set}
+  TRUST_PROXY: "true"
+  TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?TRUST_PROXY_SHARED_SECRET must be set}
+  RATE_LIMIT_MODE: postgres
+  LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
+  ATTACHMENT_UPLOAD_RATE_LIMIT: ${ATTACHMENT_UPLOAD_RATE_LIMIT:-30}
+  ATTACHMENT_MAX_BYTES: ${ATTACHMENT_MAX_BYTES:-26214400}
+  REALTIME_NOTIFICATION_ADAPTER: postgres-listen
+  REALTIME_NOTIFICATION_CHANNEL: ${REALTIME_NOTIFICATION_CHANNEL:-cvg_realtime_wakeup}
+  REALTIME_LISTEN_POOL_MAX: ${REALTIME_LISTEN_POOL_MAX:-2}
+  STORAGE_MODE: s3
+  STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:?STORAGE_ENDPOINT must be set}
+  STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+  STORAGE_BUCKET: ${STORAGE_BUCKET:?STORAGE_BUCKET must be set}
+  STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY must be set}
+  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY must be set}
+  STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
+  STORAGE_SCAN_MODE: external
+  MALWARE_SCANNER_ENDPOINT: ${MALWARE_SCANNER_ENDPOINT:?MALWARE_SCANNER_ENDPOINT must be set}
+  MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?MALWARE_SCANNER_API_KEY must be set}
+  MALWARE_SCANNER_ALLOWED_HOSTS: ${MALWARE_SCANNER_ALLOWED_HOSTS:?MALWARE_SCANNER_ALLOWED_HOSTS must be set}
+  MALWARE_SCANNER_TIMEOUT_MS: ${MALWARE_SCANNER_TIMEOUT_MS:-10000}
+  CRITICAL_POLICY_ENABLED: ${CRITICAL_POLICY_ENABLED:-false}
+  CRITICAL_POLICY_VERSION: ${CRITICAL_POLICY_VERSION:-}
+  CRITICAL_POLICY_APPROVAL_REF: ${CRITICAL_POLICY_APPROVAL_REF:-}
+  CRITICAL_POLICY_APPROVED_AT: ${CRITICAL_POLICY_APPROVED_AT:-}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - cvg-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  migrate:
+    build: { context: ., target: ops }
+    image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
+    command: ["node_modules/.bin/tsx", "scripts/migrate.ts"]
+    environment: *app-environment
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  # One-shot: creates the first ADMIN on an empty database. Refuses to run
+  # against an initialized database. Not started by `up`.
+  bootstrap:
+    image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
+    profiles: ["bootstrap"]
+    command: ["node_modules/.bin/tsx", "scripts/bootstrap-admin.ts"]
+    environment:
+      <<: *app-environment
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Administração}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  app:
+    build: { context: ., target: runner }
+    image: ${IMAGE_PREFIX:-cvg-hub}:${IMAGE_TAG:-latest}
+    environment: *app-environment
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    # No published port: only the edge proxy reaches the app.
+    expose: ["3000"]
+
+  worker:
+    image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
+    command: ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
+    environment:
+      <<: *app-environment
+      OUTBOX_SINK: postgres
+      OUTBOX_DELIVERY_CHANNEL: ${OUTBOX_DELIVERY_CHANNEL:-IN_APP}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?}
+      TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?}
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${HTTP_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - cvg-caddy-data:/data
+      - cvg-caddy-config:/config
+    depends_on:
+      app: { condition: service_healthy }
+
+volumes:
+  cvg-postgres:
+  cvg-caddy-data:
+  cvg-caddy-config:

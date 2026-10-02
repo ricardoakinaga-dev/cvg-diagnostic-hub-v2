@@ -167,7 +167,7 @@ The complete matrix contains 17 scenarios per project (12 core,
 tablet and mobile. The clinical flow exercises clean attachment
 upload/download and critical-result acknowledgement through the durable
 PostgreSQL outbox worker.
-`TRUST_PROXY=true` and `TRUST_PROXY_SHARED_SECRET=e2e-proxy-secret-2026`
+`TRUST_PROXY=true` and `TRUST_PROXY_SHARED_SECRET=e2e-proxy-secret-2026-0123456789abcdef` (production readiness requires 32+ characters)
 match the `x-cvg-proxy-secret` and `x-forwarded-for` headers emitted by
 `playwright.config.ts`. The service credentials, scanner key and certificate
 are synthetic and loopback-only. This lane therefore proves the configured

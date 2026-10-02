@@ -2,22 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Priority } from "@cvg/contracts";
+import type { DashboardRequest, DashboardService, DashboardView, Encounter, Notification, Patient, Priority, SearchResult, SessionResponse, SessionUser } from "@cvg/contracts";
 import { ApiClientError, apiFetch, createClientUniqueId, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { PriorityBadge, statusLabel, StatusBadge } from "./status-badge";
 import { ManagementDashboard } from "./management-dashboard";
 import { PatientDialog, type CreatedPatientPayload } from "./patient-dialog";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon, type IconName } from "./ui-icons";
-import { CommandCenterPanel, type CommandCenterData } from "@/features/command-center/command-center-panel";
+import { CommandCenterPanel } from "@/features/command-center/command-center-panel";
 
-interface Item { id: string; status: Parameters<typeof StatusBadge>[0]["status"]; priority: Priority; dueAt: string; service: { name: string; code: string }; note?: string }
-interface Request { id: string; requestCode: string; patient: { displayName: string; species: string; sex: string; externalId: string }; priority: Priority; aggregateStatus: string; createdAt: string; items: Item[] }
-interface Service { id: string; name: string; code: string; workflowType: string; category: string; requiresSample: boolean; requiresSchedule: boolean }
-interface Encounter { id: string; patientId: string; externalId: string; type: "INPATIENT" | "EMERGENCY" | "OUTPATIENT"; status: "OPEN" | "CLOSED"; openedAt: string; closedAt?: string }
-interface Stats extends CommandCenterData { overdue: number; recollections: number; newResults: number; critical: number; totalActive: number; updatedAt: string }
-interface Notification { id: string; category: string; priority: string; title: string; body: string; createdAt: string; state: string; deepLink: string }
-interface SessionUser { displayName: string; role?: string }
+type Request = DashboardRequest;
+type Service = DashboardService;
+type Stats = DashboardView;
 
 const encounterTypeLabels: Record<Encounter["type"], string> = { INPATIENT: "Internação", EMERGENCY: "Emergência", OUTPATIENT: "Atendimento externo" };
 const encounterStatusLabels: Record<Encounter["status"], string> = { OPEN: "Em aberto", CLOSED: "Encerrado" };
@@ -84,14 +81,14 @@ export function Dashboard() {
 
   useEffect(() => {
     let active = true;
-    void apiFetch<{ user: SessionUser }>("/session/me")
+    void apiFetch<SessionResponse>("/session/me")
       .then((result) => { if (active) setUser(result.user); })
       .catch((cause) => { if (active) setError(getSafeErrorMessage(cause, "Não foi possível atualizar a identificação da equipe.")); });
     return () => { active = false; };
   }, []);
 
   if (!user && !error) return <DashboardSkeleton />;
-  if (error) return <div className="error-state" role="alert"><strong>{error}</strong></div>;
+  if (error) return <ErrorState title="Identidade indisponível" message={error} onRetry={() => window.location.reload()} />;
   if (user?.role === "ADMIN") return <TechnicalAdminDashboard displayName={user.displayName} />;
   if (user?.role === "MANAGER") return <ManagementDashboard />;
   return <ClinicalDashboard displayName={user?.displayName ?? "Equipe"} role={user?.role} />;
@@ -124,7 +121,7 @@ function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
 function ClinicalDashboard({ displayName, role }: { displayName: string; role?: string }) {
   const [showRequest, setShowRequest] = useState(false);
   const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; label: string; patient: string; deepLink: string; status: string }>>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRequestVersion = useRef(0);
@@ -175,7 +172,7 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
     searchRequestVersion.current = version;
     const timer = window.setTimeout(() => {
       if (search.trim().length < 2) { setSearchResults([]); return; }
-      void apiFetch<typeof searchResults>(`/search?q=${encodeURIComponent(search)}`)
+      void apiFetch<SearchResult[]>(`/search?q=${encodeURIComponent(search)}`)
         .then((results) => { if (searchRequestVersion.current === version) setSearchResults(results); })
         .catch(() => { if (searchRequestVersion.current === version) setSearchResults([]); });
     }, 280);
@@ -264,12 +261,12 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
         <section className="panel attention-panel" aria-busy={requestsResource.status === "loading"}>
           <div className="panel-heading"><div><p className="eyebrow">Acompanhe de perto</p><h2>Solicitações em andamento</h2></div><Link href="/queues" className="text-link">Ver central <Icon name="arrow-right" size={15} /></Link></div>
           {requestsResource.error && requestsResource.data && <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} />}
-          {!requestsResource.data ? <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} /> : activeRequests.length === 0 ? <EmptyState title="Nenhuma solicitação pendente" description="Quando um exame precisar de ação, ele aparecerá aqui." /> : <div className="request-list">{activeRequests.slice(0, 6).map((request) => <RequestRow key={request.id} request={request} />)}</div>}
+          {!requestsResource.data ? <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} /> : activeRequests.length === 0 ? <EmptyState title="Nenhuma solicitação pendente" message="Quando um exame precisar de ação, ele aparecerá aqui." /> : <div className="request-list">{activeRequests.slice(0, 6).map((request) => <RequestRow key={request.id} request={request} />)}</div>}
         </section>
         <section className="panel notification-panel" aria-busy={notificationsResource.status === "loading"}>
           <div className="panel-heading"><div><p className="eyebrow">Ação necessária</p><h2>Últimas notificações</h2></div><Link href="/notifications" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link></div>
           {notificationsResource.error && notificationsResource.data && <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} />}
-          {!notificationsResource.data ? <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} /> : notifications.length === 0 ? <EmptyState title="Tudo em dia" description="Nenhuma nova ação no seu escopo." compact /> : <div className="notification-list">{notifications.slice(0, 4).map((notification) => <NotificationRow key={notification.id} notification={notification} />)}</div>}
+          {!notificationsResource.data ? <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} /> : notifications.length === 0 ? <EmptyState className="empty-compact" title="Tudo em dia" message="Nenhuma nova ação no seu escopo." /> : <div className="notification-list">{notifications.slice(0, 4).map((notification) => <NotificationRow key={notification.id} notification={notification} />)}</div>}
         </section>
       </div>
       <section className="bottom-strip"><div><span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span><div><strong>Visibilidade ponta a ponta</strong><p>Os estados são confirmados pelo servidor e auditados em uma única timeline.</p></div></div><span className="strip-status">Atualizado {stats ? formatRelativeTime(stats.updatedAt) : "indisponível"}</span></section>
@@ -279,14 +276,11 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
 }
 
 function ResourceFeedback<T>({ resource, label, onRetry }: { resource: ResourceState<T> & { load: () => Promise<void> }; label: string; onRetry: () => Promise<void> }) {
-  if (resource.status === "loading" && resource.data === null) return <div className="resource-loading" role="status">Carregando {label}…</div>;
+  if (resource.status === "loading" && resource.data === null) return <LoadingState className="resource-loading" label={`Carregando ${label}`} />;
   if (resource.status !== "error" || !resource.error) return null;
-  return (
-    <div className="resource-feedback" role="alert">
-      <div><strong>{resource.error}</strong>{resource.updatedAt && <><span>Dados possivelmente desatualizados</span><small>Atualizado {formatRelativeTime(resource.updatedAt)}</small></>}</div>
-      <button type="button" className="button button-ghost" onClick={() => void onRetry()} aria-label={`Tentar novamente: ${label}`}>Tentar novamente</button>
-    </div>
-  );
+  const retryAriaLabel = `Tentar novamente: ${label}`;
+  if (resource.data !== null) return <StaleNotice title="Dados possivelmente desatualizados" message={resource.error} lastConfirmedAt={resource.updatedAt ? formatRelativeTime(resource.updatedAt) : undefined} lastConfirmedPrefix="Atualizado " retryAriaLabel={retryAriaLabel} onRetry={onRetry} />;
+  return <ErrorState title={`${label[0]?.toUpperCase() ?? "Dado"} indisponíveis`} message={resource.error} retryAriaLabel={retryAriaLabel} onRetry={onRetry} />;
 }
 
 function MetricCard({ label, value, tone, caption, icon }: { label: string; value: number; tone: string; caption: string; icon: IconName }) {
@@ -302,14 +296,12 @@ function NotificationRow({ notification }: { notification: Notification }) {
   return <Link href={notification.deepLink} className="notification-row"><span className={`notification-dot notification-${notification.category.toLowerCase()}`} /><span className="notification-copy"><strong>{notification.title}</strong><small>{notification.body}</small><time>{formatRelativeTime(notification.createdAt)}</time></span><span aria-hidden="true" className="row-arrow"><Icon name="arrow-right" size={16} /></span></Link>;
 }
 
-function EmptyState({ title, description, compact = false }: { title: string; description: string; compact?: boolean }) { return <div className={`empty-state ${compact ? "empty-compact" : ""}`}><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>{title}</strong><p>{description}</p></div>; }
-
 function DashboardSkeleton() { return <div className="dashboard-page"><div className="skeleton-heading skeleton-block" /><div className="skeleton-search skeleton-block" /><div className="metric-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="metric-card skeleton-card" />)}</div><div className="dashboard-columns"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></div>; }
 
 function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [patients, setPatients] = useState<Array<{ id: string; displayName: string; species: string; externalId: string }>>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
   const [patientId, setPatientIdState] = useState("");
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [encounterId, setEncounterId] = useState("");
@@ -327,7 +319,7 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
   const [patientNotice, setPatientNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   useDialogFocus(dialogRef, onClose, closeButtonRef);
-  useEffect(() => { void apiFetch<typeof patients>("/patients").then(setPatients).catch(() => setError("Não foi possível carregar os pacientes.")); }, []);
+  useEffect(() => { void apiFetch<Patient[]>("/patients").then(setPatients).catch(() => setError("Não foi possível carregar os pacientes.")); }, []);
   const loadEncounters = useCallback(async (nextPatientId: string) => {
     const version = encounterLoadVersion.current + 1;
     encounterLoadVersion.current = version;

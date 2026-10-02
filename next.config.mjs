@@ -1,4 +1,8 @@
 const securityHeaders = [
+  { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
+  { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
+  { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+  { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -20,6 +24,7 @@ const nextConfig = {
   // explicitly allowlisted. Keep this limited to the local demo host.
   allowedDevOrigins: ["192.168.15.14", "localhost", "127.0.0.1"],
   turbopack: { root: process.cwd() },
+  experimental: { proxyClientMaxBodySize: "25mb" },
   transpilePackages: ["@cvg/contracts", "@cvg/domain", "@cvg/ui", "@cvg/services", "@cvg/shared-state"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

@@ -26,6 +26,11 @@ export interface NextHttpTestBuild {
   cleanup(): Promise<void>;
 }
 
+export const NEXT_HTTP_TEST_PROXY_HEADERS = Object.freeze({
+  "x-cvg-proxy-secret": "cvg-http-test-proxy-secret-0123456789abcdef",
+  "x-forwarded-for": "127.0.0.1"
+});
+
 const STARTUP_TIMEOUT_MS = 60_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const BUILD_TIMEOUT_MS = 120_000;
@@ -240,7 +245,8 @@ function nextHttpEnvironment(options: {
     }),
     SESSION_SECRET: "cvg-http-test-session-secret-012345678901234567890123",
     OUTBOX_INLINE_LOCAL: "false",
-    TRUST_PROXY: "false"
+    TRUST_PROXY: "true",
+    TRUST_PROXY_SHARED_SECRET: NEXT_HTTP_TEST_PROXY_HEADERS["x-cvg-proxy-secret"]
   };
 }
 
@@ -303,7 +309,7 @@ async function waitForLiveness(
   while (Date.now() < deadline) {
     if (hasExited()) throw new Error(`Next exited before liveness was ready. ${output()}`);
     try {
-      const response = await fetch(`${baseUrl}/api/v1/livez`, { signal: AbortSignal.timeout(1_000) });
+      const response = await fetch(`${baseUrl}/api/v1/livez`, { headers: NEXT_HTTP_TEST_PROXY_HEADERS, signal: AbortSignal.timeout(1_000) });
       if (response.status === 200) return;
       lastError = new Error(`liveness returned HTTP ${response.status}`);
     } catch (error) {

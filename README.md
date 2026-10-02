@@ -75,6 +75,8 @@ npm run security:scan
 npm audit --audit-level=high
 ```
 
+Deploy de produção (imagens Docker, bootstrap do primeiro ADMIN com `npm run db:bootstrap`, migrations, worker de outbox e proxy TLS): [`docs/operations/DEPLOYMENT.md`](docs/operations/DEPLOYMENT.md) e [`docker-compose.prod.yml`](docker-compose.prod.yml).
+
 Para evidência operacional adicional: `PERF_PASSWORD="$DEMO_PASSWORD" npm run perf:smoke` exige um servidor já iniciado; `ALLOW_DB_RESTORE_SMOKE=true npm run db:restore:smoke` restaura apenas em um banco Docker descartável. O seed sintético é proibido com `NODE_ENV=production` e só executa com `ALLOW_SYNTHETIC_SEED=true`. O `db:smoke` também é destrutivo: exige `ALLOW_DB_SMOKE_RESET=true`, host de loopback e um banco dedicado cujo nome comece por `cvg_smoke` ou `cvg_test`. A integração descartável roda com `ALLOW_POSTGRES_INTEGRATION_TESTS=true`, `POSTGRES_TEST_ADMIN_URL` local e `npm run test:postgres`.
 
 O backfill relacional disponível nesta etapa é explicitamente local e shadow-only: exige `ALLOW_RELATIONAL_BACKFILL=true`, `RELATIONAL_BACKFILL_TARGET=RELATIONAL_SHADOW`, uma migration aplicada até `010_relational_backfill_control` e `DATABASE_URL` já populado. Execute `npm run db:relational-backfill` somente em um banco descartável; o comando processa requests em lotes, grava checkpoint durável, mantém o lock da fonte até o checkpoint, valida chaves exatas, para se o snapshot mudar e reconcilia cada agregado sem alterar `cvg_runtime_state`. Ele não cria catálogo, ownership, políticas clínicas nem habilita cutover. A evidência final e a crítica independente estão no [packet de backfill](.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md).

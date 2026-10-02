@@ -2,6 +2,8 @@
 
 **Status:** `REVIEW_REQUIRED / BLOCKED`; este suplemento atualiza a evidência local após a rodada independente anterior e não substitui a revisão independente, a aprovação clínica ou a decisão de release.
 
+**Reconciliação de 01/10/2026 (AUD-012):** a linha de dependências da tabela "Evidência reproduzida" foi reescrita com comando, data e versões reais da execução de 01/10/2026; as demais linhas preservam a evidência da rodada de 07/09/2026.
+
 ## Escopo da rodada
 
 Após o packet independente [`independent-critic-report-round2.md`](../../.orchestrate/aaa3-execution-20260907/independent-critic-report-round2.md) e a rechecagem read-only da rodada 3 ([`independent-critic-report-round3.md`](../../.orchestrate/aaa3-execution-20260907/independent-critic-report-round3.md)), foram incorporados e revalidados quatro controles locais:
@@ -20,7 +22,7 @@ Após o packet independente [`independent-critic-report-round2.md`](../../.orche
 | `source /home/ricardo/.nvm/nvm.sh && nvm exec 22 npm run validate` | **725/725 testes em 86 arquivos**; typecheck, lint, docs, OpenAPI 65/60, traceabilidade 43/43 e migrations 001–010 | não é CI remoto nem prova de ambiente hospitalar |
 | Cobertura V8 + `npm run coverage:report` | **92,72% lines, 94,31% functions, 85,82% branches** na execução full corrente; thresholds globais 90/90/85; 35 arquivos abaixo de pelo menos um limiar por arquivo | o relatório não transforma cobertura agregada em prova de cenários clínicos ou de produção |
 | `nvm exec 22 npm run build` | build Next.js 16.3.0/Turbopack concluído com 15 rotas da aplicação (11 estáticas e 4 dinâmicas) | não prova deploy, rollback ou tráfego real |
-| `nvm exec 22 npm run security:scan` + `npm audit --audit-level=high` | secret scan PASS; 0 vulnerabilidades de dependências | não substitui pentest, revisão de egress, secrets manager ou provenance assinada |
+| `nvm exec 22 npm run security:scan` + `npm audit --omit=dev --audit-level=high`, executados em **01/10/2026** após o upgrade para `next@16.3.8` e `sharp@0.35.5` | secret scan PASS; **0 vulnerabilidades em dependências de produção** (`found 0 vulnerabilities`, exit 0). O escopo total `npm audit --audit-level=high` — o mesmo comando do gate da CI — ainda lista advisories apenas na cadeia de ferramentas de desenvolvimento (devDependencies: vitest/eslint/js-yaml), sem critical no escopo total. A citação anterior de "0 vulnerabilidades" não trazia comando nem data e estava stale na data da auditoria de 01/10/2026, quando `next@16.3.0` ainda estava na faixa de advisories críticos | não substitui pentest, revisão de egress, secrets manager ou provenance assinada |
 | `nvm exec 22 npm --silent run security:sbom` | SBOM CycloneDX 1.5 com 560 componentes; job CI valida JSON e publica artefato | revisão de dependências, assinatura/proveniência e aprovação de supply chain continuam abertas |
 | testes de logger e rota HTTP | campos sensíveis não são serializados; status/duração/labels são normalizados; correlação externa vira `external`; writer falho não altera a resposta | thresholds, roteamento, retenção e acesso a logs dependem de D-05 |
 | [`KNOWN_BAD_CONTROL_MATRIX.md`](KNOWN_BAD_CONTROL_MATRIX.md) | oito fronteiras negativas catalogadas com testes executáveis locais | mutation control independente, target identity e efeito distribuído ainda não foram aceitos |

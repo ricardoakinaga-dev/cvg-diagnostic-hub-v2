@@ -4,28 +4,29 @@
 
 **AAA-3:** [plano](../build/STATE_OF_ART_TRIPLE_AAA_EXECUTIVE_PLAN.md) · [roadmap](../build/STATE_OF_ART_TRIPLE_AAA_ROADMAP.md) · [backlog](../build/STATE_OF_ART_TRIPLE_AAA_BACKLOG.md) · [auditoria de 07/09/2026](../RELATORIO_AUDITORIA_2026-09-07.md) · [manifesto](../../.orchestrate/aaa3-execution-20260907/evidence-manifest.json)
 
+Deploy path: [DEPLOYMENT.md](DEPLOYMENT.md) (images, first-admin bootstrap, migrations, TLS edge).
+
 Status: `NOT READY` until implementation, operational validation and human gates exist. This checklist defines what “ready” must prove.
 
-## Current local evidence (07/09/2026)
+## Current local evidence (01/10/2026)
 
-> Current AAA-3 snapshot: 725/725 tests in 86 files; 92.72% statements/lines,
-> 85.82% branches and 94.31% functions in the latest full run; build; browser 60/60 across the full
-> matrix (core, clinical, accessibility and realtime) without retry in the
-> final isolated run;
-> OpenAPI 65/60, traceability 43/43, migrations 001–010, security, audit, SBOM
-> CycloneDX with 560 components under Node 22,
-> recovery 5/5 and performance 7/7. The previous disposable PostgreSQL packet
-> passes 39/39 on Node 22/PostgreSQL 16.15 and
-> remains local conditional evidence; the current host cannot repeat it without
-> `initdb`/`pg_ctl`/Docker, and the persistent 5432 instance was not touched.
-> The production-like local lane passes 51/51 against `next start`, PostgreSQL,
-> synthetic S3/HTTPS scan services and a durable outbox worker; the PostgreSQL-only
-> restore smoke passes with checksum and an isolated restored database.
+> Current AUDIT-2026-10 snapshot: 745 unit tests in 89 files plus 39 PostgreSQL
+> tests in 6 files; 94.90% lines, 95.45% functions and 89.31% branches in the
+> merged coverage run. The file-level `coverage:gate` passes with 28 declared
+> exceptions and no uncovered or stale entries. Browser is 63/63 without retry,
+> including visual 3/3 and accessibility 12/12; typecheck, lint, build, security,
+> OpenAPI 65/60, traceability 43/43, mutation 7/7 and the negative coverage-gate
+> tests pass. PostgreSQL evidence uses a disposable loopback cluster and does not
+> touch the persistent 5432 instance. The candidate remains `NOT READY`: target
+> load/failover, real storage/AV, full restore/RPO/RTO, remote CI and human/clinical
+> acceptance remain open.
 > The current candidate is `NOT READY` and the checklist below remains open.
 
 ## Historical local evidence (06/09/2026; superseded)
 
-> The current candidate supersedes the numeric baseline below with `npm run
+> **AUD-022 (01/10/2026): a linha `614/614` abaixo é histórica — era AAA-2 de 06/09/2026 — e não é a baseline corrente.** A baseline corrente é `npm run test:coverage` com **745 testes unitários em 89 arquivos + 39 testes PostgreSQL em 6 arquivos** e cobertura **94,90% lines, 95,45% functions e 89,31% branches** (valores medidos; veja “Current local evidence” acima).
+>
+> O pacote desta era registra `npm run
 > test:coverage` at 614/614 tests in 75 files and 92.01% statements/lines, 85.00%
 > branches and 94.36% functions across the widened G4 executable scope; migration-010 shadow backfill PostgreSQL at
 > 9/9 focused and 30/30 full-suite tests; build with 15 application routes; explicit
@@ -38,7 +39,7 @@ Status: `NOT READY` until implementation, operational validation and human gates
 > adds 51/51 no-retry scenarios across Chromium, tablet and mobile against `next start`, PostgreSQL, synthetic
 > S3/HTTPS scan services and a durable PostgreSQL outbox worker.
 
-The local synthetic artifact has executable evidence for session/RBAC/CSRF/scope, patient registration with initial encounter/admission, request-flow patient creation and user account, API envelopes and health, core Lab/RX/US/result/file flows, scoped search/filter/timeline/dashboard contracts, scoped cancellation and delegated-manager revocation, ADMIN/delegated-MANAGER versioned collaborator administration with recent re-authentication and soft deactivation, manager control/catalog/reason surfaces, bounded metrics, private local/S3-compatible storage adapters, explicit external malware-scanner and production-storage fail-closed factories, distributed-rate-limit schema readiness, token-owned outbox leases, transfer-context commands gated by D-01, bounded SLA calculation fallback, scoped identity normalization, stable queue cursors and focused registry/API/UI tests. The current local validation is 725/725 tests in 86 files with 92.72% statements/lines, 85.82% branches and 94.31% functions in the latest full run. `npm ci`, typecheck, lint, build, `npm run validate:openapi` (65 operations/60 paths), `npm run validate:docs`, `npm run security:scan`, `npm audit --audit-level=high` and the structural traceability validator pass. The browser matrix is 60/60 without retry, with 12/12 accessibility checks, and the visual packet has 20 PNGs across three viewports. The previous disposable PostgreSQL packet remains 39/39 conditional evidence; the current host cannot repeat it without a disposable cluster. The program continues REJECT because target multi-instance evidence, complete SLA/transfer policy and release approvals are absent.
+The local synthetic artifact has executable evidence for session/RBAC/CSRF/scope, patient registration with initial encounter/admission, request-flow patient creation and user account, API envelopes and health, core Lab/RX/US/result/file flows, scoped search/filter/timeline/dashboard contracts, scoped cancellation and delegated-manager revocation, ADMIN/delegated-MANAGER versioned collaborator administration with recent re-authentication and soft deactivation, manager control/catalog/reason surfaces, bounded metrics, private local/S3-compatible storage adapters, explicit external malware-scanner and production-storage fail-closed factories, distributed-rate-limit schema readiness, token-owned outbox leases, transfer-context commands gated by D-01, bounded SLA calculation fallback, scoped identity normalization, stable queue cursors and focused registry/API/UI tests. The current local validation is 745 unit tests in 89 files plus 39 PostgreSQL tests in 6 files, with 94.90% lines, 89.31% branches and 95.45% functions. `npm ci`, typecheck, lint, build, `npm run validate:openapi` (65 operations/60 paths), `npm run validate:docs`, `npm run security:scan`, `npm audit --audit-level=high` and the structural traceability validator pass. The browser matrix is 63/63 without retry, with visual 3/3 and accessibility 12/12; the file-level coverage gate and mutation 7/7 also pass. PostgreSQL evidence uses a disposable loopback cluster. The program continues REJECT because target multi-instance evidence, complete SLA/transfer policy and release approvals are absent.
 
 O alias PostgreSQL está corrigido. O packet V2 de backfill [`v2-relational-sample-lineage-backfill-20260906.md`](../../.orchestrate/evidence/v2-relational-sample-lineage-backfill-20260906.md) registra a execução populada, request-scoped e resumível da migration 010, com 9/9 focado e 30/30 na suíte PostgreSQL 16.15 descartável, mantendo JSONB como autoridade; o packet HTTP [`aaa3-http-multi-instance-20260906.md`](../../.orchestrate/evidence/aaa3-http-multi-instance-20260906.md) mantém sua própria evidência de duas instâncias HTTP em `next dev` e `next start`, sessão cross-process, fanout SSE autorizado e replay `Last-Event-ID`. O packet browser production-like [`aaa3-browser-postgres-production-s3-20260906.md`](../../.orchestrate/evidence/aaa3-browser-postgres-production-s3-20260906.md) adiciona 51/51 sem retry nos projetos Chromium, tablet e mobile com `next start`, PostgreSQL, S3/scan sintéticos e worker outbox durável. O packet AAA-2 anterior permanece histórico e registra também `db:smoke`, `db:restore:smoke` direto e `perf:smoke`. Os 51 casos Playwright passam em uma corrida única sem retry, usando servidores de memória sintética isolados por projeto; o Patient Workspace inclui a preservação do snapshot confirmado quando o refresh fica indisponível; `npm run test:accessibility` passou 6/6. Esses gates locais não são aceite representativo: object storage/chaves reais, workload aprovado, restart/failover, RPO/RTO, CI remoto e decisões humanas continuam abertos. Esta evidência não marca nenhum item do checklist como concluído.
 

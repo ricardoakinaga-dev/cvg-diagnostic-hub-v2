@@ -2,64 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ROLES, type RoleCode } from "@cvg/contracts";
+import { ROLES, type AuditEvent, type DiagnosticService, type ReasonCode, type RoleCode, type ManagedUser, type SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, createClientUniqueId, getSafeErrorMessage } from "./api-client";
+import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
 
-type ServiceCategory = "LABORATORY" | "IMAGING";
-type WorkflowType = "LABORATORY" | "RADIOLOGY" | "ULTRASOUND";
-type ResultSchema = "NUMERIC_PANEL" | "NARRATIVE";
-
-interface CatalogService {
-  id: string;
-  code: string;
-  name: string;
-  category: ServiceCategory;
-  departmentCode: string;
-  workflowType: WorkflowType;
-  requiresSample: boolean;
-  requiresSchedule: boolean;
-  allowsAttachment: boolean;
-  resultSchema: ResultSchema;
-  active: boolean;
-  version: number;
-  slaHours: { ROUTINE: number; URGENT: number; EMERGENCY: number };
-}
-
-interface ReasonCode {
-  id: string;
-  type: "RECOLLECTION" | "CANCEL" | "REJECT" | "AMEND";
-  code: string;
-  label: string;
-  active: boolean;
-  version: number;
-}
-
-interface ManagedUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: RoleCode;
-  departmentCode: string;
-  managedDepartmentCodes?: string[];
-  active: boolean;
-  timezone: string;
-  createdAt: string;
-  version: number;
-}
-
-interface AuditEvent {
-  id: string;
-  eventType: string;
-  actorId?: string;
-  entityType: string;
-  entityId: string;
-  previousState?: string;
-  newState?: string;
-  occurredAt: string;
-  metadata: Record<string, string | number | boolean | null>;
-}
+type CatalogService = DiagnosticService;
+type ServiceCategory = DiagnosticService["category"];
+type WorkflowType = DiagnosticService["workflowType"];
+type ResultSchema = DiagnosticService["resultSchema"];
 
 interface ServiceDraft {
   code: string;
@@ -131,14 +83,14 @@ export function AdminConsole() {
       apiFetch<ReasonCode[]>("/reason-codes"),
       apiFetch<ManagedUser[]>("/users"),
       apiFetch<AuditEvent[]>("/audit-events?limit=20"),
-      apiFetch<{ user: { role: RoleCode } }>("/session/me")
+      apiFetch<SessionResponse>("/session/me")
     ]);
     if (loadVersion.current !== version) return;
     if (serviceResult.status === "fulfilled") setServices(serviceResult.value);
     if (reasonResult.status === "fulfilled") setReasons(reasonResult.value);
     if (userResult.status === "fulfilled") setUsers(userResult.value);
     if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value);
-    if (identityResult.status === "fulfilled") setCurrentRole(identityResult.value.user.role);
+    if (identityResult.status === "fulfilled" && identityResult.value.user.role !== "VET") setCurrentRole(identityResult.value.user.role);
     const results = [serviceResult, reasonResult, userResult, auditResult];
     const failures = results.filter((result) => result.status === "rejected");
     const denied = failures.length === results.length && failures.every((result) => result.status === "rejected" && result.reason instanceof ApiClientError && result.reason.code === "SCOPE_DENIED");
@@ -152,19 +104,19 @@ export function AdminConsole() {
     return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
 
-  if (loading && services.length === 0 && reasons.length === 0 && users.length === 0 && auditEvents.length === 0) return <div className="loading-state" role="status">Carregando administração…</div>;
+  if (loading && services.length === 0 && reasons.length === 0 && users.length === 0 && auditEvents.length === 0) return <LoadingState label="Carregando administração" />;
 
   return (
     <div className="admin-page">
       <div className="page-heading"><div><p className="eyebrow">Configuração controlada</p><h1>Administração <em>sem atalhos.</em></h1><p className="page-lede">Catálogos, acessos e motivos são versionados, desativados e auditados; nada referenciado é apagado.</p></div><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> {loading ? "Atualizando…" : "Atualizar"}</ActionButton></div>
-      {accessDenied ? <div className="error-state" role="alert"><strong>Administração fora do seu escopo</strong><span>Seu perfil não pode consultar nem alterar o catálogo institucional.</span><Link className="button button-ghost" href="/">Voltar à visão geral</Link></div> : error && <div className="error-state" role="status"><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Reconciliando…" : "Reconciliar"}</ActionButton></div>}
+       {accessDenied ? <ErrorState title="Administração fora do seu escopo" message="Seu perfil não pode consultar nem alterar o catálogo institucional." onRetry={() => window.location.reload()} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : error && <ErrorState title="Configuração parcialmente indisponível" message={error} onRetry={load} retrying={loading} retryLabel="Reconciliar" />}
       <section className="admin-policy-banner" role="note"><strong>Gate externo mantido visível</strong><p>A política de resultado crítico, identidade institucional, transferência/alta, retenção e RPO/RTO não é inventada pelo ambiente local. A configuração permanece bloqueada até aprovação e owner do hospital.</p></section>
       <div className="admin-columns">
-        <section className="panel" id="catalog"><div className="panel-heading"><div><p className="eyebrow">Catálogo customizável</p><h2>Serviços diagnósticos</h2></div><span className="timeline-count">{services.length}</span></div><ServiceCreateForm onSaved={() => void load()} />{services.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum serviço no escopo de gestão</strong><p>Adicione o primeiro serviço ou revise o escopo delegado.</p></div> : <div className="admin-list">{services.map((service) => <ServiceRow key={service.id} service={service} onSaved={() => void load()} />)}</div>}</section>
-        <section className="panel" id="reasons"><div className="panel-heading"><div><p className="eyebrow">Motivos auditáveis</p><h2>Códigos de motivo</h2></div><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm onSaved={() => void load()} />{reasons.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum motivo configurado</strong><p>Novos códigos devem ser aprovados antes de serem usados em comandos.</p></div> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={reason.id} reason={reason} onSaved={() => void load()} />)}</div>}</section>
-        <section className="panel" id="users"><div className="panel-heading"><div><p className="eyebrow">Acesso institucional</p><h2>Colaboradores e roles</h2></div><span className="timeline-count">{users.length}</span></div><UserCreateForm canCreateTechnicalRoles={currentRole === "ADMIN"} onSaved={() => void load()} />{users.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum colaborador administrável</strong><p>O gestor só visualiza identidades dentro do escopo delegado; nenhuma credencial é exibida.</p></div> : <div className="admin-list">{users.map((user) => <UserRow key={`${user.id}:${user.version}:${user.active}`} user={user} canEditTechnicalScope={currentRole === "ADMIN"} onSaved={() => void load()} />)}</div>}</section>
+         <section className="panel" id="catalog"><div className="panel-heading"><div><p className="eyebrow">Catálogo customizável</p><h2>Serviços diagnósticos</h2></div><span className="timeline-count">{services.length}</span></div><ServiceCreateForm onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço ou revise o escopo delegado." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={service.id} service={service} onSaved={() => void load()} />)}</div>}</section>
+         <section className="panel" id="reasons"><div className="panel-heading"><div><p className="eyebrow">Motivos auditáveis</p><h2>Códigos de motivo</h2></div><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Novos códigos devem ser aprovados antes de serem usados em comandos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={reason.id} reason={reason} onSaved={() => void load()} />)}</div>}</section>
+         <section className="panel" id="users"><div className="panel-heading"><div><p className="eyebrow">Acesso institucional</p><h2>Colaboradores e roles</h2></div><span className="timeline-count">{users.length}</span></div><UserCreateForm canCreateTechnicalRoles={currentRole === "ADMIN"} onSaved={() => void load()} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="O gestor só visualiza identidades dentro do escopo delegado; nenhuma credencial é exibida." /> : <div className="admin-list">{users.map((user) => <UserRow key={`${user.id}:${user.version}:${user.active}`} user={user} canEditTechnicalScope={currentRole === "ADMIN"} onSaved={() => void load()} />)}</div>}</section>
       </div>
-      <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><div><p className="eyebrow">Fonte de verdade</p><h2>Auditoria recente</h2></div><span className="timeline-count">{auditEvents.length}</span></div>{auditEvents.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum evento de configuração no escopo</strong><p>As alterações aparecerão aqui quando houver atividade auditável.</p></div> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType.replaceAll("_", " ").toLowerCase()} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="text-success">{event.newState?.replaceAll("_", " ").toLowerCase() ?? "registrado"}</span></li>)}</ul>}</section>
+       <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><div><p className="eyebrow">Fonte de verdade</p><h2>Auditoria recente</h2></div><span className="timeline-count">{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento de configuração no escopo" message="As alterações aparecerão aqui quando houver atividade auditável." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType.replaceAll("_", " ").toLowerCase()} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="text-success">{event.newState?.replaceAll("_", " ").toLowerCase() ?? "registrado"}</span></li>)}</ul>}</section>
     </div>
   );
 }

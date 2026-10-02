@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ItemState, OperationalContext, Priority, WorkflowType } from "@cvg/contracts";
+import type { ItemState, OperationalContext, QueueItem, SessionResponse } from "@cvg/contracts";
 import { buildQueueFilterQuery } from "@cvg/shared-state";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, apiFetchWithMeta, formatRelativeTime, getSafeErrorMessage } from "@/components/api-client";
@@ -10,29 +10,8 @@ import type { ApiFetchResult } from "@/components/api-client";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { WorkflowAction } from "@/components/workflow-action";
 import { Icon } from "@/components/ui-icons";
-
-interface QueueItem {
-  id: string;
-  requestId: string;
-  status: ItemState;
-  workflowType: WorkflowType;
-  priority: Priority;
-  version: number;
-  currentResultId?: string;
-  currentSampleId?: string;
-  procedureId?: string;
-  procedureVersion?: number;
-  dueAt: string;
-  createdAt: string;
-  requestCode: string;
-  nextAction: string;
-  overdue: boolean;
-  patient: { id?: string; displayName: string; species: string; externalId: string };
-  service: { id?: string; code?: string; name: string };
-  operationalContext?: OperationalContext;
-}
-
-interface SessionUser { role: string; departmentCode: string; managedDepartmentCodes?: string[] }
+import { useDialogFocus } from "@/components/use-dialog-focus";
+import { EmptyState, ErrorState, LoadingState } from "@/components/feedback-states";
 
 type QueueCursors = Record<string, string>;
 type QueueTotals = Record<string, number>;
@@ -93,22 +72,14 @@ export function ExamQueue() {
   const [status, setStatus] = useState<"ALL" | ItemState>("ALL");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<QueueItem | null>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
   const loadVersion = useRef(0);
 
   const openDrawer = useCallback((item: QueueItem, opener: HTMLElement) => {
-    openerRef.current = opener;
+    opener.focus();
     setSelected(item);
   }, []);
 
-  const closeDrawer = useCallback(() => {
-    const opener = openerRef.current;
-    setSelected(null);
-    window.setTimeout(() => {
-      opener?.focus();
-      if (openerRef.current === opener) openerRef.current = null;
-    }, 0);
-  }, []);
+  const closeDrawer = useCallback(() => setSelected(null), []);
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
@@ -117,7 +88,7 @@ export function ExamQueue() {
     setError("");
     setPaginationError("");
     try {
-      const me = await apiFetch<{ user: SessionUser }>("/session/me");
+      const me = await apiFetch<SessionResponse>("/session/me");
       const scopedDepartments = me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
       const queueResults = await Promise.allSettled(scopedDepartments.map(async (code) => ({ code, page: await apiFetchWithMeta<QueueItem[]>(queuePath(code, { overdue, status })) })));
       if (loadVersion.current !== version) return;
@@ -200,19 +171,19 @@ export function ExamQueue() {
         <label>Status<select aria-label="Filtrar por status" value={status} onChange={(event) => setStatus(event.target.value as "ALL" | ItemState)}><option value="ALL">Todos os status</option><option value="REQUESTED">Solicitado</option><option value="RECEIVED">Amostra recebida</option><option value="IN_PROGRESS">Em execução</option><option value="AWAITING_REPORT">Aguardando laudo</option><option value="RESULT_AVAILABLE">Resultado disponível</option><option value="RECOLLECTION_REQUIRED">Recoleta necessária</option></select></label>
         <span className="queue-filter-count" aria-live="polite">{visibleItems.length} {visibleItems.length === 1 ? "item" : "itens"}</span>
       </section>
-      {error && <div className="error-state" role="alert"><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Tentando novamente…" : "Tentar novamente"}</ActionButton></div>}
-      <section className="panel queue-panel" aria-busy={loading}>
-        <div className="queue-summary"><span><strong>{visibleItems.length}</strong>{hasMore ? ` de ${totalItems} itens na fila` : " itens na fila"}</span><span className="queue-note">Ordenação: prioridade · prazo · espera</span></div>
-        {loading ? <div className="queue-loading" role="status" aria-live="polite">Carregando fila…</div> : visibleItems.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum item nesta fila</strong><p>Altere os filtros ou aguarde uma solicitação no escopo do setor.</p></div> : isMobileQueue ? <div className="queue-mobile-list" role="list" aria-label="Itens da fila em cartões">
-          {visibleItems.map((item) => <QueueCard key={item.id} item={item} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}
+       {error && <ErrorState title="Fila parcialmente indisponível" message={error} onRetry={load} retrying={loading} />}
+       <section className="panel queue-panel" aria-busy={loading}>
+         <div className="queue-summary"><span><strong>{visibleItems.length}</strong>{hasMore ? ` de ${totalItems} itens na fila` : " itens na fila"}</span><span className="queue-note">Ordenação: prioridade · prazo · espera</span></div>
+         {loading ? <LoadingState className="queue-loading" label="Carregando fila" /> : visibleItems.length === 0 ? <EmptyState title="Nenhum item nesta fila" message="Altere os filtros ou aguarde uma solicitação no escopo do setor." /> : isMobileQueue ? <div className="queue-mobile-list" role="list" aria-label="Itens da fila em cartões">
+           {visibleItems.map((item) => <QueueCard key={item.id} item={item} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}
         </div> : <div className="queue-table-wrap queue-desktop-table">
           <table className="queue-table">
             <caption className="sr-only">Fila de exames</caption>
             <thead><tr><th>Paciente</th><th>Exame</th><th>Prioridade</th><th>Status</th><th>Prazo</th><th>Próxima ação</th><th>Ação</th><th /></tr></thead>
-            <tbody>{visibleItems.map((item) => <QueueRow key={item.id} item={item} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}</tbody>
+             <tbody>{visibleItems.map((item) => <QueueRow key={item.id} item={item} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}</tbody>
           </table>
         </div>}
-        {paginationError && <p className="queue-pagination-error" role="alert">{paginationError}</p>}
+         {paginationError && <ErrorState className="queue-pagination-error" title="Não foi possível carregar mais itens" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
         {hasMore && <div className="queue-pagination"><span className="queue-pagination-copy"><strong>Mostrando {items.length} de {totalItems} itens</strong><small>O restante continua no mesmo escopo autorizado.</small></span><ActionButton tone="ghost" state={loadingMore ? "pending" : "idle"} onClick={() => void loadMore()} disabled={loading}>{loadingMore ? "Carregando…" : "Carregar mais itens"}</ActionButton></div>}
       </section>
       {selected && <QueueDrawer item={selected} onClose={closeDrawer} onComplete={() => { closeDrawer(); void load(); }} />}
@@ -229,15 +200,15 @@ function QueueCard({ item, onOpen, onComplete }: { item: QueueItem; onOpen: (ope
   const owner = item.operationalContext?.currentOwner?.label ?? "A definir";
   return <article className={`queue-card${item.overdue ? " queue-card-overdue" : ""}`} role="listitem">
     <div className="queue-card-heading">
-      <button type="button" className="queue-card-patient" onClick={(event) => onOpen(event.currentTarget)}>
+       <button type="button" className="queue-card-patient" onClick={(event) => onOpen(event.currentTarget)}>
         <span className="patient-avatar" aria-hidden="true">{item.patient.displayName.slice(0, 1)}</span>
         <span><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId}</small></span>
       </button>
-      <button type="button" className="row-arrow row-context-button queue-card-context-button" onClick={(event) => onOpen(event.currentTarget)} aria-label={`Abrir contexto de ${item.service.name}`}><Icon name="arrow-right" size={16} /></button>
+       <button type="button" className="row-arrow row-context-button queue-card-context-button" onClick={(event) => onOpen(event.currentTarget)} aria-label={`Abrir contexto de ${item.service.name}`}><Icon name="arrow-right" size={16} /></button>
     </div>
     <div className="queue-card-service">
       <span className="queue-card-label">Exame solicitado</span>
-      <button type="button" className="queue-card-service-button" onClick={(event) => onOpen(event.currentTarget)}>
+       <button type="button" className="queue-card-service-button" onClick={(event) => onOpen(event.currentTarget)}>
         <strong>{item.service.name}</strong><small>{item.requestCode}</small>
       </button>
     </div>
@@ -259,22 +230,7 @@ function QueueDrawer({ item, onClose, onComplete }: { item: QueueItem; onClose: 
   const closeRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const operation = item.operationalContext;
-  useEffect(() => {
-    closeRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
-    const onTab = (event: KeyboardEvent) => {
-      if (event.key !== "Tab") return;
-      const focusable = Array.from(drawerRef.current?.querySelectorAll<HTMLElement>("button, a[href], input, select, textarea, [tabindex]:not([tabindex='-1'])") ?? []).filter((element) => !element.hasAttribute("disabled"));
-      if (focusable.length === 0) { event.preventDefault(); return; }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
-      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keydown", onTab);
-    return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keydown", onTab); };
-  }, [onClose]);
+  useDialogFocus(drawerRef, onClose, closeRef);
   return <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><aside ref={drawerRef} className="context-drawer" role="dialog" aria-modal="true" aria-labelledby="queue-drawer-title"><div className="drawer-heading"><div><p className="eyebrow">Contexto do exame</p><h2 id="queue-drawer-title">{item.service.name}</h2><p>{item.requestCode} · {item.patient.displayName}</p></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar contexto"><Icon name="close" size={18} /></button></div><div className="drawer-patient-card"><span className="patient-avatar">{item.patient.displayName.slice(0, 1)}</span><span><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId}</small></span><PriorityBadge priority={item.priority} /></div><dl className="operation-context-list"><div><dt>Responsável atual</dt><dd>{operation?.currentOwner.label ?? "A definir"}</dd></div><div><dt>Próxima ação</dt><dd>{operation?.nextAction.label ?? item.nextAction}</dd></div><div><dt>Bloqueado por</dt><dd>{operation?.blockedBy?.label ?? "Sem bloqueio registrado"}</dd></div><div><dt>Aguardando desde</dt><dd>{formatOptionalDate(operation?.waitingSince)}</dd></div><div><dt>Prazo esperado</dt><dd className={item.overdue ? "text-danger" : ""}>{formatOptionalDate(operation?.expectedBy ?? item.dueAt)}</dd></div><div><dt>Escalonamento operacional</dt><dd><span className={`escalation-badge escalation-${(operation?.escalationLevel ?? "NONE").toLowerCase()}`}>{escalationLabels[operation?.escalationLevel ?? "NONE"]}</span></dd></div></dl><div className="drawer-actions"><WorkflowAction item={item} onComplete={onComplete} /><Link href={`/requests/${item.requestId}#${item.id}`} className="button button-ghost">Abrir workspace completo <Icon name="arrow-right" size={15} /></Link></div><p className="drawer-note">As transições são confirmadas pelo servidor e permanecem na timeline auditável.</p></aside></div>;
 }
 

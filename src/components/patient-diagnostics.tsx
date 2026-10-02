@@ -2,69 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ItemState, Priority, WorkflowType } from "@cvg/contracts";
+import type { ItemState, PatientDiagnosticsResult, PatientWorkspaceSample } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { EmptyState, ErrorState, PartialNotice, StaleNotice } from "./feedback-states";
 import { PriorityBadge, StatusBadge, statusLabel } from "./status-badge";
 import { Icon } from "./ui-icons";
 
-type SampleSummary = {
-  id: string;
-  requestId: string;
-  accessionCode: string;
-  sampleType: string;
-  status: "EXPECTED" | "RECEIVED" | "REJECTED" | "REPLACED";
-  collectedAt?: string;
-  receivedAt?: string;
-};
-
-type WorkspaceItemContext = {
-  operationalContext: {
-    currentOwner: { label: string };
-    nextAction: { label: string };
-    blockedBy: { label: string } | null;
-    waitingSince: string | null;
-    expectedBy: string | null;
-    escalationLevel: "NONE" | "WATCH" | "ATTENTION" | "URGENT";
-  };
-  sample: SampleSummary | null;
-  result: { id: string; versionId: string; status: "RELEASED"; releasedAt?: string; needsReReview: boolean } | null;
-  attachments: Array<{ id: string; safeName: string; detectedMime: string; sizeBytes: number; createdAt: string }>;
-};
-
-type DiagnosticsData = {
-  patient: { id: string; displayName: string; species: string; breed: string; sex: string; birthDate?: string; externalId: string; ownerLabel: string; active: boolean };
-  encounters: Array<{ id: string; externalId: string; type: string; status: string; openedAt: string; closedAt?: string }>;
-  admissions: Array<{ id: string; encounterId: string; departmentCode: string; ward: string; bed: string; admittedAt: string; dischargedAt?: string }>;
-  items: Array<{
-    id: string;
-    requestCode: string;
-    priority: Priority;
-    aggregateStatus: string;
-    createdAt: string;
-    encounter: { id: string; externalId: string; type: string };
-    items: Array<{
-      id: string;
-      requestId: string;
-      status: ItemState;
-      workflowType: WorkflowType;
-      currentResultId?: string;
-      service: { name: string };
-      workspaceContext: WorkspaceItemContext;
-    }>;
-  }>;
-  events: Array<{ id: string; eventType: string; occurredAt: string; newState?: string }>;
-  nextActions: Array<{ id: string; requestId: string; requestCode: string; itemId: string; label: string; deepLink: string; status: ItemState; priority: Priority; dueAt: string; departmentCode: string }>;
-  workspace: {
-    asOf: string;
-    dataQuality?: { status: "FRESH" | "DEGRADED"; asOf: string; note?: string };
-    currentContext: { encounterId: string | null; admissionId: string | null; departmentCode: string | null; ward: string | null; bed: string | null; responsibleLabel: string | null };
-    summary: { requestCount: number; itemCount: number; activeItemCount: number; availableResultCount: number; sampleCount: number; attachmentCount: number };
-  };
-  nextCursor?: string;
-  limit: number;
-  total: number;
-};
+type SampleSummary = PatientWorkspaceSample;
+type DiagnosticsData = PatientDiagnosticsResult;
 
 const sampleLabels: Record<SampleSummary["status"], string> = {
   EXPECTED: "Esperada",
@@ -286,7 +232,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     return <PatientWorkspaceSkeleton />;
   }
   if (!activeData) {
-    return <div className="error-state patient-workspace-error" role="alert"><strong>Paciente indisponível</strong><span>{error}</span><div className="workspace-error-actions" role="group" aria-label="Ações de recuperação do paciente"><ActionButton state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Tentando novamente…" : "Tentar novamente"}</ActionButton><Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link></div></div>;
+    return <ErrorState className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
   }
 
   const context = activeData.workspace.currentContext;
@@ -327,12 +273,12 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     </div>
 
     {loading && <div className="workspace-refresh-status" role="status" aria-live="polite">Atualizando snapshot autorizado…</div>}
-    {degraded && <div className="error-state workspace-partial-notice" role="status" aria-live="polite"><span><strong>Leitura parcial.</strong> {activeData.workspace.dataQuality?.note ?? "A leitura auxiliar de amostras, resultados e anexos está indisponível; os itens autorizados continuam visíveis."}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Reconciliando…" : "Reconciliar visão"}</ActionButton></div>}
-    {error && <div className="error-state workspace-stale-notice" role="status" aria-live="polite"><span><strong>Snapshot anterior preservado.</strong> A última atualização não foi concluída; exibindo a leitura confirmada de {formatSnapshotDate(activeData.workspace.asOf)}.</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Reconciliando…" : "Reconciliar visão"}</ActionButton></div>}
+    {degraded && <PartialNotice className="workspace-partial-notice" title="Leitura parcial." accessibleLabel="Leitura parcial" message={activeData.workspace.dataQuality?.note ?? "A leitura auxiliar de amostras, resultados e anexos está indisponível; os itens autorizados continuam visíveis."} onRetry={load} retrying={loading} retryLabel="Reconciliar visão" />}
+    {error && <StaleNotice className="workspace-stale-notice" title="Snapshot anterior preservado." accessibleLabel="Snapshot anterior preservado" message={`A última atualização não foi concluída; exibindo a leitura confirmada de ${formatSnapshotDate(activeData.workspace.asOf)}.`} onRetry={load} retrying={loading} retryLabel="Reconciliar visão" />}
 
     <section className="workspace-context-grid" aria-label="Contexto atual do paciente">
       <article className="panel workspace-context-card">
-        <div className="panel-heading"><div><p className="eyebrow">Contexto atual</p><h2>{contextHeading}</h2></div><span className="context-live-status" role="status" aria-label={contextStatusLabel}><span className={`context-live-dot${stale || degraded ? " context-live-dot-stale" : ""}`} aria-hidden="true" /><span>{contextStatusLabel}</span></span></div>
+        <div className="panel-heading"><div><p className="eyebrow">Contexto atual</p><h2>{contextHeading}</h2></div><span className="context-live-status" role="status" aria-label={workspaceState === "ready" ? contextStatusLabel : undefined}><span className={`context-live-dot${stale || degraded ? " context-live-dot-stale" : ""}`} aria-hidden="true" /><span>{contextStatusLabel}</span></span></div>
         <dl className="workspace-context-list">
           <div><dt>Atendimento</dt><dd>{currentEncounter?.externalId ?? "Não informado"}</dd></div>
           <div><dt>Setor responsável</dt><dd>{departmentLabel(context.departmentCode)}</dd></div>
@@ -356,7 +302,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     <div className="patient-detail-grid workspace-main-grid">
       <section className="panel workspace-requests-panel">
         <div className="panel-heading"><div><p className="eyebrow">Linha de cuidado</p><h2>{summary.requestCount} {summary.requestCount === 1 ? "protocolo autorizado" : "protocolos autorizados"}</h2></div><span className="timeline-count">{requestScopeLabel} · mais recente primeiro</span></div>
-        {activeData.items.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum exame neste contexto</strong><p>A identidade foi localizada, mas não há solicitações visíveis para este escopo.</p></div> : <div className="patient-request-list">{activeData.items.map((request) => <article className="patient-request" key={request.id}>
+        {activeData.items.length === 0 ? <EmptyState title="Nenhum exame neste contexto" message="A identidade foi localizada, mas não há solicitações visíveis para este escopo." /> : <div className="patient-request-list">{activeData.items.map((request) => <article className="patient-request" key={request.id}>
           <div className="patient-request-heading"><Link href={`/requests/${request.id}`}><strong>{request.requestCode}</strong></Link><PriorityBadge priority={request.priority} /><span>{formatRelativeTime(request.createdAt)}</span></div>
           <small className="request-context-line">{request.encounter.externalId} · {aggregateStatusLabel(request.aggregateStatus)}</small>
           <div className="workspace-item-list">{request.items.map((item) => {
@@ -381,7 +327,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
             </div>;
           })}</div>
         </article>)}</div>}
-        {paginationError && <p className="workspace-pagination-error" role="alert">{paginationError}</p>}
+        {paginationError && <ErrorState className="workspace-pagination-error" title="Não foi possível carregar mais protocolos" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
         {activeData.nextCursor && <div className="workspace-pagination"><span className="workspace-pagination-copy"><strong>{requestScopeLabel} protocolos</strong><small>O restante continua no mesmo escopo autorizado.</small></span><ActionButton tone="ghost" state={loadingMore ? "pending" : "idle"} onClick={() => void loadMore()} disabled={loading}>{loadingMore ? "Carregando…" : "Carregar mais protocolos"}</ActionButton></div>}
       </section>
       <section className="panel timeline-panel workspace-timeline-panel">

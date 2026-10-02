@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { authenticateRequest, authorizationSnapshotIsCurrent, getCsrfCookieName, getSessionCookieName, loginUser, reauthenticateUser, revokeSession } from "./session";
+import * as passwordSecurity from "./password";
 
 describe("secure server sessions", () => {
   it("creates an opaque session and authenticates it through a cookie", async () => {
@@ -27,6 +28,33 @@ describe("secure server sessions", () => {
     await expect(
       authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}` } }))
     ).rejects.toMatchObject({ code: "SESSION_EXPIRED", status: 401 });
+  });
+
+  it("verifies a fixed dummy hash for unknown and inactive identities", async () => {
+    const store = new MemoryStore(createDemoState("dummy-path-password"));
+    const verifySpy = vi.spyOn(passwordSecurity, "verifyPassword");
+
+    try {
+      await expect(loginUser(store, "missing@cvg.local", "missing-password")).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+      expect(verifySpy).toHaveBeenCalledWith("missing-password", expect.stringMatching(/^cvg-dummy-salt:/));
+
+      const login = await loginUser(store, "vet@cvg.local", "dummy-path-password");
+      verifySpy.mockClear();
+      await store.transaction((state) => ({
+        state: { ...state, users: state.users.map((user) => user.id === "user-vet" ? { ...user, active: false } : user) },
+        result: undefined
+      }));
+
+      await expect(loginUser(store, "vet@cvg.local", "dummy-path-password"))
+        .rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+      expect(verifySpy).toHaveBeenCalledWith("dummy-path-password", expect.stringMatching(/^cvg-dummy-salt:/));
+      verifySpy.mockClear();
+      await expect(reauthenticateUser(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}` } }), "inactive-password"))
+        .rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+      expect(verifySpy).toHaveBeenCalledWith("inactive-password", expect.stringMatching(/^cvg-dummy-salt:/));
+    } finally {
+      verifySpy.mockRestore();
+    }
   });
 
   it("authenticates against the fresh read boundary instead of a stale inspection cache", async () => {
@@ -90,6 +118,14 @@ describe("secure server sessions", () => {
       headers: { cookie: `cvg_session=${login.sessionToken}; cvg_csrf=${login.csrfToken}`, "x-csrf-token": login.csrfToken }
     });
     await expect(authenticateRequest(store, validRequest, { requireCsrf: true })).resolves.toMatchObject({ id: "user-vet" });
+  });
+
+  it("treats an invalidly encoded session cookie as an absent session", async () => {
+    const store = new MemoryStore(createDemoState("malformed-cookie-password"));
+
+    await expect(authenticateRequest(store, new Request("http://localhost", {
+      headers: { cookie: "cvg_session=%E0%A4%A" }
+    }))).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
   });
 
   it("rejects matching CSRF cookie and header tokens that belong to another session", async () => {

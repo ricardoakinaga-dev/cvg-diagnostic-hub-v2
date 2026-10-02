@@ -6,6 +6,24 @@ cd "$ROOT_DIR"
 
 failures=0
 
+# AUD-002: um único motor de busca para TODAS as classes de checagem.
+# `rg` quando existe; senão fallback explícito com grep equivalente.
+# Sem nenhum dos dois a validação aborta (exit != 0) — nunca aprova em silêncio.
+ENGINE=""
+REPORT_ENGINE=""
+if command -v rg >/dev/null 2>&1; then
+  ENGINE="rg"
+  REPORT_ENGINE="rg"
+elif command -v grep >/dev/null 2>&1; then
+  ENGINE="grep"
+  REPORT_ENGINE="grep (-F / -rInE / -oE; rg ausente)"
+else
+  printf 'FATAL: nenhum motor de busca disponível (rg e grep ausentes).\n' >&2
+  printf 'Validação abortada antes de qualquer checagem — nada foi aprovado.\n' >&2
+  exit 2
+fi
+printf 'Documentation validation engine: %s\n' "$REPORT_ENGINE"
+
 require_file() {
   local path="$1"
   if [[ ! -s "$path" ]]; then
@@ -14,10 +32,23 @@ require_file() {
   fi
 }
 
+# rc: 0 = encontrado, 1 = não encontrado, >=2 = erro do motor.
+text_found() {
+  local path="$1"
+  local text="$2"
+  if [[ "$ENGINE" == "rg" ]]; then
+    rg -Fq -- "$text" "$path"
+  else
+    grep -Fq -- "$text" "$path"
+  fi
+}
+
 require_text() {
   local path="$1"
   local text="$2"
-  if ! rg -Fq -- "$text" "$path"; then
+  local rc=0
+  text_found "$path" "$text" || rc=$?
+  if (( rc != 0 )); then
     printf 'MISSING_TEXT: %s -> %s\n' "$path" "$text" >&2
     failures=$((failures + 1))
   fi
@@ -25,6 +56,7 @@ require_text() {
 
 required_files=(
   README.md QUESTIONS.md docs/README.md docs/GLOSSARY.md docs/DECISION_LOG.md docs/TRACEABILITY_MATRIX.md
+  docs/operations/DEPLOYMENT.md
   docs/discovery/DISCOVERY.md docs/discovery/STAKEHOLDERS.md docs/discovery/PERSONAS.md
   docs/discovery/JOBS_TO_BE_DONE.md docs/discovery/USER_JOURNEYS.md docs/discovery/SERVICE_BLUEPRINT.md
   docs/discovery/EVENT_STORMING.md docs/discovery/ASSUMPTIONS.md docs/discovery/OPEN_QUESTIONS.md
@@ -46,6 +78,14 @@ required_files=(
   docs/adr/README.md docs/adr/ADR-001-modular-monolith.md docs/adr/ADR-002-postgresql.md
   docs/adr/ADR-003-realtime-sse.md docs/adr/ADR-004-storage.md docs/adr/ADR-005-authentication.md
   docs/adr/ADR-006-result-versioning.md docs/adr/ADR-007-outbox.md docs/adr/ADR-008-identifiers.md
+  docs/RELATORIO_AUDITORIA_2026-09-07.md
+  docs/RELATORIO_FRONTEND_STATE_OF_ART_2026-09-07.md
+  docs/RELATORIO_FRONTEND_STATE_OF_ART_ADDENDUM_2026-09-07.md
+  docs/v2/LABORATORY_VERTICAL.md
+  docs/RELATORIO_AUDITORIA_2026-10-01.md
+  docs/build/AUDIT_2026_10_EXECUTIVE_PLAN.md
+  docs/build/AUDIT_2026_10_ROADMAP.md
+  docs/build/AUDIT_2026_10_BACKLOG.md
   .gauntlet/state.md .gauntlet/progress.md
 )
 
@@ -78,28 +118,84 @@ require_text docs/build/BACKLOG.md 'BLD-HARD-004'
 require_text docs/TRACEABILITY_MATRIX.md 'Problem'
 
 # Any product placeholder in a planning document is a gap, not a harmless note.
-if rg -n '\b(TODO|TBD|FIXME|PLACEHOLDER)\b|[Ll]orem [Ii]psum' README.md QUESTIONS.md docs --glob '*.md' >/tmp/cvg-docs-placeholders.$$ 2>/dev/null; then
-  cat /tmp/cvg-docs-placeholders.$$ >&2
+PLACEHOLDER_PCRE='\b(TODO|TBD|FIXME|PLACEHOLDER)\b|[Ll]orem [Ii]psum'
+PLACEHOLDER_ERE='(^|[^[:alnum:]_])(TODO|TBD|FIXME|PLACEHOLDER)([^[:alnum:]_]|$)|[Ll]orem [Ii]psum'
+if [[ "$ENGINE" == "rg" ]]; then
+  placeholder_pattern="$PLACEHOLDER_PCRE"
+else
+  placeholder_pattern="$PLACEHOLDER_ERE"
+fi
+
+search_md_lines() {
+  if [[ "$ENGINE" == "rg" ]]; then
+    rg -n -e "$1" -g '*.md' README.md QUESTIONS.md docs
+  else
+    grep -rnE --include='*.md' -- "$1" README.md QUESTIONS.md docs
+  fi
+}
+
+placeholder_rc=0
+placeholder_hits="$(search_md_lines "$placeholder_pattern")" || placeholder_rc=$?
+if (( placeholder_rc == 0 )); then
+  printf '%s\n' "$placeholder_hits" >&2
+  failures=$((failures + 1))
+elif (( placeholder_rc > 1 )); then
+  printf 'SEARCH_ERROR: varredura de placeholders incompleta (motor=%s rc=%d).\n' "$REPORT_ENGINE" "$placeholder_rc" >&2
   failures=$((failures + 1))
 fi
-rm -f /tmp/cvg-docs-placeholders.$$
+
+extract_req_ids() {
+  if [[ "$ENGINE" == "rg" ]]; then
+    rg -o '^\| (FR|NFR)-[A-Z0-9-]+' docs/prd/PRD.md | sed 's/^| //' | sort -u
+  else
+    grep -oE '^\| (FR|NFR)-[A-Z0-9-]+' docs/prd/PRD.md | sed 's/^| //' | sort -u
+  fi
+}
+
+extract_ac_ids() {
+  if [[ "$ENGINE" == "rg" ]]; then
+    rg -o 'AC-[A-Z0-9-]+' docs/prd/PRD.md | sort -u
+  else
+    grep -oE 'AC-[A-Z0-9-]+' docs/prd/PRD.md | sort -u
+  fi
+}
 
 # Every PRD requirement and acceptance criterion must be represented in the matrix.
+req_ids=""
+req_extract_rc=0
+req_ids="$(extract_req_ids)" || req_extract_rc=$?
+if (( req_extract_rc > 1 )); then
+  printf 'SEARCH_ERROR: extração de requisitos do PRD incompleta (motor=%s rc=%d).\n' "$REPORT_ENGINE" "$req_extract_rc" >&2
+  failures=$((failures + 1))
+fi
+
 while IFS= read -r id; do
   [[ -z "$id" ]] && continue
-  if ! rg -Fq -- "$id" docs/TRACEABILITY_MATRIX.md; then
+  rc=0
+  text_found docs/TRACEABILITY_MATRIX.md "$id" || rc=$?
+  if (( rc != 0 )); then
     printf 'ORPHAN_REQUIREMENT: %s\n' "$id" >&2
     failures=$((failures + 1))
   fi
-done < <(rg -o '^\| (FR|NFR)-[A-Z0-9-]+' docs/prd/PRD.md | sed 's/^| //' | sort -u)
+done <<< "$req_ids"
+
+ac_ids=""
+ac_extract_rc=0
+ac_ids="$(extract_ac_ids)" || ac_extract_rc=$?
+if (( ac_extract_rc > 1 )); then
+  printf 'SEARCH_ERROR: extração de critérios de aceite do PRD incompleta (motor=%s rc=%d).\n' "$REPORT_ENGINE" "$ac_extract_rc" >&2
+  failures=$((failures + 1))
+fi
 
 while IFS= read -r id; do
   [[ -z "$id" ]] && continue
-  if ! rg -Fq -- "$id" docs/TRACEABILITY_MATRIX.md; then
+  rc=0
+  text_found docs/TRACEABILITY_MATRIX.md "$id" || rc=$?
+  if (( rc != 0 )); then
     printf 'ORPHAN_ACCEPTANCE: %s\n' "$id" >&2
     failures=$((failures + 1))
   fi
-done < <(rg -o 'AC-[A-Z0-9-]+' docs/prd/PRD.md | sort -u)
+done <<< "$ac_ids"
 
 # Resolve local Markdown links without fetching the network.
 if ! python3 - <<'PY'
@@ -134,15 +230,21 @@ fi
 
 # Ensure canonical high-risk vocabulary is present in its normative sources.
 for term in 'RECOLLECTION_REQUIRED' 'RESULT_AVAILABLE' 'ResultAmended' 'CriticalResultDetected' 'Idempotency-Key' '409 CONFLICT'; do
-  if ! rg -Fq -- "$term" docs/spec docs/api docs/security; then
+  rc=0
+  if [[ "$ENGINE" == "rg" ]]; then
+    rg -Fq -- "$term" docs/spec docs/api docs/security || rc=$?
+  else
+    grep -rFq -- "$term" docs/spec docs/api docs/security || rc=$?
+  fi
+  if (( rc != 0 )); then
     printf 'MISSING_CANONICAL_TERM: %s\n' "$term" >&2
     failures=$((failures + 1))
   fi
 done
 
 if (( failures > 0 )); then
-  printf 'Documentation validation FAILED with %d issue(s).\n' "$failures" >&2
+  printf 'Documentation validation FAILED with %d issue(s) (motor: %s).\n' "$failures" "$REPORT_ENGINE" >&2
   exit 1
 fi
 
-printf 'Documentation validation PASS: %d required files and cross-document gates checked.\n' "${#required_files[@]}"
+printf 'Documentation validation PASS: %d required files and cross-document gates checked (motor: %s).\n' "${#required_files[@]}" "$REPORT_ENGINE"

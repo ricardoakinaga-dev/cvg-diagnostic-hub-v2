@@ -2,6 +2,8 @@
 
 **Knowledge status:** `DECISION/BASELINE` de segurança; não constitui evidência de controles implementados nem parecer jurídico LGPD.
 
+**Reconciliação com o código em 01/10/2026 (AUD-012/AUD-011):** as seções 3 e 5 abaixo descrevem o que existe no repositório nesta data. Onde uma prática de referência não está implementada, ela é declarada como ausente ou como decisão pendente em vez de listada como controle.
+
 ## 1. Scope and posture
 
 O Hub tratará dados pessoais de tutores e profissionais e dados clínicos vinculados a pacientes animais. A aplicabilidade concreta da LGPD, bases legais, controlador/operador, retenção e direitos deve ser validada pelo responsável institucional; esta documentação não substitui parecer jurídico.
@@ -24,10 +26,13 @@ Every boundary validates input, actor, resource and output. External integration
 ## 3. Authentication/session
 
 - Prefer hospital OIDC/AD when validated; keep an `IdentityProvider` boundary.
-- If local credentials are needed for pilot: Argon2id password hashing, password policy, brute-force throttling, reset process and no plaintext secrets.
-- Session cookie: opaque, HttpOnly, Secure, SameSite appropriate to deployment, bounded expiry and server-side revocation.
+- Hashing de senha local: **scrypt** com salt aleatório de 16 bytes por senha, derivada de 64 bytes e comparação em tempo constante (`src/server/security/password.ts`). O código não usa Argon2id; esta linha corrigiu a divergência doc × código apontada na auditoria de 01/10/2026, que registrava a afirmação “Argon2id” no documento.
+- Política de senha implementada hoje: 12–200 caracteres na criação/definição; não existe política de complexidade nem rotação forçada.
+- Throttling de força bruta: rate limit de janela fixa — 10 tentativas de `login` por 60 s, aplicado em dois buckets, um por endereço de cliente identificável e outro por credencial (`login-email:<e-mail>`), em `src/app/api/v1/[...path]/route.ts`. Em produção o backend é PostgreSQL (`src/server/security/rate-limit.ts`) e indisponibilidade do backend falha fechado; modo `memory` é recusado em produção.
+- **Não existem lockout de conta nem backoff progressivo**, e não existe fluxo de redefinição de senha: o manifesto de operações (`src/server/http/api-operation-manifest.ts`) não declara rota de reset/redefinição nem de lockout, e o produto não tem infraestrutura de e-mail. Conta esquecida depende de redefinição administrativa. Lockout/backoff ficam registrados como decisão pendente em [`THREAT_MODEL.md`](THREAT_MODEL.md) (THR-004) e a decisão de escopo está em [`../DECISION_LOG.md`](../DECISION_LOG.md).
+- Session cookie: opaco, `HttpOnly`, `SameSite=Lax`, `Secure` em produção, com expiração limitada e revogação server-side; o servidor persiste apenas o hash SHA-256 do token.
 - No JWT/token in localStorage; no secrets in client bundle, repository or logs.
-- Re-auth/step-up for role changes, export, break-glass and sensitive configuration.
+- Re-auth/step-up: `POST /session/reauth` renova a autenticação privilegiada e a janela vale 10 minutos. O step-up está ligado somente à gestão de usuários (`createUser`, `updateUserRole`, `deactivateUser`). O manifesto não possui operações de export nem de break-glass, portanto não há step-up — nem operação — correspondente.
 - Logout revokes session; role changes invalidate active sessions or force re-evaluation.
 
 ## 4. Authorization
@@ -39,7 +44,7 @@ Use [`../spec/PERMISSIONS.md`](../spec/PERMISSIONS.md) as the action matrix. Enf
 - Schema validation for every API boundary, length limits and allowlisted enums.
 - Parameterized SQL/query builder; no concatenated filters.
 - Encode/sanitize user text when rendered; safe Markdown/HTML policy or plain text for notes.
-- CSRF protection when cookie-authenticated; CORS allowlist, security headers, TLS and HSTS in production.
+- CSRF protection when cookie-authenticated (CSRF token duplo por operação, validado no servidor). Não há allowlist CORS emitida: a aplicação não devolve `Access-Control-Allow-*`, ou seja, o mesmo origin é aceito por omissão e qualquer origin de terceiro fica sem permissão. Em produção são emitidos `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy` e `Permissions-Policy`, e a partir desta onda (AUD-009) também `Strict-Transport-Security` (HSTS), `Cross-Origin-Opener-Policy`, `Cross-Origin-Resource-Policy` e `X-Permitted-Cross-Domain-Policies`; HSTS pressupõe TLS terminado na borda (reverse proxy) e só pode ser ativado nessa topologia.
 - Redirects/URLs allowlisted; no open redirect.
 - Rate limit login, search, upload, command retries and SSE reconnect.
 - Error responses use safe codes/correlation ID, never stack traces or hidden resource facts.

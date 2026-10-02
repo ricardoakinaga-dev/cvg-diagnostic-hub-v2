@@ -2,12 +2,11 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Patient, SessionResponse } from "@cvg/contracts";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { PatientDialog } from "./patient-dialog";
 import { Icon } from "./ui-icons";
-import { ActionButton } from "@cvg/ui";
-
-interface Patient { id: string; displayName: string; species: string; breed: string; sex: string; externalId: string; ownerLabel: string; active: boolean }
 
 export function PatientList() {
   const [query, setQuery] = useState("");
@@ -38,13 +37,13 @@ export function PatientList() {
     return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
   useEffect(() => {
-    void apiFetch<{ user: { role: string } }>("/session/me")
+    void apiFetch<SessionResponse>("/session/me")
       .then(({ user }) => setCanCreate(user.role === "VETERINARIAN" || user.role === "INPATIENT_TEAM"))
       .catch(() => setCanCreate(false));
   }, []);
 
   return <>
-    <div className="patient-page"><div className="page-heading"><div><p className="eyebrow">Contexto de cuidado</p><h1>Meus <em>pacientes.</em></h1><p className="page-lede">Identidade mínima, atendimento e próximos passos dentro do seu escopo.</p></div>{canCreate && <button type="button" className="button button-primary" onClick={() => setShowCreate(true)}><Icon name="add" size={16} /> Novo paciente</button>}</div><div className="search-bar"><span aria-hidden="true"><Icon name="search" size={19} /></span><input aria-label="Buscar pacientes" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nome, identificador ou tutor…" /></div>{error && <div className="error-state" role="alert"><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Tentando novamente…" : "Tentar novamente"}</ActionButton></div>}{loading ? <div className="panel resource-loading" role="status">Carregando pacientes…</div> : patients.length === 0 ? <div className="panel empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum paciente atribuído</strong><p>Refine a busca ou confirme o escopo de atendimento.</p></div> : <section className="patient-grid" aria-label="Pacientes autorizados">{patients.map((patient) => <Link href={`/patients/${patient.id}/diagnostics`} className="panel patient-card" key={patient.id}><span className="patient-avatar">{patient.displayName.slice(0, 1)}</span><span className="patient-card-copy"><strong>{patient.displayName}</strong><small>{patient.species} · {patient.sex} · {patient.breed}</small><small>{patient.externalId} · tutor {patient.ownerLabel}</small></span><span className="row-arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link>)}</section>}
+     <div className="patient-page"><div className="page-heading"><div><p className="eyebrow">Contexto de cuidado</p><h1>Meus <em>pacientes.</em></h1><p className="page-lede">Identidade mínima, atendimento e próximos passos dentro do seu escopo.</p></div>{canCreate && <button type="button" className="button button-primary" onClick={() => setShowCreate(true)}><Icon name="add" size={16} /> Novo paciente</button>}</div><div className="search-bar"><span aria-hidden="true"><Icon name="search" size={19} /></span><input aria-label="Buscar pacientes" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nome, identificador ou tutor…" /></div>{error && <ErrorState title="Não foi possível carregar os pacientes" message={error} onRetry={load} retrying={loading} />}{loading ? <LoadingState className="panel resource-loading" label="Carregando pacientes" /> : patients.length === 0 ? <EmptyState className="panel" title="Nenhum paciente atribuído" message="Refine a busca ou confirme o escopo de atendimento." /> : <section className="patient-grid" aria-label="Pacientes autorizados">{patients.map((patient) => <Link href={`/patients/${patient.id}/diagnostics`} className="panel patient-card" key={patient.id}><span className="patient-avatar">{patient.displayName.slice(0, 1)}</span><span className="patient-card-copy"><strong>{patient.displayName}</strong><small>{patient.species} · {patient.sex} · {patient.breed}</small><small>{patient.externalId} · tutor {patient.ownerLabel}</small></span><span className="row-arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link>)}</section>}
     </div>
     {showCreate && <PatientDialog onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); void load(); }} />}
   </>;

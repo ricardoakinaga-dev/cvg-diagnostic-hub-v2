@@ -275,6 +275,14 @@ test("production source files stay below the 800-line limit", () => {
   expect(oversized, "production source files must remain under the 800-line limit").toEqual([]);
 });
 
+test("the versioned API dispatcher routes from the operation manifest", () => {
+  const routeSource = readFileSync(path.join(repositoryRoot, "src/app/api/v1/[...path]/route.ts"), "utf8");
+  expect(routeSource).toContain("const operation = matchApiOperation(method, path);");
+  expect(routeSource).toContain("const operationId = operation.operationId;");
+  expect(routeSource).not.toMatch(/path\[0\]/);
+  expect(routeSource).not.toMatch(/method ===/);
+});
+
 test("the real production graph resolves imports and follows documented boundaries", () => {
   const graph = buildProductionGraph();
   expect(graph.unresolved, "local production imports must resolve through the configured TypeScript aliases").toEqual([]);

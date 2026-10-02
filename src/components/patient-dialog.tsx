@@ -1,16 +1,13 @@
 "use client";
 
 import { useRef, useState, type FormEvent } from "react";
+import type { PatientCreateResult } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon } from "./ui-icons";
 
-export interface CreatedPatientPayload {
-  patient: { id: string; displayName: string; species: string; breed: string; sex: string; birthDate?: string; ownerLabel: string; externalId: string; active: boolean };
-  encounter: { id: string; patientId: string; externalId: string; type: "INPATIENT" | "EMERGENCY" | "OUTPATIENT"; status: "OPEN" | "CLOSED"; openedAt: string; closedAt?: string };
-  admission?: { id: string; encounterId: string; departmentCode: string; ward: string; bed: string; admittedAt: string; dischargedAt?: string; version: number };
-}
+export type CreatedPatientPayload = PatientCreateResult;
 
 interface PatientDraft {
   displayName: string;
@@ -46,10 +43,11 @@ const encounterLabels: Record<PatientDraft["encounterType"], string> = {
 
 export function PatientDialog({ onClose, onCreated, nested = false }: { onClose: () => void; onCreated: (result: CreatedPatientPayload) => void; nested?: boolean }) {
   const dialogRef = useRef<HTMLElement>(null);
+  const firstInputRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<PatientDraft>(initialDraft);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  useDialogFocus(dialogRef, onClose);
+  useDialogFocus(dialogRef, onClose, firstInputRef);
 
   function setField<K extends keyof PatientDraft>(field: K, value: PatientDraft[K]) {
     setDraft((current) => ({ ...current, [field]: value }));
@@ -91,7 +89,7 @@ export function PatientDialog({ onClose, onCreated, nested = false }: { onClose:
         </div>
         <form onSubmit={(event) => void submit(event)}>
           <div className="patient-form-grid">
-            <label className="patient-form-wide">Nome do paciente<input value={draft.displayName} onChange={(event) => setField("displayName", event.target.value)} maxLength={120} autoFocus required placeholder="Ex.: Amora" /></label>
+            <label className="patient-form-wide">Nome do paciente<input ref={firstInputRef} value={draft.displayName} onChange={(event) => setField("displayName", event.target.value)} maxLength={120} autoFocus required placeholder="Ex.: Amora" /></label>
             <label>Espécie<input value={draft.species} onChange={(event) => setField("species", event.target.value)} maxLength={60} required placeholder="Ex.: Canino" /></label>
             <label>Raça ou tipo<input value={draft.breed} onChange={(event) => setField("breed", event.target.value)} maxLength={120} required placeholder="Ex.: Labrador" /></label>
             <label>Sexo<select value={draft.sex} onChange={(event) => setField("sex", event.target.value)}><option value="Macho">Macho</option><option value="Fêmea">Fêmea</option><option value="Não informado">Não informado</option></select></label>

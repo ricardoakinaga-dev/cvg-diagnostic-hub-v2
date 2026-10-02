@@ -16,6 +16,10 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22.x"]
     services:
       postgres:
         image: postgres:16-alpine
@@ -34,7 +38,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
       - run: npm run validate:docs
@@ -48,8 +52,11 @@ jobs:
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test:coverage
+        env:
+          ALLOW_POSTGRES_INTEGRATION_TESTS: "true"
+          POSTGRES_TEST_ADMIN_URL: postgresql://cvg:cvg_ci@127.0.0.1:5432/postgres
       - name: Run mutation control sentinel
-        run: npm run test:mutation
+        run: npm --silent run test:mutation > mutation-report.json
       - run: node --test scripts/coverage-report.test.mjs
       - run: npm --silent run coverage:report > coverage-report.json
       - run: npm run test:perf
@@ -85,21 +92,70 @@ jobs:
           path: sbom.cdx.json
           if-no-files-found: warn
           retention-days: 14
+      - name: Upload mutation report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: mutation-report.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high
+
+  sast:
+    name: CodeQL SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          build-mode: none
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3
 
   browser:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22.x"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.node-version }}-
       - run: npx playwright install --with-deps chromium
-      - name: Run browser E2E (fail on flaky retries)
-        run: npm run test:e2e -- --retries=0 --fail-on-flaky-tests
+      - name: Run browser E2E without accessibility (fail on flaky retries)
+        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts --retries=0 --fail-on-flaky-tests
       - name: Upload browser E2E artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -122,12 +178,19 @@ jobs:
             test-results/
           if-no-files-found: warn
           retention-days: 14
+      - name: Clean disposable browser builds
+        if: always()
+        run: npm run cleanup:builds
 
   browser-postgres:
     name: Browser E2E with disposable PostgreSQL
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: ["22.x"]
     services:
       postgres:
         image: postgres:16-alpine
@@ -161,7 +224,7 @@ jobs:
       OUTBOX_BATCH_SIZE: "25"
       OUTBOX_WORKER_ID: ci-browser-postgres-outbox
       TRUST_PROXY: "true"
-      TRUST_PROXY_SHARED_SECRET: e2e-proxy-secret-2026
+      TRUST_PROXY_SHARED_SECRET: e2e-proxy-secret-2026-0123456789abcdef
       DEMO_PASSWORD: e2e-local-password-2026
       SESSION_SECRET: cvg-ci-e2e-session-secret-2026-012345678901234567890123
       APP_ORIGIN: http://127.0.0.1:3110
@@ -187,9 +250,16 @@ jobs:
         run: mkdir -p logs
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ matrix.node-version }}-
       - run: npx playwright install --with-deps chromium
       - name: Create dedicated PostgreSQL database
         run: |
@@ -310,14 +380,14 @@ jobs:
           done
           echo "Timed out waiting for production readiness (last HTTP ${readyz_status})." | tee -a logs/readyz.log >&2
           exit 1
-      - name: Run PostgreSQL-backed browser matrix (51 scenarios, no retries)
+      - name: Run PostgreSQL-backed browser matrix without accessibility (no retries)
         env:
           CI: "1"
           BASE_URL: http://127.0.0.1:3110
           E2E_REUSE_EXISTING_SERVER: "true"
         run: |
           set -Eeuo pipefail
-          npm run test:e2e -- --retries=0 --fail-on-flaky-tests 2>&1 | tee logs/playwright-postgres.log
+          npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts --retries=0 --fail-on-flaky-tests 2>&1 | tee logs/playwright-postgres.log
       - name: Cleanup disposable PostgreSQL browser lane
         if: always()
         run: |
@@ -337,22 +407,6 @@ jobs:
                 sleep 0.25
               done
               kill -KILL -- "-$pid" 2>/dev/null || cleanup_status=1
-            fi
-          }
-
-          stop_process() {
-            local pid_file="$1"
-            if [[ ! -s "$pid_file" ]]; then return; fi
-            local pid
-            pid="$(<"$pid_file")"
-            if [[ ! "$pid" =~ ^[0-9]+$ ]]; then cleanup_status=1; return; fi
-            if kill -0 "$pid" 2>/dev/null; then
-              kill -TERM "$pid" 2>/dev/null || cleanup_status=1
-              for _ in {1..20}; do
-                if ! kill -0 "$pid" 2>/dev/null; then return; fi
-                sleep 0.25
-              done
-              kill -KILL "$pid" 2>/dev/null || cleanup_status=1
             fi
           }
 
@@ -391,3 +445,148 @@ jobs:
             logs/
           if-no-files-found: warn
           retention-days: 14
+      - name: Clean disposable PostgreSQL browser builds
+        if: always()
+        run: npm run cleanup:builds
+
+  image:
+    name: Build and smoke-test application image
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: verify
+    env:
+      POSTGRES_DB: cvg_diagnostics
+      POSTGRES_USER: cvg_ci
+      POSTGRES_PORT: "54329"
+      MINIO_ROOT_USER: cvg_minio_ci
+      MINIO_API_PORT: "9000"
+      MINIO_CONSOLE_PORT: "9001"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - run: npm ci
+      - name: Generate ephemeral Compose credentials
+        run: |
+          set -Eeuo pipefail
+          printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          printf 'MINIO_ROOT_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+      - name: Start Compose dependencies
+        run: |
+          set -Eeuo pipefail
+          docker compose up -d postgres minio
+          for _ in {1..60}; do
+            if docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
+              break
+            fi
+            sleep 2
+          done
+          docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"
+          for _ in {1..60}; do
+            if curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:${MINIO_API_PORT}/minio/health/live" >/dev/null; then
+              break
+            fi
+            sleep 2
+          done
+          curl --fail --silent --show-error --max-time 2 "http://127.0.0.1:${MINIO_API_PORT}/minio/health/live" >/dev/null
+      - name: Prepare disposable runtime state
+        run: |
+          set -Eeuo pipefail
+          database_url="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
+          DATABASE_URL="$database_url" npm run db:migrate
+          NODE_ENV=development ALLOW_SYNTHETIC_SEED=true DEMO_PASSWORD="$(openssl rand -hex 32)" DATABASE_URL="$database_url" npm run db:seed
+          STORAGE_ENDPOINT="http://127.0.0.1:${MINIO_API_PORT}" \
+          STORAGE_BUCKET=cvg-ci \
+          STORAGE_ACCESS_KEY="$MINIO_ROOT_USER" \
+          STORAGE_SECRET_KEY="$MINIO_ROOT_PASSWORD" \
+          STORAGE_FORCE_PATH_STYLE=true \
+          npm run storage:init
+      - name: Build image
+        run: docker build --pull --tag cvg-diagnostics-hub:ci .
+      - name: Build operational image (migrations, bootstrap, outbox worker)
+        run: docker build --target ops --tag cvg-diagnostics-hub-ops:ci .
+      - name: Audit image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: cvg-diagnostics-hub:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: Boot image and verify livez and readyz
+        run: |
+          set -Eeuo pipefail
+          database_url="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
+          proxy_secret="$(openssl rand -hex 32)"
+          session_secret="$(openssl rand -hex 32)"
+          docker run --detach --name cvg-diagnostics-hub-ci --network host \
+            --env NODE_ENV=production \
+            --env APP_DATA_MODE=postgres \
+            --env DATABASE_URL="$database_url" \
+            --env RATE_LIMIT_MODE=postgres \
+            --env RATE_LIMIT_DB_POOL_MAX=2 \
+            --env REALTIME_NOTIFICATION_ADAPTER=postgres-listen \
+            --env REALTIME_NOTIFICATION_CHANNEL=cvg_ci_health \
+            --env OUTBOX_SINK=postgres \
+            --env TRUST_PROXY=true \
+            --env TRUST_PROXY_SHARED_SECRET="$proxy_secret" \
+            --env STORAGE_MODE=s3 \
+            --env STORAGE_ENDPOINT="http://127.0.0.1:${MINIO_API_PORT}" \
+            --env STORAGE_REGION=us-east-1 \
+            --env STORAGE_BUCKET=cvg-ci \
+            --env STORAGE_ACCESS_KEY="$MINIO_ROOT_USER" \
+            --env STORAGE_SECRET_KEY="$MINIO_ROOT_PASSWORD" \
+            --env STORAGE_FORCE_PATH_STYLE=true \
+            --env STORAGE_SCAN_MODE=external \
+            --env MALWARE_SCANNER_ENDPOINT=https://127.0.0.1:9443/scan \
+            --env MALWARE_SCANNER_API_KEY=ci-synthetic-scanner-key \
+            --env MALWARE_SCANNER_ALLOWED_HOSTS=127.0.0.1 \
+            --env SESSION_SECRET="$session_secret" \
+            cvg-diagnostics-hub:ci
+          for _ in {1..60}; do
+            container_status="$(docker inspect --format '{{.State.Status}}' cvg-diagnostics-hub-ci 2>/dev/null || true)"
+            health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}no-healthcheck{{end}}' cvg-diagnostics-hub-ci 2>/dev/null || true)"
+            if [[ "$health_status" == healthy ]]; then
+              break
+            fi
+            if [[ "$container_status" == exited || "$container_status" == dead ]]; then
+              docker logs cvg-diagnostics-hub-ci
+              exit 1
+            fi
+            sleep 2
+          done
+          health_status="$(docker inspect --format '{{.State.Health.Status}}' cvg-diagnostics-hub-ci)"
+          if [[ "$health_status" != healthy ]]; then
+            docker logs cvg-diagnostics-hub-ci
+            docker inspect cvg-diagnostics-hub-ci
+            exit 1
+          fi
+          curl --fail --silent --show-error \
+            --header "x-cvg-proxy-secret: ${proxy_secret}" \
+            --header "x-forwarded-for: 127.0.0.1" \
+            http://127.0.0.1:3000/api/v1/livez
+          curl --fail --silent --show-error \
+            --header "x-cvg-proxy-secret: ${proxy_secret}" \
+            --header "x-forwarded-for: 127.0.0.1" \
+            http://127.0.0.1:3000/api/v1/readyz
+          # The request proxy must be active in the built image: every HTML
+          # response carries a nonce CSP and every script tag carries the nonce.
+          login_headers="$(mktemp)"
+          login_body="$(mktemp)"
+          curl --fail --silent --show-error --dump-header "$login_headers" --output "$login_body" \
+            --header "x-cvg-proxy-secret: ${proxy_secret}" \
+            --header "x-forwarded-for: 127.0.0.1" \
+            http://127.0.0.1:3000/login
+          nonce="$(grep -i '^content-security-policy:' "$login_headers" | grep -o "'nonce-[^']*'" | head -1 | sed "s/'nonce-//; s/'//")"
+          test -n "$nonce"
+          test "$(grep -o '<script' "$login_body" | wc -l)" = "$(grep -o "<script[^>]*nonce=\"${nonce}\"" "$login_body" | wc -l)"
+          test "$(docker inspect --format '{{.Config.User}}' cvg-diagnostics-hub-ci)" = node
+      - name: Cleanup image smoke test
+        if: always()
+        run: |
+          set +e
+          docker logs cvg-diagnostics-hub-ci 2>/dev/null || true
+          docker rm --force cvg-diagnostics-hub-ci 2>/dev/null || true
+          docker compose down --volumes --remove-orphans

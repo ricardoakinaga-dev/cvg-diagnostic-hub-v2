@@ -2,23 +2,16 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ItemState, LaboratoryPanelTemplate, LaboratoryReferenceRange, ResultVersionState, StructuredLaboratoryResultContent, WorkflowType } from "@cvg/contracts";
+import type { AttachmentSession as AttachmentSessionDto, LaboratoryPanelTemplate, LaboratoryReferenceRange, PublicAttachment, ResultView as ResultViewDto, ResultVersionState, StructuredLaboratoryResultContent } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { ErrorState, LoadingState } from "./feedback-states";
 import { StatusBadge } from "./status-badge";
 import { Icon } from "./ui-icons";
 
-interface ResultData {
-  result: { id: string; lifecycleStatus: string; needsReReview: boolean; version: number };
-  version: { id: string; sequence: number; status: ResultVersionState; narrative: string; conclusion?: string; authorId: string; createdAt: string; releasedAt?: string; critical: boolean; needsReReview: boolean; version: number; content: Record<string, unknown> };
-  item: { id: string; status: ItemState; version: number; serviceId: string };
-  request: { id: string; requestCode: string };
-  patient: { displayName: string; species: string; sex: string; externalId: string };
-  service: { name: string; workflowType: WorkflowType; allowsAttachment?: boolean; resultSchema?: "NUMERIC_PANEL" | "NARRATIVE"; resultTemplate?: LaboratoryPanelTemplate };
-}
-
-interface Attachment { id: string; safeName: string; detectedMime: string; sizeBytes: number; scanStatus: string; uploadStatus: string }
-interface AttachmentSession { attachment: Attachment; uploadUrl: string; expiresAt: string }
+type ResultData = ResultViewDto;
+type Attachment = PublicAttachment;
+type AttachmentSession = AttachmentSessionDto;
 type EditorMode = "DRAFT" | "AMEND" | "VOID" | undefined;
 type PendingAction = "release" | "review" | "upload" | "editor";
 const resultVersionLabels: Record<ResultVersionState, string> = { DRAFT: "Rascunho", RELEASED: "Liberado", SUPERSEDED: "Substituído", VOIDED: "Invalidado" };
@@ -320,8 +313,8 @@ export function ResultView({ resultId }: { resultId: string }) {
     }
   }
 
-  if (!data && loading) return <div className="loading-state" role="status">Carregando resultado…</div>;
-  if (!data) return <div className="error-state" role="alert"><strong>{invalidated ? "Resultado invalidado" : "Resultado indisponível"}</strong><span>{notice || error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Tentando novamente…" : "Tentar novamente"}</ActionButton><Link className="button button-ghost" href="/notifications">Voltar às notificações</Link></div>;
+  if (!data && loading) return <LoadingState label="Carregando resultado" />;
+  if (!data) return <ErrorState title={invalidated ? "Resultado invalidado" : "Resultado indisponível"} message={notice || error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/notifications">Voltar às notificações</Link>} />;
 
   const isDraft = data.version.status === "DRAFT";
   const isReleased = data.version.status === "RELEASED";
@@ -333,7 +326,7 @@ export function ResultView({ resultId }: { resultId: string }) {
   return <div className="result-page">
     <Link href={`/requests/${data.request.id}`} className="back-link"><Icon name="arrow-left" size={15} /> Solicitação {data.request.requestCode}</Link>
     <div className="page-heading"><div><p className="eyebrow">{data.service.name} · versão {data.version.sequence}</p><h1>Resultado de <em>{data.patient.displayName}.</em></h1><p className="page-lede">{data.patient.species} · {data.patient.sex} · {data.patient.externalId} · {data.version.releasedAt ? `liberado ${formatRelativeTime(data.version.releasedAt)}` : "em rascunho"}</p></div><StatusBadge status={data.item.status} /></div>
-    {error && <div className="error-state" role="alert"><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Reconciliando…" : "Reconciliar"}</ActionButton></div>}
+     {error && <ErrorState title="Resultado parcialmente indisponível" message={error} onRetry={load} retrying={loading} retryLabel="Reconciliar" />}
     {notice && <div className="form-notice" role="status">{notice}</div>}
     <div className="result-grid">
       <section className="panel result-content"><div className="panel-heading"><div><p className="eyebrow">Versão atual</p><h2>{data.version.critical ? "Resultado crítico" : isDraft ? "Draft em edição" : "Laudo confirmado"}</h2></div>{data.version.needsReReview && <span className="result-warning">Nova revisão necessária</span>}</div>
