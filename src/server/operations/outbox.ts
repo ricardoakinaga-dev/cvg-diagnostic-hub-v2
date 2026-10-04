@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { outboxEnvelopeFor, OUTBOX_NOTIFICATION_ROUTING_KEY, type Notification, type OutboxMessage, type StateStore } from "../domain/models";
+import { outboxEnvelopeFor, OUTBOX_NOTIFICATION_ROUTING_KEY, type Notification, type OutboxMessage, type StateStore, type StoreState } from "../domain/models";
 
 class OutboxApiError extends Error {
   public readonly code: string;
@@ -103,6 +103,7 @@ export interface DeadLetterMessage {
 }
 
 export interface DeadLetterCommand {
+  authorize: (state: StoreState) => void;
   actorId: string;
   correlationId: string;
   idempotencyKey: string;
@@ -369,6 +370,8 @@ async function mutateDeadLetter(
   const scope = `POST:/outbox/dead-letters/${action.toLowerCase()}`;
 
   return store.transaction((state) => {
+    if (typeof command.authorize !== "function") throw new OutboxApiError("UNAUTHENTICATED", "Autorização necessária para alterar a dead-letter queue.", 401);
+    command.authorize(state);
     const existing = state.idempotency.find((entry) => entry.actorId === command.actorId && entry.scope === scope && entry.key === command.idempotencyKey);
     if (existing) {
       if (existing.payloadHash !== payloadHash) throw new OutboxApiError("IDEMPOTENCY_KEY_REUSED", "A chave de idempotência já foi usada com outro comando.", 409);

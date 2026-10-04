@@ -3,10 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import type { SessionResponse, SessionUser } from "@cvg/contracts";
+import type { SessionResponse } from "@cvg/contracts";
 import { apiFetch } from "./api-client";
 import { LoadingState } from "./feedback-states";
 import { Icon, type IconName } from "./ui-icons";
+import { CommandPalette } from "./command-palette";
+import { PatientDialog } from "./patient-dialog";
+import styles from "./app-shell.module.css";
 
 type LiveStatus = "connecting" | "connected" | "degraded";
 const REALTIME_FALLBACK_INTERVAL_MS = 30_000;
@@ -38,11 +41,20 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [user, setUser] = useState<SessionUser | null>(null);
+  const [user, setUser] = useState<SessionResponse["user"] | null>(null);
+  const [sessionPath, setSessionPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [live, setLive] = useState<LiveStatus>("connecting");
   const [reconnectToken, setReconnectToken] = useState(0);
   const [hash, setHash] = useState("");
+  const [showPalette, setShowPalette] = useState(false);
+  const [showPatient, setShowPatient] = useState(false);
+  const requiresPasswordChange = user?.mustChangePassword === true;
+  const sessionLoading = loading || sessionPath !== pathname;
+  const canUsePalette = Boolean(user && user.role !== "ADMIN" && !requiresPasswordChange && !sessionLoading);
+  const canCreatePatient = user?.role === "VETERINARIAN" || user?.role === "INPATIENT_TEAM";
+  const canCreateRequest = canCreatePatient || user?.role === "MANAGER";
+  const modalOpen = canUsePalette && (showPalette || showPatient);
 
   useEffect(() => {
     const syncHash = () => setHash(window.location.hash);
@@ -52,14 +64,33 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
   }, []);
 
   useEffect(() => {
-    apiFetch<SessionResponse>("/session/me")
-      .then((result) => setUser(result.user))
-      .catch(() => router.replace("/login"))
-      .finally(() => setLoading(false));
-  }, [router]);
+    const controller = new AbortController();
+    apiFetch<SessionResponse>("/session/me", { signal: controller.signal })
+      .then((result) => { if (!controller.signal.aborted) { setUser(result.user); setSessionPath(pathname); setShowPalette(false); setShowPatient(false); } })
+      .catch(() => { if (!controller.signal.aborted) { setUser(null); setSessionPath(pathname); router.replace("/login"); } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => controller.abort();
+  }, [pathname, router]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!loading && sessionPath === pathname && requiresPasswordChange && pathname !== "/account" && pathname !== "/login") router.replace("/account?password=required");
+  }, [loading, pathname, requiresPasswordChange, router, sessionPath]);
+
+  useEffect(() => {
+    if (!canUsePalette) return;
+    const openPalette = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "k" || event.altKey || event.repeat || event.isComposing) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (document.querySelector("[data-dialog-layer='true']")) return;
+      setShowPalette(true);
+    };
+    window.addEventListener("keydown", openPalette, true);
+    return () => window.removeEventListener("keydown", openPalette, true);
+  }, [canUsePalette]);
+
+  useEffect(() => {
+    if (!user || requiresPasswordChange) return;
     let source: EventSource | undefined;
     let fallbackTimer: ReturnType<typeof setInterval> | undefined;
     let stopped = false;
@@ -96,7 +127,7 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
     };
     connect();
     return () => { stopped = true; source?.close(); stopFallback(); };
-  }, [reconnectToken, user]);
+  }, [reconnectToken, requiresPasswordChange, user]);
 
   function reconcile() {
     setLive("connecting");
@@ -108,7 +139,13 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
     try { await apiFetch("/session/logout", { method: "POST", body: "{}" }); } finally { router.replace("/login"); }
   }
 
-  if (loading) return <ShellLoadingState />;
+  function newRequest() {
+    setShowPalette(false);
+    if (pathname.startsWith("/queues")) window.dispatchEvent(new CustomEvent("cvg:create-request"));
+    else router.push("/queues?create=request");
+  }
+
+  if (sessionLoading) return <ShellLoadingState />;
   if (!user) return null;
   const canAccessManagement = user.role === "ADMIN" || user.role === "MANAGER";
   const isTechnicalAdmin = user.role === "ADMIN";
@@ -124,12 +161,13 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
 
   return (
     <div className="app-frame">
-      <aside className="sidebar">
-        <Link href="/" className="brand" aria-label="CVG Diagnostics Hub, início">
+      <aside className="sidebar" inert={modalOpen}>
+        <Link href={requiresPasswordChange ? "/account?password=required" : "/"} className="brand" aria-label="CVG Diagnostics Hub, início">
           <span className="brand-mark">CVG</span>
           <span><strong>Diagnostics</strong><small>HUB OPERACIONAL</small></span>
         </Link>
         <nav aria-label="Navegação principal" className="main-nav">
+          {!requiresPasswordChange && <>
           <NavLink href={isManager ? "/management" : "/"} active={isManager ? isOverview : pathname === "/"} icon="overview">Visão geral</NavLink>
           {isManager ? <>
             <NavLink href="/queues" active={pathname.startsWith("/queues")} icon="queue">Central de exames</NavLink>
@@ -138,7 +176,6 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
             <NavLink href="/management?view=stats" active={isStats} icon="analytics">Estatísticas</NavLink>
             <NavLink href="/admin#users" active={pathname.startsWith("/admin") && hash === "#users"} icon="users">Acessos</NavLink>
             <NavLink href="/admin#catalog" active={pathname.startsWith("/admin") && hash === "#catalog"} icon="catalog">Catálogos</NavLink>
-            <NavLink href="/admin#audit" active={pathname.startsWith("/admin") && hash === "#audit"} icon="audit">Auditoria</NavLink>
           </> : <>
             {canAccessClinicalOperations && <NavLink href="/queues" active={pathname.startsWith("/queues")} icon="queue">Central de exames</NavLink>}
             {canAccessClinicalOperations && <NavLink href="/patients" active={pathname.startsWith("/patients")} icon="patients">Meus pacientes</NavLink>}
@@ -146,6 +183,8 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
             {canAccessManagement && <NavLink href="/admin" active={pathname.startsWith("/admin")} icon="settings">Administração</NavLink>}
           </>}
           {canAccessClinicalOperations && <NavLink href="/notifications" active={pathname.startsWith("/notifications")} icon="notifications">Notificações</NavLink>}
+          {isTechnicalAdmin && <NavLink href="/system" active={pathname.startsWith("/system")} icon="settings">Sistema</NavLink>}
+          </>}
           <NavLink href="/account" active={pathname.startsWith("/account")} icon="account">Minha conta</NavLink>
         </nav>
         <div className="sidebar-footer">
@@ -153,12 +192,14 @@ function AppShellContent({ children }: Readonly<{ children: React.ReactNode }>) 
           <div className="user-card"><Link href="/account" className="user-profile-link" aria-label={`Abrir conta de ${user.displayName}`}><span className="avatar">{user.displayName.slice(0, 1)}</span><span className="user-copy"><strong>{user.displayName}</strong><small>{roleLabel(user.role)}</small></span></Link></div>
         </div>
       </aside>
-      <main className="main-content">
-        <header className="topbar"><div className="breadcrumb"><span className="breadcrumb-product">CVG</span><span>/</span> Operação</div><div className="topbar-actions">{canAccessClinicalOperations && <Link href="/notifications" className="notification-trigger" aria-label="Abrir notificações"><Icon name="notifications" size={19} /></Link>}<button type="button" onClick={() => void logout()} className="icon-button session-logout" aria-label="Sair"><Icon name="logout" size={18} /></button><span className="topbar-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(new Date())}</span></div></header>
-        {live !== "connected" && <RealtimeStatusBanner status={live} onReconcile={reconcile} />}
-        <div className="content-wrap">{children}</div>
+      <main className="main-content" inert={modalOpen}>
+        <header className="topbar"><div className="breadcrumb"><span className="breadcrumb-product">CVG</span><span>/</span> Operação</div><div className="topbar-actions">{canUsePalette && <button type="button" className="icon-button" onClick={() => setShowPalette(true)} aria-label="Buscar paciente ou exame (Ctrl+K ou ⌘K)" aria-keyshortcuts="Control+k Meta+k"><Icon name="search" size={19} /></button>}{canAccessClinicalOperations && !requiresPasswordChange && <Link href="/notifications" className="notification-trigger" aria-label="Abrir notificações"><Icon name="notifications" size={19} /></Link>}<button type="button" onClick={() => void logout()} className="icon-button session-logout" aria-label="Sair"><Icon name="logout" size={18} /></button><span className="topbar-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(new Date())}</span></div></header>
+        {!requiresPasswordChange && live !== "connected" && <RealtimeStatusBanner status={live} onReconcile={reconcile} />}
+        <div className="content-wrap">{requiresPasswordChange && pathname !== "/account" && pathname !== "/login" ? <ShellLoadingState /> : children}</div>
       </main>
-      <MobileNav isManager={isManager} isTechnicalAdmin={isTechnicalAdmin} canAccessClinicalOperations={canAccessClinicalOperations} pathname={pathname} managementView={managementView} hash={hash} />
+      {requiresPasswordChange ? <nav className={`mobile-nav ${styles.accountNav}`} aria-label="Navegação rápida"><MobileNavLink href="/account?password=required" active={pathname === "/account"} icon="account" label="Conta" /></nav> : <MobileNav inert={modalOpen} isManager={isManager} isTechnicalAdmin={isTechnicalAdmin} canAccessClinicalOperations={canAccessClinicalOperations} pathname={pathname} managementView={managementView} hash={hash} />}
+      {canUsePalette && showPalette && <div inert={showPatient} aria-hidden={showPatient || undefined}><CommandPalette canCreatePatient={canCreatePatient} canCreateRequest={canCreateRequest} onClose={() => setShowPalette(false)} onNewPatient={() => setShowPatient(true)} onNewRequest={newRequest} onNavigate={(href) => { setShowPalette(false); router.push(href); }} /></div>}
+      {canUsePalette && showPatient && canCreatePatient && <PatientDialog nested onClose={() => setShowPatient(false)} onCreated={() => { setShowPatient(false); setShowPalette(false); window.dispatchEvent(new Event("cvg:realtime-updated")); router.refresh(); }} />}
     </div>
   );
 }
@@ -168,13 +209,14 @@ function NavLink({ href, active, icon, children }: { href: string; active: boole
   return <Link href={href} className={`nav-link ${active ? "active" : ""}`} aria-label={label} title={label} aria-current={active ? "page" : undefined}><span className="nav-icon" aria-hidden="true"><Icon name={icon} size={19} /></span><span className="nav-label">{children}</span></Link>;
 }
 
-function MobileNav({ isManager, isTechnicalAdmin, canAccessClinicalOperations, pathname, managementView, hash }: { isManager: boolean; isTechnicalAdmin: boolean; canAccessClinicalOperations: boolean; pathname: string; managementView: string | null; hash: string }) {
+function MobileNav({ inert, isManager, isTechnicalAdmin, canAccessClinicalOperations, pathname, managementView, hash }: { inert: boolean; isManager: boolean; isTechnicalAdmin: boolean; canAccessClinicalOperations: boolean; pathname: string; managementView: string | null; hash: string }) {
   if (isTechnicalAdmin) {
-    return <nav className="mobile-nav" aria-label="Navegação rápida">
+    return <nav className={`mobile-nav ${styles.adminNav}`} aria-label="Navegação rápida" inert={inert}>
       <MobileNavLink href="/" active={pathname === "/"} icon="overview" label="Início" />
       <MobileNavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings" label="Admin" />
       <MobileNavLink href="/admin#users" active={pathname === "/admin" && hash === "#users"} icon="users" label="Acessos" />
       <MobileNavLink href="/admin#catalog" active={pathname === "/admin" && hash === "#catalog"} icon="catalog" label="Catálogo" />
+      <MobileNavLink href="/system" active={pathname.startsWith("/system")} icon="settings" label="Sistema" />
       <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
     </nav>;
   }
@@ -186,7 +228,7 @@ function MobileNav({ isManager, isTechnicalAdmin, canAccessClinicalOperations, p
   const isManagerRoute = isManager && (pathname === "/" || pathname === "/management");
   const isManagerOverview = isManagerRoute && !managementView;
   const isManagerFocus = isManagerRoute && Boolean(managementView);
-  return <nav className="mobile-nav" aria-label="Navegação rápida">
+  return <nav className="mobile-nav" aria-label="Navegação rápida" inert={inert}>
     <MobileNavLink href={isManager ? "/management" : "/"} active={isManager ? isManagerOverview : pathname === "/"} icon="overview" label="Início" />
     {!isTechnicalAdmin && <MobileNavLink href={isManager ? "/queues" : "/queues"} active={pathname.startsWith("/queues")} icon="queue" label="Fila" />}
     {isManager ? <MobileNavLink href={managerFocus.href} active={isManagerFocus} icon={managerFocus.icon} label={managerFocus.label} /> : canAccessClinicalOperations ? <MobileNavLink href="/patients" active={pathname.startsWith("/patients")} icon="patients" label="Pacientes" /> : <MobileNavLink href="/admin" active={pathname.startsWith("/admin")} icon="settings" label="Admin" />}

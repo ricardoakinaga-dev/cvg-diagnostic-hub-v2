@@ -26,6 +26,8 @@ export interface User extends Actor {
   timezone: string;
   createdAt: Timestamp;
   version: number;
+  /** Temporary credentials can only establish a session for password replacement. */
+  mustChangePassword?: boolean;
   /** Ephemeral authentication context; never persisted or returned as a user field. */
   sessionId?: string;
   reauthenticatedAt?: Timestamp;

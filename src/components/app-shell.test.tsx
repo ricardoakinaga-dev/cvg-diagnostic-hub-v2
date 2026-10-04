@@ -10,7 +10,8 @@ vi.mock("next/link", () => ({
 
 const replace = vi.fn();
 const refresh = vi.fn();
-const router = { replace, refresh };
+const push = vi.fn();
+const router = { replace, refresh, push };
 const navigationState = { pathname: "/", searchParams: new URLSearchParams() };
 
 vi.mock("next/navigation", () => ({
@@ -19,7 +20,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => router,
 }));
 
-vi.mock("./api-client", () => ({ apiFetch: vi.fn() }));
+vi.mock("./api-client", async (importOriginal) => ({ ...await importOriginal<typeof import("./api-client")>(), apiFetch: vi.fn() }));
 
 class FakeEventSource {
   static instances: FakeEventSource[] = [];
@@ -170,7 +171,7 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "Estatísticas" })).toHaveAttribute("href", "/management?view=stats");
     expect(screen.getByRole("link", { name: "Acessos" })).toHaveAttribute("href", "/admin#users");
     expect(screen.getByRole("link", { name: "Catálogos" })).toHaveAttribute("href", "/admin#catalog");
-    expect(screen.getByRole("link", { name: "Auditoria" })).toHaveAttribute("href", "/admin#audit");
+    expect(screen.queryByRole("link", { name: "Auditoria" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Administração" })).not.toBeInTheDocument();
   });
 
@@ -218,11 +219,207 @@ describe("AppShell", () => {
     await screen.findByRole("navigation", { name: "Navegação principal" });
     expect(screen.getByRole("link", { name: "Visão geral" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Administração" })).toHaveAttribute("href", "/admin");
+    expect(screen.getByRole("link", { name: "Sistema" })).toHaveAttribute("href", "/system");
+    expect(screen.getByRole("link", { name: "Acesso rápido: Sistema" })).toHaveAttribute("href", "/system");
     expect(screen.queryByRole("link", { name: "Central de exames" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Meus pacientes" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Indicadores" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Notificações" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Abrir notificações" })).not.toBeInTheDocument();
+  });
+
+  it.each(["ADMIN", "MANAGER", "VETERINARIAN", "LAB_TECH"])("shows Sistema only to ADMIN (%s)", async (role) => {
+    navigationState.pathname = "/system";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "user@cvg.local", displayName: "Equipe", role, departmentCode: "LABORATORY", timezone: "UTC" } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    await screen.findByRole("navigation", { name: "Navegação principal" });
+    if (role === "ADMIN") {
+      expect(screen.getByRole("link", { name: "Sistema" })).toHaveAttribute("aria-current", "page");
+      expect(screen.getByRole("link", { name: "Acesso rápido: Sistema" })).toHaveAttribute("aria-current", "page");
+      fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    } else {
+      expect(screen.queryByRole("link", { name: "Sistema" })).not.toBeInTheDocument();
+      expect(screen.queryByRole("link", { name: "Acesso rápido: Sistema" })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each([{ ctrlKey: true }, { metaKey: true }])("opens global search with %j and restores trigger focus on Escape", async (modifier) => {
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const trigger = await screen.findByRole("button", { name: "Buscar paciente ou exame (Ctrl+K ou ⌘K)" });
+    trigger.focus();
+    fireEvent.keyDown(window, { key: "k", ...modifier });
+    expect(screen.getByRole("dialog", { name: "Atalhos e busca" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    expect(document.querySelector("main")).toHaveAttribute("inert");
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() => expect(trigger).toHaveFocus());
+    expect(document.querySelector("main")).not.toHaveAttribute("inert");
+  });
+
+  it("opens the existing PatientDialog and returns to the palette when it is cancelled", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Novo paciente/ }));
+    expect(screen.getByRole("dialog", { name: "Cadastrar paciente" })).toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Atalhos e busca" })).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Nome do paciente")).toHaveFocus();
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Cadastrar paciente" })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("combobox")).toHaveFocus());
+    expect(screen.getByRole("dialog", { name: "Atalhos e busca" })).toBeInTheDocument();
+  });
+
+  it("refreshes clinical data after a patient is created from the global shortcut", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Novo paciente/ }));
+    const dispatch = vi.spyOn(window, "dispatchEvent");
+    vi.mocked(apiFetch).mockResolvedValueOnce({ patient: { id: "p-1" }, encounter: { id: "e-1" } });
+    fireEvent.change(screen.getByLabelText("Nome do paciente"), { target: { value: "Amora" } });
+    fireEvent.change(screen.getByLabelText("Espécie"), { target: { value: "Canino" } });
+    fireEvent.change(screen.getByLabelText("Tutor ou responsável"), { target: { value: "Maria" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar cadastro de paciente" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(dispatch).toHaveBeenCalledWith(expect.objectContaining({ type: "cvg:realtime-updated" }));
+    dispatch.mockRestore();
+  });
+
+  it.each(["MANAGER", "LAB_TECH", "VIEWER"])("preserves creation permissions in the palette (%s)", async (role) => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "user@cvg.local", displayName: "Equipe", role, departmentCode: "LABORATORY", timezone: "UTC" } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    expect(screen.queryByRole("option", { name: /Novo paciente/ })).not.toBeInTheDocument();
+    expect(Boolean(screen.queryByRole("option", { name: /Novo exame/ }))).toBe(role === "MANAGER");
+  });
+
+  it("dispatches request creation to the existing queue workflow", async () => {
+    navigationState.pathname = "/queues";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    const listener = vi.fn();
+    window.addEventListener("cvg:create-request", listener);
+    render(<AppShell><div>Fila</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Enter" });
+    expect(listener).toHaveBeenCalledOnce();
+    expect(push).not.toHaveBeenCalled();
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    window.removeEventListener("cvg:create-request", listener);
+  });
+
+  it("navigates to the queue creation workflow from other pages", async () => {
+    navigationState.pathname = "/patients";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    render(<AppShell><div>Pacientes</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Novo exame/ }));
+    expect(push).toHaveBeenCalledWith("/queues?create=request");
+  });
+
+  it.each(["/queues", "/account", "/login"])("gates a password-required session on %s without a redirect loop", async (pathname) => {
+    navigationState.pathname = pathname;
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", mustChangePassword: true } });
+    render(<AppShell><div>Conteúdo protegido</div></AppShell>);
+    const nav = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(nav).getAllByRole("link")).toHaveLength(1);
+    expect(within(nav).getByRole("link", { name: "Minha conta" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Buscar paciente ou exame/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Abrir notificações" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Navegação rápida" })).toHaveTextContent("Conta");
+    expect(FakeEventSource.instances).toHaveLength(0);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    if (pathname === "/queues") {
+      expect(replace).toHaveBeenCalledWith("/account?password=required");
+      expect(screen.queryByText("Conteúdo protegido")).not.toBeInTheDocument();
+    } else {
+      expect(replace).not.toHaveBeenCalled();
+      expect(screen.getByText("Conteúdo protegido")).toBeInTheDocument();
+    }
+  });
+
+  it("reloads session state after the password change when navigating away from account", async () => {
+    navigationState.pathname = "/account";
+    const user = { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" };
+    vi.mocked(apiFetch).mockResolvedValueOnce({ user: { ...user, mustChangePassword: true } }).mockResolvedValueOnce({ user: { ...user, mustChangePassword: false } });
+    const { rerender } = render(<AppShell><div>Conta</div></AppShell>);
+    await screen.findByRole("navigation", { name: "Navegação principal" });
+    navigationState.pathname = "/queues";
+    rerender(<AppShell><div>Fila</div></AppShell>);
+    expect(await screen.findByRole("link", { name: "Central de exames" })).toBeInTheDocument();
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.getByText("Fila", { exact: true, selector: "div" })).toBeInTheDocument();
+  });
+
+  it("redirects a failed session to login and aborts identity loading on unmount", async () => {
+    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("unauthorized"));
+    const first = render(<AppShell><div>Conteúdo protegido</div></AppShell>);
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+    expect(screen.queryByText("Conteúdo protegido")).not.toBeInTheDocument();
+    first.unmount();
+    vi.mocked(apiFetch).mockImplementationOnce(() => new Promise(() => {}));
+    const second = render(<AppShell><div>Conteúdo</div></AppShell>);
+    const signal = vi.mocked(apiFetch).mock.calls.at(-1)?.[1]?.signal;
+    second.unmount();
+    expect(signal?.aborted).toBe(true);
+  });
+
+  it("waits for the current route identity before redirecting a cached password-required session", async () => {
+    navigationState.pathname = "/account";
+    const user = { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" };
+    let resolveSession!: (value: { user: typeof user }) => void;
+    const pendingSession = new Promise<{ user: typeof user }>((resolve) => { resolveSession = resolve; });
+    vi.mocked(apiFetch).mockResolvedValueOnce({ user: { ...user, mustChangePassword: true } }).mockReturnValueOnce(pendingSession);
+    const { rerender } = render(<AppShell><div>Conta</div></AppShell>);
+    await screen.findByRole("navigation", { name: "Navegação principal" });
+    navigationState.pathname = "/";
+    rerender(<AppShell><div>Dashboard</div></AppShell>);
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByText("Dashboard")).not.toBeInTheDocument();
+    await act(async () => { resolveSession({ user }); await pendingSession; });
+    expect(await screen.findByText("Dashboard")).toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("ignores a late identity from the previous route", async () => {
+    let resolveOld!: (value: unknown) => void;
+    const oldSession = new Promise((resolve) => { resolveOld = resolve; });
+    vi.mocked(apiFetch).mockReturnValueOnce(oldSession).mockResolvedValueOnce({ user: { id: "user-2", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    const { rerender } = render(<AppShell><div>Primeira página</div></AppShell>);
+    const oldSignal = vi.mocked(apiFetch).mock.calls[0][1]?.signal;
+    navigationState.pathname = "/patients";
+    rerender(<AppShell><div>Pacientes</div></AppShell>);
+    await screen.findByRole("link", { name: "Meus pacientes" });
+    expect(oldSignal?.aborted).toBe(true);
+    await act(async () => { resolveOld({ user: { role: "ADMIN", mustChangePassword: true } }); await oldSession; });
+    expect(screen.getByRole("link", { name: "Meus pacientes" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sistema" })).not.toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+  });
+
+  it("keeps dashboard shortcut handlers from stealing focus from the global palette", async () => {
+    const pageInput = document.createElement("input");
+    document.body.appendChild(pageInput);
+    const localShortcut = vi.fn(() => pageInput.focus());
+    window.addEventListener("keydown", localShortcut);
+    render(<AppShell><div>Dashboard</div></AppShell>);
+    await screen.findByRole("button", { name: /Buscar paciente ou exame/ });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(await screen.findByRole("combobox")).toHaveFocus();
+    expect(localShortcut).not.toHaveBeenCalled();
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(screen.getByRole("combobox")).toHaveFocus();
+    expect(localShortcut).not.toHaveBeenCalled();
+    window.removeEventListener("keydown", localShortcut);
+    pageInput.remove();
   });
 
   it("marks the realtime connection healthy and logs out through the server", async () => {

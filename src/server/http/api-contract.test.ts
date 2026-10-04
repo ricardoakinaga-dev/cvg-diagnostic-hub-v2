@@ -22,6 +22,7 @@ const EXPECTED_PERMISSION_ANCHORS = Object.freeze({
   createUser: ["user_role.manage"],
   updateUserRole: ["user_role.manage"],
   deactivateUser: ["user_role.manage"],
+  regenerateUserPassword: ["user_role.manage"],
   reauthenticate: [],
   getPatientDiagnostics: ["patient.view", "diagnostic.timeline.view"],
   updateAdmissionContext: ["admission.context.manage"],
@@ -159,8 +160,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(70);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 65);
+    expect(API_OPERATIONS).toHaveLength(73);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 68);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 
@@ -324,7 +325,8 @@ describe("exact OpenAPI contract", () => {
     }
     for (const operationId of ["createUser", "updateUserRole", "deactivateUser"]) {
       const manifest = API_OPERATIONS.find((operation) => operation.operationId === operationId);
-      expect(manifest?.authorization.stepUpRequired, `${operationId} requires recent reauthentication`).toBe(true);
+      expect(manifest?.authorization.stepUpRequired, `${operationId} only requires step-up for ADMIN transitions`).toBe(false);
+      expect(manifest?.authorization.conditions.join(" ")).toMatch(/ADMIN.*reauthentication/);
     }
     expect(API_OPERATIONS.find(({ operationId }) => operationId === "reauthenticate")?.authorization.stepUpRequired).toBe(false);
     expect(API_OPERATIONS.find(({ operationId }) => operationId === "getManagementOverview")?.authorization.conditions).toContain("role must be MANAGER");

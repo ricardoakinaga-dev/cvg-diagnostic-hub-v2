@@ -77,6 +77,7 @@ export function managedUser(user: User): ManagedUser {
     role: user.role,
     departmentCode: user.departmentCode,
     managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined,
+    serviceCodes: user.serviceCodes ? [...user.serviceCodes] : undefined,
     timezone: user.timezone,
     active: user.active !== false,
     createdAt: user.createdAt,
@@ -203,13 +204,14 @@ export function revokeUserSessions(state: StoreState, userId: string): StoreStat
 
 export function requireRecentReauthentication(actor: User): void {
   const reauthenticatedAt = actor.reauthenticatedAt ? Date.parse(actor.reauthenticatedAt) : Number.NaN;
-  if (Number.isNaN(reauthenticatedAt) || Date.now() - reauthenticatedAt > 10 * 60 * 1000 || reauthenticatedAt > Date.now() + 30_000) {
+  if (!actor.sessionId || Number.isNaN(reauthenticatedAt) || Date.now() - reauthenticatedAt > 10 * 60 * 1000 || reauthenticatedAt > Date.now() + 30_000) {
     throw new ApiError("REAUTH_REQUIRED", "Confirme sua identidade novamente antes de alterar acessos.", 403, { retryable: true });
   }
 }
 
 export function requireActiveUser(state: StoreState, actor: User): User {
   const current = state.users.find((user) => user.id === actor.id);
+  if (current?.mustChangePassword) throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
   const session = actor.sessionId ? state.sessions.find((entry) => entry.id === actor.sessionId && entry.userId === actor.id) : undefined;
   if (
     !current
@@ -230,7 +232,7 @@ export function requireActiveUser(state: StoreState, actor: User): User {
     patientIds: narrowed(current.patientIds, actor.patientIds),
     serviceCodes: narrowed(current.serviceCodes, actor.serviceCodes),
     sessionId: actor.sessionId,
-    reauthenticatedAt: session?.reauthenticatedAt ?? actor.reauthenticatedAt
+    reauthenticatedAt: session?.reauthenticatedAt
   };
 }
 

@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { ROLES, type AuditEvent, type DeadLetterMessage, type DiagnosticService, type ManagedSession, type ReasonCode, type RoleCode, type ManagedUser, type SessionResponse } from "@cvg/contracts";
+import { type DiagnosticService, type ReasonCode, type ManagedUser, type SessionResponse, type SessionUser } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
-import { ApiClientError, apiFetch, createClientUniqueId, getSafeErrorMessage } from "./api-client";
+import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
+import { UserCreateForm, UserRow } from "./admin-users";
 
 type CatalogService = DiagnosticService;
 type ServiceCategory = DiagnosticService["category"];
@@ -26,29 +27,27 @@ interface ServiceDraft {
   slaHours: { ROUTINE: number; URGENT: number; EMERGENCY: number };
 }
 
-const defaultServiceDraft: ServiceDraft = {
-  code: "",
-  name: "",
-  category: "LABORATORY",
-  departmentCode: "LABORATORY",
-  workflowType: "LABORATORY",
-  requiresSample: true,
-  requiresSchedule: false,
-  allowsAttachment: false,
-  resultSchema: "NARRATIVE",
-  slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }
-};
+function createServiceDraft(creator: SessionUser): ServiceDraft {
+  const departments = [creator.departmentCode, ...(creator.managedDepartmentCodes ?? [])].map((code) => code.trim().toUpperCase()).filter(Boolean);
+  const departmentCode = departments.find((code) => code === "LABORATORY" || code === "RADIOLOGY" || code === "ULTRASOUND")
+    ?? (creator.role === "MANAGER" ? departments[0] : "LABORATORY") ?? "LABORATORY";
+  const workflowType: WorkflowType = departmentCode === "RADIOLOGY" ? "RADIOLOGY" : departmentCode === "ULTRASOUND" ? "ULTRASOUND" : "LABORATORY";
+  return {
+    code: "",
+    name: "",
+    category: workflowType === "LABORATORY" ? "LABORATORY" : "IMAGING",
+    departmentCode,
+    workflowType,
+    requiresSample: workflowType === "LABORATORY",
+    requiresSchedule: workflowType === "ULTRASOUND",
+    allowsAttachment: workflowType !== "LABORATORY",
+    resultSchema: "NARRATIVE",
+    slaHours: workflowType === "RADIOLOGY" ? { ROUTINE: 24, URGENT: 8, EMERGENCY: 4 }
+      : workflowType === "ULTRASOUND" ? { ROUTINE: 48, URGENT: 12, EMERGENCY: 6 }
+        : { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }
+  };
+}
 
-const roleLabels: Record<RoleCode, string> = {
-  ADMIN: "Administração técnica",
-  MANAGER: "Gestão operacional",
-  VETERINARIAN: "Veterinária",
-  INPATIENT_TEAM: "Equipe de internação",
-  LAB_TECH: "Técnica de laboratório",
-  RADIOLOGY_TEAM: "Equipe de radiologia",
-  ULTRASOUND_TEAM: "Equipe de ultrassom",
-  VIEWER: "Visualização operacional"
-};
 const departmentLabels: Record<string, string> = { INPATIENT: "Internação", LABORATORY: "Laboratório", RADIOLOGY: "Radiologia", ULTRASOUND: "Ultrassom", OPERATIONS: "Operações", IT: "Tecnologia" };
 const workflowLabels: Record<WorkflowType, string> = { LABORATORY: "Laboratório", RADIOLOGY: "Radiologia", ULTRASOUND: "Ultrassom" };
 const reasonTypeLabels: Record<ReasonCode["type"], string> = { RECOLLECTION: "Recoleta", CANCEL: "Cancelamento", REJECT: "Rejeição", AMEND: "Emenda" };
@@ -57,19 +56,11 @@ function departmentLabel(code: string): string {
   return departmentLabels[code] ?? code.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
 
-function parseManagedDepartments(value: string): string[] | undefined {
-  const codes = Array.from(new Set(value.split(",").map((code) => code.trim().toUpperCase()).filter(Boolean)));
-  return codes.length > 0 ? codes : undefined;
-}
-
 export function AdminConsole() {
   const [services, setServices] = useState<CatalogService[]>([]);
   const [reasons, setReasons] = useState<ReasonCode[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
-  const [sessions, setSessions] = useState<ManagedSession[]>([]);
-  const [deadLetters, setDeadLetters] = useState<DeadLetterMessage[]>([]);
-  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
-  const [currentRole, setCurrentRole] = useState<RoleCode | null>(null);
+  const [identity, setIdentity] = useState<SessionUser | null>(null);
   const [error, setError] = useState("");
   const [accessDenied, setAccessDenied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -77,33 +68,33 @@ export function AdminConsole() {
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
-    setLoading(true);
-    setError("");
-    setAccessDenied(false);
-    const [serviceResult, reasonResult, userResult, auditResult, identityResult, sessionResult, deadLetterResult] = await Promise.allSettled([
-      apiFetch<CatalogService[]>("/diagnostic-services?includeInactive=true"),
-      apiFetch<ReasonCode[]>("/reason-codes"),
-      apiFetch<ManagedUser[]>("/users"),
-      apiFetch<AuditEvent[]>("/audit-events?limit=20"),
-      apiFetch<SessionResponse>("/session/me"),
-      apiFetch<ManagedSession[]>("/sessions"),
-      apiFetch<DeadLetterMessage[]>("/outbox/dead-letters")
-    ]);
-    if (loadVersion.current !== version) return;
-    if (serviceResult.status === "fulfilled") setServices(serviceResult.value);
-    if (reasonResult.status === "fulfilled") setReasons(reasonResult.value);
-    if (userResult.status === "fulfilled") setUsers(userResult.value);
-    if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value);
-    if (sessionResult.status === "fulfilled") setSessions(sessionResult.value);
-    if (deadLetterResult.status === "fulfilled") setDeadLetters(deadLetterResult.value);
-    if (identityResult.status === "fulfilled") setCurrentRole(identityResult.value.user.role === "VET" ? null : identityResult.value.user.role);
-    const results = [serviceResult, reasonResult, userResult, auditResult, sessionResult];
-    const failures = results.filter((result) => result.status === "rejected");
-    const deadLetterFailed = identityResult.status === "fulfilled" && identityResult.value.user.role === "ADMIN" && deadLetterResult.status === "rejected";
-    const denied = failures.length === results.length && failures.every((result) => result.status === "rejected" && result.reason instanceof ApiClientError && result.reason.code === "SCOPE_DENIED");
-    setAccessDenied(denied);
-    if ((failures.length > 0 || deadLetterFailed) && !denied) setError("Parte da configuração está indisponível; alterações não confirmadas permanecem sem efeito.");
-    if (loadVersion.current === version) setLoading(false);
+    setLoading(true); setError(""); setAccessDenied(false);
+    try {
+      const session = await apiFetch<SessionResponse>("/session/me");
+      if (loadVersion.current !== version) return;
+      if (session.user.role !== "ADMIN" && session.user.role !== "MANAGER") {
+        setIdentity(null); setAccessDenied(true); setServices([]); setReasons([]); setUsers([]);
+        return;
+      }
+      setIdentity(session.user);
+      const [serviceResult, reasonResult, userResult] = await Promise.allSettled([
+        apiFetch<CatalogService[]>("/diagnostic-services?includeInactive=true"),
+        apiFetch<ReasonCode[]>("/reason-codes"), apiFetch<ManagedUser[]>("/users")
+      ]);
+      if (loadVersion.current !== version) return;
+      setServices(serviceResult.status === "fulfilled" ? serviceResult.value : []);
+      setReasons(reasonResult.status === "fulfilled" ? reasonResult.value : []);
+      setUsers(userResult.status === "fulfilled" ? userResult.value : []);
+      const failures = [serviceResult, reasonResult, userResult].filter((result) => result.status === "rejected");
+      const denied = failures.length === 3 && failures.every((result) => result.status === "rejected" && result.reason instanceof ApiClientError && result.reason.code === "SCOPE_DENIED");
+      setAccessDenied(denied);
+      if (failures.length && !denied) setError("Parte da configuração está indisponível. Tente atualizar.");
+    } catch (cause) {
+      if (loadVersion.current !== version) return;
+      setIdentity(null); setServices([]); setReasons([]); setUsers([]);
+      if (cause instanceof ApiClientError && cause.code === "SCOPE_DENIED") setAccessDenied(true);
+      else setError(getSafeErrorMessage(cause, "Não foi possível carregar a administração."));
+    } finally { if (loadVersion.current === version) setLoading(false); }
   }, []);
 
   useEffect(() => {
@@ -111,73 +102,36 @@ export function AdminConsole() {
     return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
 
-  if (loading && services.length === 0 && reasons.length === 0 && users.length === 0 && sessions.length === 0 && auditEvents.length === 0 && deadLetters.length === 0) return <LoadingState label="Carregando administração" />;
+  const departmentCodes = [...new Set([
+    ...users.flatMap((user) => [user.departmentCode, ...(user.managedDepartmentCodes ?? [])]),
+    ...services.map((service) => service.departmentCode),
+    ...(identity ? [identity.departmentCode, ...(identity.managedDepartmentCodes ?? [])] : [])
+  ].filter(Boolean))];
 
-  return (
-    <div className="admin-page">
-      <div className="page-heading"><div><p className="eyebrow">Configuração controlada</p><h1>Administração <em>sem atalhos.</em></h1><p className="page-lede">Catálogos, acessos e motivos são versionados, desativados e auditados; nada referenciado é apagado.</p></div><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> {loading ? "Atualizando…" : "Atualizar"}</ActionButton></div>
-       {accessDenied ? <ErrorState title="Administração fora do seu escopo" message="Seu perfil não pode consultar nem alterar o catálogo institucional." onRetry={() => window.location.reload()} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : error && <ErrorState title="Configuração parcialmente indisponível" message={error} onRetry={load} retrying={loading} retryLabel="Reconciliar" />}
-      <section className="admin-policy-banner" role="note"><strong>Gate externo mantido visível</strong><p>A política de resultado crítico, identidade institucional, transferência/alta, retenção e RPO/RTO não é inventada pelo ambiente local. A configuração permanece bloqueada até aprovação e owner do hospital.</p></section>
-      <div className="admin-columns">
-         <section className="panel" id="catalog"><div className="panel-heading"><div><p className="eyebrow">Catálogo customizável</p><h2>Serviços diagnósticos</h2></div><span className="timeline-count">{services.length}</span></div><ServiceCreateForm onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço ou revise o escopo delegado." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={service.id} service={service} onSaved={() => void load()} />)}</div>}</section>
-         <section className="panel" id="reasons"><div className="panel-heading"><div><p className="eyebrow">Motivos auditáveis</p><h2>Códigos de motivo</h2></div><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Novos códigos devem ser aprovados antes de serem usados em comandos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={reason.id} reason={reason} onSaved={() => void load()} />)}</div>}</section>
-          <section className="panel" id="users"><div className="panel-heading"><div><p className="eyebrow">Acesso institucional</p><h2>Colaboradores e roles</h2></div><span className="timeline-count">{users.length}</span></div><UserCreateForm canCreateTechnicalRoles={currentRole === "ADMIN"} onSaved={() => void load()} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="O gestor só visualiza identidades dentro do escopo delegado; nenhuma credencial é exibida." /> : <div className="admin-list">{users.map((user) => <UserRow key={`${user.id}:${user.version}:${user.active}`} user={user} canEditTechnicalScope={currentRole === "ADMIN"} onSaved={() => void load()} />)}</div>}</section>
-       </div>
-        <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><div><p className="eyebrow">Sessões opacas</p><h2>Dispositivos e acessos ativos</h2></div><span className="timeline-count">{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="Sessões exibem apenas metadados operacionais; tokens nunca são retornados." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={`${session.id}:${session.status}`} session={session} onSaved={() => void load()} />)}</div>}</section>
-        {currentRole === "ADMIN" && <section className="panel admin-audit-panel" id="dead-letters"><div className="panel-heading"><div><p className="eyebrow">Entrega durável</p><h2>Dead-letter do outbox</h2></div><span className="timeline-count">{deadLetters.length}</span></div>{deadLetters.length === 0 ? <EmptyState title="Nenhuma mensagem retida" message="Mensagens exauridas aparecem aqui sem expor o payload clínico." /> : <div className="admin-list">{deadLetters.map((message) => <DeadLetterRow key={`${message.id}:${message.status}`} message={message} onSaved={() => void load()} />)}</div>}</section>}
-        <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><div><p className="eyebrow">Fonte de verdade</p><h2>Auditoria recente</h2></div><span className="timeline-count">{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento de configuração no escopo" message="As alterações aparecerão aqui quando houver atividade auditável." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType.replaceAll("_", " ").toLowerCase()} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="text-success">{event.newState?.replaceAll("_", " ").toLowerCase() ?? "registrado"}</span></li>)}</ul>}</section>
-    </div>
-  );
+  if (loading && !identity) return <LoadingState label="Carregando administração" />;
+  return <div className="admin-page">
+    <div className="page-heading"><div><h1>Administração</h1><p className="page-lede">Colaboradores, exames e motivos.</p></div><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> Atualizar</ActionButton></div>
+    {accessDenied ? <ErrorState title="Administração fora do seu escopo" message="Seu perfil não pode consultar nem alterar o catálogo institucional." onRetry={load} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : <>
+      {error && <ErrorState title="Configuração parcialmente indisponível" message={error} onRetry={load} retrying={loading} />}
+      {identity && <div className="admin-columns">
+        <section className="panel" id="users"><div className="panel-heading"><h2>Colaboradores</h2><span className="timeline-count">{users.length}</span></div><UserCreateForm creator={identity} services={services} onCreated={(user) => setUsers((current) => [...current.filter((entry) => entry.id !== user.id), user])} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="Adicione um colaborador ao seu setor." /> : <div className="admin-list">{users.map((user) => <UserRow key={user.id} user={user} viewerId={identity.id} services={services} departmentCodes={departmentCodes} technical={identity.role === "ADMIN"} onChanged={(updated) => setUsers((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} />)}</div>}</section>
+        <section className="panel" id="catalog"><div className="panel-heading"><h2>Serviços diagnósticos</h2><span className="timeline-count">{services.length}</span></div><ServiceCreateForm creator={identity} existingCodes={services.map((service) => service.code)} onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={`${service.id}:${service.version}`} service={service} existingCodes={services.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>
+        <section className="panel" id="reasons"><div className="panel-heading"><h2>Motivos</h2><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm existingCodes={reasons.map((reason) => reason.code)} onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Adicione um motivo para seleção nos fluxos clínicos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={`${reason.id}:${reason.version}`} reason={reason} existingCodes={reasons.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>
+      </div>}
+    </>}
+  </div>;
 }
 
-function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSaved: () => void }) {
-  const [reason, setReason] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function revoke(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (session.current || session.status === "REVOKED" || !window.confirm(`Revogar a sessão de ${session.userEmail}?`)) return;
-    setBusy(true); setError("");
-    try {
-      await apiFetch("/session/reauth", { method: "POST", body: JSON.stringify({ password }) });
-      await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({ reason: reason.trim(), confirm: true }) });
-      onSaved();
-    } catch (cause) {
-      setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão."));
-    } finally { setBusy(false); }
-  }
-
-  return <form className="admin-row" onSubmit={(event) => void revoke(event)}><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span className={session.status === "ACTIVE" ? "text-success" : session.status === "REVOKED" ? "text-danger" : "text-muted"}>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {roleLabels[session.userRole]} · {departmentLabel(session.departmentCode)} · criada {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small className="field-hint">Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" ? <><label>Motivo da revogação<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required /></label><label>Senha para reautenticar<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password}>{busy ? "Revogando…" : "Revogar sessão"}</ActionButton></> : null}</form>;
+function codeFromName(name: string, existingCodes: string[]): string {
+  const normalized = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  const base = (normalized.match(/^[A-Z]/) ? normalized : `ITEM_${normalized}`).slice(0, 50).padEnd(2, "_");
+  let code = base;
+  for (let suffix = 2; existingCodes.includes(code); suffix += 1) code = `${base}_${suffix}`;
+  return code;
 }
 
-function DeadLetterRow({ message, onSaved }: { message: DeadLetterMessage; onSaved: () => void }) {
-  const [reason, setReason] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function act(action: "reprocess" | "discard") {
-    if (message.status !== "FAILED" || !reason.trim() || !password) return;
-    const label = action === "discard" ? "descartar" : "reprocessar";
-    if (!window.confirm(`${label[0].toUpperCase()}${label.slice(1)} a mensagem ${message.id}?`)) return;
-    setBusy(true); setError("");
-    try {
-      await apiFetch("/session/reauth", { method: "POST", body: JSON.stringify({ password }) });
-      await apiFetch(`/outbox/dead-letters/${message.id}/${action}`, { method: "POST", body: JSON.stringify({ reason: reason.trim(), confirm: true }) });
-      onSaved();
-    } catch (cause) {
-      setError(getSafeErrorMessage(cause, "Não foi possível operar a dead-letter."));
-    } finally { setBusy(false); }
-  }
-
-  return <div className="admin-row"><div className="admin-row-heading"><strong>{message.eventType}</strong><span className={message.status === "FAILED" ? "text-danger" : "text-muted"}>{message.status === "FAILED" ? "Retida" : "Descartada"}</span></div><small>{message.id} · {message.aggregateType}/{message.aggregateId} · tentativas {message.attempts}</small>{message.lastError && <small className="field-hint">Falha: {message.lastError}</small>}{message.status === "FAILED" && <><label>Motivo operacional<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required /></label><label>Senha para reautenticar<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password} onClick={() => void act("reprocess")}>{busy ? "Processando…" : "Reprocessar"}</ActionButton><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password} onClick={() => void act("discard")}>Descartar</ActionButton></div></>}</div>;
-}
-
-function ServiceCreateForm({ onSaved }: { onSaved: () => void }) {
-  const [draft, setDraft] = useState<ServiceDraft>(defaultServiceDraft);
-  const [open, setOpen] = useState(false);
+function ServiceCreateForm({ creator, existingCodes, onSaved }: { creator: SessionUser; existingCodes: string[]; onSaved: () => void }) {
+  const [draft, setDraft] = useState<ServiceDraft>(() => createServiceDraft(creator));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -186,19 +140,18 @@ function ServiceCreateForm({ onSaved }: { onSaved: () => void }) {
     setBusy(true);
     setError("");
     try {
-      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify(draft) });
-      setDraft(defaultServiceDraft);
-      setOpen(false);
+      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify({ ...draft, name: draft.name.trim(), code: codeFromName(draft.name, existingCodes) }) });
+      setDraft(createServiceDraft(creator));
       onSaved();
     } catch (cause) {
       setError(getSafeErrorMessage(cause, "Não foi possível criar o serviço."));
     } finally { setBusy(false); }
   }
 
-  return <details className="admin-create" open={open} onToggle={(event) => setOpen(event.currentTarget.open)}><summary><Icon name="add" size={14} /> Adicionar serviço</summary><form className="admin-create-form" onSubmit={(event) => void save(event)}><ServiceFields draft={draft} onChange={setDraft} includeCode />{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!draft.code.trim() || !draft.name.trim()}>{busy ? "Criando…" : "Criar serviço"}</ActionButton></form></details>;
+  return <form className="admin-create-form" aria-label="Adicionar serviço" onSubmit={(event) => void save(event)}><ServiceFields draft={draft} onChange={setDraft} />{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!draft.name.trim()}>{busy ? "Criando…" : "Criar serviço"}</ActionButton></form>;
 }
 
-function ServiceRow({ service, onSaved }: { service: CatalogService; onSaved: () => void }) {
+function ServiceRow({ service, existingCodes, onSaved }: { service: CatalogService; existingCodes: string[]; onSaved: () => void }) {
   const [draft, setDraft] = useState<ServiceDraft>(() => ({ code: service.code, name: service.name, category: service.category ?? "LABORATORY", departmentCode: service.departmentCode, workflowType: service.workflowType ?? "LABORATORY", requiresSample: service.requiresSample ?? false, requiresSchedule: service.requiresSchedule ?? false, allowsAttachment: service.allowsAttachment ?? false, resultSchema: service.resultSchema ?? "NARRATIVE", slaHours: { ...service.slaHours } }));
   const [active, setActive] = useState(service.active);
   const [busy, setBusy] = useState(false);
@@ -217,39 +170,51 @@ function ServiceRow({ service, onSaved }: { service: CatalogService; onSaved: ()
     } finally { setBusy(false); }
   }
 
-  return <form className="admin-row" onSubmit={(event) => void save(event)}><div className="admin-row-heading"><strong>{service.code}</strong><span className={active ? "text-success" : "text-danger"}>{active ? "Ativo" : "Desativado"}</span></div><small>{departmentLabel(draft.departmentCode)} · {workflowLabels[draft.workflowType]} · versão {service.version} · identificador protegido</small><ServiceFields draft={draft} onChange={setDraft} /><label className="admin-check"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Disponível no catálogo</label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"}>{busy ? "Salvando…" : `Salvar ${service.name}`}</ActionButton></form>;
+  async function duplicate() {
+    if (busy) return;
+    setBusy(true); setError("");
+    const name = `${draft.name.slice(0, 112)} (cópia)`;
+    try {
+      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify({ ...draft, name, code: codeFromName(name, existingCodes), duplicateOfServiceId: service.id }) });
+      onSaved();
+    } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível duplicar o serviço.")); }
+    finally { setBusy(false); }
+  }
+
+  return <form className="admin-row" aria-label={`Serviço ${service.name}`} onSubmit={(event) => void save(event)}><div className="admin-row-heading"><strong>{service.name}</strong><span className={active ? "text-success" : "text-danger"}>{active ? "Ativo" : "Desativado"}</span></div><small>{departmentLabel(draft.departmentCode)} · {workflowLabels[draft.workflowType]}</small><ServiceFields draft={draft} onChange={setDraft} /><label className="admin-check"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Disponível no catálogo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} aria-label={`Salvar ${service.name}`}>{busy ? "Salvando…" : "Salvar"}</ActionButton><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void duplicate()} aria-label={`Duplicar ${service.name}`}>Duplicar</ActionButton></div></form>;
 }
 
-function ServiceFields({ draft, onChange, includeCode = false }: { draft: ServiceDraft; onChange: (next: ServiceDraft) => void; includeCode?: boolean }) {
+function ServiceFields({ draft, onChange }: { draft: ServiceDraft; onChange: (next: ServiceDraft) => void }) {
   const set = <K extends keyof ServiceDraft>(key: K, value: ServiceDraft[K]) => onChange({ ...draft, [key]: value });
   const setSla = (key: keyof ServiceDraft["slaHours"], value: number) => onChange({ ...draft, slaHours: { ...draft.slaHours, [key]: value } });
   return <div className="admin-service-fields">
-    {includeCode && <label>Código<input value={draft.code} onChange={(event) => set("code", event.target.value.toUpperCase())} pattern="[A-Z][A-Z0-9_]{1,59}" title="Use uma letra inicial e apenas letras, números ou sublinhado." maxLength={60} required /><small className="field-hint">Identificador estável: letra inicial, letras, números ou sublinhado.</small></label>}
+
     <label>Nome<input value={draft.name} onChange={(event) => set("name", event.target.value)} maxLength={120} required /></label>
+    <details className="admin-create"><summary>Opções avançadas do exame</summary>
     <div className="admin-role-grid"><label>Categoria<select value={draft.category} onChange={(event) => set("category", event.target.value as ServiceCategory)}><option value="LABORATORY">Laboratório</option><option value="IMAGING">Imagem</option></select></label><label>Workflow<select value={draft.workflowType} onChange={(event) => set("workflowType", event.target.value as WorkflowType)}><option value="LABORATORY">Laboratório</option><option value="RADIOLOGY">Radiologia</option><option value="ULTRASOUND">Ultrassom</option></select></label></div>
     <label>Setor<input value={draft.departmentCode} onChange={(event) => set("departmentCode", event.target.value.toUpperCase())} maxLength={60} required /></label>
     <div className="admin-check-grid"><label className="admin-check"><input type="checkbox" checked={draft.requiresSample} onChange={(event) => set("requiresSample", event.target.checked)} /> Exige amostra</label><label className="admin-check"><input type="checkbox" checked={draft.requiresSchedule} onChange={(event) => set("requiresSchedule", event.target.checked)} /> Exige agenda</label><label className="admin-check"><input type="checkbox" checked={draft.allowsAttachment} onChange={(event) => set("allowsAttachment", event.target.checked)} /> Aceita anexo</label></div>
     <label>Modelo de resultado<select value={draft.resultSchema} onChange={(event) => set("resultSchema", event.target.value as ResultSchema)}><option value="NUMERIC_PANEL">Painel numérico</option><option value="NARRATIVE">Narrativo</option></select></label>
     <div className="admin-sla-grid"><label>SLA rotina (h)<input type="number" min="1" max="720" value={draft.slaHours.ROUTINE} onChange={(event) => setSla("ROUTINE", Number(event.target.value))} /></label><label>SLA urgente (h)<input type="number" min="1" max="720" value={draft.slaHours.URGENT} onChange={(event) => setSla("URGENT", Number(event.target.value))} /></label><label>SLA emergência (h)<input type="number" min="1" max="720" value={draft.slaHours.EMERGENCY} onChange={(event) => setSla("EMERGENCY", Number(event.target.value))} /></label></div>
+    </details>
   </div>;
 }
 
-function ReasonCreateForm({ onSaved }: { onSaved: () => void }) {
+function ReasonCreateForm({ existingCodes, onSaved }: { existingCodes: string[]; onSaved: () => void }) {
   const [type, setType] = useState<ReasonCode["type"]>("RECOLLECTION");
-  const [code, setCode] = useState("");
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy(true); setError("");
-    try { await apiFetch("/reason-codes", { method: "POST", body: JSON.stringify({ type, code: code.trim().toUpperCase(), label: label.trim() }) }); setCode(""); setLabel(""); onSaved(); }
+    try { await apiFetch("/reason-codes", { method: "POST", body: JSON.stringify({ type, code: codeFromName(label, existingCodes), label: label.trim() }) }); setLabel(""); onSaved(); }
     catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível criar o motivo.")); }
     finally { setBusy(false); }
   }
-  return <details className="admin-create"><summary><Icon name="add" size={14} /> Adicionar motivo</summary><form className="admin-create-form" onSubmit={(event) => void save(event)}><label>Tipo<select value={type} onChange={(event) => setType(event.target.value as ReasonCode["type"])}><option value="RECOLLECTION">Recoleta</option><option value="CANCEL">Cancelamento</option><option value="REJECT">Rejeição</option><option value="AMEND">Emenda</option></select></label><label>Código<input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} maxLength={60} required /></label><label>Descrição<input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={160} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"}>{busy ? "Criando…" : "Criar motivo"}</ActionButton></form></details>;
+  return <details className="admin-create"><summary><Icon name="add" size={14} /> Adicionar motivo</summary><form className="admin-create-form" onSubmit={(event) => void save(event)}><label>Tipo<select value={type} onChange={(event) => setType(event.target.value as ReasonCode["type"])}><option value="RECOLLECTION">Recoleta</option><option value="CANCEL">Cancelamento</option><option value="REJECT">Rejeição</option><option value="AMEND">Emenda</option></select></label><label>Descrição<input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={160} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"}>{busy ? "Criando…" : "Criar motivo"}</ActionButton></form></details>;
 }
 
-function ReasonRow({ reason, onSaved }: { reason: ReasonCode; onSaved: () => void }) {
+function ReasonRow({ reason, existingCodes, onSaved }: { reason: ReasonCode; existingCodes: string[]; onSaved: () => void }) {
   const [label, setLabel] = useState(reason.label);
   const [active, setActive] = useState(reason.active);
   const [busy, setBusy] = useState(false);
@@ -260,60 +225,13 @@ function ReasonRow({ reason, onSaved }: { reason: ReasonCode; onSaved: () => voi
     catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível salvar o motivo.")); }
     finally { setBusy(false); }
   }
-  return <form className="admin-row" onSubmit={(event) => void save(event)}><div className="admin-row-heading"><strong>{reason.code}</strong><span className={active ? "text-success" : "text-danger"}>{active ? "Ativo" : "Desativado"}</span></div><small>{reasonTypeLabels[reason.type]} · versão {reason.version} · código protegido</small><label>Descrição<input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={160} /></label><label className="admin-check"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Disponível para seleção</label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"}>{busy ? "Salvando…" : `Salvar ${reason.code}`}</ActionButton></form>;
-}
-
-function UserCreateForm({ canCreateTechnicalRoles, onSaved }: { canCreateTechnicalRoles: boolean; onSaved: () => void }) {
-  const [displayName, setDisplayName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [role, setRole] = useState<RoleCode>("LAB_TECH");
-  const [departmentCode, setDepartmentCode] = useState("LABORATORY");
-  const [managedDepartments, setManagedDepartments] = useState("");
-  const [timezone, setTimezone] = useState("America/Sao_Paulo");
-  const [reason, setReason] = useState("");
-  const [reauthPassword, setReauthPassword] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    try {
-      await apiFetch("/session/reauth", { method: "POST", body: JSON.stringify({ password: reauthPassword }) });
-      await apiFetch("/users", { method: "POST", body: JSON.stringify({ displayName: displayName.trim(), email: email.trim(), password, role, departmentCode: departmentCode.trim(), managedDepartmentCodes: role === "MANAGER" ? parseManagedDepartments(managedDepartments) : undefined, timezone, reason: reason.trim(), confirm: true }) });
-      setDisplayName(""); setEmail(""); setPassword(""); setManagedDepartments(""); setReason(""); setReauthPassword(""); setConfirmed(false); onSaved();
-    } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível adicionar o colaborador.")); }
-    finally { setBusy(false); }
-  }
-  const creatableRoles = canCreateTechnicalRoles ? ROLES : ROLES.filter((option) => option !== "ADMIN" && option !== "MANAGER");
-  return <details className="admin-create"><summary><Icon name="add" size={14} /> Adicionar colaborador</summary><form className="admin-create-form" onSubmit={(event) => void save(event)}><label>Nome completo<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} maxLength={160} required /></label><label>E-mail institucional<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={320} required /></label><div className="admin-role-grid"><label>Role<select value={role} onChange={(event) => setRole(event.target.value as RoleCode)}>{creatableRoles.map((option) => <option key={option} value={option}>{roleLabels[option]}</option>)}</select></label><label>Setor<input value={departmentCode} onChange={(event) => setDepartmentCode(event.target.value.toUpperCase())} maxLength={60} required /></label></div>{canCreateTechnicalRoles && role === "MANAGER" && <label>Setores gerenciados<input value={managedDepartments} onChange={(event) => setManagedDepartments(event.target.value)} maxLength={1200} placeholder="LABORATORY, RADIOLOGY, ULTRASOUND" /><small className="field-hint">Códigos separados por vírgula. O gestor poderá controlar solicitações e equipes apenas nesses setores.</small></label>}<label>Senha inicial<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={12} maxLength={200} autoComplete="new-password" required /><small className="field-hint">Mínimo de 12 caracteres com letras e números. Nunca é exibida novamente.</small></label><label>Fuso horário<input value={timezone} onChange={(event) => setTimezone(event.target.value)} maxLength={80} required /></label><label>Motivo da criação<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required /></label><label>Senha do gestor para confirmar<input type="password" value={reauthPassword} onChange={(event) => setReauthPassword(event.target.value)} autoComplete="current-password" required /></label><label className="admin-check"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Confirmo a criação deste acesso</label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!confirmed}>{busy ? "Provisionando…" : "Criar acesso"}</ActionButton></form></details>;
-}
-
-function UserRow({ user, canEditTechnicalScope, onSaved }: { user: ManagedUser; canEditTechnicalScope: boolean; onSaved: () => void }) {
-  const [role, setRole] = useState<RoleCode>(user.role);
-  const [departmentCode, setDepartmentCode] = useState(user.departmentCode);
-  const [managedDepartments, setManagedDepartments] = useState(user.managedDepartmentCodes?.join(", ") ?? "");
-  const [active, setActive] = useState(user.active);
-  const [reason, setReason] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmed, setConfirmed] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-
-  async function reauth() { await apiFetch("/session/reauth", { method: "POST", body: JSON.stringify({ password }) }); }
-  async function save(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault(); setBusy(true); setError("");
-    try { await reauth(); await apiFetch(`/users/${user.id}/roles`, { method: "POST", body: JSON.stringify({ role, departmentCode: departmentCode.trim(), managedDepartmentCodes: canEditTechnicalScope && role === "MANAGER" ? (parseManagedDepartments(managedDepartments) ?? []) : undefined, active, expectedVersion: user.version, reason: reason.trim(), confirm: true }) }); onSaved(); }
-    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível salvar a role.")); }
-    finally { setBusy(false); }
-  }
-  async function deactivate() {
+  async function duplicate() {
+    if (busy) return;
     setBusy(true); setError("");
-    try { await reauth(); await apiFetch(`/users/${user.id}`, { method: "DELETE", body: JSON.stringify({ expectedVersion: user.version, reason: reason.trim(), confirm: true }) }); onSaved(); }
-    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível desativar o acesso.")); }
+    const copyLabel = `${label.slice(0, 152)} (cópia)`;
+    try { await apiFetch("/reason-codes", { method: "POST", body: JSON.stringify({ type: reason.type, label: copyLabel, code: codeFromName(copyLabel, existingCodes) }) }); onSaved(); }
+    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível duplicar o motivo.")); }
     finally { setBusy(false); }
   }
-
-  const editableRoles = canEditTechnicalScope ? ROLES : ROLES.filter((option) => option !== "ADMIN" && option !== "MANAGER");
-  return <form className="admin-row" onSubmit={(event) => void save(event)}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={active ? "text-success" : "text-danger"}>{active ? "Ativo" : "Desativado"}</span></div><small>{user.email} · versão {user.version} · {user.timezone}</small><div className="admin-role-grid"><label>Role<select value={role} onChange={(event) => setRole(event.target.value as RoleCode)}>{editableRoles.map((option) => <option key={option} value={option}>{roleLabels[option]}</option>)}</select></label><label>Setor<input value={departmentCode} onChange={(event) => setDepartmentCode(event.target.value)} maxLength={60} /></label></div>{canEditTechnicalScope && role === "MANAGER" && <label>Setores gerenciados<input value={managedDepartments} onChange={(event) => setManagedDepartments(event.target.value)} maxLength={1200} placeholder="LABORATORY, RADIOLOGY, ULTRASOUND" /><small className="field-hint">Códigos separados por vírgula; essa é a fronteira operacional do gestor.</small></label>}<label className="admin-check"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Acesso operacional ativo</label><label>Motivo da alteração<input value={reason} onChange={(event) => setReason(event.target.value)} maxLength={500} required /></label><label>Senha para reautenticar<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label><label className="admin-check"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} /> Confirmo esta alteração de acesso</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={!reason.trim() || !password || !confirmed}>{busy ? "Salvando…" : `Salvar ${user.email}`}</ActionButton><ActionButton tone="ghost" className="button-danger-ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void deactivate()} disabled={!user.active || !reason.trim() || !password || !confirmed}>Desativar acesso</ActionButton></div></form>;
+  return <form className="admin-row" aria-label={`Motivo ${reason.label}`} onSubmit={(event) => void save(event)}><div className="admin-row-heading"><strong>{reason.label}</strong><span className={active ? "text-success" : "text-danger"}>{active ? "Ativo" : "Desativado"}</span></div><small>{reasonTypeLabels[reason.type]}</small><label>Descrição<input value={label} onChange={(event) => setLabel(event.target.value)} maxLength={160} required /></label><label className="admin-check"><input type="checkbox" checked={active} onChange={(event) => setActive(event.target.checked)} /> Disponível para seleção</label>{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} aria-label={`Salvar ${reason.code}`}>{busy ? "Salvando…" : "Salvar"}</ActionButton><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void duplicate()} aria-label={`Duplicar ${reason.label}`}>Duplicar</ActionButton></form>;
 }

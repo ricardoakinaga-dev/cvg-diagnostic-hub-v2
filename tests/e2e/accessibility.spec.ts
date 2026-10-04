@@ -71,10 +71,10 @@ test.describe("accessible operational surfaces", () => {
     await expectNoAxeViolations(page, "admin account");
 
     for (const [path, heading, name] of [
-      ["/admin#users", /^Administração sem atalhos\.$/, "administration users"],
+      ["/admin#users", /^Administração$/, "administration users"],
       ["/admin#catalog", /Serviços diagnósticos/, "administration catalog"],
-      ["/admin#reasons", /Códigos de motivo/, "administration reasons"],
-      ["/admin#audit", /Auditoria recente/, "administration audit"]
+      ["/admin#reasons", /^Motivos$/, "administration reasons"],
+      ["/system#audit", /Auditoria recente/, "administration audit"]
     ] as const) {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: heading })).toBeVisible();

@@ -30,11 +30,13 @@ describe("PatientList", () => {
     fireEvent.click(screen.getByRole("button", { name: /Novo paciente/ }));
     expect(screen.getByRole("dialog", { name: "Cadastrar paciente" })).toBeInTheDocument();
     fireEvent.change(screen.getByPlaceholderText("Ex.: Amora"), { target: { value: "Amora" } });
-    fireEvent.change(screen.getByPlaceholderText("Ex.: Labrador"), { target: { value: "Labrador" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Canino"), { target: { value: "Canino" } });
     fireEvent.change(screen.getByPlaceholderText("Nome para identificação no atendimento"), { target: { value: "Joana" } });
     fireEvent.click(screen.getByRole("button", { name: /Confirmar cadastro de paciente/ }));
 
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/patients", expect.objectContaining({ method: "POST" })));
+    const createCall = apiFetchMock.mock.calls.find(([path, init]) => path === "/patients" && init?.method === "POST");
+    expect(JSON.parse(createCall?.[1]?.body as string)).toMatchObject({ displayName: "Amora", species: "Canino", ownerLabel: "Joana", breed: "Não informado", sex: "Não informado", encounterType: "OUTPATIENT" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Cadastrar paciente" })).not.toBeInTheDocument());
   });
 

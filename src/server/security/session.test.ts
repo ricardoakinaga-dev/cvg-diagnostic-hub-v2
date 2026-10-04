@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { StateStore, StoreState } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
-import { authenticateRequest, authorizationSnapshotIsCurrent, getCsrfCookieName, getSessionCookieName, loginUser, reauthenticateUser, revokeSession } from "./session";
+import { authenticateRequest, authorizationSnapshotIsCurrent, changeInitialPassword, getCsrfCookieName, getSessionCookieName, loginUser, reauthenticateUser, revokeSession } from "./session";
 import * as passwordSecurity from "./password";
 
 /**
@@ -34,6 +34,48 @@ function createRacingStore(readState: StoreState, transactionState: StoreState) 
 }
 
 describe("secure server sessions", () => {
+  it("restricts temporary credentials until replacement, rotates sessions and audits without secrets", async () => {
+    const state = createDemoState("Initial-secret-1234");
+    state.users.find((user) => user.id === "user-vet")!.mustChangePassword = true;
+    const store = new MemoryStore(state);
+    const first = await loginUser(store, "vet@cvg.local", "Initial-secret-1234");
+    const second = await loginUser(store, "vet@cvg.local", "Initial-secret-1234");
+    const request = new Request("http://localhost/api/v1/session/password", { headers: { cookie: `cvg_session=${first.sessionToken}; cvg_csrf=${first.csrfToken}`, "x-csrf-token": first.csrfToken } });
+    await expect(authenticateRequest(store, request)).rejects.toMatchObject({ code: "PASSWORD_CHANGE_REQUIRED" });
+    await expect(authenticateRequest(store, request, { allowPasswordChange: true })).resolves.toMatchObject({ mustChangePassword: true });
+    const temporaryActor = await authenticateRequest(store, request, { allowPasswordChange: true });
+    expect(authorizationSnapshotIsCurrent(store.getState(), temporaryActor)).toBe(false);
+    expect(authorizationSnapshotIsCurrent(store.getState(), temporaryActor, { allowPasswordChange: true })).toBe(true);
+    await expect(changeInitialPassword(store, request, "Initial-secret-1234", "corr-first-login")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(changeInitialPassword(store, request, "weak", "corr-first-login")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    const changed = await changeInitialPassword(store, request, "Personal-secret-5678", "corr-first-login");
+    expect(changed.sessionToken).not.toBe(first.sessionToken);
+    expect(changed.csrfToken).not.toBe(first.csrfToken);
+    for (const token of [first.sessionToken, second.sessionToken]) await expect(authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${token}` } }))).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+    await expect(authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${changed.sessionToken}` } }))).resolves.toMatchObject({ mustChangePassword: false });
+    await expect(loginUser(store, "vet@cvg.local", "Initial-secret-1234")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    await expect(loginUser(store, "vet@cvg.local", "Personal-secret-5678")).resolves.toMatchObject({ user: { mustChangePassword: false } });
+    const saved = await store.readState();
+    expect(saved.auditEvents.at(-1)).toMatchObject({ eventType: "InitialPasswordChanged", actorId: "user-vet", previousState: "TEMPORARY_PASSWORD", newState: "ACTIVE" });
+    expect(JSON.stringify(saved)).not.toContain("Personal-secret-5678");
+    expect(JSON.stringify(saved)).not.toContain("Initial-secret-1234");
+  });
+
+  it("rejects missing CSRF, completed replacement and races without changing credentials", async () => {
+    const state = createDemoState("Initial-secret-1234");
+    state.users.find((user) => user.id === "user-vet")!.mustChangePassword = true;
+    const store = new MemoryStore(state);
+    const login = await loginUser(store, "vet@cvg.local", "Initial-secret-1234");
+    await expect(changeInitialPassword(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}` } }), "Personal-secret-5678", "corr-change")).rejects.toMatchObject({ code: "CSRF_INVALID" });
+    const request = new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}; cvg_csrf=${login.csrfToken}`, "x-csrf-token": login.csrfToken } });
+    const results = await Promise.allSettled([changeInitialPassword(store, request, "Personal-secret-5678", "corr-change"), changeInitialPassword(store, request, "Other-secret-9012", "corr-change")]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(store.getState().auditEvents.filter((event) => event.eventType === "InitialPasswordChanged")).toHaveLength(1);
+    const winner = results.find((result) => result.status === "fulfilled");
+    if (winner?.status !== "fulfilled") throw new Error("No password replacement completed");
+    const currentRequest = new Request("http://localhost", { headers: { cookie: `cvg_session=${winner.value.sessionToken}; cvg_csrf=${winner.value.csrfToken}`, "x-csrf-token": winner.value.csrfToken } });
+    await expect(changeInitialPassword(store, currentRequest, "Another-secret-3456", "corr-change")).rejects.toMatchObject({ code: "INVALID_STATE" });
+  });
   it("awaits the login hook before creating and committing a session", async () => {
     const store = new MemoryStore(createDemoState("login-hook-password"));
     const before = await store.readStateSnapshot();

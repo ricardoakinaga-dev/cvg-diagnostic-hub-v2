@@ -256,6 +256,7 @@ export interface SessionUser {
   departmentCode: string;
   managedDepartmentCodes?: string[];
   timezone: string;
+  mustChangePassword?: boolean;
 }
 
 export interface SessionResponse {
@@ -371,6 +372,7 @@ export interface ManagedUser {
   role: RoleCode;
   departmentCode: string;
   managedDepartmentCodes?: string[];
+  serviceCodes?: string[];
   active: boolean;
   timezone: string;
   createdAt: string;

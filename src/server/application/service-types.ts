@@ -138,6 +138,7 @@ export interface AttachmentUploadInput extends CommandMeta {
 }
 
 export interface DiagnosticServiceCreateInput extends CommandMeta {
+  duplicateOfServiceId?: string;
   code: string;
   name: string;
   category: DiagnosticService["category"];
@@ -178,31 +179,33 @@ export interface UserRoleUpdateInput extends CommandMeta {
   role: RoleCode;
   departmentCode: string;
   managedDepartmentCodes?: string[];
+  serviceCodes?: string[];
   active?: boolean;
-  reason: string;
-  confirm: true;
+  reason?: string;
+  confirm?: boolean;
 }
 
 export interface ManagedUserCreateInput extends CommandMeta {
   email: string;
   displayName: string;
-  password: string;
+  password?: string;
   role: RoleCode;
-  departmentCode: string;
+  departmentCode?: string;
   managedDepartmentCodes?: string[];
-  timezone: string;
-  reason: string;
-  confirm: true;
+  serviceCodes?: string[];
+  timezone?: string;
+  reason?: string;
+  confirm?: boolean;
 }
 
 export interface ManagedUserDeactivateInput extends CommandMeta {
-  reason: string;
-  confirm: true;
+  reason?: string;
+  confirm?: boolean;
 }
 
 export interface SessionRevokeInput extends CommandMeta {
-  reason: string;
-  confirm: true;
+  reason?: string;
+  confirm?: boolean;
 }
 
 export type { ManagedSession };
@@ -214,6 +217,7 @@ export interface ManagedUser {
   role: RoleCode;
   departmentCode: string;
   managedDepartmentCodes?: ReadonlyArray<string>;
+  serviceCodes?: ReadonlyArray<string>;
   timezone: string;
   active: boolean;
   createdAt: string;

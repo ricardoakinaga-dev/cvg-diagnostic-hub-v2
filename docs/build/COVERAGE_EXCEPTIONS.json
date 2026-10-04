@@ -13,7 +13,6 @@
     { "file": "src/components/patient-diagnostics.tsx", "reason": "Patient workspace degraded branches require browser fault injection and scoped runtime fixtures." },
     { "file": "src/components/request-detail.tsx", "reason": "Request-detail failure branches are coupled to route navigation and server responses." },
     { "file": "src/components/result-view.tsx", "reason": "Result attachment and reconciliation branches require the clinical browser lifecycle." },
-    { "file": "src/components/use-dialog-focus.ts", "reason": "Keyboard focus edge branches require browser keyboard/focus evidence." },
     { "file": "src/features/diagnostics/exam-queue.tsx", "reason": "Queue pagination and realtime recovery branches require browser interaction coverage." },
     { "file": "src/server/application/operational-context.ts", "reason": "Defensive operational-context fallbacks are policy-dependent and require scenario fixtures." },
     { "file": "src/server/application/registry-service.ts", "reason": "Registry conflict and context branches require broader clinical fixture combinations." },

@@ -2,10 +2,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createApplicationService } from "../../../../server/application/service";
+import { listClinicalReasons } from "../../../../server/application/clinical-reasons";
+import { requireActiveUser, requirePermission } from "../../../../server/application/service-common";
+import { reauthenticationSchema, initialPasswordSchema, serviceCreateSchema, servicePatchSchema, userRoleSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, sessionRevokeSchema, deadLetterCommandSchema } from "../../../../server/http/admin-schemas";
 import { createSuccessResponse, toApiErrorResponse } from "../../../../server/http/envelope";
 import { getRuntimeFileStore, getRuntimeReadiness, getRuntimeStoreAsync } from "../../../../server/store/runtime";
-import { authenticateRequest, authorizationSnapshotIsCurrent, clearSessionCookies, getCookieValue, InvalidLoginCredentialsError, loginUser, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
-import { requireRecentReauthentication } from "../../../../server/application/service-common";
+import { authenticateRequest, authorizationSnapshotIsCurrent, changeInitialPassword, clearSessionCookies, getCookieValue, InvalidLoginCredentialsError, loginUser, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
 import type { CommandMeta, SearchResultType } from "../../../../server/application/service";
 import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
@@ -16,7 +18,7 @@ import { recordHttpRequest, recordReadinessFailure, refreshOperationalMetrics, r
 import { createStructuredLogger, logHttpRequest } from "../../../../server/observability/structured-logger";
 import { notifyRealtimeMutation } from "../../../../server/observability/realtime";
 import { createRealtimeResponse, RealtimeUnavailableError } from "../../../../server/observability/realtime-stream";
-import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
+import { ITEM_STATES, PRIORITIES } from "@cvg/contracts";
 import {
   acknowledgeNotificationSchema,
   admissionContextSchema,
@@ -76,28 +78,8 @@ const createPatientSchema = z.object({
 }).strict();
 
 const loginSchema = z.object({ email: z.string().email().refine((value) => codePointLength(value) <= 320), password: boundedString(1, 200) }).strict();
-const serviceCreateSchema = z.object({
-  code: catalogCodeSchema,
-  name: normalizedText(1, 120),
-  category: z.enum(["LABORATORY", "IMAGING"]),
-  departmentCode: departmentCodeSchema,
-  workflowType: z.enum(["LABORATORY", "RADIOLOGY", "ULTRASOUND"]),
-  requiresSample: z.boolean(),
-  requiresSchedule: z.boolean(),
-  allowsAttachment: z.boolean(),
-  resultSchema: z.enum(["NUMERIC_PANEL", "NARRATIVE"]),
-  slaHours: z.object({ ROUTINE: z.number().positive().max(720), URGENT: z.number().positive().max(720), EMERGENCY: z.number().positive().max(720) }).strict()
-}).strict();
-const servicePatchSchema = z.object({ name: normalizedText(1, 120).optional(), category: z.enum(["LABORATORY", "IMAGING"]).optional(), departmentCode: departmentCodeSchema.optional(), workflowType: z.enum(["LABORATORY", "RADIOLOGY", "ULTRASOUND"]).optional(), requiresSample: z.boolean().optional(), requiresSchedule: z.boolean().optional(), active: z.boolean().optional(), allowsAttachment: z.boolean().optional(), resultSchema: z.enum(["NUMERIC_PANEL", "NARRATIVE"]).optional(), slaHours: z.object({ ROUTINE: z.number().positive().max(720), URGENT: z.number().positive().max(720), EMERGENCY: z.number().positive().max(720) }).strict().optional(), expectedVersion: expectedVersionSchema.optional() }).strict();
 const reasonCreateSchema = z.object({ type: z.enum(["RECOLLECTION", "CANCEL", "REJECT", "AMEND"]), code: catalogCodeSchema, label: normalizedText(1, 160) }).strict();
 const reasonPatchSchema = z.object({ label: normalizedText(1, 160).optional(), active: z.boolean().optional(), expectedVersion: expectedVersionSchema.optional() }).strict();
-const reauthenticationSchema = z.object({ password: boundedString(1, 200) }).strict();
-const managedDepartmentCodesSchema = z.array(departmentCodeSchema).max(20).optional();
-const userRoleSchema = z.object({ role: z.enum(ROLES), departmentCode: departmentCodeSchema, managedDepartmentCodes: managedDepartmentCodesSchema, active: z.boolean().optional(), expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
-const userCreateSchema = z.object({ email: z.string().email().refine((value) => codePointLength(value) <= 320), displayName: normalizedText(2, 160), password: boundedString(12, 200), role: z.enum(ROLES), departmentCode: departmentCodeSchema, managedDepartmentCodes: managedDepartmentCodesSchema, timezone: normalizedText(1, 80), reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
-const userDeactivateSchema = z.object({ expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
-const sessionRevokeSchema = z.object({ reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
-const deadLetterCommandSchema = z.object({ reason: normalizedText(1, 500), confirm: z.literal(true) }).strict();
 
 function correlationFrom(request: Request): string {
   const supplied = request.headers.get("x-correlation-id")?.trim();
@@ -325,7 +307,7 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
 
     let actor: Awaited<ReturnType<typeof authenticateRequest>>;
     try {
-      actor = await authenticateRequest(store, request, { requireCsrf: operation.csrf });
+      actor = await authenticateRequest(store, request, { requireCsrf: operation.csrf, allowPasswordChange: ["getCurrentSession", "logout", "changeInitialPassword"].includes(operationId) });
     } catch (error) {
       if (error instanceof ApiError && (error.code === "UNAUTHENTICATED" || error.code === "SESSION_EXPIRED")) {
         await assertRateLimit(`preauth:${rateLimitClientKey}`, positiveInteger(process.env.UNAUTHENTICATED_RATE_LIMIT, 120), 60_000);
@@ -347,6 +329,14 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       return new Response(body, { status: 200, headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store", "x-correlation-id": correlationId } });
     }
     if (operationId === "getCurrentSession") return responseFor({ user: publicUser(actor) }, correlationId, id);
+    if (operationId === "changeInitialPassword") {
+      const parsed = initialPasswordSchema.safeParse(await jsonBody(request));
+      if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Informe uma nova senha válida.", 400);
+      const login = await changeInitialPassword(store, request, parsed.data.password, correlationId);
+      const response = responseFor({ user: publicUser(login.user), expiresAt: login.expiresAt }, correlationId, id);
+      sessionCookies(login).forEach((cookie) => response.headers.append("set-cookie", cookie));
+      return response;
+    }
     if (operationId === "logout") {
       const sessionToken = getCookieValue(request, "cvg_session");
       if (sessionToken) await revokeSession(store, sessionToken);
@@ -361,6 +351,7 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       return responseFor({ user: publicUser(reauthenticated), reauthenticatedAt: reauthenticated.reauthenticatedAt }, correlationId, id);
     }
 
+    if (operationId === "listClinicalReasons") return responseFor(await listClinicalReasons(store, actor), correlationId, id);
     if (operationId === "listUsers") return responseFor(await service.listManagedUsers(actor), correlationId, id);
     if (operationId === "listSessions") return responseFor(await service.listManagedSessions(actor), correlationId, id);
     if (operationId === "createUser") {
@@ -386,6 +377,13 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       const parsed = sessionRevokeSchema.safeParse(body);
       if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Os dados de revogação de sessão são inválidos.", 400);
       return responseFor(await service.revokeManagedSession(actor, path[1], { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id);
+    }
+
+    if (operationId === "regenerateUserPassword") {
+      const body = await objectBody(request);
+      const parsed = userPasswordSchema.safeParse(body);
+      if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Os dados de recuperação de acesso são inválidos.", 400);
+      return responseFor(await service.regenerateManagedUserPassword(actor, path[1], { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id);
     }
 
     if (operationId === "listDiagnosticServices") {
@@ -654,11 +652,10 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     }
     if (operationId === "reprocessDeadLetter" || operationId === "discardDeadLetter") {
       if (!canAccessResource(actor, "outbox.manage", {})) throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
-      requireRecentReauthentication(actor);
       const body = await objectBody(request);
       const parsed = parseCommandBody(body, deadLetterCommandSchema, "Os dados da dead-letter são inválidos.");
       const meta = commandMeta(request, body, operation);
-      const command = { actorId: actor.id, correlationId, idempotencyKey: meta.idempotencyKey!, reason: parsed.reason };
+      const command = { actorId: actor.id, correlationId, idempotencyKey: meta.idempotencyKey!, reason: parsed.reason ?? (operationId === "reprocessDeadLetter" ? "Reprocessamento solicitado na aba Sistema" : "Descarte solicitado na aba Sistema"), authorize: (state: Parameters<typeof requireActiveUser>[0]) => { const current = requireActiveUser(state, actor); requirePermission(current, "outbox.manage", {}); } };
       const result = operationId === "reprocessDeadLetter"
         ? await reprocessDeadLetterMessage(store, path[2], command)
         : await discardDeadLetterMessage(store, path[2], command);
@@ -696,8 +693,8 @@ async function flushConfiguredLocalOutbox(store: Awaited<ReturnType<typeof getRu
   await processOutboxBatch(store, createSafeConsoleSink(() => undefined), { workerId: `inline_${process.pid}`, batchSize: 100, allowSyntheticDelivery: true });
 }
 
-function publicUser(user: { id: string; email: string; displayName: string; role: string; departmentCode: string; timezone: string; managedDepartmentCodes?: ReadonlyArray<string> }) {
-  return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, departmentCode: user.departmentCode, managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined, timezone: user.timezone };
+function publicUser(user: { id: string; email: string; displayName: string; role: string; departmentCode: string; timezone: string; managedDepartmentCodes?: ReadonlyArray<string>; mustChangePassword?: boolean }) {
+  return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, departmentCode: user.departmentCode, managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined, timezone: user.timezone, mustChangePassword: user.mustChangePassword };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

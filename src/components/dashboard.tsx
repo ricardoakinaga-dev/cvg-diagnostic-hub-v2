@@ -298,10 +298,15 @@ function NotificationRow({ notification }: { notification: Notification }) {
 
 function DashboardSkeleton() { return <div className="dashboard-page"><div className="skeleton-heading skeleton-block" /><div className="skeleton-search skeleton-block" /><div className="metric-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="metric-card skeleton-card" />)}</div><div className="dashboard-columns"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></div>; }
 
-function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
+export function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [patientsLoading, setPatientsLoading] = useState(true);
+  const [patientsError, setPatientsError] = useState("");
+  const [patientRetry, setPatientRetry] = useState(0);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientId, setPatientIdState] = useState("");
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [encounterId, setEncounterId] = useState("");
@@ -319,7 +324,24 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
   const [patientNotice, setPatientNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   useDialogFocus(dialogRef, onClose, closeButtonRef);
-  useEffect(() => { void apiFetch<Patient[]>("/patients").then(setPatients).catch(() => setError("Não foi possível carregar os pacientes.")); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = patientSearch.trim();
+    void apiFetch<Patient[]>(query ? `/patients?q=${encodeURIComponent(query)}` : "/patients", { signal: controller.signal })
+      .then((nextPatients) => {
+        if (!controller.signal.aborted) setPatients(nextPatients);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setPatientsError(getSafeErrorMessage(cause, "Não foi possível carregar os pacientes."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPatientsLoading(false);
+      });
+    return () => controller.abort();
+  }, [patientSearch, patientRetry]);
+  const patientOptions = selectedPatient && !patients.some((patient) => patient.id === selectedPatient.id)
+    ? [selectedPatient, ...patients]
+    : patients;
   const loadEncounters = useCallback(async (nextPatientId: string) => {
     const version = encounterLoadVersion.current + 1;
     encounterLoadVersion.current = version;
@@ -338,6 +360,10 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     }
   }, []);
   function setPatientId(nextPatientId: string) {
+    if (nextPatientId === patientIdRef.current) return;
+    const nextPatient = patientOptions.find((patient) => patient.id === nextPatientId) ?? null;
+    if (nextPatientId && !nextPatient) return;
+    setSelectedPatient(nextPatient);
     encounterLoadVersion.current += 1;
     patientIdRef.current = nextPatientId;
     encounterIdRef.current = "";
@@ -353,7 +379,7 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     encounterLoadVersion.current += 1;
     patientIdRef.current = result.patient.id;
     encounterIdRef.current = result.encounter.id;
-    setPatients((current) => [...current.filter((patient) => patient.id !== result.patient.id), result.patient]);
+    setSelectedPatient(result.patient);
     setPatientIdState(result.patient.id);
     setEncounters([result.encounter]);
     setEncounterId(result.encounter.id);
@@ -410,7 +436,37 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     }
   }
   return <>
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={dialogRef} className="dialog" data-dialog-layer="true" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title"><div className="dialog-heading"><div><p className="eyebrow">Novo fluxo</p><h2 id="request-dialog-title">Solicitar exames</h2><p>O atendimento e o setor serão confirmados pelo servidor.</p></div><button ref={closeButtonRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><Icon name="close" size={18} /></button></div><div className="dialog-field-heading"><label htmlFor="request-patient">Paciente</label>{canCreatePatient && <button type="button" className="text-button" onClick={() => setShowPatientCreate(true)}><Icon name="add" size={14} /> Cadastrar paciente</button>}</div><select id="request-patient" value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="">Selecione um paciente…</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}</select>{patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={!patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true"><Icon name="check" size={14} /></b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<Icon name="arrow-right" size={15} /></button></div></section></div>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={dialogRef} className="dialog" data-dialog-layer="true" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title"><div className="dialog-heading"><div><p className="eyebrow">Novo fluxo</p><h2 id="request-dialog-title">Solicitar exames</h2><p>O atendimento e o setor serão confirmados pelo servidor.</p></div><button ref={closeButtonRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><Icon name="close" size={18} /></button></div><div className="dialog-field-heading"><label htmlFor="request-patient">Paciente</label>{canCreatePatient && <button type="button" className="text-button" onClick={() => setShowPatientCreate(true)}><Icon name="add" size={14} /> Cadastrar paciente</button>}</div>
+      <label htmlFor="request-patient-search">Buscar pacientes</label>
+      <input
+        id="request-patient-search"
+        type="search"
+        value={patientSearch}
+        onChange={(event) => {
+          setPatientsLoading(true);
+          setPatientsError("");
+          setPatientSearch(event.target.value);
+        }}
+        aria-controls="request-patient"
+        aria-describedby="request-patient-search-status"
+        placeholder="Buscar por nome ou prontuário…"
+      />
+      <p id="request-patient-search-status" className="field-hint" role="status">
+        {patientsLoading ? "Carregando pacientes…" : patientsError ? "" : patients.length === 0 ? "Nenhum paciente encontrado para esta busca." : `${patients.length} paciente${patients.length === 1 ? "" : "s"} encontrado${patients.length === 1 ? "" : "s"}. Refine a busca por nome ou prontuário.`}
+      </p>
+      {patientsError && <div id="request-patient-error" className="form-alert" role="alert">
+        <span>{patientsError}</span>
+        <button type="button" className="button button-ghost" onClick={() => {
+          setPatientsLoading(true);
+          setPatientsError("");
+          setPatientRetry((current) => current + 1);
+        }}>Tentar carregar pacientes</button>
+      </div>}
+      <select id="request-patient" value={patientId} onChange={(event) => setPatientId(event.target.value)} disabled={patientsLoading || Boolean(patientsError)} aria-busy={patientsLoading} aria-describedby={patientsError ? "request-patient-error" : "request-patient-search-status"}>
+        <option value="">Selecione um paciente…</option>
+        {patientOptions.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}
+      </select>
+      {patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={patientsLoading || Boolean(patientsError) || !patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true"><Icon name="check" size={14} /></b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting || patientsLoading || Boolean(patientsError)}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<Icon name="arrow-right" size={15} /></button></div></section></div>
     {showPatientCreate && <PatientDialog nested onClose={() => setShowPatientCreate(false)} onCreated={onPatientCreated} />}
   </>;
 }

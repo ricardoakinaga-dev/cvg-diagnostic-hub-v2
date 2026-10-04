@@ -7,11 +7,37 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
     .filter((element) => !element.hasAttribute("disabled") && element.getAttribute("aria-hidden") !== "true");
 }
 
+const backgroundIsolation = new WeakMap<HTMLElement, { count: number; wasInert: boolean }>();
+
+function isolateBackground(dialog: HTMLElement): () => void {
+  const isolated: HTMLElement[] = [];
+  for (let branch: HTMLElement | null = dialog; branch?.parentElement; branch = branch.parentElement) {
+    for (const sibling of branch.parentElement.children) {
+      if (!(sibling instanceof HTMLElement) || sibling === branch) continue;
+      const current = backgroundIsolation.get(sibling) ?? { count: 0, wasInert: sibling.hasAttribute("inert") };
+      current.count += 1;
+      backgroundIsolation.set(sibling, current);
+      sibling.setAttribute("inert", "");
+      isolated.push(sibling);
+    }
+  }
+  return () => {
+    for (const sibling of isolated) {
+      const current = backgroundIsolation.get(sibling)!;
+      current.count -= 1;
+      if (current.count > 0) continue;
+      if (!current.wasInert) sibling.removeAttribute("inert");
+      backgroundIsolation.delete(sibling);
+    }
+  };
+}
+
 /** Keeps keyboard focus inside the active modal and returns it to its opener. */
 export function useDialogFocus(
   dialogRef: RefObject<HTMLElement | null>,
   onClose: () => void,
-  initialFocusRef?: RefObject<HTMLElement | null>
+  initialFocusRef?: RefObject<HTMLElement | null>,
+  returnFocusRef?: RefObject<HTMLElement | null>
 ): void {
   const closeRef = useRef(onClose);
   const openerRef = useRef<HTMLElement | null>(null);
@@ -29,11 +55,12 @@ export function useDialogFocus(
     if (!dialog) return undefined;
     const ownsDialogLayer = !dialog.hasAttribute("data-dialog-layer");
     if (ownsDialogLayer) dialog.setAttribute("data-dialog-layer", "true");
-    if (openerRef.current === null) openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (openerRef.current === null) openerRef.current = returnFocusRef?.current ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const focusInitial = () => {
       const initial = initialFocusRef?.current ?? dialog.querySelector<HTMLElement>("[autofocus]") ?? focusableElements(dialog)[0];
       initial?.focus();
     };
+    const restoreBackground = isolateBackground(dialog);
     focusInitial();
     const isTopmostDialog = () => {
       const dialogs = Array.from(document.querySelectorAll<HTMLElement>("[data-dialog-layer='true']"));
@@ -68,11 +95,12 @@ export function useDialogFocus(
     window.addEventListener("keydown", onKeyDown);
     return () => {
       window.removeEventListener("keydown", onKeyDown);
+      restoreBackground();
       if (ownsDialogLayer) dialog.removeAttribute("data-dialog-layer");
       restoreFocusTimer.current = window.setTimeout(() => {
         restoreFocusTimer.current = null;
         if (openerRef.current?.isConnected) openerRef.current.focus();
       }, 0);
     };
-  }, [dialogRef, initialFocusRef]);
+  }, [dialogRef, initialFocusRef, returnFocusRef]);
 }

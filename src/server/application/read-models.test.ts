@@ -297,17 +297,20 @@ describe("authorized read models", () => {
     const admin = store.getState().users.find((user) => user.email === "admin@cvg.local");
     const vet = store.getState().users.find((user) => user.email === "vet@cvg.local");
     if (!admin || !vet) throw new Error("fixture actors missing");
-    const reauthenticatedAdmin = { ...admin, reauthenticatedAt: new Date().toISOString() };
 
-    expect((await service.listManagedUsers(reauthenticatedAdmin)).find((user) => user.id === vet.id)).toMatchObject({ role: "VETERINARIAN", active: true });
+    expect((await service.listManagedUsers(admin)).find((user) => user.id === vet.id)).toMatchObject({ role: "VETERINARIAN", active: true });
     await expect(service.listManagedUsers(vet)).rejects.toMatchObject({ code: "SCOPE_DENIED" });
-    const updated = await service.updateUserRole(reauthenticatedAdmin, vet.id, { role: "MANAGER", departmentCode: "INPATIENT", active: true, expectedVersion: 1, reason: "Atualizar acesso operacional", confirm: true, idempotencyKey: "role-admin-update" });
+    const updated = await service.updateUserRole(admin, vet.id, { role: "MANAGER", departmentCode: "INPATIENT", active: true, expectedVersion: 1, reason: "Atualizar acesso operacional", confirm: true, idempotencyKey: "role-admin-update" });
     expect(updated).toMatchObject({ id: vet.id, role: "MANAGER", departmentCode: "INPATIENT", version: 2 });
     expect(store.getState().auditEvents.at(-1)?.eventType).toBe("UserRoleUpdated");
-    await expect(service.updateUserRole(reauthenticatedAdmin, vet.id, { role: "VIEWER", departmentCode: "INPATIENT", expectedVersion: 1, reason: "Atualizar acesso operacional", confirm: true, idempotencyKey: "role-stale-update" })).rejects.toMatchObject({ code: "STALE_VERSION" });
-    await expect(service.updateUserRole(reauthenticatedAdmin, admin.id, { role: "VIEWER", departmentCode: "IT", active: true, expectedVersion: 1, reason: "Alteração indevida", confirm: true, idempotencyKey: "role-self-update" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    await expect(service.updateUserRole(reauthenticatedAdmin, vet.id, { role: "VIEWER", departmentCode: "INPATIENT", reason: "Sem versão", confirm: true, idempotencyKey: "role-missing-version" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    await expect(service.updateUserRole(reauthenticatedAdmin, vet.id, { role: "VIEWER", departmentCode: "INPATIENT", expectedVersion: 2, reason: undefined as never, confirm: true, idempotencyKey: "role-missing-reason" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(service.updateUserRole(admin, vet.id, { role: "VIEWER", departmentCode: "INPATIENT", expectedVersion: 1, reason: "Atualizar acesso operacional", confirm: true, idempotencyKey: "role-stale-update" })).rejects.toMatchObject({ code: "STALE_VERSION" });
+    await expect(service.updateUserRole(admin, admin.id, { role: "VIEWER", departmentCode: "IT", active: true, expectedVersion: 1, reason: "Alteração indevida", confirm: true, idempotencyKey: "role-self-update" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(service.updateUserRole(admin, vet.id, { role: "VIEWER", departmentCode: "INPATIENT", reason: "Sem versão", confirm: true, idempotencyKey: "role-missing-version" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(service.updateUserRole(admin, vet.id, { role: "VIEWER", departmentCode: "INPATIENT", expectedVersion: 2, idempotencyKey: "role-without-reason" })).resolves.toMatchObject({ id: vet.id, role: "VIEWER", version: 3 });
+    expect(store.getState().auditEvents.at(-1)).toMatchObject({ eventType: "UserRoleUpdated", actorId: admin.id, entityId: vet.id, previousState: "MANAGER:INPATIENT:true", newState: "VIEWER:INPATIENT:true", metadata: { action: "UPDATE_USER_ACCESS", departmentCode: "INPATIENT" } });
+    const beforeAdminGrant = store.getState();
+    await expect(service.updateUserRole(admin, vet.id, { role: "ADMIN", departmentCode: "INPATIENT", expectedVersion: 3, idempotencyKey: "role-admin-without-stepup" })).rejects.toMatchObject({ code: "REAUTH_REQUIRED", status: 403 });
+    expect(store.getState()).toEqual(beforeAdminGrant);
   });
 
   it("rejects invalid pagination at the application boundary", async () => {

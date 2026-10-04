@@ -1,0 +1,9 @@
+@media (max-width: 960px) {
+  .adminNav:global(.mobile-nav) {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .accountNav:global(.mobile-nav) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

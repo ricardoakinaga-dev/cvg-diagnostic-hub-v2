@@ -33,7 +33,7 @@ test.describe("realtime browser contract", () => {
 
       await mutationPage.getByRole("button", { name: /Nova solicitação/ }).click();
       const dialog = mutationPage.getByRole("dialog", { name: "Solicitar exames" });
-      await dialog.getByLabel("Paciente").selectOption("patient-thor");
+      await dialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption("patient-thor");
       await dialog.getByLabel("Atendimento").selectOption("encounter-thor");
       await dialog.getByText("Hemograma", { exact: true }).click();
       await dialog.getByRole("button", { name: /Confirmar solicitação/ }).click();

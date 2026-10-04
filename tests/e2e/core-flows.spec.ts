@@ -40,7 +40,7 @@ test.describe("operational hub journeys", () => {
   test("opens the server-derived operational context without leaving the exam queue", async ({ page }) => {
     await signIn(page);
     await page.getByRole("button", { name: /Nova solicitação/ }).click();
-    await page.getByRole("dialog", { name: "Solicitar exames" }).getByLabel("Paciente").selectOption("patient-thor");
+    await page.getByRole("dialog", { name: "Solicitar exames" }).getByRole("combobox", { name: "Paciente", exact: true }).selectOption("patient-thor");
     await page.getByRole("dialog", { name: "Solicitar exames" }).getByLabel("Atendimento").selectOption("encounter-thor");
     await page.getByRole("dialog", { name: "Solicitar exames" }).getByText("Hemograma", { exact: true }).click();
     await page.getByRole("button", { name: /Confirmar solicitação/ }).click();
@@ -52,7 +52,7 @@ test.describe("operational hub journeys", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/queues");
     await expect(page.getByRole("heading", { name: /Central de exames/ })).toBeVisible();
-    const opener = page.getByRole("button", { name: "Abrir contexto de Hemograma" }).first();
+    const opener = page.getByRole("button", { name: /^Abrir contexto de Hemograma/ }).first();
     await opener.click();
     const drawer = page.getByRole("dialog", { name: "Hemograma" });
     await expect(drawer).toBeVisible();
@@ -79,102 +79,72 @@ test.describe("operational hub journeys", () => {
   });
 
   test("lets an administrator configure a delegated manager scope", async ({ page }, testInfo) => {
-    const suffix = `${Date.now()}-${testInfo.project.name}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    const email = `scope-${suffix}@cvg.local`;
-
+    const email = `scope-${Date.now()}-${testInfo.project.name}@cvg.local`;
     await signInAs(page, "admin@cvg.local", /Administração técnica/);
     await page.goto("/admin#users");
-    const userCreate = page.locator("#users details");
-    await userCreate.locator("summary").click();
-    await userCreate.getByLabel("Nome completo").fill("Gestor de escopo E2E");
-    await userCreate.getByLabel("E-mail institucional").fill(email);
-    await userCreate.getByLabel("Role").selectOption("MANAGER");
-    await userCreate.getByLabel("Setor", { exact: true }).fill("OPERATIONS");
-    await userCreate.getByLabel("Setores gerenciados").fill("LABORATORY, RADIOLOGY");
-    await userCreate.getByLabel("Senha inicial").fill("e2e-manager-password-123");
-    await userCreate.getByLabel("Motivo da criação").fill("Delegação operacional para teste");
-    await userCreate.getByLabel("Senha do gestor para confirmar").fill("e2e-local-password-2026");
-    await userCreate.getByLabel("Confirmo a criação deste acesso").check();
-    await userCreate.getByRole("button", { name: "Criar acesso" }).click();
-
-    const userRow = page.locator("#users .admin-row").filter({ hasText: email });
-    await expect(userRow).toBeVisible();
-    await expect(userRow.getByLabel("Setores gerenciados")).toHaveValue("LABORATORY, RADIOLOGY");
-    await userRow.getByLabel("Setores gerenciados").fill("ULTRASOUND");
-    await userRow.getByLabel("Motivo da alteração").fill("Revisão do escopo operacional");
-    await userRow.getByLabel("Senha para reautenticar").fill("e2e-local-password-2026");
-    await userRow.getByLabel("Confirmo esta alteração de acesso").check();
-    await userRow.getByRole("button", { name: `Salvar ${email}` }).click();
-    await expect(userRow.getByLabel("Setores gerenciados")).toHaveValue("ULTRASOUND");
+    const create = page.getByRole("form", { name: "Adicionar colaborador" });
+    await create.getByLabel("Nome completo").fill("Gestor de escopo E2E");
+    await create.getByLabel("E-mail institucional").fill(email);
+    await create.getByLabel("Perfil").selectOption("MANAGER");
+    await create.getByText("Opções avançadas", { exact: true }).click();
+    await create.getByLabel("Setores gerenciados").fill("LABORATORY, RADIOLOGY");
+    await create.getByRole("button", { name: "Criar acesso" }).click();
+    await page.getByRole("dialog", { name: "Senha inicial", exact: true }).getByRole("button", { name: "Fechar", exact: true }).click();
+    const row = page.getByRole("form", { name: `Acesso de ${email}`, exact: true });
+    await expect(row).toBeVisible();
+    await row.getByText("Opções avançadas", { exact: true }).click();
+    await expect(row.getByLabel("Setores gerenciados")).toHaveValue("LABORATORY, RADIOLOGY");
+    await row.getByLabel("Setores gerenciados").fill("ULTRASOUND");
+    await row.getByRole("button", { name: `Salvar ${email}`, exact: true }).click();
+    await expect(row.getByLabel("Setores gerenciados")).toHaveValue("ULTRASOUND");
   });
 
   test("gives a manager scoped control, catalog and collaborator workflows", async ({ page }, testInfo) => {
-    const suffix = `${Date.now()}-${testInfo.project.name}`.replace(/[^a-z0-9-]/gi, "-").toLowerCase();
-    const serviceCode = `E2E_${suffix.replaceAll("-", "_")}`.toUpperCase();
-    const reasonCode = `E2E_${suffix.replaceAll("-", "_")}`.toUpperCase();
+    const suffix = `${Date.now()}-${testInfo.project.name}`;
+    const name = `Painel operacional E2E ${suffix}`;
+    const reasonLabel = `Motivo operacional E2E ${suffix}`;
     const email = `e2e-${suffix}@cvg.local`;
-
     await signInAs(page, "manager@cvg.local", /Controle operacional/);
-    const mainNavigation = page.getByRole("navigation", { name: "Navegação principal" });
     if (testInfo.project.name === "chromium") {
-      await expect(mainNavigation.getByRole("link", { name: "Solicitações" })).toBeVisible();
-      await expect(mainNavigation.getByRole("link", { name: "Pendências" })).toBeVisible();
-      await expect(mainNavigation.getByRole("link", { name: "Estatísticas" })).toBeVisible();
-      await mainNavigation.getByRole("link", { name: "Catálogos" }).click();
-    } else {
-      await expect(page.getByRole("navigation", { name: "Navegação rápida" })).toBeVisible();
-      await page.goto("/admin#catalog");
-    }
-    await expect(page).toHaveURL(/\/admin#catalog/);
+      const nav = page.getByRole("navigation", { name: "Navegação principal" });
+      await expect(nav.getByRole("link", { name: "Solicitações", exact: true })).toBeVisible();
+      await expect(nav.getByRole("link", { name: "Pendências", exact: true })).toBeVisible();
+      await expect(nav.getByRole("link", { name: "Estatísticas", exact: true })).toBeVisible();
+      await nav.getByRole("link", { name: "Catálogos", exact: true }).click();
+    } else await page.goto("/admin#catalog");
     await expect(page.getByRole("heading", { name: "Serviços diagnósticos" })).toBeVisible();
-    const serviceCreate = page.locator("#catalog details");
-    await serviceCreate.locator("summary").click();
-    await serviceCreate.getByLabel("Código").fill(serviceCode);
-    await serviceCreate.getByLabel("Nome").fill("Painel operacional E2E");
-    await serviceCreate.getByLabel("Setor").fill("LABORATORY");
-    await serviceCreate.getByLabel("Workflow").selectOption("LABORATORY");
-    await serviceCreate.getByLabel("Exige agenda").check();
-    await serviceCreate.getByLabel("SLA urgente (h)").fill("6");
-    await serviceCreate.getByRole("button", { name: "Criar serviço" }).click();
-    const serviceRow = page.locator("#catalog .admin-row").filter({ hasText: serviceCode });
+    const createService = page.getByRole("form", { name: "Adicionar serviço", exact: true });
+    await createService.getByLabel("Nome", { exact: true }).fill(name);
+    await createService.getByRole("button", { name: "Criar serviço", exact: true }).click();
+    const serviceRow = page.getByRole("form", { name: `Serviço ${name}`, exact: true });
     await expect(serviceRow).toBeVisible();
-    await serviceRow.getByLabel("Nome").fill("Painel operacional E2E revisado");
+    await serviceRow.getByText("Opções avançadas do exame", { exact: true }).click();
     await serviceRow.getByLabel("SLA emergência (h)").fill("3");
-    await serviceRow.getByRole("button", { name: /Salvar/ }).click();
-    await expect(serviceRow.getByLabel("Nome")).toHaveValue("Painel operacional E2E revisado");
-
+    await serviceRow.getByRole("button", { name: `Salvar ${name}`, exact: true }).click();
+    await expect(serviceRow.getByLabel("SLA emergência (h)")).toHaveValue("3");
     await page.goto("/admin#reasons");
-    const reasonCreate = page.locator("#reasons details");
-    await reasonCreate.locator("summary").click();
-    await reasonCreate.getByLabel("Tipo").selectOption("RECOLLECTION");
-    await reasonCreate.getByLabel("Código").fill(reasonCode);
-    await reasonCreate.getByLabel("Descrição").fill("Motivo operacional E2E");
-    await reasonCreate.getByRole("button", { name: "Criar motivo" }).click();
-    const reasonRow = page.locator("#reasons .admin-row").filter({ hasText: reasonCode });
+    const createReason = page.locator("#reasons details").first();
+    await createReason.locator("summary").click();
+    await createReason.getByLabel("Tipo").selectOption("RECOLLECTION");
+    await createReason.getByLabel("Descrição").fill(reasonLabel);
+    await createReason.getByRole("button", { name: "Criar motivo" }).click();
+    const reasonRow = page.getByRole("form", { name: `Motivo ${reasonLabel}`, exact: true });
     await expect(reasonRow).toBeVisible();
-    await reasonRow.getByLabel("Descrição").fill("Motivo operacional E2E revisado");
-    await reasonRow.getByRole("button", { name: `Salvar ${reasonCode}` }).click();
-    await expect(reasonRow.getByLabel("Descrição")).toHaveValue("Motivo operacional E2E revisado");
-
+    await reasonRow.getByLabel("Descrição").fill(`${reasonLabel} revisado`);
+    await reasonRow.getByRole("button", { name: /Salvar/ }).click();
+    await expect(page.getByRole("form", { name: `Motivo ${reasonLabel} revisado`, exact: true })).toBeVisible();
     await page.goto("/admin#users");
-    const userCreate = page.locator("#users details");
-    await userCreate.locator("summary").click();
+    const userCreate = page.getByRole("form", { name: "Adicionar colaborador" });
     await userCreate.getByLabel("Nome completo").fill("Colaborador E2E");
     await userCreate.getByLabel("E-mail institucional").fill(email);
-    await userCreate.getByLabel("Role").selectOption("LAB_TECH");
-    await userCreate.getByLabel("Setor").fill("LABORATORY");
-    await userCreate.getByLabel("Senha inicial").fill("e2e-collaborator-123");
-    await userCreate.getByLabel("Motivo da criação").fill("Teste operacional de provisionamento");
-    await userCreate.getByLabel("Senha do gestor para confirmar").fill("e2e-local-password-2026");
-    await userCreate.getByLabel("Confirmo a criação deste acesso").check();
+    await userCreate.getByLabel("Perfil").selectOption("LAB_TECH");
     await userCreate.getByRole("button", { name: "Criar acesso" }).click();
-    const userRow = page.locator("#users .admin-row").filter({ hasText: email });
-    await expect(userRow).toBeVisible();
-    await userRow.getByLabel("Motivo da alteração").fill("Encerramento do teste operacional");
-    await userRow.getByLabel("Senha para reautenticar").fill("e2e-local-password-2026");
-    await userRow.getByLabel("Confirmo esta alteração de acesso").check();
+    await page.getByRole("dialog", { name: "Senha inicial", exact: true }).getByRole("button", { name: "Fechar", exact: true }).click();
+    const userRow = page.getByRole("form", { name: `Acesso de ${email}`, exact: true });
     await userRow.getByRole("button", { name: "Desativar acesso" }).click();
-    await expect(userRow).toContainText("Desativado", { timeout: 15000 });
+    await expect(userRow).toContainText("Desativado");
+    await userRow.getByRole("button", { name: "Desfazer" }).click();
+    await expect(userRow.getByText("Ativo", { exact: true })).toBeVisible();
   });
 
   test("creates a contextual multi-service request through the UI", async ({ page }, testInfo) => {
@@ -187,7 +157,7 @@ test.describe("operational hub journeys", () => {
     await page.getByRole("button", { name: /Nova solicitação/ }).click();
     const requestDialog = page.getByRole("dialog", { name: "Solicitar exames" });
     await expect(requestDialog).toBeVisible();
-    await requestDialog.getByLabel("Paciente").selectOption(scenario.patient);
+    await requestDialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption(scenario.patient);
     await requestDialog.getByLabel("Atendimento").selectOption(scenario.patient === "patient-thor" ? "encounter-thor" : "encounter-mel");
     for (const service of scenario.services) await requestDialog.getByText(service, { exact: true }).click();
     await requestDialog.getByRole("button", { name: /Confirmar solicitação/ }).click();
@@ -301,7 +271,7 @@ test.describe("operational hub journeys", () => {
     if ((baselineBody.data?.items?.length ?? 0) === 0) {
       await page.getByRole("button", { name: /Nova solicitação/ }).click();
       const requestDialog = page.getByRole("dialog", { name: "Solicitar exames" });
-      await requestDialog.getByLabel("Paciente").selectOption("patient-thor");
+      await requestDialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption("patient-thor");
       await requestDialog.getByLabel("Atendimento").selectOption("encounter-thor");
       await requestDialog.getByText("Hemograma", { exact: true }).click();
       await requestDialog.getByRole("button", { name: /Confirmar solicitação/ }).click();

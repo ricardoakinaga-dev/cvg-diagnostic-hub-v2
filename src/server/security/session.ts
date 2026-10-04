@@ -105,7 +105,7 @@ export async function loginUser(store: StateStore, email: string, password: stri
 export async function authenticateRequest(
   store: StateStore,
   request: Request,
-  options: { requireCsrf?: boolean } = {}
+  options: { requireCsrf?: boolean; allowPasswordChange?: boolean } = {}
 ): Promise<User> {
   const token = parseCookies(request)[SESSION_COOKIE];
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
@@ -118,14 +118,53 @@ export async function authenticateRequest(
   const user = state.users.find((entry) => entry.id === session.userId && entry.active);
   if (!user) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   await assertSessionIsActive(store, session);
+  if (user.mustChangePassword && !options.allowPasswordChange) {
+    throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
+  }
   return { ...user, sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
 }
 
-export function authorizationSnapshotIsCurrent(state: StoreState, actor: User): boolean {
+/** Replace temporary credentials and rotate every session in the same transaction. */
+export async function changeInitialPassword(store: StateStore, request: Request, password: string, correlationId: string) {
+  const actor = await authenticateRequest(store, request, { requireCsrf: true, allowPasswordChange: true });
+  if (!actor.mustChangePassword) throw new ApiError("INVALID_STATE", "A senha inicial já foi substituída.", 409);
+  if (Array.from(password).length < 12 || Array.from(password).length > 200 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    throw new ApiError("VALIDATION_ERROR", "Use de 12 a 200 caracteres, com letras e números.", 400);
+  }
+  if (passwordSecurity.verifyPassword(password, actor.passwordHash)) {
+    throw new ApiError("VALIDATION_ERROR", "Escolha uma senha diferente da senha inicial.", 400);
+  }
+  const passwordHash = passwordSecurity.hashPassword(password);
+  return store.transaction((state) => {
+    if (!authorizationSnapshotIsCurrent(state, actor, { allowPasswordChange: true })) throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
+    const current = state.users.find((user) => user.id === actor.id)!;
+    if (!current.mustChangePassword || current.passwordHash !== actor.passwordHash) {
+      throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
+    }
+    const user = { ...current, passwordHash, mustChangePassword: false, version: current.version + 1 };
+    const sessionToken = randomBytes(32).toString("base64url");
+    const csrfToken = randomBytes(24).toString("base64url");
+    const createdAt = new Date().toISOString();
+    const expiresAt = new Date(Date.parse(createdAt) + SESSION_TTL_MS).toISOString();
+    const session = { id: randomBytes(16).toString("hex"), userId: user.id, tokenHash: hash(sessionToken), csrfTokenHash: hash(csrfToken), createdAt, expiresAt, version: 1 };
+    return {
+      state: {
+        ...state,
+        users: state.users.map((entry) => entry.id === user.id ? user : entry),
+        sessions: [...state.sessions.map((entry) => entry.userId === user.id && !entry.revokedAt ? { ...entry, revokedAt: createdAt, version: entry.version + 1 } : entry), session],
+        auditEvents: [...state.auditEvents, { id: `audit_${randomBytes(16).toString("hex")}`, eventType: "InitialPasswordChanged", actorId: user.id, entityType: "USER", entityId: user.id, previousState: "TEMPORARY_PASSWORD", newState: "ACTIVE", correlationId, metadata: { sessionsRotated: true }, occurredAt: createdAt }]
+      },
+      result: { user, sessionToken, csrfToken, expiresAt }
+    };
+  });
+}
+
+export function authorizationSnapshotIsCurrent(state: StoreState, actor: User, options: { allowPasswordChange?: boolean } = {}): boolean {
   const current = state.users.find((user) => user.id === actor.id);
   const session = actor.sessionId ? state.sessions.find((entry) => entry.id === actor.sessionId && entry.userId === actor.id) : undefined;
   return Boolean(
     current?.active
+    && (!current.mustChangePassword || options.allowPasswordChange === true)
     && current.version === actor.version
     && current.role === actor.role
     && current.departmentCode === actor.departmentCode

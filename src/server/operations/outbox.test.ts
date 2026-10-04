@@ -1,9 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import type { StoreState } from "../domain/models";
+import type { StoreState, User } from "../domain/models";
+import { requireActiveUser, requirePermission } from "../application/service-common";
+import { ApiError } from "../http/envelope";
 import { MemoryStore } from "../store/memory-store";
 import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, discardDeadLetterMessage, InProcessEventBus, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "./outbox";
-import type { OutboxSink, OutboxSqlExecutor } from "./outbox";
+import type { DeadLetterCommand, OutboxSink, OutboxSqlExecutor } from "./outbox";
+
+function authorizeAdmin(actor: User) {
+  return (state: StoreState): void => {
+    const current = requireActiveUser(state, actor);
+    requirePermission(current, "outbox.manage", {});
+    if (current.role !== "ADMIN") throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
+  };
+}
+
+function adminFrom(state: StoreState): User {
+  const actor = state.users.find((user) => user.id === "user-admin");
+  if (!actor) throw new Error("Admin fixture absent");
+  return actor;
+}
 
 function stateWithMessage(): StoreState {
   const state = createDemoState();
@@ -24,6 +40,87 @@ function stateWithMessage(): StoreState {
     }]
   };
 }
+
+function deadLetterFixture() {
+  const state = stateWithMessage();
+  const now = new Date().toISOString();
+  const actor = { ...adminFrom(state), sessionId: "session-admin" };
+  state.sessions = [{
+    id: actor.sessionId, userId: actor.id, tokenHash: "test-token-hash", csrfTokenHash: "test-csrf-hash",
+    createdAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString(), version: 1
+  }];
+  state.notifications = [{
+    id: "notification-failed", category: "ACTIONABLE", priority: "HIGH", recipientUserId: "user-vet",
+    entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Ação necessária",
+    body: "Atualização disponível.", dedupeKey: "request-1:failed", state: "FAILED", createdAt: now,
+    attempts: 5, version: 2
+  }];
+  state.outbox[0] = {
+    ...state.outbox[0], status: "FAILED", attempts: 5, deadLetteredAt: now, lastError: "downstream unavailable",
+    payload: { notificationId: "notification-failed" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app"
+  };
+  const authorize = vi.fn(authorizeAdmin(actor));
+  const command: DeadLetterCommand = {
+    authorize, actorId: actor.id, correlationId: "corr-authorization", idempotencyKey: "authorization-command",
+    reason: "  Dependência recuperada  "
+  };
+  return { store: new MemoryStore(state), actor, authorize, command };
+}
+
+describe.each([
+  { action: "reprocess", mutate: reprocessDeadLetterMessage },
+  { action: "discard", mutate: discardDeadLetterMessage }
+])("dead-letter $action transaction authorization", ({ mutate }) => {
+  it.each([false, true])("fails closed without an authorization callback (replay: %s)", async (replay) => {
+    const { store, command } = deadLetterFixture();
+    if (replay) await mutate(store, "outbox-1", command);
+    const before = store.getState();
+    const malformedCommand: Partial<DeadLetterCommand> = { ...command };
+    delete malformedCommand.authorize;
+
+    await expect(mutate(store, "outbox-1", malformedCommand as DeadLetterCommand)).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+    expect(store.getState()).toEqual(before);
+  });
+
+  describe.each([false, true])("fresh authorization on replay=%s", (replay) => {
+    it.each(["revocation", "deactivation", "demotion"] as const)("rejects %s without changing state or audit", async (change) => {
+      const { store, actor, authorize, command } = deadLetterFixture();
+      if (replay) await mutate(store, "outbox-1", command);
+      await store.transaction((state) => ({
+        state: {
+          ...state,
+          sessions: state.sessions.map((session) => change === "revocation" && session.id === actor.sessionId
+            ? { ...session, revokedAt: new Date().toISOString(), version: session.version + 1 } : session),
+          users: state.users.map((user) => user.id !== actor.id ? user
+            : change === "deactivation" ? { ...user, active: false, version: user.version + 1 }
+              : change === "demotion" ? { ...user, role: "MANAGER", version: user.version + 1 } : user)
+        },
+        result: undefined
+      }));
+      const before = store.getState();
+      authorize.mockClear();
+
+      await expect(mutate(store, "outbox-1", command)).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+      expect(authorize).toHaveBeenCalledExactlyOnceWith(before);
+      expect(store.getState()).toEqual(before);
+    });
+  });
+
+  it("preserves reason validation, normalization and idempotency conflicts", async () => {
+    const { store, command, authorize } = deadLetterFixture();
+    const before = store.getState();
+    await expect(mutate(store, "outbox-1", { ...command, reason: " " })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    await expect(mutate(store, "outbox-1", { ...command, reason: "x".repeat(501) })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(store.getState()).toEqual(before);
+    const first = await mutate(store, "outbox-1", command);
+    const after = store.getState();
+    expect(after.auditEvents).toContainEqual(expect.objectContaining({ entityId: "outbox-1", metadata: expect.objectContaining({ reason: "Dependência recuperada" }) }));
+    expect(await mutate(store, "outbox-1", { ...command, reason: "Dependência recuperada" })).toEqual(first);
+    await expect(mutate(store, "outbox-1", { ...command, reason: "Outro motivo" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED", status: 409 });
+    expect(authorize).toHaveBeenCalledTimes(3);
+    expect(store.getState()).toEqual(after);
+  });
+});
 
 describe("durable outbox processing", () => {
   it("claims, publishes and marks a message as processed", async () => {
@@ -113,12 +210,15 @@ describe("durable outbox processing", () => {
     const store = new MemoryStore(state);
     await processOutboxBatch(store, { publish: async () => { throw new Error("downstream unavailable"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 1, batchSize: 1 });
 
-    const command = { actorId: "user-admin", correlationId: "corr-reprocess", idempotencyKey: "reprocess-1", reason: "Dependência recuperada", now: () => new Date("2026-08-20T10:02:00.000Z") };
+    const authorize = vi.fn(authorizeAdmin(adminFrom(state)));
+    const command = { authorize, actorId: "user-admin", correlationId: "corr-reprocess", idempotencyKey: "reprocess-1", reason: "Dependência recuperada", now: () => new Date("2026-08-20T10:02:00.000Z") };
     const first = await reprocessDeadLetterMessage(store, "outbox-1", command);
     const auditCount = store.getState().auditEvents.length;
     const replay = await reprocessDeadLetterMessage(store, "outbox-1", command);
 
     expect(first).toEqual(replay);
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(authorize.mock.calls[1][0].outbox[0].status).toBe("PENDING");
     expect(first).toMatchObject({ action: "REPROCESSED", message: { id: "outbox-1", status: "PENDING", attempts: 0 } });
     expect(store.getState().notifications[0]).toMatchObject({ state: "PENDING", version: 3 });
     expect(store.getState().auditEvents.length).toBe(auditCount);
@@ -130,7 +230,14 @@ describe("durable outbox processing", () => {
     await processOutboxBatch(store, { publish: async () => { throw new Error("poison route"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 1, batchSize: 1 });
 
     expect(await listDeadLetterMessages(store)).toMatchObject([{ id: "outbox-1", status: "FAILED", attempts: 1 }]);
-    const discarded = await discardDeadLetterMessage(store, "outbox-1", { actorId: "user-admin", correlationId: "corr-discard", idempotencyKey: "discard-1", reason: "Evento inválido e sem destinatário", now: () => new Date("2026-08-20T10:02:00.000Z") });
+    const authorize = vi.fn(authorizeAdmin(adminFrom(store.getState())));
+    const command = { authorize, actorId: "user-admin", correlationId: "corr-discard", idempotencyKey: "discard-1", reason: "Evento inválido e sem destinatário", now: () => new Date("2026-08-20T10:02:00.000Z") };
+    const discarded = await discardDeadLetterMessage(store, "outbox-1", command);
+    const afterDiscard = store.getState();
+    expect(await discardDeadLetterMessage(store, "outbox-1", command)).toEqual(discarded);
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(authorize.mock.calls[1][0].outbox[0].status).toBe("DISCARDED");
+    expect(store.getState()).toEqual(afterDiscard);
 
     expect(discarded).toMatchObject({ action: "DISCARDED", message: { status: "DISCARDED", discardedBy: "user-admin", discardReason: "Evento inválido e sem destinatário" } });
     expect((await processOutboxBatch(store, { publish: async () => ({ confirmed: true, durability: "DURABLE", sink: "test", deliveryId: "delivery" }) }, { now: () => new Date("2026-08-20T10:03:00.000Z"), batchSize: 1 })).claimed).toBe(0);

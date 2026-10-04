@@ -53,7 +53,7 @@ async function createRequest(page: Page, patientId = "patient-thor", encounterId
   await page.getByRole("button", { name: /Nova solicitação/ }).click();
   const dialog = page.getByRole("dialog", { name: "Solicitar exames" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Paciente").selectOption(patientId);
+  await dialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption(patientId);
   await expect(dialog.getByLabel("Atendimento")).toBeEnabled();
   await dialog.getByLabel("Atendimento").selectOption(encounterId);
   await dialog.getByText("Hemograma", { exact: true }).click();
@@ -66,9 +66,7 @@ async function createRequest(page: Page, patientId = "patient-thor", encounterId
 
 async function queueRow(page: Page, requestId: string, serviceName: string) {
   const request = await readApi<{ requestCode: string }>(page, `/diagnostic-requests/${requestId}`);
-  const queueItem = (page.viewportSize()?.width ?? 1440) <= 960
-    ? page.locator(".queue-mobile-list .queue-card")
-    : page.locator("tbody tr");
+  const queueItem = page.locator(".queue-board .queue-card");
   return queueItem.filter({ hasText: serviceName }).filter({ hasText: request.requestCode });
 }
 
@@ -76,36 +74,26 @@ async function createAndReleaseDraft(page: Page, requestId: string, serviceName:
   await page.goto("/queues");
   const row = await queueRow(page, requestId, serviceName);
   await expect(row).toBeVisible({ timeout: 15000 });
-
   if (serviceName === "Hemograma") {
-    await row.getByRole("button", { name: "Receber amostra" }).click();
-    await row.getByLabel("Accession").fill(`ACC-E2E-${Date.now()}`);
-    await row.getByLabel("Tipo de amostra").fill("EDTA");
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(row.getByRole("button", { name: "Iniciar processamento" })).toBeVisible();
-  }
-
-  if (serviceName === "RX de tórax") {
-    await row.getByRole("button", { name: "Iniciar procedimento" }).click();
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(row.getByRole("button", { name: "Marcar realizado" })).toBeVisible();
-  }
-
-  if (serviceName === "Hemograma") {
-    await row.getByRole("button", { name: "Iniciar processamento" }).click();
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await row.getByRole("button", { name: "Receber amostra", exact: true }).click();
+    const peek = page.getByRole("dialog", { name: serviceName, exact: true });
+    await peek.getByLabel("Accession").fill(`ACC-E2E-${Date.now()}`);
+    await peek.getByLabel("Tipo de amostra").fill("EDTA");
+    await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await expect(peek).toBeHidden();
+    await row.getByRole("button", { name: "Iniciar processamento", exact: true }).click();
   } else {
-    await row.getByRole("button", { name: "Marcar realizado" }).click();
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await row.getByRole("button", { name: "Iniciar procedimento", exact: true }).click();
+    await row.getByRole("button", { name: "Marcar realizado", exact: true }).click();
   }
-
-  await row.getByRole("button", { name: "Registrar resultado" }).click();
-  await row.getByLabel("Resultado").fill(narrative);
-  await row.getByRole("button", { name: "Confirmar", exact: true }).click();
-  const draftLink = row.getByRole("link", { name: "Abrir draft" });
+  await row.getByRole("button", { name: "Registrar resultado", exact: true }).click();
+  const peek = page.getByRole("dialog", { name: serviceName, exact: true });
+  await peek.getByLabel("Resultado", { exact: true }).fill(narrative);
+  await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
+  const draftLink = peek.getByRole("link", { name: "Abrir draft", exact: true });
   await expect(draftLink).toBeVisible();
-  const draftHref = await draftLink.getAttribute("href");
-  if (!draftHref) throw new Error("O draft não expôs um link de edição.");
+  const href = await draftLink.getAttribute("href");
+  if (!href) throw new Error("O draft não expôs um link de edição.");
   await draftLink.click();
   await expect(page).toHaveURL(/\/results\/result-/);
   const resultId = page.url().split("/").pop();
@@ -125,7 +113,7 @@ async function fillStructuredHemogram(page: Page, narrative: string): Promise<vo
 }
 
 test.describe("clinical result lifecycle", () => {
-  test("fills and releases a structured hemogram through the laboratory editor", async ({ page }) => {
+  test("fills a structured hemogram and releases it in one board interaction", async ({ page }, testInfo) => {
     test.setTimeout(120_000);
 
     await signInAs(page, "vet@cvg.local");
@@ -148,8 +136,20 @@ test.describe("clinical result lifecycle", () => {
     ]));
     await expectNoAxeViolations(page, "structured laboratory draft");
 
-    await page.getByRole("button", { name: "Liberar resultado" }).click();
-    await expect(page.getByRole("heading", { name: /Laudo confirmado/ })).toBeVisible({ timeout: 15000 });
+    await page.goto("/queues");
+    const row = await queueRow(page, requestId, "Hemograma");
+    await expect(row.getByRole("button", { name: "Liberar resultado", exact: true })).toBeVisible();
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `.data/ux-simplification/board-${testInfo.project.name}.png`, fullPage: true });
+    let releaseInteractions = 0;
+    const releaseResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${resultId}/release`) && response.request().method() === "POST");
+    await row.getByRole("button", { name: "Liberar resultado", exact: true }).click();
+    releaseInteractions += 1;
+    expect((await releaseResponse).status()).toBe(200);
+    await expect(row.getByText("Resultado disponível", { exact: true })).toBeVisible();
+    expect(releaseInteractions).toBe(1);
+    expect((await readApi<{ version: { status: string } }>(page, `/results/${resultId}`)).version.status).toBe("RELEASED");
+    await testInfo.attach("board-release-interactions", { body: JSON.stringify({ release: releaseInteractions }), contentType: "application/json" });
     await signOut(page);
   });
 
@@ -217,9 +217,10 @@ test.describe("clinical result lifecycle", () => {
     const replacementRow = await queueRow(page, requestId, "RX de tórax");
     await expect(replacementRow.getByRole("button", { name: "Registrar resultado" })).toBeVisible({ timeout: 15000 });
     await replacementRow.getByRole("button", { name: "Registrar resultado" }).click();
-    await replacementRow.getByLabel("Resultado").fill("Laudo substituto após invalidação controlada.");
-    await replacementRow.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await replacementRow.getByRole("link", { name: "Abrir draft" }).click();
+    const replacementPeek = page.getByRole("dialog", { name: "RX de tórax", exact: true });
+    await replacementPeek.getByLabel("Resultado", { exact: true }).fill("Laudo substituto após invalidação controlada.");
+    await replacementPeek.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await replacementPeek.getByRole("link", { name: "Abrir draft" }).click();
     await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible();
     const replacementReleaseResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${xrayResultId}/release`) && response.request().method() === "POST");
     await page.getByRole("button", { name: "Liberar resultado" }).click();

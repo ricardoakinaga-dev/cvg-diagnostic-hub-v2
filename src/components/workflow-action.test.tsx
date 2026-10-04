@@ -119,6 +119,7 @@ describe("WorkflowAction", () => {
 
   it("supports recollection and a released imaging draft", async () => {
     const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
+      if (path === "/clinical-reasons") return Promise.resolve([{ id: "reason-1", type: "RECOLLECTION", code: "INSUFFICIENT", label: "Volume insuficiente", active: true, version: 1 }]) as never;
       if (path.endsWith("/results")) return Promise.resolve({ result: { id: "result-1", version: 2 } }) as never;
       if (path.endsWith("/mark-performed")) return Promise.reject(new Error("dependency failure")) as never;
       return Promise.resolve({}) as never;
@@ -126,8 +127,9 @@ describe("WorkflowAction", () => {
     render(<WorkflowAction item={item({ status: "IN_PROGRESS", currentSampleId: "sample-1" })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Solicitar recoleta" }));
-    fireEvent.change(screen.getByLabelText("Código do motivo"), { target: { value: "insufficient" } });
-    fireEvent.change(screen.getByLabelText("Observação"), { target: { value: "Volume insuficiente" } });
+    await screen.findByRole("option", { name: "Volume insuficiente" });
+    fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "INSUFFICIENT" } });
+    fireEvent.change(screen.getByLabelText("Observação (opcional)"), { target: { value: "Volume insuficiente" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/diagnostic-items/item-1/request-recollection", expect.objectContaining({ method: "POST" })));
 
@@ -139,7 +141,7 @@ describe("WorkflowAction", () => {
   });
 
   it("associates each trigger with the form and exposes only the selected action as expanded", () => {
-    vi.spyOn(apiClient, "apiFetch").mockResolvedValue({});
+    vi.spyOn(apiClient, "apiFetch").mockResolvedValue([]);
     render(<WorkflowAction item={item({ status: "IN_PROGRESS", currentSampleId: "sample-1" })} />);
 
     const primary = screen.getByRole("button", { name: "Registrar resultado" });
@@ -186,5 +188,54 @@ describe("WorkflowAction", () => {
     cleanup();
     render(<WorkflowAction item={item({ status: "RESULT_AVAILABLE", currentResultId: "result-2" })} />);
     expect(screen.getByRole("link", { name: /Abrir resultado/ })).toHaveAttribute("href", "/results/result-2");
+  });
+
+  it.each(["CANCEL", "REJECT"] as const)("submits %s using only a selected authorized reason and the item version", async (action) => {
+    const onComplete = vi.fn();
+    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/clinical-reasons" ? [{ id: "r1", type: action, code: "POLICY_REASON", label: "Motivo clínico aprovado", active: true, version: 1 }] : {}) as never);
+    render(<WorkflowAction item={item()} initialAction={action} onComplete={onComplete} />);
+    await screen.findByRole("option", { name: "Motivo clínico aprovado" });
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "POLICY_REASON" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+    expect(api).toHaveBeenCalledWith(`/diagnostic-items/item-1/${action.toLowerCase()}`, { method: "POST", body: JSON.stringify({ reasonCode: "POLICY_REASON", expectedVersion: 3 }) });
+  });
+
+  it("blocks clinical commands when the authorized reason catalog cannot be read", async () => {
+    const api = vi.spyOn(apiClient, "apiFetch").mockRejectedValue(new apiClient.ApiClientError(403, { error: { code: "SCOPE_DENIED" } }));
+    render(<WorkflowAction item={item()} initialAction="CANCEL" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("Você não tem acesso");
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeDisabled();
+    expect(api).toHaveBeenCalledOnce();
+    expect(api).toHaveBeenCalledWith("/clinical-reasons");
+  });
+
+  it("amends with a reason chosen from the catalog using the existing clinical contract", async () => {
+    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/clinical-reasons" ? [{ id: "r1", type: "AMEND", code: "CORRECTION", label: "Correção clínica", active: true, version: 1 }] : path === "/results/result-1" ? { result: { id: "result-1", version: 12 }, version: { content: { findings: "original" }, critical: true, conclusion: "Conclusão confirmada" } } : {}) as never);
+    render(<WorkflowAction item={item({ status: "RESULT_AVAILABLE", currentResultId: "result-1" })} initialAction="AMEND" />);
+    await screen.findByRole("option", { name: "Correção clínica" });
+    fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "CORRECTION" } });
+    fireEvent.change(screen.getByLabelText("Resultado"), { target: { value: "Narrativa corrigida." } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/results/result-1/amend", { method: "POST", body: JSON.stringify({ narrative: "Narrativa corrigida.", content: { findings: "original" }, conclusion: "Conclusão confirmada", reason: "Correção clínica", critical: true, expectedVersion: 12 }) }));
+    expect(api.mock.calls.some(([path]) => path.endsWith("/release"))).toBe(false);
+  });
+
+  it.each(["VOIDED", "DRAFT"] as const)("delegates replacement of the %s lineage to the versioned command without reading a voided result", async (status) => {
+    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => path === "/results/result-1" ? Promise.reject(new apiClient.ApiClientError(404, { error: { code: "NOT_FOUND" } })) : status === "DRAFT" ? Promise.reject(new apiClient.ApiClientError(409, { error: { code: "INVALID_STATE_TRANSITION" } })) : Promise.resolve({ result: { id: "result-1", version: 4 } }) as never);
+    render(<WorkflowAction item={item({ status: "RESULT_VOIDED", currentResultId: "result-1" })} />);
+    expect(screen.getByRole("link", { name: "Abrir resultado atual" })).toHaveAttribute("href", "/results/result-1");
+    fireEvent.click(screen.getByRole("button", { name: "Registrar resultado" }));
+    fireEvent.change(screen.getByLabelText("Resultado"), { target: { value: "Resultado substituto confirmado." } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    expect(api.mock.calls.some(([path]) => path === "/results/result-1")).toBe(false);
+    if (status === "VOIDED") {
+      expect(await screen.findByRole("link", { name: "Abrir draft" })).toHaveAttribute("href", "/results/result-1");
+      expect(api).toHaveBeenCalledWith("/diagnostic-items/item-1/results", expect.objectContaining({ method: "POST" }));
+    } else {
+      expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível concluir a operação");
+      expect(api.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    }
   });
 });
