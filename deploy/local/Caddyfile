@@ -1,0 +1,20 @@
+{
+	admin off
+	auto_https disable_redirects
+}
+
+https://localhost:{$LOCAL_HTTPS_PORT}, https://127.0.0.1:{$LOCAL_HTTPS_PORT} {
+	tls /certs/web.crt /certs/web.key
+	log {
+		output stdout
+		format json
+	}
+	encode zstd gzip
+	request_body {
+		max_size 30MiB
+	}
+	reverse_proxy app:3000 {
+		header_up X-Cvg-Proxy-Secret {$TRUST_PROXY_SHARED_SECRET}
+		header_up X-Real-IP {remote_host}
+	}
+}

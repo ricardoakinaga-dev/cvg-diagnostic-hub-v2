@@ -1,0 +1,210 @@
+# Isolated installation; publish only the local HTTPS edge.
+# docker compose -p cvg-diagnostic-local -f docker-compose.local.yml \
+#   --env-file .data/local-deploy/stack.env up -d
+x-runtime-environment: &runtime-environment
+  NODE_ENV: production
+  APP_DATA_MODE: postgres
+  DATABASE_URL: postgresql://cvg_runtime:${POSTGRES_RUNTIME_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  DB_POOL_MAX: "4"
+  SESSION_SECRET: ${SESSION_SECRET:?}
+  APP_ORIGIN: https://localhost:${LOCAL_HTTPS_PORT:-18443}
+  TRUST_PROXY: "true"
+  TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?}
+  RATE_LIMIT_MODE: postgres
+  RATE_LIMIT_DB_POOL_MAX: "2"
+  LOGIN_RATE_LIMIT: "10"
+  REALTIME_NOTIFICATION_ADAPTER: postgres-listen
+  REALTIME_NOTIFICATION_CHANNEL: cvg_realtime_wakeup
+  REALTIME_LISTEN_POOL_MAX: "1"
+  STORAGE_MODE: s3
+  STORAGE_ENDPOINT: http://storage:9000
+  STORAGE_REGION: us-east-1
+  STORAGE_BUCKET: diagnostic-attachments
+  STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?}
+  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?}
+  STORAGE_FORCE_PATH_STYLE: "true"
+  STORAGE_SCAN_MODE: external
+  MALWARE_SCANNER_ENDPOINT: https://scanner:9443/scan
+  MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?}
+  MALWARE_SCANNER_ALLOWED_HOSTS: scanner
+  MALWARE_SCANNER_TIMEOUT_MS: "30000"
+  NODE_EXTRA_CA_CERTS: /certs/ca.crt
+  CRITICAL_POLICY_ENABLED: "false"
+
+x-runtime-volumes: &runtime-volumes
+  - ./.data/local-deploy/certs/ca.crt:/certs/ca.crt:ro
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1
+    environment:
+      POSTGRES_USER: cvg_admin
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?}
+      POSTGRES_MIGRATION_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?}
+      POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./deploy/local/init-db.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cvg_admin -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  storage:
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ["server", "/data", "--console-address", ":9001"]
+    restart: unless-stopped
+    mem_limit: 1g
+    cpus: 1
+    environment:
+      MINIO_ROOT_USER: ${STORAGE_ACCESS_KEY:?}
+      MINIO_ROOT_PASSWORD: ${STORAGE_SECRET_KEY:?}
+    volumes: ["storage-data:/data"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  clamav:
+    image: clamav/clamav@sha256:1fdfd24c6f0a0fb60788481487459a6d4eda8a9b448641594e04db8410d34422
+    restart: unless-stopped
+    mem_limit: 2g
+    cpus: 1
+    volumes: ["clamav-data:/var/lib/clamav"]
+    healthcheck:
+      test: ["CMD", "clamdscan", "--ping=1"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
+      retries: 30
+
+  scanner:
+    image: node:22-bookworm-slim
+    user: node
+    command: ["node", "/service/scanner.mjs"]
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?}
+    volumes:
+      - ./deploy/local/scanner.mjs:/service/scanner.mjs:ro
+      - ./.data/local-deploy/certs/scanner.crt:/certs/scanner.crt:ro
+      - ./.data/local-deploy/certs/scanner.key:/certs/scanner.key:ro
+      - ./.data/local-deploy/certs/ca.crt:/certs/ca.crt:ro
+    depends_on:
+      clamav: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('https').get('https://localhost:9443/health', {ca:require('fs').readFileSync('/certs/ca.crt')}, r => {r.resume(); if(r.statusCode!==200) process.exit(1)}).on('error',()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+
+  migrate:
+    build: { context: ., target: ops }
+    image: cvg-diagnostic-local-ops:20261003
+    command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
+    environment:
+      <<: *runtime-environment
+      MIGRATION_DATABASE_URL: postgresql://cvg_migrator:${POSTGRES_MIGRATION_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+    volumes: *runtime-volumes
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+    mem_limit: 512m
+    cpus: 1
+
+  storage-init:
+    image: cvg-diagnostic-local-ops:20261003
+    command: ["node_modules/.bin/tsx", "scripts/init-storage.ts"]
+    environment: *runtime-environment
+    volumes: *runtime-volumes
+    depends_on:
+      storage: { condition: service_healthy }
+    restart: "no"
+    mem_limit: 512m
+    cpus: 0.5
+
+  bootstrap:
+    image: cvg-diagnostic-local-ops:20261003
+    profiles: ["bootstrap"]
+    command: ["node_modules/.bin/tsx", "scripts/bootstrap-admin.ts"]
+    environment:
+      <<: *runtime-environment
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_NAME: Administração local
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    volumes: *runtime-volumes
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+    mem_limit: 512m
+    cpus: 1
+
+  app:
+    build: { context: ., target: runner }
+    image: cvg-diagnostic-local:20261003
+    restart: unless-stopped
+    environment: *runtime-environment
+    volumes: *runtime-volumes
+    mem_limit: 2g
+    cpus: 2
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      storage-init: { condition: service_completed_successfully }
+      scanner: { condition: service_healthy }
+
+  worker:
+    image: cvg-diagnostic-local-ops:20261003
+    command: ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
+    restart: unless-stopped
+    mem_limit: 768m
+    cpus: 0.5
+    environment:
+      <<: *runtime-environment
+      OUTBOX_SINK: postgres
+      OUTBOX_DELIVERY_CHANNEL: IN_APP
+      OUTBOX_HEARTBEAT_FILE: /tmp/outbox-worker-heartbeat.json
+      OUTBOX_HEARTBEAT_MAX_AGE_MS: "30000"
+      OUTBOX_HEARTBEAT_ERROR_TOLERANCE: "3"
+      RUNTIME_RETENTION_INTERVAL_MS: "3600000"
+    volumes: *runtime-volumes
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      app: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "scripts/outbox-healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    environment:
+      LOCAL_HTTPS_PORT: ${LOCAL_HTTPS_PORT:-18443}
+      TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?}
+    ports: ["127.0.0.1:${LOCAL_HTTPS_PORT:-18443}:${LOCAL_HTTPS_PORT:-18443}"]
+    volumes:
+      - ./deploy/local/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./.data/local-deploy/certs/web.crt:/certs/web.crt:ro
+      - ./.data/local-deploy/certs/web.key:/certs/web.key:ro
+    depends_on:
+      app: { condition: service_healthy }
+
+volumes:
+  postgres-data:
+  storage-data:
+  clamav-data:

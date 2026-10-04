@@ -13,7 +13,8 @@ const REALTIME_ENV_KEYS = [
   "REALTIME_STREAM_INTERVAL_MS",
   "REALTIME_POLL_TIMEOUT_MS",
   "REALTIME_REPLAY_WINDOW",
-  "REALTIME_STREAM_MAX_MS"
+  "REALTIME_STREAM_MAX_MS",
+  "REALTIME_SHARED_READ_MIN_INTERVAL_MS"
 ] as const;
 
 function event(id: string, aggregateId = "request-1"): StoreState["outbox"][number] {
@@ -49,29 +50,6 @@ function policy(overrides: Partial<RealtimeAccessPolicy> = {}): RealtimeAccessPo
 
 function request(signal?: AbortSignal): Request {
   return new Request("http://localhost/api/v1/realtime/events", { signal });
-}
-
-class SequenceStore implements StateStore {
-  private index = 0;
-
-  constructor(private readonly states: StoreState[]) {}
-
-  getState(): StoreState {
-    return structuredClone(this.states[Math.min(this.index, this.states.length - 1)]!);
-  }
-
-  async readState(): Promise<StoreState> {
-    const state = this.states[Math.min(this.index, this.states.length - 1)]!;
-    this.index += 1;
-    return structuredClone(state);
-  }
-
-  async transaction<T>(operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T> {
-    const current = this.getState();
-    const outcome = await operation(current);
-    this.states[Math.min(this.index, this.states.length - 1)] = structuredClone(outcome.state);
-    return outcome.result;
-  }
 }
 
 describe("bounded realtime stream contract", () => {
@@ -160,16 +138,44 @@ describe("bounded realtime stream contract", () => {
     await reader.cancel();
   });
 
-  it("fails closed when authorization changes between snapshot reads", async () => {
-    const state = createDemoState("realtime-snapshot-auth-password");
-    const revoked = structuredClone(state);
-    revoked.users = revoked.users.map((user) => user.id === "user-vet" ? { ...user, active: false } : user);
-    const store = new SequenceStore([state, revoked]);
+  it("rejects an initially unauthorized snapshot before replaying events", async () => {
+    const state = createDemoState("realtime-initial-auth-password");
 
-    await expect(createRealtimeResponse(store, actorFor(state), "snapshot-auth", undefined, true, request(), policy({
-      isAuthorized: (current, actor) => current.users.find((user) => user.id === actor.id)?.active === true
+    await expect(createRealtimeResponse(new MemoryStore(state), actorFor(state), "initial-auth", undefined, true, request(), policy({
+      isAuthorized: () => false
     }))).rejects.toThrow("authorization revoked");
+  });
+
+  it("fails closed when a write lands between the snapshot read and the enqueue", async () => {
+    const state = createDemoState("realtime-snapshot-auth-password");
+    const actor = actorFor(state);
+    const store = new MemoryStore(state);
+    // The aggregate was read at version N; a commit lands at N+1 before the
+    // payload is enqueued, which is exactly the window a shared reader opens.
+    // The version guard has to notice it and revalidate the actor.
+    vi.spyOn(store, "readStateVersion").mockResolvedValue((await store.readStateVersion()) + 1);
+    vi.spyOn(store, "readAuthorizationSnapshot").mockResolvedValue({ user: { ...actor, active: false } });
+
+    await expect(createRealtimeResponse(store, actor, "snapshot-auth", undefined, true, request(), policy({
+      isAuthorized: (current, currentActor) => current.users.find((user) => user.id === currentActor.id)?.active === true
+    }))).rejects.toThrow("authorization revoked");
+    expect(renderPrometheus()).toContain('cvg_realtime_authorization_staleness_total{mode="stream"} 1');
     expect(renderPrometheus()).toContain('cvg_realtime_poll_duration_ms_count{mode="snapshot",outcome="success"} 1');
+  });
+
+  it("serves the snapshot without a second aggregate read when no write intervened", async () => {
+    const state = createDemoState("realtime-snapshot-quiet-password");
+    const actor = actorFor(state);
+    const store = new MemoryStore(state);
+    const readStateSpy = vi.spyOn(store, "readState");
+    const authorizationSpy = vi.spyOn(store, "readAuthorizationSnapshot");
+
+    await createRealtimeResponse(store, actor, "snapshot-quiet", undefined, true, request(), policy());
+
+    // PROD-104 budget: one aggregate read, and the narrow authorization read
+    // is skipped because the version proves the aggregate is still current.
+    expect(readStateSpy).toHaveBeenCalledTimes(1);
+    expect(authorizationSpy).not.toHaveBeenCalled();
   });
 
   it("records a bounded poll failure when snapshot persistence is unavailable", async () => {
@@ -207,19 +213,47 @@ describe("bounded realtime stream contract", () => {
     expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="client_abort"} 1');
   });
 
-  it("rechecks authorization before enqueueing a stream payload", async () => {
+  it("closes a stream when a deactivation commits after its shared read", async () => {
     const state = createDemoState("realtime-stream-auth-password");
     state.outbox = [event("event-auth")];
-    const revoked = structuredClone(state);
-    revoked.users = revoked.users.map((user) => user.id === "user-vet" ? { ...user, active: false } : user);
-    const store = new SequenceStore([state, revoked]);
-    const response = await createRealtimeResponse(store, actorFor(state), "stream-auth", undefined, false, request(), policy({
-      isAuthorized: (current, actor) => current.users.find((user) => user.id === actor.id)?.active === true
+    const actor = actorFor(state);
+    const store = new MemoryStore(state);
+    vi.spyOn(store, "readStateVersion").mockResolvedValue((await store.readStateVersion()) + 1);
+    vi.spyOn(store, "readAuthorizationSnapshot").mockResolvedValue({ user: { ...actor, active: false } });
+    const response = await createRealtimeResponse(store, actor, "stream-auth", undefined, false, request(), policy({
+      isAuthorized: (current, currentActor) => current.users.find((user) => user.id === currentActor.id)?.active === true
     }));
 
     const result = await response.body!.getReader().read();
     expect(result.done).toBe(true);
     expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="authorization_revoked"} 1');
+  });
+
+  it("shares one aggregate read per cadence across many concurrent connections", async () => {
+    process.env.REALTIME_MAX_CONNECTIONS = "200";
+    process.env.REALTIME_STREAM_INTERVAL_MS = "60";
+    process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS = "60000";
+    const state = createDemoState("realtime-shared-read-password");
+    state.outbox = [event("event-shared")];
+    const actor = actorFor(state);
+    const store = new MemoryStore(state);
+    const readStateSpy = vi.spyOn(store, "readState");
+    const authorizationSpy = vi.spyOn(store, "readAuthorizationSnapshot");
+
+    const responses = await Promise.all(Array.from({ length: 40 }, (_, index) =>
+      createRealtimeResponse(store, actor, `shared-${index}`, undefined, false, request(), policy())));
+    await Promise.all(responses.map(async (response) => {
+      const reader = response.body!.getReader();
+      await reader.read();
+      await reader.cancel();
+    }));
+
+    // PROD-104 acceptance: with 40 open connections the process still performs
+    // a single aggregate read for the whole cadence.
+    expect(readStateSpy).toHaveBeenCalledTimes(1);
+    expect(authorizationSpy).not.toHaveBeenCalled();
+    expect(renderPrometheus()).toContain('cvg_realtime_shared_reads_total{mode="stream"}');
+    delete process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
   });
 
   it("closes when a queued wake-up would overrun the stream backpressure budget", async () => {

@@ -20,6 +20,7 @@ const readyRuntimeSchema = {
   outbox_claim_ownership_ready: true,
   outbox_routing_ready: true,
   outbox_dead_letter_ready: true,
+  session_activity_schema_ready: true,
   rate_limit_schema_ready: true,
   relational_clinical_core_ready: true,
   transitional_storage_boundary_ready: true,

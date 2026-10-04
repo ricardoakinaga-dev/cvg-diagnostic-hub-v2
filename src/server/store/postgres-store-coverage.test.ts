@@ -37,6 +37,7 @@ const readyRuntimeSchema = {
   outbox_claim_ownership_ready: true,
   outbox_routing_ready: true,
   outbox_dead_letter_ready: true,
+  session_activity_schema_ready: true,
   rate_limit_schema_ready: true,
   relational_clinical_core_ready: true,
   transitional_storage_boundary_ready: true,
@@ -262,6 +263,61 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     expect(client.release).toHaveBeenCalledOnce();
 
     await store.close();
+  });
+
+  it.each(["success", "insert failure", "missing row"])("initializes new session activity on the transaction client: %s", async (outcome) => {
+    const initial = createDemoState("postgres-activity-commit-password");
+    const session = {
+      id: "session-new", userId: "user-vet", tokenHash: "token", csrfTokenHash: "csrf",
+      createdAt: "2026-10-03T12:00:00.000Z", expiresAt: "2026-10-03T20:00:00.000Z", version: 1
+    };
+    initial.sessions = [{ ...session, id: "session-existing" }];
+    const nextState = { ...initial, sessions: [...initial.sessions, session] };
+    const client = {
+      query: vi.fn(async (text: string, values?: readonly unknown[]) => {
+        if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return result(0);
+        if (text.includes("FOR UPDATE")) return stateRow(structuredClone(initial));
+        if (text.startsWith("UPDATE cvg_runtime_state")) return result(1, [{ version: "2" }]);
+        if (text.includes("INSERT INTO session_activity")) {
+          expect(values).toEqual([session.id, session.userId, session.createdAt]);
+          if (outcome === "insert failure") throw new Error("injected activity insert failure");
+          if (outcome === "missing row") return result(0);
+          return result(1, [{ session_id: values?.[0], user_id: values?.[1], last_seen_at: values?.[2] }]);
+        }
+        throw new Error(`Unexpected transaction SQL: ${text}`);
+      }),
+      release: vi.fn()
+    };
+    queueReadyOpen(initial);
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_activity_commit");
+    try {
+      // Also exercise callbacks that mutate their private snapshot in place.
+      const transaction = store.transaction((state) => {
+        state.sessions.push(session);
+        return { state, result: "committed" };
+      });
+      if (outcome === "success") {
+        await expect(transaction).resolves.toBe("committed");
+        expect(store.getState()).toEqual(nextState);
+      } else {
+        await expect(transaction).rejects.toThrow(outcome === "insert failure"
+          ? "injected activity insert failure" : "POSTGRES_SESSION_ACTIVITY_TOUCH_FAILED");
+        expect(store.getState()).toEqual(initial);
+        expect(client.query).not.toHaveBeenCalledWith("COMMIT");
+      }
+      expect(client.query.mock.calls.map(([text]) => text)).toEqual([
+        "BEGIN",
+        expect.stringContaining("FOR UPDATE"),
+        expect.stringContaining("UPDATE cvg_runtime_state"),
+        expect.stringContaining("INSERT INTO session_activity"),
+        outcome === "success" ? "COMMIT" : "ROLLBACK"
+      ]);
+      expect(pool.query).toHaveBeenCalledTimes(2);
+      expect(client.release).toHaveBeenCalledOnce();
+    } finally {
+      await store.close();
+    }
   });
 
   it("rolls back and preserves the cache when the runtime snapshot update affects no row", async () => {

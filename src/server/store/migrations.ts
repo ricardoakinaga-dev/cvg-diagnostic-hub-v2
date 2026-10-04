@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "011_outbox_dead_letter";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "012_session_activity";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -20,7 +20,8 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "008_outbox_routing",
   "009_relational_sample_lineage",
   "010_relational_backfill_control",
-  "011_outbox_dead_letter"
+  "011_outbox_dead_letter",
+  "012_session_activity"
 ] as const;
 
 /**
@@ -39,7 +40,8 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "008_outbox_routing": "3bf712b2b2bcccb1a51a1a03fd22a4a349c9e4362b75a4e0e42f70eca1a08eff",
   "009_relational_sample_lineage": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c",
   "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f",
-  "011_outbox_dead_letter": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073"
+  "011_outbox_dead_letter": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073",
+  "012_session_activity": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -93,6 +95,7 @@ interface RuntimeSchemaRow {
   readonly outbox_routing_ready: boolean;
   readonly outbox_dead_letter_ready: boolean;
   readonly rate_limit_schema_ready: boolean;
+  readonly session_activity_schema_ready: boolean;
   readonly relational_clinical_core_ready: boolean;
   readonly transitional_storage_boundary_ready: boolean;
   readonly invalidation_trigger_ready: boolean;
@@ -228,6 +231,30 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
      GROUP BY table_name
     HAVING count(*) = 3
   ) AS rate_limit_schema_ready,
+  (
+    (SELECT count(*) = 4
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'session_activity'
+        AND column_name IN ('session_id', 'user_id', 'last_seen_at', 'updated_at')
+        AND is_nullable = 'NO')
+    AND EXISTS (
+      SELECT 1
+        FROM pg_class activity_table
+        JOIN pg_namespace activity_schema ON activity_schema.oid = activity_table.relnamespace
+       WHERE activity_schema.nspname = current_schema()
+         AND activity_table.relname = 'session_activity'
+         AND activity_table.relkind = 'r'
+         AND EXISTS (
+           SELECT 1
+             FROM pg_index activity_index
+            WHERE activity_index.indrelid = activity_table.oid
+              AND activity_index.indisunique
+              AND activity_index.indnatts = 1
+              AND pg_get_indexdef(activity_index.indexrelid) ILIKE '%(session_id)%'
+         )
+    )
+  ) AS session_activity_schema_ready,
   (
     EXISTS (
       SELECT 1
@@ -595,6 +622,7 @@ function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
     || typeof row.outbox_routing_ready !== "boolean"
     || typeof row.outbox_dead_letter_ready !== "boolean"
     || typeof row.rate_limit_schema_ready !== "boolean"
+    || typeof row.session_activity_schema_ready !== "boolean"
     || typeof row.relational_clinical_core_ready !== "boolean"
     || typeof row.transitional_storage_boundary_ready !== "boolean"
     || typeof row.invalidation_trigger_ready !== "boolean"

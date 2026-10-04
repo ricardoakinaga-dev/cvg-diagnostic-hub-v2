@@ -11,12 +11,15 @@ const realtimePollFailures = new Map<string, number>();
 const realtimeStreamClosures = new Map<string, number>();
 const realtimeResyncs = new Map<string, number>();
 const realtimeConnectionRejections = new Map<string, number>();
+const realtimeSharedReads = new Map<string, number>();
+const realtimeAuthorizationStaleness = new Map<string, number>();
 const gauges = new Map<string, number>();
 const allowedGauges = new Set([
   "outbox_pending",
   "outbox_oldest_age_seconds",
   "readiness_failures",
   "sse_connections",
+  "realtime_shared_reads_total",
   "diagnostic_requests_created",
   "diagnostic_items_completed",
   "diagnostic_turnaround_time_seconds",
@@ -30,6 +33,7 @@ const gaugeHelp = new Map([
   ["outbox_oldest_age_seconds", "Age in seconds of the oldest pending outbox message."],
   ["readiness_failures", "Readiness checks that failed."],
   ["sse_connections", "Active realtime stream connections."],
+  ["realtime_shared_reads_total", "Full runtime-state aggregate reads performed by the shared realtime reader."],
   ["diagnostic_requests_created", "Current snapshot count of diagnostic requests."],
   ["diagnostic_items_completed", "Current snapshot count of completed diagnostic items."],
   ["diagnostic_turnaround_time_seconds", "Average seconds from item request to release or completion."],
@@ -111,6 +115,21 @@ export function recordRealtimeStreamClosure(reason = "unknown"): void {
 
 export function recordRealtimeResync(reason = "unknown"): void {
   incrementCounter(realtimeResyncs, normalizeAllowedLabel(reason, allowedRealtimeResyncReasons, "unknown"));
+}
+
+/**
+ * Counts full aggregate reads performed by the shared realtime reader and the
+ * times an open stream had to revalidate authorization against a newer version.
+ * Together they are the PROD-104 evidence: reads must stay near one per second
+ * per process and stale revalidations must be rare.
+ */
+export function recordRealtimeSharedRead(mode: RealtimePollMode): void {
+  const safeMode = normalizeAllowedLabel(mode, allowedRealtimePollModes, "stream");
+  incrementCounter(realtimeSharedReads, safeMode);
+}
+
+export function recordRealtimeAuthorizationStaleness(): void {
+  incrementCounter(realtimeAuthorizationStaleness, "stream");
 }
 
 export function recordRealtimeConnectionRejected(reason = "unknown"): void {
@@ -214,6 +233,8 @@ export function renderPrometheus(): string {
   appendCounter(lines, "cvg_realtime_stream_closures_total", "Realtime stream closures by bounded reason.", realtimeStreamClosures, ["reason"]);
   appendCounter(lines, "cvg_realtime_resyncs_total", "Realtime resync signals emitted.", realtimeResyncs, ["reason"]);
   appendCounter(lines, "cvg_realtime_connection_rejections_total", "Realtime connection attempts rejected by bounded capacity.", realtimeConnectionRejections, ["reason"]);
+  appendCounter(lines, "cvg_realtime_shared_reads_total", "Full aggregate reads performed by the shared realtime reader.", realtimeSharedReads, ["mode"]);
+  appendCounter(lines, "cvg_realtime_authorization_staleness_total", "Realtime authorizations revalidated against a newer runtime-state version.", realtimeAuthorizationStaleness, ["mode"]);
   for (const [name, value] of [...gauges.entries()].sort(([left], [right]) => left.localeCompare(right))) {
     const metricName = `cvg_${name}`;
     lines.push(`# HELP ${metricName} ${gaugeHelp.get(name) ?? "Bounded application gauge."}`, `# TYPE ${metricName} gauge`, `${metricName} ${value}`);
@@ -229,6 +250,8 @@ export function resetMetrics(): void {
   realtimeStreamClosures.clear();
   realtimeResyncs.clear();
   realtimeConnectionRejections.clear();
+  realtimeSharedReads.clear();
+  realtimeAuthorizationStaleness.clear();
   gauges.clear();
 }
 

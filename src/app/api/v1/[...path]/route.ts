@@ -4,13 +4,13 @@ import { z } from "zod";
 import { createApplicationService } from "../../../../server/application/service";
 import { createSuccessResponse, toApiErrorResponse } from "../../../../server/http/envelope";
 import { getRuntimeFileStore, getRuntimeReadiness, getRuntimeStoreAsync } from "../../../../server/store/runtime";
-import { authenticateRequest, authorizationSnapshotIsCurrent, clearSessionCookies, getCookieValue, loginUser, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
+import { authenticateRequest, authorizationSnapshotIsCurrent, clearSessionCookies, getCookieValue, InvalidLoginCredentialsError, loginUser, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
 import { requireRecentReauthentication } from "../../../../server/application/service-common";
 import type { CommandMeta, SearchResultType } from "../../../../server/application/service";
 import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
 import { eventVisible } from "../../../../server/application/realtime-visibility";
-import { assertRateLimit } from "../../../../server/security/rate-limit";
+import { assertLoginAttempt, assertRateLimit, registerLoginFailure, registerLoginSuccess } from "../../../../server/security/rate-limit";
 import { createSafeConsoleSink, discardDeadLetterMessage, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "../../../../server/operations/outbox";
 import { recordHttpRequest, recordReadinessFailure, refreshOperationalMetrics, renderPrometheus, routeMetricLabel } from "../../../../server/observability/metrics";
 import { createStructuredLogger, logHttpRequest } from "../../../../server/observability/structured-logger";
@@ -297,8 +297,27 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
       if (clientIdentity.key) await assertRateLimit(`login-client:${clientIdentity.key}`, loginRateLimit, 60_000);
       const parsed = loginSchema.safeParse(await jsonBody(request));
       if (!parsed.success) throw new ApiError("VALIDATION_ERROR", "Informe e-mail e senha válidos.", 400);
-      await assertRateLimit(`login-email:${parsed.data.email.trim().toLowerCase()}`, loginRateLimit, 60_000);
-      const login = await loginUser(store, parsed.data.email, parsed.data.password);
+      // PROD-107: the budget belongs to the (e-mail, client) pair. Keying it by
+      // e-mail alone let a third party spend a known user's budget from another
+      // origin and lock the legitimate owner out (F-04).
+      const loginIdentity = { email: parsed.data.email, clientKey: rateLimitClientKey };
+      await assertLoginAttempt(
+        loginIdentity,
+        { limit: loginRateLimit, windowMs: 60_000 }
+      );
+      let login: Awaited<ReturnType<typeof loginUser>>;
+      try {
+        login = await loginUser(store, parsed.data.email, parsed.data.password, {
+          beforeSessionCreate: () => registerLoginSuccess(loginIdentity)
+        });
+      } catch (error) {
+        // Only wrong passwords feed the backoff. A correct password is never
+        // delayed by somebody else's guessing run.
+        if (error instanceof InvalidLoginCredentialsError) {
+          await registerLoginFailure(loginIdentity);
+        }
+        throw error;
+      }
       const response = responseFor({ user: publicUser(login.user), expiresAt: login.expiresAt }, correlationId, id);
       for (const cookie of sessionCookies(login)) response.headers.append("set-cookie", cookie);
       return response;

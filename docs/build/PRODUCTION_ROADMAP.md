@@ -1,7 +1,7 @@
 # Roadmap até produção — CVG Diagnostics Hub
 
-**Versão:** PROD-2026-10
-**Data:** 02/10/2026
+**Versão:** PROD-2026-10.1
+**Data:** 03/10/2026
 **Knowledge status:** `DECISION` para a ordem, os marcos e os critérios; `ASSUMPTION` para os tamanhos, que viram prazo só depois de D2 (volume) e D11 (infraestrutura).
 
 [Backlog](PRODUCTION_BACKLOG.md) · [Plano](PRODUCTION_PLAN.md) · [Auditoria de 02/10](../RELATORIO_AUDITORIA_2026-10-02.md)
@@ -41,13 +41,22 @@ Antes de qualquer coisa: um commit candidato, um CI remoto verde e as primeiras 
 
 ### W1 — Escala (esforço L–XL; começa já)
 
+Estado em 03/10/2026: PROD-106 `DONE`; PROD-103, 104 e 110 em `VERIFY`, com
+correção dos achados A-01 a A-09 da [revisão de 02/10](../RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md).
+Os passos 3 e 4 ficaram provados apenas no Synthetic: PROD-101, 102 e 105
+continuam `READY` porque a linha de base do benchmark de 12 meses depende de D2.
+
 A ordem importa:
 
 1. **PROD-110** primeiro: sem o benchmark, nenhuma das melhorias pode provar o próprio efeito.
 2. **PROD-106** (scrypt fora da transação): o menor item e o de maior efeito sobre a disponibilidade.
 3. **PROD-103, PROD-101, PROD-102:** tirar do snapshot tudo o que só cresce.
 4. **PROD-104, PROD-105:** realtime incremental e leituras sem fila serial.
-5. **PROD-107, PROD-108, PROD-109** em paralelo, por outra pessoa.
+5. **PROD-107** em `VERIFY` (orçamento e backoff por par, com testes PostgreSQL).
+   **PROD-108 e PROD-109** seguem abertos; a extração do codec e do runner de backfill
+   reduziu `postgres-store.ts`, que ainda supera a meta de 600 linhas, mas o dispatcher por
+   mapa continua sendo o trabalho restante. O gate de snapshot mede bytes;
+   p95 HTTP/SSE e throughput no PostgreSQL ainda mantêm PROD-110 em `IN_PROGRESS`.
 6. **PROD-111** (cutover relacional) logo depois do M1, porque requisições, itens, resultados e notificações continuam crescendo no snapshot. Os passos 3–5 compram margem, mas não resolvem.
 
 **Risco:** o cutover é o maior item do backlog. Adapter, backfill e reconciliação das migrations 007–010 já existem e reduzem o risco, mas a troca de autoridade precisa de ensaio de rollback em staging.
@@ -58,11 +67,14 @@ Um caminho só: OIDC (PROD-200) **ou** contas locais (PROD-201…203). PROD-205 
 
 ### W3 — Infraestrutura (esforço M–L; depende de D11 e D2)
 
-PROD-303 (pipeline), PROD-305 (privilégios de banco) e PROD-306 (liveness do worker) não dependem de decisão e podem andar junto com a W1.
+PROD-303 (pipeline) não depende de decisão e pode andar junto com a W1.
+PROD-305 (privilégios de banco) e PROD-306 (liveness do worker) saíram de
+`IN_PROGRESS` para `VERIFY` em 03/10/2026: papéis separados com teste negativo
+de privilégio, e probe em `node` puro com tolerância de N ciclos com erro.
 
 ### W4 — Clínico, dados e operação (esforço L–XL; depende de D3–D10)
 
-Cada decisão vira SPEC → teste → código em staging assim que for tomada, sem esperar as outras. Os itens de operação (PROD-511…516) precisam do staging real (M3).
+Cada decisão vira SPEC → teste → código em staging assim que for tomada, sem esperar as outras. Os itens de operação (PROD-511…517) precisam do staging real (M3).
 
 ### W5 — Validação, piloto e go-live (esforço L + externo)
 
@@ -76,8 +88,8 @@ Exige código congelado. Pentest e revisão independente são externos e precisa
 | 2 | PROD-003 (agendar D1, D2, D11) | Patrocinador |
 | 3 | PROD-110 → PROD-106 → PROD-103 | Engenharia |
 | 4 | PROD-101, PROD-102 | Engenharia |
-| 5 | PROD-104, PROD-105, PROD-205, PROD-306 | Engenharia |
-| 6 | PROD-303, PROD-305, PROD-107, PROD-108 | Engenharia |
+| 5 | PROD-104, PROD-205, PROD-306 ✅; PROD-105 | Engenharia |
+| 6 | PROD-303, PROD-108 | Engenharia |
 | 7 | Conforme as decisões chegam: W2, W3 e W4 | Engenharia + clínica + SRE |
 | 8 | Contratar pentest e revisão independente | Patrocinador |
 

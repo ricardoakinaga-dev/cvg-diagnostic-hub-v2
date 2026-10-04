@@ -272,6 +272,12 @@ describe("secure attachment lifecycle", () => {
       const rollbackAfterCleanupStore: StateStore = {
         getState: context.store.getState.bind(context.store),
         readState: context.store.readState.bind(context.store),
+        readStateSnapshot: context.store.readStateSnapshot.bind(context.store),
+        readStateVersion: context.store.readStateVersion.bind(context.store),
+        readAuthorizationSnapshot: context.store.readAuthorizationSnapshot.bind(context.store),
+        readSessionActivity: context.store.readSessionActivity.bind(context.store),
+        touchSessionActivity: context.store.touchSessionActivity.bind(context.store),
+        compactRuntimeState: context.store.compactRuntimeState.bind(context.store),
         transaction: async (operation) => {
           if (!simulatedCommitFailure) {
             await operation(context.store.getState());
@@ -547,6 +553,12 @@ describe("secure attachment lifecycle", () => {
       const ambiguousStore: StateStore = {
         getState: context.store.getState.bind(context.store),
         readState: context.store.readState.bind(context.store),
+        readStateSnapshot: context.store.readStateSnapshot.bind(context.store),
+        readStateVersion: context.store.readStateVersion.bind(context.store),
+        readAuthorizationSnapshot: context.store.readAuthorizationSnapshot.bind(context.store),
+        readSessionActivity: context.store.readSessionActivity.bind(context.store),
+        touchSessionActivity: context.store.touchSessionActivity.bind(context.store),
+        compactRuntimeState: context.store.compactRuntimeState.bind(context.store),
         transaction: async (operation) => {
           const result = await context.store.transaction(operation);
           const attachment = context.store.getState().attachments.find((entry) => entry.id === session.attachment.id);

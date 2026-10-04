@@ -20,9 +20,18 @@ const nextConfig = {
   // Keep their compiler locks and artifacts separate while preserving the
   // normal `.next` directory for local development and production builds.
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
-  // Next 16 blocks dev assets requested from a LAN origin unless it is
-  // explicitly allowlisted. Keep this limited to the local demo host.
-  allowedDevOrigins: ["192.168.15.14", "localhost", "127.0.0.1"],
+  // Next 16 blocks dev assets requested from another origin unless it is
+  // explicitly allowlisted. The loopback hosts are always allowed; a LAN
+  // address is development-only and must be declared per machine through
+  // NEXT_ALLOWED_DEV_ORIGINS instead of being hard-coded (PROD-109).
+  allowedDevOrigins: [
+    "localhost",
+    "127.0.0.1",
+    ...String(process.env.NEXT_ALLOWED_DEV_ORIGINS ?? "")
+      .split(",")
+      .map((origin) => origin.trim())
+      .filter(Boolean)
+  ],
   turbopack: { root: process.cwd() },
   experimental: { proxyClientMaxBodySize: "25mb" },
   transpilePackages: ["@cvg/contracts", "@cvg/domain", "@cvg/ui", "@cvg/services", "@cvg/shared-state"],

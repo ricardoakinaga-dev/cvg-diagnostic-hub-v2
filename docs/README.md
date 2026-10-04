@@ -13,7 +13,7 @@
 | Arquitetura/UX | `architecture/*`, `ux/*`, `adr/*` | Como organizar módulos, telas e decisões duráveis? |
 | Segurança/testes/operações | `security/*`, `testing/*`, [operations/*](operations/OBSERVABILITY.md), [deploy de produção](operations/DEPLOYMENT.md), [runbooks](operations/INCIDENT_RUNBOOKS.md) | Como operar com segurança e saber que está correto? |
 | Build | `build/*` | Em que ordem construir e validar? |
-| Plano até produção (corrente) | [Plano](build/PRODUCTION_PLAN.md), [roadmap](build/PRODUCTION_ROADMAP.md), [backlog](build/PRODUCTION_BACKLOG.md), [auditoria de 02/10/2026](RELATORIO_AUDITORIA_2026-10-02.md) | O que falta, em que ordem e com que critério, para declarar o programa pronto para produção? |
+| Plano até produção (corrente) | [Plano](build/PRODUCTION_PLAN.md), [roadmap](build/PRODUCTION_ROADMAP.md), [backlog](build/PRODUCTION_BACKLOG.md), [auditoria de 02/10/2026](RELATORIO_AUDITORIA_2026-10-02.md), [revisão da entrega do agente](RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md) | O que falta, em que ordem e com que critério, para declarar o programa pronto para produção? |
 | Barra de qualidade histórica (95) | `build/QUALITY_SCORECARD_95.md`, `build/ROADMAP_95.md`, `build/BACKLOG_95.md` | O que significava 95/100 e qual era a sequência histórica? |
 | State of Art / AAA-2 histórico | [Barra](build/AAA_2_QUALITY_BAR.md), [plano executivo](build/AAA_2_EXECUTIVE_PLAN.md), [roadmap](build/AAA_2_ROADMAP.md), [backlog](build/AAA_2_BACKLOG.md) | Qual foi a execução histórica que antecedeu o AAA-3? |
 | State of Art / Triplo AAA (AAA-3 atual) | [Plano executivo](build/STATE_OF_ART_TRIPLE_AAA_EXECUTIVE_PLAN.md), [roadmap](build/STATE_OF_ART_TRIPLE_AAA_ROADMAP.md), [backlog](build/STATE_OF_ART_TRIPLE_AAA_BACKLOG.md) | Como conduzir o candidato técnico até aceite clínico, piloto e release governado? |
@@ -32,9 +32,21 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Snapshot executável corrente — AUDIT-2026-10 (02/10/2026)
+## Snapshot executável corrente — PROD-2026-10.1 (03/10/2026)
 
-O working tree corrente passou `npm test` com **768/768 testes em 91 arquivos**. O recálculo unitário registrou **92,79% lines, 94,23% functions e 86,12% branches**. A cobertura agregada PostgreSQL passou **809/809 testes em 98 arquivos**, com **94,98% lines, 95,30% functions e 89,09% branches**; `coverage:gate` passou com 29 exceções declaradas, sem arquivos `uncovered` ou `stale`. `npm run test:postgres` passou 41/41. `validate:migrations`, `validate:docs`, `validate:openapi` (70 operações/65 paths), `validate:traceability`, `security:scan`, typecheck, lint, build, E2E `63/63` sem retry e mutation `7/7` passaram. O candidato continua `CONDITIONAL PASS LOCAL / BLOCKED` para produção clínica.
+As correções locais da onda W1 e da revisão foram verificadas no Node 22.23.2: **853/853 testes unitários em 100 arquivos** e **59/59 testes PostgreSQL em 10 arquivos**, totalizando **912/912 testes em 110 arquivos**. A cobertura agregada registra **95,27% lines, 95,71% functions e 89,84% branches**. Três exceções ficaram obsoletas com essa cobertura e foram removidas: o registro agora tem **26 exceções**, sem novos arquivos dispensados.
+
+O contador de falhas é lido por `SELECT`, resetado por `DELETE` e isolado por par e-mail/cliente; o login não cria sessão se o reset ou a atividade inicial falharem. O UPSERT de atividade é monotônico.
+
+O gate temporal de snapshot anterior não era reproduzível: `perf:snapshot:gate` agora compara **bytes determinísticos**, com tempos informativos, e `perf:realtime-budget` verifica contagens em processo. Ambos passaram; nenhum comprova p95 ou locks PostgreSQL.
+
+`validate:migrations` (001–012), `validate:docs`, `validate:openapi` (70 operações/65 paths), `validate:traceability` (43/43), `security:scan`, typecheck, lint, build, E2E (63/63 sem retries) e mutação (7/7) passaram. A onda W1 permanece parcial: PROD-110 está `IN_PROGRESS` até a carga HTTP/SSE com p95 e throughput. O candidato continua `CONDITIONAL PASS LOCAL / BLOCKED` para produção clínica. Evidências e limites estão na [atualização do relatório de revisão](RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md#7-correção-da-revisão--03102026).
+
+Achados da [revisão de 02/10](RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md) tratados: **A-01 a A-05 e A-07 a A-09**. A-06 tem gates locais; o aceite de carga HTTP/SSE permanece pendente no PROD-110. Ver [backlog PROD-2026-10.1](build/PRODUCTION_BACKLOG.md) e [DECISION_LOG](DECISION_LOG.md) (D-018 a D-023).
+
+## Snapshot executável anterior — AUDIT-2026-10 (02/10/2026)
+
+O working tree passou `npm test` com **768/768 testes em 91 arquivos**. O recálculo unitário registrou **92,79% lines, 94,23% functions e 86,12% branches**. A cobertura agregada PostgreSQL passou **809/809 testes em 98 arquivos**, com **94,98% lines, 95,30% functions e 89,09% branches**; `coverage:gate` passou com 29 exceções declaradas, sem arquivos `uncovered` ou `stale`. `npm run test:postgres` passou 41/41. `validate:migrations`, `validate:docs`, `validate:openapi` (70 operações/65 paths), `validate:traceability`, `security:scan`, typecheck, lint, build, E2E `63/63` sem retry e mutation `7/7` passaram. O candidato continua `CONDITIONAL PASS LOCAL / BLOCKED` para produção clínica.
 
 ## Snapshot AAA-3 histórico (07/09/2026)
 

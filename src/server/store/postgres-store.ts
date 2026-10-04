@@ -1,8 +1,29 @@
 import { randomUUID } from "node:crypto";
 import { Pool, type PoolClient } from "pg";
-import { outboxEnvelopeFor, type StateStore, type StoreState } from "../domain/models";
+import { outboxEnvelopeFor, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User } from "../domain/models";
 import { assertRuntimeSchemaReady } from "./migrations";
+import {
+  assertAuditEventsAppendOnly,
+  cloneState,
+  CURRENT_STATE_SQL,
+  CURRENT_VERSION_SQL,
+  LOCKED_STATE_SQL,
+  runtimeStateFromRow,
+  stateFromRow,
+  versionFromRow
+} from "./postgres-state-codec";
+import {
+  assertBackfillNotAborted,
+  assertBackfillRunCompatible,
+  assertBackfillSourceStable,
+  backfillReport,
+  relationalClient,
+  verifyRelationalClinicalCoreTarget
+} from "./postgres-backfill-support";
 import { projectDurableNotificationRows } from "./postgres-notification-projection";
+import { readPostgresAuthorizationSnapshot } from "./postgres-authorization-read";
+import { deletePostgresProcessedOutbox, prunePostgresSessionActivity, readPostgresSessionActivity, touchPostgresSessionActivity } from "./postgres-session-activity";
+import { compactRuntimeState, runtimeRetentionAuditEvent } from "./runtime-retention";
 import {
   RelationalClinicalCoreAdapter,
   type RelationalClinicalCoreRuntime,
@@ -39,8 +60,6 @@ export type {
   RelationalClinicalCoreBackfillReport
 } from "./relational/clinical-core-backfill";
 
-const CURRENT_STATE_SQL = "SELECT state, version FROM cvg_runtime_state WHERE id = 1";
-const LOCKED_STATE_SQL = `${CURRENT_STATE_SQL} FOR UPDATE`;
 type DatabaseOperationAuthorization =
   | "ALLOW_SYNTHETIC_SEED"
   | "ALLOW_DB_SMOKE_RESET"
@@ -56,27 +75,6 @@ const INITIALIZATION_AUTHORIZATIONS: ReadonlySet<DatabaseOperationAuthorization>
   "ALLOW_POSTGRES_INTEGRATION_TESTS"
 ]);
 const LOOPBACK_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
-const STATE_COLLECTIONS = [
-  "users",
-  "sessions",
-  "patients",
-  "encounters",
-  "admissions",
-  "services",
-  "reasonCodes",
-  "requests",
-  "items",
-  "samples",
-  "procedures",
-  "schedules",
-  "results",
-  "resultVersions",
-  "notifications",
-  "auditEvents",
-  "outbox",
-  "idempotency",
-  "attachments"
-] as const satisfies readonly (keyof StoreState)[];
 
 export interface PostgresAdministrativeResetOptions {
   authorization: "ALLOW_SYNTHETIC_SEED" | "ALLOW_DB_SMOKE_RESET";
@@ -115,55 +113,6 @@ interface DatabaseAuthorizationErrors {
   forbiddenInProduction: string;
   requiresAuthorization: string;
   targetNotAllowed: string;
-}
-
-function cloneState(state: StoreState): StoreState {
-  return structuredClone(state);
-}
-
-function stateFromRow(value: unknown): StoreState {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("PostgreSQL runtime state is invalid.");
-  }
-  const candidate = value as Record<string, unknown>;
-  if (!Number.isSafeInteger(candidate.protocolSequence) || Number(candidate.protocolSequence) < 0) {
-    throw new Error("PostgreSQL runtime state protocol sequence is invalid.");
-  }
-  if (STATE_COLLECTIONS.some((key) => !Array.isArray(candidate[key]))) {
-    throw new Error("PostgreSQL runtime state collections are invalid.");
-  }
-  return cloneState(candidate as unknown as StoreState);
-}
-
-function versionFromRow(value: unknown): number {
-  const numeric = typeof value === "bigint"
-    ? Number(value)
-    : typeof value === "string" && /^\d+$/.test(value)
-      ? Number(value)
-      : value;
-  if (!Number.isSafeInteger(numeric) || Number(numeric) < 1) {
-    throw new Error("PostgreSQL runtime state version is invalid.");
-  }
-  return Number(numeric);
-}
-
-function runtimeStateFromRow(row: { state: unknown; version: unknown } | undefined): StoreState {
-  if (!row) throw new Error("PostgreSQL runtime state row is missing.");
-  versionFromRow(row.version);
-  return stateFromRow(row.state);
-}
-
-function assertAuditEventsAppendOnly(before: StoreState, after: StoreState): void {
-  const eventsById = new Map(after.auditEvents.map((event) => [event.id, event]));
-  if (eventsById.size !== after.auditEvents.length || after.auditEvents.length < before.auditEvents.length) {
-    throw new Error("POSTGRES_AUDIT_LOG_MUTATION");
-  }
-  for (const previousEvent of before.auditEvents) {
-    const currentEvent = eventsById.get(previousEvent.id);
-    if (!currentEvent || JSON.stringify(currentEvent) !== JSON.stringify(previousEvent)) {
-      throw new Error("POSTGRES_AUDIT_LOG_MUTATION");
-    }
-  }
 }
 
 function assertDatabaseOperationAuthorized(
@@ -381,6 +330,69 @@ export class PostgresStore implements StateStore {
       const currentState = runtimeStateFromRow(result.rows[0]);
       this.state = cloneState(currentState);
       return cloneState(currentState);
+    });
+  }
+
+  /**
+   * One statement returns the aggregate and the version it was read at, so the
+   * realtime authorization recheck can compare a version that provably belongs
+   * to the same snapshot instead of issuing a second read.
+   */
+  async readStateSnapshot(): Promise<{ state: StoreState; version: number }> {
+    return this.enqueue(async () => {
+      const result = await this.pool.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
+      if (result.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
+      const currentState = runtimeStateFromRow(result.rows[0]);
+      this.state = cloneState(currentState);
+      return { state: cloneState(currentState), version: versionFromRow(result.rows[0].version) };
+    });
+  }
+
+  /** Deliberately outside enqueue(): the version column expands no JSONB. */
+  async readStateVersion(): Promise<number> {
+    if (this.isClosing) throw new Error("PostgreSQL store is closing or closed.");
+    const result = await this.pool.query<{ version: unknown }>(CURRENT_VERSION_SQL);
+    if (result.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
+    return versionFromRow(result.rows[0].version);
+  }
+
+  async readAuthorizationSnapshot(query: { userId: string; sessionId?: string }): Promise<{ user?: StoreState["users"][number]; session?: StoreState["sessions"][number] }> {
+    return this.enqueue(() => readPostgresAuthorizationSnapshot(this.pool, query));
+  }
+
+  /**
+   * Deliberately outside enqueue(): liveness is one indexed row read and must
+   * not queue behind the serial write path that the snapshot aggregate forces.
+   */
+  async readSessionActivity(sessionId: string): Promise<SessionActivity | undefined> {
+    if (this.isClosing) throw new Error("PostgreSQL store is closing or closed.");
+    return readPostgresSessionActivity(this.pool, sessionId);
+  }
+
+  async touchSessionActivity(activity: { sessionId: string; userId: string; lastSeenAt: string }): Promise<SessionActivity> {
+    if (this.isClosing) throw new Error("PostgreSQL store is closing or closed.");
+    return touchPostgresSessionActivity(this.pool, activity, activity.lastSeenAt);
+  }
+
+  /**
+   * Runtime retention. The snapshot compaction is serialised with clinical
+   * writes because it rewrites the aggregate, but it runs on a schedule rather
+   * than per request: session-activity rows and processed outbox rows are
+   * pruned in the same transaction so the JSONB projection stays exactly
+   * reconciled with the relational tables readiness asserts.
+   */
+  async compactRuntimeState(options: RuntimeRetentionOptions = {}): Promise<RuntimeRetentionSummary> {
+    if (this.relationalClinicalCore) throw new Error("POSTGRES_RELATIONAL_RETENTION_UNSUPPORTED");
+    const now = options.now ?? new Date();
+    return this.runExclusiveTransaction(async (client, current) => {
+      const compaction = compactRuntimeState(current, { ...options, now });
+      const sessionActivityRowsRemoved = await prunePostgresSessionActivity(client, compaction.retainedSessionIds);
+      await deletePostgresProcessedOutbox(client, compaction.removedOutboxMessageIds);
+      const summary: RuntimeRetentionSummary = { ...compaction.summary, sessionActivityRowsRemoved };
+      return {
+        state: { ...compaction.state, auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)] },
+        result: summary
+      };
     });
   }
 
@@ -631,6 +643,13 @@ export class PostgresStore implements StateStore {
     operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T },
     options: { replaceOutboxProjection?: boolean } = {}
   ): Promise<T> {
+    return this.runExclusiveTransaction((_client, current) => operation(current), options);
+  }
+
+  private async runExclusiveTransaction<T>(
+    operation: (client: PoolClient, current: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T },
+    options: { replaceOutboxProjection?: boolean } = {}
+  ): Promise<T> {
     return this.enqueue(async () => {
       const client = await this.pool.connect();
       try {
@@ -638,7 +657,8 @@ export class PostgresStore implements StateStore {
         const locked = await client.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
         if (locked.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
         const currentState = runtimeStateFromRow(locked.rows[0]);
-        const outcome = await operation(currentState);
+        const previousSessionIds = new Set(currentState.sessions.map((session) => session.id));
+        const outcome = await operation(client, currentState);
         const nextState = stateFromRow(outcome.state);
         assertAuditEventsAppendOnly(currentState, nextState);
         if (this.relationalClinicalCore) {
@@ -662,6 +682,12 @@ export class PostgresStore implements StateStore {
           await client.query("DELETE FROM outbox_messages");
         }
         await this.projectCommittedEvents(client, projectionBefore, nextState);
+        // Session creation and its initial idle window must commit together.
+        for (const session of nextState.sessions) {
+          if (!previousSessionIds.has(session.id)) {
+            await touchPostgresSessionActivity(client, { sessionId: session.id, userId: session.userId }, session.createdAt);
+          }
+        }
         await client.query("COMMIT");
         this.state = cloneState(nextState);
         return outcome.result;
@@ -716,78 +742,4 @@ export class PostgresStore implements StateStore {
       if (updated.rowCount !== 1) throw new Error(`POSTGRES_OUTBOX_PROJECTION_DIVERGED:${message.id}`);
     }
   }
-}
-
-function relationalClient(client: PoolClient): RelationalSqlClient {
-  return {
-    query: (text, values) => client.query(text, values)
-  };
-}
-
-async function verifyRelationalClinicalCoreTarget(
-  runtime: RelationalClinicalCoreRuntime,
-  client: RelationalSqlClient,
-  sourceState: StoreState,
-  requestIds: readonly string[]
-): Promise<void> {
-  await verifyRelationalClinicalCoreCompleteness(client, sourceState);
-  for (const requestId of requestIds) {
-    const relational = await runtime.readRequest(client, requestId);
-    const reconciliation = reconcileRelationalRequest(sourceState, requestId, relational);
-    assertReconciliationClean(reconciliation);
-  }
-}
-
-function assertBackfillRunCompatible(
-  run: RelationalClinicalCoreBackfillRun,
-  transformVersion: string,
-  sourceSnapshotVersion: number,
-  sourceSnapshotHash: string
-): void {
-  if (
-    run.transformVersion !== transformVersion
-    || run.sourceSnapshotVersion !== sourceSnapshotVersion
-    || run.sourceSnapshotHash !== sourceSnapshotHash
-  ) {
-    throw new Error("POSTGRES_RELATIONAL_BACKFILL_SOURCE_CHANGED");
-  }
-}
-
-function assertBackfillSourceStable(
-  row: { readonly state: unknown; readonly version: unknown } | undefined,
-  sourceSnapshotVersion: number,
-  sourceSnapshotHash: string
-): void {
-  if (!row) throw new Error("PostgreSQL runtime state row is missing.");
-  const currentState = runtimeStateFromRow(row);
-  if (
-    versionFromRow(row.version) !== sourceSnapshotVersion
-    || relationalClinicalCoreSourceHash(currentState) !== sourceSnapshotHash
-  ) {
-    throw new Error("POSTGRES_RELATIONAL_BACKFILL_SOURCE_CHANGED");
-  }
-}
-
-function assertBackfillNotAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted) throw new Error("POSTGRES_RELATIONAL_BACKFILL_ABORTED");
-}
-
-function backfillReport(
-  run: RelationalClinicalCoreBackfillRun,
-  requestCount: number,
-  resumedFromRequestId: string | undefined
-): RelationalClinicalCoreBackfillReport {
-  return {
-    runId: run.runId,
-    scope: run.scope,
-    sourceAuthority: run.sourceAuthority,
-    targetAuthority: run.targetAuthority,
-    transformVersion: run.transformVersion,
-    sourceSnapshotVersion: run.sourceSnapshotVersion,
-    requestCount,
-    requestsProcessed: run.requestsProcessed,
-    rowsProjected: run.rowsProjected,
-    requestsReconciled: run.requestsReconciled,
-    ...(resumedFromRequestId ? { resumedFromRequestId } : {})
-  };
 }

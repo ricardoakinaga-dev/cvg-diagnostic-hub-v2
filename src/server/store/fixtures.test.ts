@@ -1,36 +1,53 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { verifyPassword } from "../security/password";
-import { createDemoState } from "./fixtures";
+import { describe, expect, it } from "vitest";
+import { createDemoState, passwordFingerprint } from "./fixtures";
 
-describe("synthetic demo fixtures", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
+
+
+describe("synthetic fixture guards", () => {
+  it("fingerprints a password without keeping the secret", () => {
+    const fingerprint = passwordFingerprint("fixture-password");
+
+    expect(fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    expect(fingerprint).not.toContain("fixture-password");
+    expect(passwordFingerprint("fixture-password")).toBe(fingerprint);
   });
 
-  it("generates a distinct password for every user without an explicit demo password in development", () => {
-    vi.stubEnv("NODE_ENV", "development");
-    vi.stubEnv("DEMO_PASSWORD", undefined);
-
-    const state = createDemoState();
-    const hashes = state.users.map((user) => user.passwordHash);
-
-    expect(new Set(hashes).size).toBe(state.users.length);
+  it("generates a distinct random demo password per user when none is supplied", () => {
+    const environment = process.env as Record<string, string | undefined>;
+    const previous = environment.DEMO_PASSWORD;
+    try {
+      delete environment.DEMO_PASSWORD;
+      const state = createDemoState(undefined);
+      const fingerprints = state.users.map((user) => passwordFingerprint(user.passwordHash));
+      expect(new Set(fingerprints).size).toBeGreaterThan(1);
+    } finally {
+      if (previous === undefined) delete environment.DEMO_PASSWORD;
+      else environment.DEMO_PASSWORD = previous;
+    }
   });
 
-  it("keeps an explicit demo password available for end-to-end fixtures", () => {
-    vi.stubEnv("NODE_ENV", "test");
-    vi.stubEnv("DEMO_PASSWORD", "e2e-explicit-demo-password");
+  it("refuses synthetic data in production and placeholder passwords elsewhere", () => {
+    const environment = process.env as Record<string, string | undefined>;
+    const previous = environment.DEMO_PASSWORD;
+    const previousNodeEnv = environment.NODE_ENV;
+    try {
+      delete process.env.DEMO_PASSWORD;
+      environment.NODE_ENV = "production";
+      expect(() => createDemoState("production-demo-password")).toThrow(/proibidas em produção/);
 
-    const state = createDemoState();
-
-    expect(state.users.every((user) => verifyPassword("e2e-explicit-demo-password", user.passwordHash))).toBe(true);
-  });
-
-  it("rejects synthetic fixtures in production even when a password is supplied", () => {
-    vi.stubEnv("NODE_ENV", "production");
-    vi.stubEnv("DEMO_PASSWORD", "production-synthetic-password-123");
-
-    expect(() => createDemoState()).toThrow(/proibidas em produção/i);
-    expect(() => createDemoState("production-synthetic-password-123")).toThrow(/proibidas em produção/i);
+      environment.NODE_ENV = "development";
+      // A placeholder or short password is refused outside the test lane, so a
+      // deployment cannot inherit a documented demo secret.
+      expect(() => createDemoState("short")).toThrow(/DEMO_PASSWORD/);
+      expect(() => createDemoState("local-demo-password-but-long-enough")).toThrow(/DEMO_PASSWORD/);
+      expect(() => createDemoState("<configure-me>")).toThrow(/DEMO_PASSWORD/);
+      environment.DEMO_PASSWORD = "a-long-enough-demo-password";
+      expect(createDemoState(undefined).users.length).toBeGreaterThan(0);
+    } finally {
+      if (previous === undefined) delete environment.DEMO_PASSWORD;
+      else environment.DEMO_PASSWORD = previous;
+      if (previousNodeEnv === undefined) delete environment.NODE_ENV;
+      else environment.NODE_ENV = previousNodeEnv;
+    }
   });
 });

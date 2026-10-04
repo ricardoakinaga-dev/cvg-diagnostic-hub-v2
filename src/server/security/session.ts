@@ -1,5 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import type { StateStore, StoreState, User } from "../domain/models";
+import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivity } from "../domain/session-activity";
 import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
 
@@ -47,13 +48,40 @@ export function getCsrfCookieName(): string {
   return CSRF_COOKIE;
 }
 
-export async function loginUser(store: StateStore, email: string, password: string) {
-  return store.transaction(async (state) => {
-    const user = state.users.find((candidate) => candidate.email.toLowerCase() === email.trim().toLowerCase() && candidate.active);
-    const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
-    if (!user || !passwordValid) {
+export interface LoginOptions {
+  /** Runs after credential revalidation; rejection prevents session creation. */
+  beforeSessionCreate?: () => void | Promise<void>;
+}
+
+/** Distinguishes invalid credentials from a failed transactional revalidation. */
+export class InvalidLoginCredentialsError extends ApiError {
+  constructor() {
+    super("UNAUTHENTICATED", "Credenciais inválidas.", 401);
+  }
+}
+
+export async function loginUser(store: StateStore, email: string, password: string, options: LoginOptions = {}) {
+  const state = await store.readState();
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = state.users.find((candidate) => candidate.email.toLowerCase() === normalizedEmail && candidate.active);
+  const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  if (!user || !passwordValid) {
+    throw new InvalidLoginCredentialsError();
+  }
+
+  return store.transaction(async (currentState) => {
+    const currentUser = currentState.users.find((candidate) => candidate.id === user.id);
+    if (
+      !currentUser
+      || !currentUser.active
+      || currentUser.email.toLowerCase() !== normalizedEmail
+      || currentUser.passwordHash !== user.passwordHash
+      || currentUser.version !== user.version
+    ) {
       throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
     }
+
+    await options.beforeSessionCreate?.();
     const sessionToken = randomBytes(32).toString("base64url");
     const csrfToken = randomBytes(24).toString("base64url");
     const createdAt = new Date();
@@ -68,8 +96,8 @@ export async function loginUser(store: StateStore, email: string, password: stri
       version: 1
     };
     return {
-      state: { ...state, sessions: [...state.sessions, session] },
-      result: { user, sessionToken, csrfToken, expiresAt }
+      state: { ...currentState, sessions: [...currentState.sessions, session] },
+      result: { user: currentUser, sessionToken, csrfToken, expiresAt }
     };
   });
 }
@@ -83,12 +111,13 @@ export async function authenticateRequest(
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
   const state = await store.readState();
   const session = state.sessions.find((entry) => entry.tokenHash === hash(token));
-  if (!session || session.revokedAt || new Date(session.expiresAt).getTime() <= Date.now()) {
+  if (!session || sessionTerminallyExpired(session)) {
     throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   }
   if (options.requireCsrf) assertCsrf(request, session.csrfTokenHash);
   const user = state.users.find((entry) => entry.id === session.userId && entry.active);
   if (!user) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
+  await assertSessionIsActive(store, session);
   return { ...user, sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
 }
 
@@ -105,28 +134,48 @@ export function authorizationSnapshotIsCurrent(state: StoreState, actor: User): 
     && sameScope(current.managedDepartmentCodes, actor.managedDepartmentCodes)
     && session
     && !session.revokedAt
-    && new Date(session.expiresAt).getTime() > Date.now()
+    && !sessionTerminallyExpired(session)
   );
 }
 
 export async function reauthenticateUser(store: StateStore, request: Request, password: string): Promise<User> {
   const token = parseCookies(request)[SESSION_COOKIE];
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
-  return store.transaction((state) => {
-    const session = state.sessions.find((entry) => entry.tokenHash === hash(token));
-    if (!session || session.revokedAt || new Date(session.expiresAt).getTime() <= Date.now()) {
+  const tokenHash = hash(token);
+  const state = await store.readState();
+  const session = state.sessions.find((entry) => entry.tokenHash === tokenHash);
+  if (!session || sessionTerminallyExpired(session)) {
+    throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
+  }
+  await assertSessionIsActive(store, session);
+  const user = state.users.find((entry) => entry.id === session.userId && entry.active);
+  const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  if (!user || !passwordValid) {
+    throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
+  }
+
+  return store.transaction((currentState) => {
+    const currentSession = currentState.sessions.find((entry) => entry.id === session.id && entry.userId === session.userId && entry.tokenHash === tokenHash);
+    if (
+      !currentSession
+      || currentSession.revokedAt
+      || sessionTerminallyExpired(currentSession)
+      || currentSession.version !== session.version
+    ) {
       throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
     }
-    const user = state.users.find((entry) => entry.id === session.userId && entry.active);
-    const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
-    if (!user || !passwordValid) {
+    const currentUser = currentState.users.find((entry) => entry.id === user.id);
+    if (!currentUser || !currentUser.active) {
+      throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
+    }
+    if (currentUser.passwordHash !== user.passwordHash || currentUser.version !== user.version) {
       throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
     }
     const reauthenticatedAt = new Date().toISOString();
-    const updatedSession = { ...session, reauthenticatedAt, version: session.version + 1 };
+    const updatedSession = { ...currentSession, reauthenticatedAt, version: currentSession.version + 1 };
     return {
-      state: { ...state, sessions: state.sessions.map((entry) => entry.id === session.id ? updatedSession : entry) },
-      result: { ...user, sessionId: session.id, reauthenticatedAt }
+      state: { ...currentState, sessions: currentState.sessions.map((entry) => entry.id === currentSession.id ? updatedSession : entry) },
+      result: { ...currentUser, sessionId: currentSession.id, reauthenticatedAt }
     };
   });
 }
@@ -139,6 +188,42 @@ export async function revokeSession(store: StateStore, token: string): Promise<v
     },
     result: undefined
   }));
+}
+
+/**
+ * Expiry the snapshot alone can decide: revocation and the absolute lifetime.
+ * The idle window is evaluated separately against session activity, because
+ * recording liveness in the snapshot would turn every authenticated read into a
+ * global write on the single locked JSONB row.
+ */
+export function sessionTerminallyExpired(session: { expiresAt: string; revokedAt?: string }): boolean {
+  return Boolean(session.revokedAt) || Date.parse(session.expiresAt) <= Date.now();
+}
+
+/**
+ * Idle evaluation and liveness recording, both outside the snapshot.
+ *
+ * The read is one indexed row and the write a single-row UPSERT, so an
+ * authenticated request no longer competes with clinical writes for the global
+ * state lock. A session with no activity row predates the table (the 012
+ * migration seeds one idle window for those) or was pruned by retention; either
+ * way the creation time is the conservative reference.
+ */
+async function assertSessionIsActive(store: StateStore, session: StoreState["sessions"][number]): Promise<void> {
+  const nowMs = Date.now();
+  const activity = await store.readSessionActivity(session.id);
+  const referenceAt = activity?.lastSeenAt ?? session.createdAt;
+  // A missing or unparsable reference fails closed: an unreadable liveness
+  // record must not become an indefinite session.
+  if (!Number.isFinite(Date.parse(referenceAt)) || sessionIsIdle(referenceAt, nowMs)) {
+    throw new ApiError("SESSION_EXPIRED", "Sessão expirada por inatividade. Entre novamente.", 401);
+  }
+  if (!shouldTouchSessionActivity(activity, session.createdAt, nowMs, sessionActivityTouchIntervalMs())) return;
+  await store.touchSessionActivity({
+    sessionId: session.id,
+    userId: session.userId,
+    lastSeenAt: new Date(nowMs).toISOString()
+  });
 }
 
 function tokenMatchesHash(token: string, expectedHash: string): boolean {

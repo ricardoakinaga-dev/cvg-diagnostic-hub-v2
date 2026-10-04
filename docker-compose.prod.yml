@@ -9,6 +9,7 @@ x-app-environment: &app-environment
   NODE_ENV: production
   APP_DATA_MODE: postgres
   DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+  MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-${POSTGRES_USER:?}}:${POSTGRES_MIGRATION_PASSWORD:-${POSTGRES_PASSWORD:?}}@postgres:5432/${POSTGRES_DB:?}
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
   SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set}
   APP_ORIGIN: https://${APP_DOMAIN:?APP_DOMAIN must be set}
@@ -95,9 +96,23 @@ services:
       <<: *app-environment
       OUTBOX_SINK: postgres
       OUTBOX_DELIVERY_CHANNEL: ${OUTBOX_DELIVERY_CHANNEL:-IN_APP}
+      OUTBOX_HEARTBEAT_FILE: ${OUTBOX_HEARTBEAT_FILE:-/tmp/outbox-worker-heartbeat.json}
+      OUTBOX_HEARTBEAT_MAX_AGE_MS: ${OUTBOX_HEARTBEAT_MAX_AGE_MS:-30000}
+      OUTBOX_HEARTBEAT_ERROR_TOLERANCE: ${OUTBOX_HEARTBEAT_ERROR_TOLERANCE:-3}
+      RUNTIME_RETENTION_INTERVAL_MS: ${RUNTIME_RETENTION_INTERVAL_MS:-3600000}
     depends_on:
       migrate: { condition: service_completed_successfully }
     restart: unless-stopped
+    # Plain node, not tsx: a probe that transpiles on every 10s interval costs
+    # more than the check. Docker Compose does not restart an unhealthy
+    # container by itself, so the signal is for external monitoring or an
+    # orchestrator; see docs/operations/DEPLOYMENT.md.
+    healthcheck:
+      test: ["CMD", "node", "scripts/outbox-healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
 
   proxy:
     image: caddy:2-alpine

@@ -43,6 +43,33 @@ export interface Session {
   version: number;
 }
 
+/**
+ * Per-session liveness used by the idle timeout. It deliberately lives outside
+ * StoreState: recording activity in the snapshot turned every authenticated
+ * read into a global write against the single locked JSONB row.
+ */
+export interface SessionActivity {
+  sessionId: string;
+  userId: string;
+  lastSeenAt: Timestamp;
+}
+
+export interface RuntimeRetentionOptions {
+  readonly now?: Date;
+  readonly outboxHotWindow?: number;
+  readonly sessionRetentionMs?: number;
+  readonly idempotencyRetentionMs?: number;
+  readonly outboxRetentionMs?: number;
+}
+
+export interface RuntimeRetentionSummary {
+  readonly auditEventsRemoved: number;
+  readonly outboxMessagesRemoved: number;
+  readonly sessionsRemoved: number;
+  readonly idempotencyRecordsRemoved: number;
+  readonly sessionActivityRowsRemoved: number;
+}
+
 export interface Patient {
   id: string;
   displayName: string;
@@ -380,6 +407,30 @@ export interface StoreState {
 export interface StateStore {
   getState(): StoreState;
   readState(): Promise<StoreState>;
+  /**
+   * Aggregate read that also returns the write version it observed, from a
+   * single statement. Realtime authorization is revalidated against that
+   * version, which is what lets many connections share one read.
+   */
+  readStateSnapshot(): Promise<{ state: StoreState; version: number }>;
+  /** Current write version only. Cheap enough to call per connection tick. */
+  readStateVersion(): Promise<number>;
+  /**
+   * Narrow authorization read. Implementations must answer from indexed single
+   * rows or an equally bounded source; a full aggregate read here would
+   * reintroduce the per-connection full-state read the realtime path removed.
+   */
+  readAuthorizationSnapshot(query: { userId: string; sessionId?: string }): Promise<{ user?: User; session?: Session }>;
+  /** Narrow liveness read for one session. Never rewrites the snapshot. */
+  readSessionActivity(sessionId: string): Promise<SessionActivity | undefined>;
+  /** Narrow liveness write for one session. Never rewrites the snapshot. */
+  touchSessionActivity(activity: { sessionId: string; userId: string; lastSeenAt: Timestamp }): Promise<SessionActivity>;
+  /**
+   * Applies runtime retention to the snapshot and to the session-activity
+   * table in one audited step. Removes expired/revoked sessions, expired
+   * idempotency records and processed outbox messages beyond their windows.
+   */
+  compactRuntimeState(options?: RuntimeRetentionOptions): Promise<RuntimeRetentionSummary>;
   transaction<T>(operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
   reset?(state: StoreState): Promise<void>;
   healthcheck?(): Promise<void>;

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "benchmark": "prod-2026-10-snapshot-v2",
+  "recordedOn": "2026-10-03",
+  "recordedOnNode": "v24.20.0",
+  "policy": "Only deterministic UTF-8 snapshot bytes are gated for all three workloads. Fixture timestamps are fixed and password salts/hashes are normalized inside the benchmark. A byte measurement above recorded.bytes * (1 + regressionToleranceRatio) or max.bytes fails. Zero tolerance rejects even one byte of growth. The prior temporal regression gate was irreproducible across machines and load. stringifyMs, parseMs and doubleCloneMs (including their historical maxima) retain the prior measurements as informational values, never acceptance criteria. Missing, duplicate or invalid workloads/samples and missing, malformed or mismatched baselines fail closed. Recorded bytes were confirmed unchanged after normalization. This synthetic byte gate is not evidence of PostgreSQL WAL, locking, network latency, staging load or production p95 acceptance. Raise a byte threshold only with a measured reason recorded in this file.",
+  "regressionToleranceRatio": 0,
+  "samples": [
+    {
+      "auditEvents": 1000,
+      "recorded": { "bytes": 239872, "stringifyMs": 0.57, "parseMs": 1.42, "doubleCloneMs": 2.45 },
+      "max": { "bytes": 700000, "stringifyMs": 60, "parseMs": 60, "doubleCloneMs": 120 }
+    },
+    {
+      "auditEvents": 10000,
+      "recorded": { "bytes": 2363872, "stringifyMs": 5.88, "parseMs": 6.93, "doubleCloneMs": 39.12 },
+      "max": { "bytes": 6000000, "stringifyMs": 300, "parseMs": 400, "doubleCloneMs": 700 }
+    },
+    {
+      "auditEvents": 100000,
+      "recorded": { "bytes": 23873872, "stringifyMs": 84.56, "parseMs": 79.51, "doubleCloneMs": 401.42 },
+      "max": { "bytes": 60000000, "stringifyMs": 3000, "parseMs": 4000, "doubleCloneMs": 8000 }
+    }
+  ]
+}

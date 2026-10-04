@@ -107,7 +107,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("011_outbox_dead_letter");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("012_session_activity");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -160,7 +160,7 @@ describe("database migration runner", () => {
     );
   });
 
-  it("upgrades a populated 001–010 baseline by applying only 011", async () => {
+  it("upgrades a populated baseline by applying only the newest migration", async () => {
     const migrationDirectory = path.resolve(process.cwd(), "db/migrations");
     const migrations = await readMigrationSet(migrationDirectory, RUNTIME_MIGRATION_VERSIONS);
     const baseline = migrations.slice(0, -1).map(({ version, checksum }) => ({ version, checksum }));
@@ -169,7 +169,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["011_outbox_dead_letter"],
+      applied: ["012_session_activity"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -183,6 +183,21 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", "011_outbox_dead_letter.sql"), "utf8");
 
     expect(sql).toMatch(/UPDATE relational_schema_markers[\s\S]*011_outbox_dead_letter/i);
+  });
+
+  it("keeps session liveness in its own indexed table outside the snapshot", async () => {
+    const filename = "012_session_activity.sql";
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
+
+    expect(migrationVersion(filename)).toBe("012_session_activity");
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS session_activity\s*\(/i);
+    expect(sql).toMatch(/session_id text PRIMARY KEY/i);
+    expect(sql).toMatch(/last_seen_at timestamptz NOT NULL/i);
+    expect(sql).toMatch(/UPDATE relational_schema_markers[\s\S]*012_session_activity/i);
+    // Sessions created before the migration get one idle window at deploy
+    // instead of expiring on their first request (review A-05).
+    expect(sql).toMatch(/INSERT INTO session_activity[\s\S]*jsonb_array_elements\(state->'sessions'\)/i);
+    expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE|DELETE FROM)\b/i);
   });
 
   it("registers durable, shadow-only relational backfill control metadata as migration 010", async () => {
@@ -314,6 +329,7 @@ describe("runtime schema readiness", () => {
     outbox_routing_ready: true,
     outbox_dead_letter_ready: true,
     rate_limit_schema_ready: true,
+    session_activity_schema_ready: true,
     relational_clinical_core_ready: true,
     transitional_storage_boundary_ready: true,
     invalidation_trigger_ready: true
@@ -341,6 +357,8 @@ describe("runtime schema readiness", () => {
     expect(readinessSql).toMatch(/runtime_storage_boundaries/);
     expect(readinessSql).toMatch(/authoritative_store = 'cvg_runtime_state'/);
     expect(readinessSql).toMatch(/status = 'TRANSITIONAL'/);
+    expect(readinessSql).toMatch(/session_activity_schema_ready/);
+    expect(readinessSql).toMatch(/table_name = 'session_activity'/);
   });
 
   it.each(Object.keys(readyRow) as Array<keyof typeof readyRow>)("fails closed when %s is absent", async (missingFlag) => {

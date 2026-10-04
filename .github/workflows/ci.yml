@@ -62,6 +62,11 @@ jobs:
       - run: npm run test:perf
       - run: npm run test:recovery
       - run: npm run perf:synthetic
+      # PROD-110 regression gate: fails the build when the JSONB aggregate cost
+      # crosses the committed baseline or a hard ceiling.
+      - run: npm run perf:snapshot:gate
+      # PROD-104 acceptance: the aggregate read budget with many open streams.
+      - run: npm run perf:realtime-budget
       - run: npm run test:postgres
         env:
           ALLOW_POSTGRES_INTEGRATION_TESTS: "true"

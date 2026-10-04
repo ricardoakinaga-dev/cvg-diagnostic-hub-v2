@@ -3,6 +3,8 @@ import { DELETE, GET, PATCH, POST, PUT } from "./route";
 import { getRuntimeStoreAsync, resetRuntimeStore } from "../../../../server/store/runtime";
 import { renderPrometheus, resetMetrics } from "../../../../server/observability/metrics";
 import { resetRateLimits } from "../../../../server/security/rate-limit";
+import * as rateLimitSecurity from "../../../../server/security/rate-limit";
+import { ApiError } from "../../../../server/http/envelope";
 import { syntheticHemogramContent } from "../../../../server/store/fixtures";
 import * as structuredLogger from "../../../../server/observability/structured-logger";
 
@@ -336,6 +338,116 @@ describe("versioned API boundary", () => {
     } finally {
       resetRateLimits();
       vi.unstubAllEnvs();
+    }
+  });
+
+  it("does not let an attacker spend the victim's login budget from another origin", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    vi.stubEnv("TRUST_PROXY", "true");
+    vi.stubEnv("TRUST_PROXY_SHARED_SECRET", "proxy-secret");
+    vi.stubEnv("LOGIN_RATE_LIMIT", "3");
+    resetRateLimits();
+    try {
+      const loginAs = (email: string, forwardedFor: string, password = "api-test-password") => POST(new Request("http://localhost/api/v1/session/login", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-forwarded-for": forwardedFor,
+          "x-cvg-proxy-secret": "proxy-secret"
+        },
+        body: JSON.stringify({ email, password })
+      }), params(["session", "login"]));
+
+      // The attacker burns the whole budget for (vet@cvg.local, 198.51.100.7)
+      // with wrong passwords only.
+      const attackerStatuses: number[] = [];
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        attackerStatuses.push((await loginAs("vet@cvg.local", "198.51.100.7", "wrong-password")).status);
+      }
+      expect(attackerStatuses).toContain(401);
+      expect(attackerStatuses).toContain(429);
+
+      // The owner arriving from their own origin with the right password is
+      // still served: the account-wide lockout of F-04 is gone.
+      const owner = await loginAs("vet@cvg.local", "203.0.113.9");
+      expect(owner.status).toBe(200);
+      expect((await owner.json()).data.user.email).toBe("vet@cvg.local");
+
+      // And the attacker's own pair is still throttled.
+      expect((await loginAs("vet@cvg.local", "198.51.100.7")).status).toBe(429);
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("clears the login backoff after a successful login", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    vi.stubEnv("LOGIN_RATE_LIMIT", "20");
+    resetRateLimits();
+    try {
+      const attempt = (password: string) => POST(new Request("http://localhost/api/v1/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "vet@cvg.local", password })
+      }), params(["session", "login"]));
+
+      for (let index = 0; index < 6; index += 1) {
+        expect((await attempt("wrong-password")).status).toBe(401);
+      }
+
+      // Six wrong passwords grew the window for this pair, and a correct
+      // password still succeeds and clears this pair’s backoff.
+      expect((await attempt("api-test-password")).status).toBe(200);
+      expect((await attempt("api-test-password")).status).toBe(200);
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("returns a dependency error without a session when the successful-login reset fails", async () => {
+    const store = await getRuntimeStoreAsync();
+    const before = await store.readStateSnapshot();
+    const reset = vi.spyOn(rateLimitSecurity, "registerLoginSuccess").mockRejectedValueOnce(
+      new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503)
+    );
+    try {
+      const response = await POST(new Request("http://localhost/api/v1/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "vet@cvg.local", password: "api-test-password" })
+      }), params(["session", "login"]));
+      expect(response.status).toBe(503);
+      expect(response.headers.get("set-cookie")).toBeNull();
+      expect(await store.readStateSnapshot()).toEqual(before);
+      expect(reset).toHaveBeenCalledWith({ email: "vet@cvg.local", clientKey: "local" });
+    } finally {
+      reset.mockRestore();
+    }
+  });
+
+  it("does not count a correct password as a failure when user revalidation races", async () => {
+    const store = await getRuntimeStoreAsync();
+    const before = await store.readStateSnapshot();
+    const transaction = store.transaction.bind(store);
+    const race = vi.spyOn(store, "transaction").mockImplementation((operation) => transaction((state) => operation({
+      ...state,
+      users: state.users.map((user) => user.email === "vet@cvg.local" ? { ...user, version: user.version + 1 } : user)
+    })));
+    const failure = vi.spyOn(rateLimitSecurity, "registerLoginFailure");
+    try {
+      const response = await POST(new Request("http://localhost/api/v1/session/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ email: "vet@cvg.local", password: "api-test-password" })
+      }), params(["session", "login"]));
+      expect(response.status).toBe(401);
+      expect(failure).not.toHaveBeenCalled();
+      expect(await store.readStateSnapshot()).toEqual(before);
+    } finally {
+      race.mockRestore();
+      failure.mockRestore();
     }
   });
 
@@ -995,22 +1107,28 @@ describe("versioned API boundary", () => {
     expect(await inactive.text()).toContain("cvg_sse_connections 0");
   });
 
-  it("serializes fresh SSE heartbeat reads instead of overlapping slow persistence polls", async () => {
+  it("collapses a fast poll interval into one shared aggregate read per cadence", async () => {
     const vet = await login();
     const previousInterval = process.env.REALTIME_STREAM_INTERVAL_MS;
+    const previousCadence = process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
     process.env.REALTIME_STREAM_INTERVAL_MS = "10";
+    process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS = "100";
     const store = await getRuntimeStoreAsync();
     let inFlight = 0;
     let maximumInFlight = 0;
     let calls = 0;
     try {
       const stream = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: vet.cookie } }), params(["realtime", "events"]));
-      const reader = stream.body?.getReader();
-      expect(reader).toBeTruthy();
-      await reader!.read();
+      const reader = stream.body!.getReader();
+      // Drain the stream so backpressure never closes it before the window ends.
+      const draining = (async () => {
+        while (!(await reader.read()).done) {
+          // discard heartbeat frames
+        }
+      })();
 
-      const originalRead = store.readState.bind(store);
-      vi.spyOn(store, "readState").mockImplementation(async () => {
+      const originalRead = store.readStateSnapshot.bind(store);
+      vi.spyOn(store, "readStateSnapshot").mockImplementation(async () => {
         calls += 1;
         inFlight += 1;
         maximumInFlight = Math.max(maximumInFlight, inFlight);
@@ -1022,27 +1140,36 @@ describe("versioned API boundary", () => {
         }
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 90));
-      expect(calls).toBeGreaterThanOrEqual(2);
+      // Roughly twenty-five poll ticks elapse here. PROD-104 requires them to
+      // collapse into a handful of shared reads with no overlapping persistence
+      // poll, instead of one aggregate read per connection per tick.
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      expect(calls).toBeGreaterThanOrEqual(1);
+      expect(calls).toBeLessThanOrEqual(3);
       expect(maximumInFlight).toBe(1);
-      await reader!.cancel();
+      await reader.cancel();
+      await draining;
     } finally {
       if (previousInterval === undefined) delete process.env.REALTIME_STREAM_INTERVAL_MS;
       else process.env.REALTIME_STREAM_INTERVAL_MS = previousInterval;
+      if (previousCadence === undefined) delete process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
+      else process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS = previousCadence;
     }
   });
 
   it("closes an SSE stream safely when a fresh heartbeat read fails", async () => {
     const vet = await login();
     const previousInterval = process.env.REALTIME_STREAM_INTERVAL_MS;
+    const previousCadence = process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
     process.env.REALTIME_STREAM_INTERVAL_MS = "10";
+    process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS = "25";
     const store = await getRuntimeStoreAsync();
     try {
       const stream = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: vet.cookie } }), params(["realtime", "events"]));
       const reader = stream.body?.getReader();
       expect(reader).toBeTruthy();
       await reader!.read();
-      vi.spyOn(store, "readState").mockRejectedValue(new Error("fresh state unavailable"));
+      vi.spyOn(store, "readStateSnapshot").mockRejectedValue(new Error("fresh state unavailable"));
 
       let done = false;
       for (let attempt = 0; attempt < 10 && !done; attempt += 1) {
@@ -1056,6 +1183,8 @@ describe("versioned API boundary", () => {
     } finally {
       if (previousInterval === undefined) delete process.env.REALTIME_STREAM_INTERVAL_MS;
       else process.env.REALTIME_STREAM_INTERVAL_MS = previousInterval;
+      if (previousCadence === undefined) delete process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
+      else process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS = previousCadence;
     }
   });
 

@@ -11,7 +11,13 @@ test.describe("realtime browser contract", () => {
     try {
       // The dashboard intentionally keeps an SSE request open; networkidle
       // can therefore never be reached on this page.
+      const mutationIdentity = mutationPage.waitForResponse((response) => (
+        response.url().endsWith("/api/v1/session/me") && response.request().method() === "GET"
+      ));
       await mutationPage.goto("/", { waitUntil: "domcontentloaded" });
+      // The dashboard renders a skeleton until its identity request completes.
+      // Wait for that prerequisite before checking the mutation controls.
+      expect((await mutationIdentity).status()).toBe(200);
       await expect(mutationPage.getByRole("button", { name: /Nova solicitação/ })).toBeVisible();
 
       const refreshedDashboard = page.waitForResponse((response) => (
