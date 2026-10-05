@@ -6,6 +6,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json ./
+COPY vendor/fast-glob-3.3.1-cvg.1.tgz ./vendor/
 RUN npm ci
 
 FROM dependencies AS builder
@@ -22,6 +23,7 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json ./
+COPY vendor/fast-glob-3.3.1-cvg.1.tgz ./vendor/
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Operational image for one-shot and background jobs (migrations, first-admin

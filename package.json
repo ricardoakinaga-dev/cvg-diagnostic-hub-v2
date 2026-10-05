@@ -15,6 +15,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:config": "node --test scripts/next-config.test.mjs scripts/eslint-glob.test.mjs",
+    "vendor:fast-glob": "node scripts/vendor-fast-glob.mjs",
     "test:coverage": "node scripts/test-coverage.mjs && npm run coverage:gate",
     "test:coverage:unit": "vitest run --coverage",
     "coverage:report": "node scripts/coverage-report.mjs",
@@ -24,7 +26,7 @@
     "test:e2e": "playwright test",
     "test:accessibility": "playwright test tests/e2e/accessibility.spec.ts",
     "test:e2e:ui": "playwright test --ui",
-    "test:perf": "tsx --test scripts/perf-report.test.ts scripts/perf-workload.test.ts scripts/perf-snapshot.test.ts scripts/perf-realtime-budget.test.ts",
+    "test:perf": "tsx --test scripts/perf-report.test.ts scripts/perf-postgres-report.test.ts scripts/perf-postgres.test.ts scripts/perf-postgres-sse.test.ts scripts/perf-workload.test.ts scripts/perf-snapshot.test.ts scripts/perf-realtime-budget.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "db:roles": "tsx scripts/db-roles.ts",
     "db:seed": "tsx scripts/seed.ts",
@@ -35,6 +37,7 @@
     "outbox:worker": "tsx scripts/outbox-worker.ts",
     "runtime:retention": "tsx scripts/runtime-retention.ts",
     "perf:smoke": "tsx scripts/perf-smoke.ts",
+    "perf:postgres": "tsx scripts/perf-postgres.ts",
     "perf:synthetic": "tsx scripts/perf-workload.ts",
     "perf:snapshot": "tsx scripts/perf-snapshot.ts",
     "perf:snapshot:gate": "tsx scripts/perf-snapshot.ts --check",
@@ -52,7 +55,7 @@
     "validate:openapi": "redocly lint docs/api/openapi.json --extends=recommended && tsx scripts/validate-openapi.mjs",
     "security:scan": "bash scripts/secret-scan.sh",
     "security:sbom": "npm --silent sbom --sbom-format cyclonedx",
-    "validate": "npm run typecheck && npm run lint && npm run test:coverage && npm run validate:docs && npm run validate:openapi && npm run validate:traceability && npm run validate:migrations"
+    "validate": "npm run typecheck && npm run lint && npm run test:config && npm run test:coverage && npm run validate:docs && npm run validate:openapi && npm run validate:traceability && npm run validate:migrations"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1114.0",
@@ -73,14 +76,18 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "@vitejs/plugin-react": "^4.4.1",
-    "@vitest/coverage-v8": "^3.2.4",
+    "@vitest/coverage-v8": "4.1.11",
     "ajv": "8.20.0",
     "ajv-formats": "3.0.1",
     "eslint": "^9.25.0",
     "eslint-config-next": "16.3.0",
+    "fast-glob": "file:vendor/fast-glob-3.3.1-cvg.1.tgz",
     "jsdom": "^26.1.0",
     "tsx": "^4.19.3",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
+    "vitest": "4.1.11"
+  },
+  "overrides": {
+    "fast-glob": "$fast-glob"
   }
 }

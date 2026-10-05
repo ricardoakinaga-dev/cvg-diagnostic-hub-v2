@@ -24,7 +24,6 @@ export default defineConfig({
     // serial execution prevents scheduling from changing the denominator.
     fileParallelism: false,
     maxWorkers: 1,
-    minWorkers: 1,
     sequence: {
       concurrent: false,
       hooks: "list",

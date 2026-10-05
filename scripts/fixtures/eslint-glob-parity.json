@@ -1,0 +1,3683 @@
+{
+  "schemaVersion": 1,
+  "oracle": {
+    "nextPlugin": "16.3.0",
+    "fastGlob": "3.3.1",
+    "node": "v22.23.2",
+    "platform": "linux",
+    "capturedAt": "2026-10-05T00:01:03.471Z",
+    "rootUtilitySha256": "886677432990a735e5ebdfb345ff1cbd40e264f9947a8432eeeb254b3a926bde",
+    "fastGlobIndexSha256": "007e6052c85f7ed2ca2eaed4ae0ca5fb14226cd7585a5f096abcf78e28146f96",
+    "ruleHashes": {
+      "google-font-display.js": "4fd8cd476fae6e37f75ae54e46feee561040a04b01d9c73cab37b778e586f6cd",
+      "google-font-preconnect.js": "7097aedd951e8909265c716323ade6d0887f4b54152774d7cfe3059812ced4d2",
+      "inline-script-id.js": "fe7cc4883e52ae135e44eb3d2788b6a54eca0a11b559ff0636b51fcae550b69a",
+      "next-script-for-ga.js": "a1d40c2b48d252f43b4f739d628748a50e4902b8b2f667d7cedb726689055149",
+      "no-assign-module-variable.js": "131993a0f769199a4e1fbcc006a5e798ef5234d344b89146a347cf9ba9703c64",
+      "no-async-client-component.js": "eb8252488bd89335d79c45d53872918f70bb03a98b87f633317a2b13ae294a1f",
+      "no-before-interactive-script-outside-document.js": "b4606784338583e745f50a32da212034be6599513180e6d77ce6295c92d38d3c",
+      "no-css-tags.js": "3ecea24c00cf779b1ce80cdd1176e3a21a4369bac16e2f48c1ec0ccaa8200568",
+      "no-document-import-in-page.js": "aa6622bc04ccc1d7e0289b42cedb5b10b70800d4ad9caa1165a4ce0c9ee2fc00",
+      "no-duplicate-head.js": "2f3fe9b461c45f144e606ab989b409117af0e163edd2c9858d84cbf29426254c",
+      "no-head-element.js": "ce985a88bb226e3688c90c47da71d2c0ce0797d27d1b112d5e8e4f02b3e25a67",
+      "no-head-import-in-document.js": "64c3f1ecbab2a468641f85a2c4b1d746c316c2ba390f6780cc8882c456dd0bd4",
+      "no-html-link-for-pages.js": "3b184e28aa8997eb8e7f7b43c8da327fd3e2a2acf826e6e328632e7006687baa",
+      "no-img-element.js": "e2945047059e846e58d67090de882821a4c39129acb1d51bea80eb955964dc5f",
+      "no-location-assign-relative-destination.js": "61f2e7f61e2e9d72860ca15881533f63b9b169fc7774a5b6241771e32c717010",
+      "no-page-custom-font.js": "e7b6b5dc6834b9eef90e72f024bdf0b1795a2ecfdc3fb37a8a3954556457a346",
+      "no-script-component-in-head.js": "2569a771e8a932ef566bccb49f2f31bd22f22e12bf8b282eca04f35821f4471f",
+      "no-styled-jsx-in-document.js": "dc5ce51b254c4d28a34e2b2b103fb54601e7836d88c5909b2874710e443a906d",
+      "no-sync-scripts.js": "d4b0d7c74cce675107755e5ccf7f02f6c1493cd80296c7eb483ace5f6bab53b0",
+      "no-title-in-document-head.js": "32a809a59b6ea3cb86eb603ccfb36835f2396720ba1553de543271e7e4b2aeca",
+      "no-typos.js": "8e3faf5e72a97234579adcbecf2773082ea38ecc21188d261c2e6db9cdd95d85",
+      "no-unwanted-polyfillio.js": "84d1fe31dc0fba0fd1139b5adcaa9579dd31b33ab35f32faecc5a529edd773ab"
+    },
+    "note": "Original-package observations: initial root/API cases were recorded before the fork; Linter and grammar extensions were explicitly captured from the isolated unpatched original. Sorted lists preserve duplicate counts. Backslash root fixtures test Next normalization on Linux only; raw API fixtures exercise POSIX escape semantics. No hostile input was executed against the original.",
+    "linterCapture": {
+      "capturedAt": "2026-10-05T00:24:47.551Z",
+      "method": "Explicit capture from original Next 16.3.0 and fast-glob 3.3.1 with a JSX configuration selector; all pre-install root/API observations and original source hashes verified unchanged."
+    }
+  },
+  "filesystem": {
+    "directories": [
+      "apps/alpha",
+      "apps/beta",
+      "apps/gamma",
+      "apps/.hidden",
+      "apps/01",
+      "apps/02",
+      "apps/03",
+      "apps/05",
+      "apps/literal{one}",
+      "apps/literal(paren)",
+      "apps/deep/inner",
+      "elsewhere",
+      "context-root",
+      "cycle",
+      "grammar/apps/quoted roots/alpha",
+      "grammar/apps/quoted roots/beta",
+      "grammar/apps/quoted roots/a",
+      "grammar/apps/quoted roots/b",
+      "grammar/apps/quoted roots/,",
+      "grammar/apps/quoted roots/{",
+      "grammar/apps/quoted roots/}",
+      "grammar/apps/quoted roots/[a]",
+      "grammar/apps/quoted roots/a*",
+      "grammar/apps/quoted roots/aa",
+      "grammar/apps/quoted roots/a\\*",
+      "grammar/apps/quoted roots/back\\slash",
+      "grammar/apps/quoted roots/{a,b}",
+      "grammar/apps/quoted roots/{alpha,beta}",
+      "grammar/apps/quoted roots/\"{a,b}\"",
+      "grammar/apps/quoted roots/\"alpha\"",
+      "grammar/apps/quoted roots/01",
+      "grammar/apps/quoted roots/02",
+      "grammar/apps/quoted roots/03",
+      "grammar/apps/quoted roots/1",
+      "grammar/apps/quoted roots/2",
+      "grammar/apps/quoted roots/3"
+    ],
+    "files": [
+      "apps/file.txt",
+      "apps/alpha/pages/index.tsx",
+      "apps/alpha/pages/alpha.tsx",
+      "apps/alpha/pages/blog/[slug].tsx",
+      "apps/alpha/pages/docs/index.jsx",
+      "apps/beta/src/pages/beta.jsx",
+      "apps/gamma/app/page.tsx",
+      "apps/gamma/app/gamma/page.tsx",
+      "apps/gamma/app/(group)/grouped/page.tsx",
+      "apps/gamma/app/@slot/slot/page.tsx",
+      "apps/gamma/app/layout.tsx",
+      "apps/.hidden/pages/hidden.tsx",
+      "apps/01/pages/one.tsx",
+      "apps/02/pages/two.tsx",
+      "apps/03/pages/three.tsx",
+      "apps/05/pages/five.tsx",
+      "elsewhere/pages/outside.tsx",
+      "context-root/pages/context.tsx",
+      "grammar/apps/quoted roots/alpha/pages/grammar-alpha.tsx",
+      "grammar/apps/quoted roots/beta/pages/grammar-beta.tsx",
+      "grammar/apps/quoted roots/a/pages/grammar-a.tsx",
+      "grammar/apps/quoted roots/b/pages/grammar-b.tsx",
+      "grammar/apps/quoted roots/,/pages/grammar-comma.tsx",
+      "grammar/apps/quoted roots/{/pages/grammar-open-brace.tsx",
+      "grammar/apps/quoted roots/}/pages/grammar-close-brace.tsx",
+      "grammar/apps/quoted roots/[a]/pages/grammar-square-a.tsx",
+      "grammar/apps/quoted roots/a*/pages/grammar-star.tsx",
+      "grammar/apps/quoted roots/aa/pages/grammar-aa.tsx",
+      "grammar/apps/quoted roots/a\\*/pages/grammar-backslash-star.tsx",
+      "grammar/apps/quoted roots/back\\slash/pages/grammar-backslash.tsx",
+      "grammar/apps/quoted roots/{a,b}/pages/grammar-literal-braces.tsx",
+      "grammar/apps/quoted roots/{alpha,beta}/pages/grammar-literal-alternatives.tsx",
+      "grammar/apps/quoted roots/\"{a,b}\"/pages/grammar-quoted-braces.tsx",
+      "grammar/apps/quoted roots/\"alpha\"/pages/grammar-quoted-alpha.tsx",
+      "grammar/apps/quoted roots/01/pages/grammar-one.tsx",
+      "grammar/apps/quoted roots/02/pages/grammar-two.tsx",
+      "grammar/apps/quoted roots/03/pages/grammar-three.tsx",
+      "grammar/apps/quoted roots/1/pages/grammar-number-one.tsx",
+      "grammar/apps/quoted roots/2/pages/grammar-number-two.tsx",
+      "grammar/apps/quoted roots/3/pages/grammar-number-three.tsx"
+    ],
+    "symlinks": [
+      [
+        "links/alpha",
+        "../apps/alpha"
+      ],
+      [
+        "apps/alias",
+        "alpha"
+      ],
+      [
+        "cycle/loop",
+        "."
+      ]
+    ]
+  },
+  "anchors": [
+    [
+      "home",
+      "<a href=\"/\">home</a>"
+    ],
+    [
+      "alpha",
+      "<a href=\"/alpha\">alpha</a>"
+    ],
+    [
+      "beta",
+      "<a href=\"/beta\">beta</a>"
+    ],
+    [
+      "blog",
+      "<a href=\"/blog/pet\">blog</a>"
+    ],
+    [
+      "docs-query",
+      "<a href=\"/docs?lang=pt#top\">docs</a>"
+    ],
+    [
+      "hidden",
+      "<a href=\"/hidden\">hidden</a>"
+    ],
+    [
+      "one",
+      "<a href=\"/one\">one</a>"
+    ],
+    [
+      "two",
+      "<a href=\"/two\">two</a>"
+    ],
+    [
+      "three",
+      "<a href=\"/three\">three</a>"
+    ],
+    [
+      "five",
+      "<a href=\"/five\">five</a>"
+    ],
+    [
+      "app-page",
+      "<a href=\"/gamma\">gamma</a>"
+    ],
+    [
+      "app-group",
+      "<a href=\"/grouped\">group</a>"
+    ],
+    [
+      "app-parallel",
+      "<a href=\"/slot\">slot</a>"
+    ],
+    [
+      "context",
+      "<a href=\"/context\">context</a>"
+    ],
+    [
+      "outside",
+      "<a href=\"/outside\">outside</a>"
+    ],
+    [
+      "missing-route",
+      "<a href=\"/does-not-exist\">missing</a>"
+    ],
+    [
+      "external",
+      "<a href=\"https://example.com/alpha\">external</a>"
+    ],
+    [
+      "protocol-relative",
+      "<a href=\"//example.com/alpha\">external</a>"
+    ],
+    [
+      "blank-target",
+      "<a href=\"/alpha\" target=\"_blank\">blank</a>"
+    ],
+    [
+      "download",
+      "<a href=\"/alpha\" download>download</a>"
+    ],
+    [
+      "expression",
+      "<a href={\"/alpha\"}>expression</a>"
+    ],
+    [
+      "link-component",
+      "<Link href=\"/alpha\">link</Link>"
+    ],
+    [
+      "no-href",
+      "<a>anchor</a>"
+    ],
+    [
+      "grammar-alpha",
+      "<a href=\"/grammar-alpha\">grammar-alpha</a>"
+    ],
+    [
+      "grammar-beta",
+      "<a href=\"/grammar-beta\">grammar-beta</a>"
+    ],
+    [
+      "grammar-a",
+      "<a href=\"/grammar-a\">grammar-a</a>"
+    ],
+    [
+      "grammar-b",
+      "<a href=\"/grammar-b\">grammar-b</a>"
+    ],
+    [
+      "grammar-comma",
+      "<a href=\"/grammar-comma\">grammar-comma</a>"
+    ],
+    [
+      "grammar-open-brace",
+      "<a href=\"/grammar-open-brace\">grammar-open-brace</a>"
+    ],
+    [
+      "grammar-close-brace",
+      "<a href=\"/grammar-close-brace\">grammar-close-brace</a>"
+    ],
+    [
+      "grammar-square-a",
+      "<a href=\"/grammar-square-a\">grammar-square-a</a>"
+    ],
+    [
+      "grammar-star",
+      "<a href=\"/grammar-star\">grammar-star</a>"
+    ],
+    [
+      "grammar-aa",
+      "<a href=\"/grammar-aa\">grammar-aa</a>"
+    ],
+    [
+      "grammar-backslash-star",
+      "<a href=\"/grammar-backslash-star\">grammar-backslash-star</a>"
+    ],
+    [
+      "grammar-backslash",
+      "<a href=\"/grammar-backslash\">grammar-backslash</a>"
+    ],
+    [
+      "grammar-literal-braces",
+      "<a href=\"/grammar-literal-braces\">grammar-literal-braces</a>"
+    ],
+    [
+      "grammar-literal-alternatives",
+      "<a href=\"/grammar-literal-alternatives\">grammar-literal-alternatives</a>"
+    ],
+    [
+      "grammar-quoted-braces",
+      "<a href=\"/grammar-quoted-braces\">grammar-quoted-braces</a>"
+    ],
+    [
+      "grammar-quoted-alpha",
+      "<a href=\"/grammar-quoted-alpha\">grammar-quoted-alpha</a>"
+    ],
+    [
+      "grammar-one",
+      "<a href=\"/grammar-one\">grammar-one</a>"
+    ],
+    [
+      "grammar-two",
+      "<a href=\"/grammar-two\">grammar-two</a>"
+    ],
+    [
+      "grammar-three",
+      "<a href=\"/grammar-three\">grammar-three</a>"
+    ],
+    [
+      "grammar-number-one",
+      "<a href=\"/grammar-number-one\">grammar-number-one</a>"
+    ],
+    [
+      "grammar-number-two",
+      "<a href=\"/grammar-number-two\">grammar-number-two</a>"
+    ],
+    [
+      "grammar-number-three",
+      "<a href=\"/grammar-number-three\">grammar-number-three</a>"
+    ]
+  ],
+  "roots": [
+    {
+      "id": "literal",
+      "rootDir": "apps/alpha",
+      "expected": {
+        "roots": [
+          "apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "trailing-slash",
+      "rootDir": "apps/alpha/",
+      "expected": {
+        "roots": [
+          "apps/alpha/"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "dot-prefix",
+      "rootDir": "./apps/alpha",
+      "expected": {
+        "roots": [
+          "./apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "wildcard-excludes-dot",
+      "rootDir": "apps/*",
+      "expected": {
+        "roots": [
+          "apps/01",
+          "apps/02",
+          "apps/03",
+          "apps/05",
+          "apps/alias",
+          "apps/alpha",
+          "apps/beta",
+          "apps/deep",
+          "apps/gamma",
+          "apps/literal(paren)",
+          "apps/literal{one}"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 9,
+            "column": 3,
+            "endLine": 9,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/five/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 11,
+            "column": 3,
+            "endLine": 11,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "explicit-dot",
+      "rootDir": "apps/.*",
+      "expected": {
+        "roots": [
+          "apps/.hidden"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/hidden/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 7,
+            "column": 3,
+            "endLine": 7,
+            "endColumn": 21,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-alternatives",
+      "rootDir": "apps/{alpha,beta}",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-nested",
+      "rootDir": "apps/{alpha,{beta,gamma}}",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta",
+          "apps/gamma"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-padded-range",
+      "rootDir": "apps/{01..03}",
+      "expected": {
+        "roots": [
+          "apps/01",
+          "apps/02",
+          "apps/03"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 9,
+            "column": 3,
+            "endLine": 9,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-step-range",
+      "rootDir": "apps/{01..05..2}",
+      "expected": {
+        "roots": [
+          "apps/01",
+          "apps/03",
+          "apps/05"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/five/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 11,
+            "column": 3,
+            "endLine": 11,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-descending-step",
+      "rootDir": "apps/{05..01..2}",
+      "expected": {
+        "roots": [
+          "apps/01",
+          "apps/03",
+          "apps/05"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/five/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 11,
+            "column": 3,
+            "endLine": 11,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-duplicates",
+      "rootDir": "apps/{alpha,alpha,beta}",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-empty-alternative",
+      "rootDir": "apps/{alpha,}",
+      "expected": {
+        "roots": [
+          "apps/",
+          "apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "brace-literal",
+      "rootDir": "apps/literal{one}",
+      "expected": {
+        "roots": [
+          "apps/literal{one}"
+        ]
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "extglob-at",
+      "rootDir": "apps/@(alpha|beta)",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "extglob-plus",
+      "rootDir": "apps/+(alpha|beta)",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "extglob-question",
+      "rootDir": "apps/?(alpha|beta)",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "extglob-star",
+      "rootDir": "apps/*(alpha|beta)",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "extglob-negative-dot-quirk",
+      "rootDir": "apps/!(alpha|beta)",
+      "expected": {
+        "roots": [
+          "apps/.hidden",
+          "apps/01",
+          "apps/02",
+          "apps/03",
+          "apps/05",
+          "apps/alias",
+          "apps/deep",
+          "apps/gamma",
+          "apps/literal(paren)",
+          "apps/literal{one}"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/hidden/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 7,
+            "column": 3,
+            "endLine": 7,
+            "endColumn": 21,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 9,
+            "column": 3,
+            "endLine": 9,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/five/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 11,
+            "column": 3,
+            "endLine": 11,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "standalone-negation",
+      "rootDir": "!apps/alpha",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "standalone-bang",
+      "rootDir": "!",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "array-independent-negations",
+      "rootDir": [
+        "apps/*",
+        "!apps/alpha"
+      ],
+      "expected": {
+        "roots": [
+          "apps/01",
+          "apps/02",
+          "apps/03",
+          "apps/05",
+          "apps/alias",
+          "apps/alpha",
+          "apps/beta",
+          "apps/deep",
+          "apps/gamma",
+          "apps/literal(paren)",
+          "apps/literal{one}"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 9,
+            "column": 3,
+            "endLine": 9,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/five/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 11,
+            "column": 3,
+            "endLine": 11,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "array-retains-duplicates",
+      "rootDir": [
+        "apps/alpha",
+        "apps/alpha",
+        "apps/{alpha,beta}"
+      ],
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/alpha",
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "array-ignores-nonstrings",
+      "rootDir": [
+        null,
+        7,
+        false,
+        {},
+        [
+          "apps/beta"
+        ],
+        "apps/alpha"
+      ],
+      "expected": {
+        "roots": [
+          "apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "empty-array",
+      "rootDir": [],
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "nonstrings-use-context",
+      "rootDir": 7,
+      "expected": {
+        "roots": [
+          "$FIXTURE"
+        ]
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "empty-string-error",
+      "rootDir": "",
+      "expected": {
+        "error": {
+          "name": "TypeError",
+          "message": "Patterns must be a string (non empty) or an array of strings"
+        }
+      },
+      "lint": {
+        "error": {
+          "name": "TypeError",
+          "message": "Error while loading rule '@next/next/no-html-link-for-pages': Patterns must be a string (non empty) or an array of strings\nOccurred while linting $FIXTURE/fixture.jsx"
+        }
+      }
+    },
+    {
+      "id": "array-empty-string-error",
+      "rootDir": [
+        "apps/alpha",
+        ""
+      ],
+      "expected": {
+        "error": {
+          "name": "TypeError",
+          "message": "Patterns must be a string (non empty) or an array of strings"
+        }
+      },
+      "lint": {
+        "error": {
+          "name": "TypeError",
+          "message": "Error while loading rule '@next/next/no-html-link-for-pages': Patterns must be a string (non empty) or an array of strings\nOccurred while linting $FIXTURE/fixture.jsx"
+        }
+      }
+    },
+    {
+      "id": "absolute",
+      "rootDir": "$FIXTURE/apps/alpha",
+      "expected": {
+        "roots": [
+          "$FIXTURE/apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "absolute-wildcard",
+      "rootDir": "$FIXTURE/apps/@(alpha|beta)",
+      "expected": {
+        "roots": [
+          "$FIXTURE/apps/alpha",
+          "$FIXTURE/apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "backslash-normalized-on-linux",
+      "rootDir": "apps\\alpha",
+      "expected": {
+        "roots": [
+          "apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "backslash-glob-normalized-on-linux",
+      "rootDir": "apps\\{alpha,beta}",
+      "expected": {
+        "roots": [
+          "apps/alpha",
+          "apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "missing-directory",
+      "rootDir": "apps/missing",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "file-excluded",
+      "rootDir": "apps/file.txt",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "parent-path",
+      "rootDir": "../apps/alpha",
+      "processCwd": "context-root",
+      "expected": {
+        "roots": [
+          "../apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "dot-parent-path",
+      "rootDir": "./../apps/{alpha,beta}",
+      "processCwd": "context-root",
+      "expected": {
+        "roots": [
+          "./../apps/alpha",
+          "./../apps/beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "recursive-directories",
+      "rootDir": "apps/**",
+      "expected": {
+        "roots": [
+          "apps/01",
+          "apps/01/pages",
+          "apps/02",
+          "apps/02/pages",
+          "apps/03",
+          "apps/03/pages",
+          "apps/05",
+          "apps/05/pages",
+          "apps/alias",
+          "apps/alias/pages",
+          "apps/alias/pages/blog",
+          "apps/alias/pages/docs",
+          "apps/alpha",
+          "apps/alpha/pages",
+          "apps/alpha/pages/blog",
+          "apps/alpha/pages/docs",
+          "apps/beta",
+          "apps/beta/src",
+          "apps/beta/src/pages",
+          "apps/deep",
+          "apps/deep/inner",
+          "apps/gamma",
+          "apps/gamma/app",
+          "apps/gamma/app/(group)",
+          "apps/gamma/app/(group)/grouped",
+          "apps/gamma/app/@slot",
+          "apps/gamma/app/@slot/slot",
+          "apps/gamma/app/gamma",
+          "apps/literal(paren)",
+          "apps/literal{one}"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 4,
+            "column": 3,
+            "endLine": 4,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 8,
+            "column": 3,
+            "endLine": 8,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 9,
+            "column": 3,
+            "endLine": 9,
+            "endColumn": 18,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 10,
+            "column": 3,
+            "endLine": 10,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/five/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 11,
+            "column": 3,
+            "endLine": 11,
+            "endColumn": 19,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "recursive-pages",
+      "rootDir": "apps/**/pages",
+      "expected": {
+        "roots": [
+          "apps/01/pages",
+          "apps/02/pages",
+          "apps/03/pages",
+          "apps/05/pages",
+          "apps/alias/pages",
+          "apps/alpha/pages",
+          "apps/beta/src/pages"
+        ]
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "directory-symlink",
+      "rootDir": "links/*",
+      "expected": {
+        "roots": [
+          "links/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "default-context-cwd",
+      "contextCwd": "context-root",
+      "expected": {
+        "roots": [
+          "$FIXTURE/context-root"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/context/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 15,
+            "column": 3,
+            "endLine": 15,
+            "endColumn": 22,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "explicit-uses-process-cwd",
+      "rootDir": "apps/alpha",
+      "contextCwd": "context-root",
+      "expected": {
+        "roots": [
+          "apps/alpha"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 3,
+            "column": 3,
+            "endLine": 3,
+            "endColumn": 20,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/blog/pet/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 5,
+            "column": 3,
+            "endLine": 5,
+            "endColumn": 23,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/docs/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 6,
+            "column": 3,
+            "endLine": 6,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "explicit-process-cwd-differs",
+      "rootDir": "apps/alpha",
+      "processCwd": "context-root",
+      "contextCwd": ".",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "app-only-real-rule-behavior",
+      "rootDir": "apps/gamma",
+      "expected": {
+        "roots": [
+          "apps/gamma"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 2,
+            "column": 3,
+            "endLine": 2,
+            "endColumn": 15,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-quoted-alternatives",
+      "rootDir": "\"{alpha,beta}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "alpha",
+          "beta"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-alpha/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 25,
+            "column": 3,
+            "endLine": 25,
+            "endColumn": 28,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-beta/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 26,
+            "column": 3,
+            "endLine": 26,
+            "endColumn": 27,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-quoted-short-alternatives",
+      "rootDir": "\"{a,b}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "a",
+          "b"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 27,
+            "column": 3,
+            "endLine": 27,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-single-quoted-alternatives",
+      "rootDir": "'{a,b}'",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "a",
+          "b"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 27,
+            "column": 3,
+            "endLine": 27,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-quoted-padded-range",
+      "rootDir": "\"{01..03}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "grammar-quoted-step-range",
+      "rootDir": "\"{01..03..2}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "grammar-bracket-with-braces",
+      "rootDir": "[{a,b}]",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          ",",
+          "a",
+          "b",
+          "{",
+          "}"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 27,
+            "column": 3,
+            "endLine": 27,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-comma/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 29,
+            "column": 3,
+            "endLine": 29,
+            "endColumn": 28,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-open-brace/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 30,
+            "column": 3,
+            "endLine": 30,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-close-brace/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 31,
+            "column": 3,
+            "endLine": 31,
+            "endColumn": 34,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-bracket-literal-square",
+      "rootDir": "[a]",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "[a]",
+          "a"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 27,
+            "column": 3,
+            "endLine": 27,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-square-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 32,
+            "column": 3,
+            "endLine": 32,
+            "endColumn": 31,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-escaped-braces-normalized",
+      "rootDir": "\\{a,b\\}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "grammar-escaped-star-normalized",
+      "rootDir": "{a\\*,b}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "a/pages",
+          "b"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-backslash-name-normalized",
+      "rootDir": "back\\slash",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": []
+      },
+      "lint": {
+        "findings": []
+      }
+    },
+    {
+      "id": "grammar-array-independent-quotes-class",
+      "rootDir": [
+        "\"{a,b}\"",
+        "[{a,b}]"
+      ],
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          ",",
+          "a",
+          "a",
+          "b",
+          "b",
+          "{",
+          "}"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 27,
+            "column": 3,
+            "endLine": 27,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-comma/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 29,
+            "column": 3,
+            "endLine": 29,
+            "endColumn": 28,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-open-brace/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 30,
+            "column": 3,
+            "endLine": 30,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-close-brace/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 31,
+            "column": 3,
+            "endLine": 31,
+            "endColumn": 34,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-small-scientific-numeric",
+      "rootDir": "{1e0..3e0}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 44,
+            "column": 3,
+            "endLine": 44,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 45,
+            "column": 3,
+            "endLine": 45,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 46,
+            "column": 3,
+            "endLine": 46,
+            "endColumn": 35,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-small-whitespace-numeric",
+      "rootDir": "{ 1 .. 3 }",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 44,
+            "column": 3,
+            "endLine": 44,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 45,
+            "column": 3,
+            "endLine": 45,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 46,
+            "column": 3,
+            "endLine": 46,
+            "endColumn": 35,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-small-descending-scientific",
+      "rootDir": "{3e0..1e0}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "1",
+          "2",
+          "3"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 44,
+            "column": 3,
+            "endLine": 44,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-two/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 45,
+            "column": 3,
+            "endLine": 45,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 46,
+            "column": 3,
+            "endLine": 46,
+            "endColumn": 35,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-small-stepped-scientific",
+      "rootDir": "{1e0..3e0..2e0}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "1",
+          "3"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 44,
+            "column": 3,
+            "endLine": 44,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-three/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 46,
+            "column": 3,
+            "endLine": 46,
+            "endColumn": 35,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-small-mixed-numeric-char",
+      "rootDir": "{1e0..b..49}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "1",
+          "b"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-number-one/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 44,
+            "column": 3,
+            "endLine": 44,
+            "endColumn": 33,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    },
+    {
+      "id": "grammar-small-alpha-range",
+      "rootDir": "{a..b}",
+      "processCwd": "grammar/apps/quoted roots",
+      "expected": {
+        "roots": [
+          "a",
+          "b"
+        ]
+      },
+      "lint": {
+        "findings": [
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-a/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 27,
+            "column": 3,
+            "endLine": 27,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          },
+          {
+            "ruleId": "@next/next/no-html-link-for-pages",
+            "severity": 2,
+            "message": "Do not use an `<a>` element to navigate to `/grammar-b/`. Use `<Link />` from `next/link` instead. See: https://nextjs.org/docs/messages/no-html-link-for-pages",
+            "line": 28,
+            "column": 3,
+            "endLine": 28,
+            "endColumn": 24,
+            "nodeType": "JSXOpeningElement"
+          }
+        ]
+      }
+    }
+  ],
+  "apis": [
+    {
+      "id": "directories",
+      "patterns": "apps/*",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "apps/01",
+        "apps/02",
+        "apps/03",
+        "apps/05",
+        "apps/alias",
+        "apps/alpha",
+        "apps/beta",
+        "apps/deep",
+        "apps/gamma",
+        "apps/literal(paren)",
+        "apps/literal{one}"
+      ]
+    },
+    {
+      "id": "braces",
+      "patterns": "apps/{alpha,{beta,gamma}}",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "apps/alpha",
+        "apps/beta",
+        "apps/gamma"
+      ]
+    },
+    {
+      "id": "negative-extglob",
+      "patterns": "apps/!(alpha|beta)",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "apps/.hidden",
+        "apps/01",
+        "apps/02",
+        "apps/03",
+        "apps/05",
+        "apps/alias",
+        "apps/deep",
+        "apps/gamma",
+        "apps/literal(paren)",
+        "apps/literal{one}"
+      ]
+    },
+    {
+      "id": "dot-enabled",
+      "patterns": "apps/*",
+      "options": {
+        "onlyDirectories": true,
+        "dot": true
+      },
+      "expected": [
+        "apps/.hidden",
+        "apps/01",
+        "apps/02",
+        "apps/03",
+        "apps/05",
+        "apps/alias",
+        "apps/alpha",
+        "apps/beta",
+        "apps/deep",
+        "apps/gamma",
+        "apps/literal(paren)",
+        "apps/literal{one}"
+      ]
+    },
+    {
+      "id": "files-recursive",
+      "patterns": "apps/**/*.{tsx,jsx}",
+      "options": {},
+      "expected": [
+        "apps/01/pages/one.tsx",
+        "apps/02/pages/two.tsx",
+        "apps/03/pages/three.tsx",
+        "apps/05/pages/five.tsx",
+        "apps/alias/pages/alpha.tsx",
+        "apps/alias/pages/blog/[slug].tsx",
+        "apps/alias/pages/docs/index.jsx",
+        "apps/alias/pages/index.tsx",
+        "apps/alpha/pages/alpha.tsx",
+        "apps/alpha/pages/blog/[slug].tsx",
+        "apps/alpha/pages/docs/index.jsx",
+        "apps/alpha/pages/index.tsx",
+        "apps/beta/src/pages/beta.jsx",
+        "apps/gamma/app/(group)/grouped/page.tsx",
+        "apps/gamma/app/@slot/slot/page.tsx",
+        "apps/gamma/app/gamma/page.tsx",
+        "apps/gamma/app/layout.tsx",
+        "apps/gamma/app/page.tsx"
+      ]
+    },
+    {
+      "id": "negation-array",
+      "patterns": [
+        "apps/*",
+        "!apps/alpha"
+      ],
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "apps/01",
+        "apps/02",
+        "apps/03",
+        "apps/05",
+        "apps/alias",
+        "apps/beta",
+        "apps/deep",
+        "apps/gamma",
+        "apps/literal(paren)",
+        "apps/literal{one}"
+      ]
+    },
+    {
+      "id": "ignore",
+      "patterns": "apps/*",
+      "options": {
+        "onlyDirectories": true,
+        "ignore": [
+          "apps/beta"
+        ]
+      },
+      "expected": [
+        "apps/01",
+        "apps/02",
+        "apps/03",
+        "apps/05",
+        "apps/alias",
+        "apps/alpha",
+        "apps/deep",
+        "apps/gamma",
+        "apps/literal(paren)",
+        "apps/literal{one}"
+      ]
+    },
+    {
+      "id": "no-follow-symlinks",
+      "patterns": "links/*",
+      "options": {
+        "onlyDirectories": true,
+        "followSymbolicLinks": false
+      },
+      "expected": []
+    },
+    {
+      "id": "absolute-results",
+      "patterns": "apps/{alpha,beta}",
+      "options": {
+        "onlyDirectories": true,
+        "absolute": true
+      },
+      "expected": [
+        "$FIXTURE/apps/alpha",
+        "$FIXTURE/apps/beta"
+      ]
+    },
+    {
+      "id": "object-mode",
+      "patterns": "apps/{alpha,beta}",
+      "options": {
+        "onlyDirectories": true,
+        "objectMode": true
+      },
+      "expected": [
+        {
+          "path": "apps/alpha",
+          "name": "apps/alpha",
+          "isDirectory": true,
+          "isFile": false,
+          "isSymbolicLink": false
+        },
+        {
+          "path": "apps/beta",
+          "name": "apps/beta",
+          "isDirectory": true,
+          "isFile": false,
+          "isSymbolicLink": false
+        }
+      ]
+    },
+    {
+      "id": "stats",
+      "patterns": "apps/{alpha,beta}",
+      "options": {
+        "onlyDirectories": true,
+        "stats": true
+      },
+      "expected": [
+        {
+          "path": "apps/alpha",
+          "name": "apps/alpha",
+          "isDirectory": true,
+          "isFile": false,
+          "isSymbolicLink": false,
+          "statIsDirectory": true,
+          "statIsFile": false
+        },
+        {
+          "path": "apps/beta",
+          "name": "apps/beta",
+          "isDirectory": true,
+          "isFile": false,
+          "isSymbolicLink": false,
+          "statIsDirectory": true,
+          "statIsFile": false
+        }
+      ]
+    },
+    {
+      "id": "case-insensitive",
+      "patterns": "apps/ALPHA",
+      "options": {
+        "onlyDirectories": true,
+        "caseSensitiveMatch": false
+      },
+      "expected": [
+        "apps/alpha"
+      ]
+    },
+    {
+      "id": "grammar-quoted-alternatives",
+      "patterns": "\"{alpha,beta}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "alpha",
+        "beta"
+      ]
+    },
+    {
+      "id": "grammar-quoted-short-alternatives",
+      "patterns": "\"{a,b}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-single-quoted-alternatives",
+      "patterns": "'{a,b}'",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-quoted-padded-range",
+      "patterns": "\"{01..03}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": []
+    },
+    {
+      "id": "grammar-quoted-step-range",
+      "patterns": "\"{01..03..2}\"",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": []
+    },
+    {
+      "id": "grammar-bracket-with-braces",
+      "patterns": "[{a,b}]",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        ",",
+        "{",
+        "}",
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-bracket-literal-square",
+      "patterns": "[a]",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "[a]",
+        "a"
+      ]
+    },
+    {
+      "id": "grammar-escaped-braces",
+      "patterns": "\\{a,b\\}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-escaped-star-alternative",
+      "patterns": "{a\\*,b}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "a",
+        "a*",
+        "a\\*",
+        "aa",
+        "alpha",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-escaped-comma",
+      "patterns": "{a\\,b}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-escaped-backslash-name",
+      "patterns": "back\\\\slash",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "back\\slash"
+      ]
+    },
+    {
+      "id": "grammar-escaped-backslash-star",
+      "patterns": "a\\\\\\*",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": []
+    },
+    {
+      "id": "grammar-escaped-square-brackets",
+      "patterns": "\\[a\\]",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": []
+    },
+    {
+      "id": "grammar-mixed-quoted-class-array",
+      "patterns": [
+        "\"{a,b}\"",
+        "[{a,b}]"
+      ],
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        ",",
+        "{",
+        "}",
+        "a",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-small-scientific-numeric",
+      "patterns": "{1e0..3e0}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "grammar-small-whitespace-numeric",
+      "patterns": "{ 1 .. 3 }",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "grammar-small-descending-scientific",
+      "patterns": "{3e0..1e0}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "1",
+        "2",
+        "3"
+      ]
+    },
+    {
+      "id": "grammar-small-stepped-scientific",
+      "patterns": "{1e0..3e0..2e0}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "1",
+        "3"
+      ]
+    },
+    {
+      "id": "grammar-small-mixed-numeric-char",
+      "patterns": "{1e0..b..49}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "1",
+        "b"
+      ]
+    },
+    {
+      "id": "grammar-small-alpha-range",
+      "patterns": "{a..b}",
+      "processCwd": "grammar/apps/quoted roots",
+      "options": {
+        "onlyDirectories": true
+      },
+      "expected": [
+        "a",
+        "b"
+      ]
+    }
+  ],
+  "symlinkCycle": {
+    "sync": {
+      "roots": [
+        "cycle/loop",
+        "cycle/loop/loop",
+        "cycle/loop/loop/loop",
+        "cycle/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop"
+      ]
+    },
+    "async": {
+      "roots": [
+        "cycle/loop",
+        "cycle/loop/loop",
+        "cycle/loop/loop/loop",
+        "cycle/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop"
+      ]
+    },
+    "stream": {
+      "roots": [
+        "cycle/loop",
+        "cycle/loop/loop",
+        "cycle/loop/loop/loop",
+        "cycle/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop"
+      ]
+    },
+    "roots": {
+      "roots": [
+        "cycle/loop",
+        "cycle/loop/loop",
+        "cycle/loop/loop/loop",
+        "cycle/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop",
+        "cycle/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop/loop"
+      ]
+    }
+  }
+}
