@@ -52,10 +52,10 @@ const mutations = [
   {
     id: "MC-REALTIME-001",
     category: "realtime-replay",
-    file: "src/server/observability/realtime-stream.ts",
-    needle: "return state.outbox.filter((message) => message.status === \"PENDING\" || message.status === \"PROCESSED\").slice(-window);",
-    replacement: "return state.outbox.filter((message) => message.status === \"PENDING\" || message.status === \"PROCESSED\" || message.status === \"PROCESSING\").slice(-window);",
-    tests: ["src/server/observability/realtime-stream.test.ts"]
+    file: "src/server/domain/outbox-read.ts",
+    needle: "return messages.filter((message) => message.status === \"PENDING\" || message.status === \"PROCESSED\").slice(-limit);",
+    replacement: "return messages.filter((message) => message.status === \"PENDING\" || message.status === \"PROCESSED\" || message.status === \"PROCESSING\").slice(-limit);",
+    tests: ["src/server/store/memory-store.test.ts", "src/server/observability/realtime-stream.test.ts"]
   },
   {
     id: "MC-RECOVERY-001",

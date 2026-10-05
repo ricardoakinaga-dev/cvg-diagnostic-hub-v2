@@ -162,8 +162,11 @@ describe("PostgresStore multi-instance integration", () => {
       expect(item?.currentResultId).toBe(results[0]?.id);
       expect(results).toHaveLength(1);
       expect(durableState.resultVersions.filter((version) => version.resultId === results[0]?.id)).toHaveLength(1);
-      expect(durableState.auditEvents.filter((event) => event.eventType === "ResultDraftCreated")).toHaveLength(1);
-      expect(durableState.outbox.filter((message) => message.eventType === "ResultDraftCreated")).toHaveLength(0);
+      expect(durableState.auditEvents).toEqual([]);
+      const draftAudits = await second.readAuditEvents({ scope: { entities: [{ entityType: "Result", entityId: results[0]!.id }] }, order: "asc", limit: 1000 });
+      expect(draftAudits.items.filter((event) => event.eventType === "ResultDraftCreated")).toHaveLength(1);
+      expect(durableState.outbox).toEqual([]);
+      expect((await second.readOutbox({ kind: "replay", limit: 100 })).filter((message) => message.eventType === "ResultDraftCreated")).toHaveLength(0);
     });
   });
 
@@ -189,12 +192,17 @@ describe("PostgresStore multi-instance integration", () => {
       const reopened = await database.createStore();
       const durableState = await asFreshReadable(reopened).readState();
       expect(durableState.requests.some((request) => request.id === created.id)).toBe(true);
-      expect(durableState.auditEvents.some((event) => event.entityId === created.id)).toBe(true);
-      expect(durableState.outbox.some((message) => message.aggregateId === created.id)).toBe(true);
+      expect(durableState.auditEvents).toEqual([]);
+      const durableAudits = await reopened.readAuditEvents({ scope: { entities: [{ entityType: "DiagnosticRequest", entityId: created.id }] }, order: "asc", limit: 1000 });
+      expect(durableAudits.items.some((event) => event.entityId === created.id)).toBe(true);
+      expect(durableState.outbox).toEqual([]);
+      const durableOutbox = await reopened.readOutbox({ kind: "replay", limit: 100 });
+      expect(durableOutbox.some((message) => message.aggregateId === created.id)).toBe(true);
       const auditProjection = await database.query("SELECT id FROM audit_events WHERE entity_id = $1", [created.id]);
       const outboxProjection = await database.query("SELECT id FROM outbox_messages WHERE aggregate_id = $1", [created.id]);
       expect(auditProjection.rowCount).toBeGreaterThan(0);
       expect(outboxProjection.rowCount).toBeGreaterThan(0);
+      expect(outboxProjection.rows).toEqual(durableOutbox.filter((message) => message.aggregateId === created.id).map(({ id }) => ({ id })));
     });
   });
 
@@ -272,6 +280,12 @@ describe("PostgresStore multi-instance integration", () => {
     try {
       await withDisposablePostgresDatabase(async (database) => {
         const fixture = createDemoState(TEST_PASSWORD);
+        fixture.auditEvents = [{
+          id: "audit-reset-populated-fixture", eventType: "SyntheticResetFixture", actorId: "user-vet",
+          entityType: "DiagnosticRequest", entityId: "request-reset-fixture", previousState: "", newState: "ACTIVE",
+          correlationId: "correlation-reset-fixture", metadata: { synthetic: true, preserved: true },
+          occurredAt: "2026-08-22T00:00:00.000Z"
+        }];
         const store = await database.createStore(fixture);
         const service = createApplicationService(store);
         const actor = store.getState().users.find((user) => user.email === "vet@cvg.local");
@@ -287,24 +301,40 @@ describe("PostgresStore multi-instance integration", () => {
           },
           { idempotencyKey: "postgres-repeatable-reset" }
         );
-        const auditIdsBeforeReset = store.getState().auditEvents.map((event) => event.id);
-        expect(store.getState().outbox.length).toBeGreaterThan(0);
+        const allAuditQuery = { scope: { entities: [], unresolved: { resolvedEntities: [] } }, order: "asc" as const, limit: 1000 };
+        const auditIdsBeforeReset = (await store.readAuditEvents(allAuditQuery)).items.map((event) => event.id);
+        expect(auditIdsBeforeReset.length).toBeGreaterThan(0);
+        expect(store.getState().outbox).toEqual([]);
+        expect((await store.readOutbox({ kind: "replay", limit: 100 })).length).toBeGreaterThan(0);
 
         await store.reset(fixture, { authorization: "ALLOW_DB_SMOKE_RESET" });
         await store.reset(fixture, { authorization: "ALLOW_DB_SMOKE_RESET" });
 
         const durableState = await asFreshReadable(store).readState();
         expect(durableState.requests.some((request) => request.id === created.id)).toBe(false);
-        expect(durableState.auditEvents.slice(0, auditIdsBeforeReset.length).map((event) => event.id)).toEqual(auditIdsBeforeReset);
-        const resetAuditEvents = durableState.auditEvents.filter((event) => event.eventType === "PostgresAdministrativeReset");
+        expect(durableState.auditEvents).toEqual([]);
+        const durableAudits = (await store.readAuditEvents(allAuditQuery)).items;
+        expect(durableAudits.map((event) => event.id)).toEqual(expect.arrayContaining(auditIdsBeforeReset));
+        const resetAuditEvents = durableAudits.filter((event) => event.eventType === "PostgresAdministrativeReset");
         expect(resetAuditEvents).toHaveLength(2);
         expect(resetAuditEvents.every((event) => event.actorId === undefined)).toBe(true);
         expect(resetAuditEvents.every((event) => event.metadata.authorization === "ALLOW_DB_SMOKE_RESET")).toBe(true);
+        expect(durableAudits.filter((event) => event.id === fixture.auditEvents[0].id)).toEqual(fixture.auditEvents);
         expect(durableState.outbox).toEqual([]);
         const auditProjection = await database.query("SELECT id FROM audit_events ORDER BY occurred_at, id");
         const outboxProjection = await database.query("SELECT id FROM outbox_messages");
         expect(auditProjection.rows).toHaveLength(auditIdsBeforeReset.length + 2);
         expect(outboxProjection.rows).toHaveLength(0);
+        const beforeRejectedReset = await store.readStateSnapshot();
+        const beforeRejectedAudit = await database.query("SELECT * FROM audit_events ORDER BY id");
+        const beforeRejectedOutbox = await database.query("SELECT * FROM outbox_messages ORDER BY id");
+        await expect(store.reset({
+          ...fixture, protocolSequence: fixture.protocolSequence + 100,
+          auditEvents: fixture.auditEvents.map((event) => ({ ...event, metadata: { synthetic: true, preserved: false } }))
+        }, { authorization: "ALLOW_DB_SMOKE_RESET" })).rejects.toThrow("POSTGRES_AUDIT_LOG_MUTATION");
+        expect(await store.readStateSnapshot()).toEqual(beforeRejectedReset);
+        expect(await database.query("SELECT * FROM audit_events ORDER BY id")).toEqual(beforeRejectedAudit);
+        expect(await database.query("SELECT * FROM outbox_messages ORDER BY id")).toEqual(beforeRejectedOutbox);
         await expect(store.healthcheck()).resolves.toBeUndefined();
       });
     } finally {
@@ -341,7 +371,9 @@ describe("PostgresStore multi-instance integration", () => {
 
       const durableState = await asFreshReadable(store).readState();
       expect(durableState.protocolSequence).toBe(initialSequence);
-      expect(durableState.auditEvents.some((event) => event.id === eventId)).toBe(false);
+      expect(durableState.auditEvents).toEqual([]);
+      const durableAudits = await store.readAuditEvents({ scope: { entities: [], unresolved: { resolvedEntities: [] } }, order: "asc", limit: 1000 });
+      expect(durableAudits.items.filter((event) => event.id === eventId)).toEqual([expect.objectContaining({ eventType: "ConflictingAudit", entityId: "request-conflict" })]);
     });
   });
 
@@ -384,7 +416,7 @@ describe("PostgresStore multi-instance integration", () => {
     await withDisposablePostgresDatabase(async (database) => {
       await database.createStore(createDemoState(TEST_PASSWORD));
       await expect(database.query("TRUNCATE audit_events")).rejects.toThrow("AUDIT_EVENTS_ARE_APPEND_ONLY");
-      const boundary = await database.query("SELECT boundary_key, authoritative_store, status, reconciliation_mode FROM runtime_storage_boundaries");
+      const boundary = await database.query("SELECT boundary_key, authoritative_store, status, reconciliation_mode FROM runtime_storage_boundaries WHERE boundary_key = 'runtime-jsonb-snapshot-v1'");
       expect(boundary.rows).toEqual([expect.objectContaining({
         boundary_key: "runtime-jsonb-snapshot-v1",
         authoritative_store: "cvg_runtime_state",

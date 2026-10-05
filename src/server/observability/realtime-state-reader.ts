@@ -1,4 +1,5 @@
 import type { StateStore, StoreState } from "../domain/models";
+import { recordRealtimeSharedRead } from "./metrics";
 
 const REALTIME_SHARED_READ_DEFAULT_MIN_INTERVAL_MS = 1_000;
 const REALTIME_SHARED_READ_MIN_MINIMUM_MS = 100;
@@ -78,8 +79,10 @@ export function createSharedRealtimeStateReader(
   let lastFullReadAtMs = Number.NEGATIVE_INFINITY;
 
   const performRead = async (): Promise<RealtimeStateSnapshot> => {
-    const { state, version } = await store.readStateSnapshot();
+    // Share the maximum replay tail; each stream applies its configured window.
+    const { state, version } = await store.readRealtimeSnapshot(100);
     fullReads += 1;
+    recordRealtimeSharedRead("stream");
     lastFullReadAtMs = now();
     cached = { state, version, readAtMs: lastFullReadAtMs };
     return cached;

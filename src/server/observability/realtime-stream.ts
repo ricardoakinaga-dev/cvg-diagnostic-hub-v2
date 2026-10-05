@@ -1,7 +1,7 @@
 import type { StateStore, StoreState, User } from "../domain/models";
 import { renewSessionActivity } from "../domain/session-activity";
 import { getRealtimeNotificationAdapter, type RealtimeNotificationAdapter } from "./realtime";
-import { recordRealtimeAuthorizationStaleness, recordRealtimePoll, recordRealtimeResync, recordRealtimeSharedRead, recordRealtimeStreamClosure, releaseRealtimeConnection, tryAcquireRealtimeConnection } from "./metrics";
+import { recordRealtimeAuthorizationStaleness, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, releaseRealtimeConnection, tryAcquireRealtimeConnection } from "./metrics";
 import { sharedRealtimeStateReader, type RealtimeReadTrigger, type RealtimeStateSnapshot } from "./realtime-state-reader";
 
 export interface RealtimeAccessPolicy {
@@ -343,7 +343,6 @@ async function readRealtimeSnapshot(
   const reader = sharedRealtimeStateReader(store);
   return readWithRealtimeDeadline(async () => {
     const snapshot = await reader.read(trigger);
-    recordRealtimeSharedRead("stream");
     return snapshot;
   }, timeoutMs, signal);
 }

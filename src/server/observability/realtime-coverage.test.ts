@@ -188,7 +188,7 @@ describe("realtime public contract coverage", () => {
   });
 
   it("publishes process-local wake-ups once per listener and isolates listener errors", () => {
-    const environment = {
+    const environment: NodeJS.ProcessEnv = {
       NODE_ENV: "test",
       REALTIME_NOTIFICATION_ADAPTER: "process-local"
     } as NodeJS.ProcessEnv;
@@ -346,5 +346,229 @@ describe("realtime public contract coverage", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("makes subscriptions and publication inert after shutdown", async () => {
+    const { client, notifications, errors } = mockClient();
+    const pool: RealtimeNotificationPool = {
+      connect: vi.fn().mockResolvedValue(client),
+      query: vi.fn().mockResolvedValue(undefined),
+      end: vi.fn().mockResolvedValue(undefined)
+    };
+    const adapter = new PostgresListenRealtimeNotificationAdapter(pool, "cvg_disposal");
+    const listener = vi.fn();
+    const unsubscribe = adapter.subscribe(listener);
+    await settleConnection();
+    notifications[0]?.({ channel: "cvg_disposal" });
+    expect(listener).toHaveBeenCalledOnce();
+
+    unsubscribe();
+    unsubscribe();
+    notifications[0]?.({ channel: "cvg_disposal" });
+    expect(listener).toHaveBeenCalledOnce();
+    await adapter.close();
+
+    const lateListener = vi.fn();
+    const unsubscribeLate = adapter.subscribe(lateListener);
+    expect(unsubscribeLate()).toBeUndefined();
+    adapter.notify();
+    errors[0]?.(new Error("late socket error"));
+    notifications[0]?.({ channel: "cvg_disposal" });
+    await settleConnection();
+    expect(lateListener).not.toHaveBeenCalled();
+    expect(pool.query).not.toHaveBeenCalled();
+    expect(pool.connect).toHaveBeenCalledOnce();
+    expect(client.release).toHaveBeenCalledOnce();
+    expect(pool.end).toHaveBeenCalledOnce();
+  });
+
+  it("stops delivery to active subscribers when closed despite late transport callbacks", async () => {
+    vi.useFakeTimers();
+    const { client, notifications, errors } = mockClient();
+    const pool: RealtimeNotificationPool = {
+      connect: vi.fn().mockResolvedValue(client),
+      query: vi.fn().mockResolvedValue(undefined),
+      end: vi.fn().mockResolvedValue(undefined)
+    };
+    const adapter = new PostgresListenRealtimeNotificationAdapter(pool, "cvg_active_shutdown");
+    const activeListener = vi.fn();
+    const unsubscribeActive = adapter.subscribe(activeListener);
+    let closed = false;
+    try {
+      await settleConnection();
+      const notification = notifications[0];
+      const transportError = errors[0];
+      if (!notification || !transportError) throw new Error("transport callbacks missing");
+      notification({ channel: "cvg_active_shutdown" });
+      expect(activeListener).toHaveBeenCalledOnce();
+
+      // Keep the subscriber registered across close: unsubscription must not
+      // hide late delivery by the released transport's retained callbacks.
+      await adapter.close();
+      closed = true;
+      const lateListener = vi.fn();
+      const unsubscribeLate = adapter.subscribe(lateListener);
+      expect(unsubscribeLate()).toBeUndefined();
+      adapter.notify();
+      transportError(new Error("released socket error"));
+      notification({ channel: "cvg_active_shutdown", payload: "late wake-up" });
+      await vi.advanceTimersByTimeAsync(10_000);
+
+      expect(lateListener).not.toHaveBeenCalled();
+      expect(pool.query).not.toHaveBeenCalled();
+      expect(pool.connect).toHaveBeenCalledOnce();
+      expect(client.release).toHaveBeenCalledOnce();
+      expect(pool.end).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(activeListener).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribeActive();
+      if (!closed) await adapter.close();
+    }
+  });
+
+  it("ignores a released connection's notifications before and after reconnecting", async () => {
+    vi.useFakeTimers();
+    const first = mockClient();
+    const replacement = mockClient();
+    const pool: RealtimeNotificationPool = {
+      connect: vi.fn().mockResolvedValueOnce(first.client).mockResolvedValueOnce(replacement.client),
+      query: vi.fn().mockResolvedValue(undefined),
+      end: vi.fn().mockResolvedValue(undefined)
+    };
+    const adapter = new PostgresListenRealtimeNotificationAdapter(pool, "cvg_connection_owner");
+    const listener = vi.fn();
+    const unsubscribe = adapter.subscribe(listener);
+    try {
+      await settleConnection();
+      first.notifications[0]?.({ channel: "cvg_connection_owner" });
+      expect(listener).toHaveBeenCalledOnce();
+      first.errors[0]?.(new Error("socket lost"));
+      expect(first.client.release).toHaveBeenCalledOnce();
+      first.notifications[0]?.({ channel: "cvg_connection_owner" });
+      expect(listener).toHaveBeenCalledOnce();
+
+      await vi.advanceTimersByTimeAsync(5_000);
+      await settleConnection();
+      expect(pool.connect).toHaveBeenCalledTimes(2);
+      replacement.notifications[0]?.({ channel: "cvg_connection_owner" });
+      expect(listener).toHaveBeenCalledTimes(2);
+      first.notifications[0]?.({ channel: "cvg_connection_owner" });
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+      await adapter.close();
+    }
+  });
+
+  it("fences prior handlers when the pool reacquires the same client after LISTEN fails", async () => {
+    vi.useFakeTimers();
+    const { client, notifications, errors } = mockClient();
+    vi.mocked(client.query).mockRejectedValueOnce(new Error("temporary LISTEN rejection"));
+    const pool: RealtimeNotificationPool = {
+      connect: vi.fn().mockResolvedValue(client),
+      query: vi.fn().mockResolvedValue(undefined),
+      end: vi.fn().mockResolvedValue(undefined)
+    };
+    const adapter = new PostgresListenRealtimeNotificationAdapter(pool, "cvg_reused_listener");
+    const listener = vi.fn();
+    const unsubscribe = adapter.subscribe(listener);
+    try {
+      await settleConnection();
+      expect(client.release).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(5_000);
+      await settleConnection();
+      expect(pool.connect).toHaveBeenCalledTimes(2);
+      expect(client.query).toHaveBeenCalledTimes(2);
+      expect(notifications).toHaveLength(2);
+      // One transport event can reach both retained callbacks on a reused
+      // client, but only the current acquisition may deliver its wake-up.
+      for (const callback of notifications) callback({ channel: "cvg_reused_listener" });
+      expect(listener).toHaveBeenCalledOnce();
+      errors[0]?.(new Error("error retained from prior acquisition"));
+      expect(client.release).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+      for (const callback of notifications) callback({ channel: "cvg_reused_listener" });
+      expect(listener).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+      await adapter.close();
+    }
+  });
+
+  it("stops the current fan-out when an active subscriber closes the adapter", async () => {
+    const { client, notifications } = mockClient();
+    const pool: RealtimeNotificationPool = {
+      connect: vi.fn().mockResolvedValue(client),
+      query: vi.fn().mockResolvedValue(undefined),
+      end: vi.fn().mockResolvedValue(undefined)
+    };
+    const adapter = new PostgresListenRealtimeNotificationAdapter(pool, "cvg_close_in_callback");
+    let closePromise: Promise<void> | undefined;
+    const firstListener = vi.fn(() => { closePromise = adapter.close(); });
+    const remainingListener = vi.fn();
+    const unsubscribeFirst = adapter.subscribe(firstListener);
+    const unsubscribeRemaining = adapter.subscribe(remainingListener);
+    try {
+      await settleConnection();
+      notifications[0]?.({ channel: "cvg_close_in_callback" });
+      expect(firstListener).toHaveBeenCalledOnce();
+      expect(remainingListener).not.toHaveBeenCalled();
+      if (!closePromise) throw new Error("first subscriber did not close the adapter");
+      await closePromise;
+      expect(client.release).toHaveBeenCalledOnce();
+      expect(pool.end).toHaveBeenCalledOnce();
+    } finally {
+      unsubscribeFirst();
+      unsubscribeRemaining();
+      await (closePromise ?? adapter.close());
+    }
+  });
+
+  it("waits for a rejected pending connection during shutdown without retrying", async () => {
+    vi.useFakeTimers();
+    let rejectConnection: (error: Error) => void = () => {
+      throw new Error("connection not initialized");
+    };
+    const connection = new Promise<RealtimeNotificationClient>((_, reject) => {
+      rejectConnection = reject;
+    });
+    const pool: RealtimeNotificationPool = {
+      connect: vi.fn().mockReturnValue(connection),
+      query: vi.fn().mockResolvedValue(undefined),
+      end: vi.fn().mockResolvedValue(undefined)
+    };
+    const adapter = new PostgresListenRealtimeNotificationAdapter(pool, "cvg_pending_shutdown");
+    const unsubscribe = adapter.subscribe(vi.fn());
+    const closing = adapter.close();
+    expect(pool.end).not.toHaveBeenCalled();
+    rejectConnection(new Error("connection rejected after close"));
+    await expect(closing).resolves.toBeUndefined();
+    unsubscribe();
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(pool.connect).toHaveBeenCalledOnce();
+    expect(pool.end).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("contains pool-level errors while keeping subsequent wake-ups available", async () => {
+    postgresPool.query.mockResolvedValue(undefined);
+    const environment: NodeJS.ProcessEnv = {
+      NODE_ENV: "production",
+      DATABASE_URL: "postgresql://db.example/cvg",
+      REALTIME_NOTIFICATION_ADAPTER: "postgres-listen"
+    };
+    const adapter = getRealtimeNotificationAdapter(environment);
+    expect(adapter).toBeDefined();
+    const registration = postgresPool.on.mock.calls.find(([event]) => event === "error");
+    if (!registration) throw new Error("pool error handler missing");
+    const [, handleError] = registration;
+    expect(() => handleError(new Error("idle connection lost"))).not.toThrow();
+
+    notifyRealtimeMutation(environment);
+    await settleConnection();
+    expect(postgresPool.query).toHaveBeenCalledWith("SELECT pg_notify($1, $2)", ["cvg_realtime_wakeup", "mutation"]);
+    await closeRealtimeNotificationAdapter();
+    expect(postgresPool.end).toHaveBeenCalledOnce();
   });
 });

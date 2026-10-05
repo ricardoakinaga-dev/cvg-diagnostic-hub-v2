@@ -3,6 +3,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, test } from "vitest";
+import { API_HANDLER_REGISTRY } from "../app/api/v1/[...path]/operation-handlers";
+import { API_OPERATIONS } from "./http/api-operation-manifest";
 
 const serverRoot = path.dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = path.resolve(serverRoot, "../..");
@@ -278,9 +280,33 @@ test("production source files stay below the 800-line limit", () => {
 test("the versioned API dispatcher routes from the operation manifest", () => {
   const routeSource = readFileSync(path.join(repositoryRoot, "src/app/api/v1/[...path]/route.ts"), "utf8");
   expect(routeSource).toContain("const operation = matchApiOperation(method, path);");
-  expect(routeSource).toContain("const operationId = operation.operationId;");
+  expect(routeSource).toContain("API_HANDLER_REGISTRY.resolve(operation.operationId)");
+  expect([...API_HANDLER_REGISTRY.operationIds].sort()).toEqual(API_OPERATIONS.map(({ operationId }) => operationId).sort());
   expect(routeSource).not.toMatch(/path\[0\]/);
   expect(routeSource).not.toMatch(/method ===/);
+});
+
+test("API dispatch has no operationId comparison chain or switch and its entry points stay below 600 lines", () => {
+  for (const relative of ["src/app/api/v1/[...path]/route.ts", "src/server/store/postgres-store.ts"]) {
+    expect(readFileSync(path.join(repositoryRoot, relative), "utf8").split("\n").length, relative).toBeLessThan(600);
+  }
+  const operationId = (node: ts.Node): boolean =>
+    (ts.isIdentifier(node) && node.text === "operationId") ||
+    (ts.isPropertyAccessExpression(node) && node.name.text === "operationId");
+  const violations: string[] = [];
+  for (const file of sourceFiles(path.join(repositoryRoot, "src/app/api"))) {
+    const ast = ts.createSourceFile(file, readFileSync(file, "utf8"), ts.ScriptTarget.Latest, true);
+    const visit = (node: ts.Node): void => {
+      if ((ts.isSwitchStatement(node) && operationId(node.expression)) ||
+          (ts.isBinaryExpression(node) && (operationId(node.left) || operationId(node.right)) && [
+            ts.SyntaxKind.EqualsEqualsToken, ts.SyntaxKind.EqualsEqualsEqualsToken,
+            ts.SyntaxKind.ExclamationEqualsToken, ts.SyntaxKind.ExclamationEqualsEqualsToken
+          ].includes(node.operatorToken.kind))) violations.push(`${relativePath(file)}:${node.getText(ast)}`);
+      ts.forEachChild(node, visit);
+    };
+    visit(ast);
+  }
+  expect(violations, "operationId dispatch must use the manifest-checked registry").toEqual([]);
 });
 
 test("the real production graph resolves imports and follows documented boundaries", () => {

@@ -8,6 +8,20 @@ const pool = vi.hoisted(() => ({
   query: vi.fn()
 }));
 
+const listenerPool = vi.hoisted(() => ({
+  connect: vi.fn(),
+  end: vi.fn(),
+  on: vi.fn(),
+  query: vi.fn(),
+  client: {
+    query: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    removeListener: vi.fn(),
+    release: vi.fn()
+  }
+}));
+
 const readyRuntimeSchema = {
   state_exists: true,
   latest_migration_applied: true,
@@ -29,9 +43,9 @@ const readyRuntimeSchema = {
 
 vi.mock("pg", () => ({
   Pool: class MockPool {
-    connect = pool.connect;
-    end = pool.end;
-    query = pool.query;
+    constructor(options: { application_name?: string }) {
+      return options.application_name === "cvg-runtime-state-cache" ? listenerPool : pool;
+    }
   }
 }));
 
@@ -46,6 +60,15 @@ describe("PostgresStore fresh reads", () => {
     pool.connect.mockReset();
     pool.end.mockReset().mockResolvedValue(undefined);
     pool.query.mockReset();
+    listenerPool.client.query.mockReset().mockResolvedValue({ rowCount: 0, rows: [] });
+    listenerPool.client.on.mockReset();
+    listenerPool.client.off.mockReset();
+    listenerPool.client.removeListener.mockReset();
+    listenerPool.client.release.mockReset();
+    listenerPool.connect.mockReset().mockResolvedValue(listenerPool.client);
+    listenerPool.end.mockReset().mockResolvedValue(undefined);
+    listenerPool.on.mockReset();
+    listenerPool.query.mockReset().mockResolvedValue({ rowCount: 0, rows: [] });
   });
 
   afterEach(() => {
@@ -62,14 +85,16 @@ describe("PostgresStore fresh reads", () => {
     pool.query
       .mockResolvedValueOnce(row(initial, "1"))
       .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ version: "2" }] })
       .mockResolvedValueOnce(row(current, "2"))
-      .mockResolvedValueOnce(row(current, "2"));
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ version: "2" }] });
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_read");
 
     const fresh = await store.readState();
     fresh.protocolSequence = 999;
 
-    expect(pool.query).toHaveBeenNthCalledWith(3, "SELECT state, version FROM cvg_runtime_state WHERE id = 1");
+    expect(pool.query).toHaveBeenNthCalledWith(3, "SELECT version FROM cvg_runtime_state WHERE id = 1");
+    expect(pool.query).toHaveBeenNthCalledWith(4, "SELECT state, version FROM cvg_runtime_state WHERE id = 1");
     expect(store.getState().protocolSequence).toBe(current.protocolSequence);
     expect((await store.readState()).protocolSequence).toBe(current.protocolSequence);
   });
@@ -79,6 +104,7 @@ describe("PostgresStore fresh reads", () => {
     pool.query
       .mockResolvedValueOnce(row(initial, "4"))
       .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [{ version: "5" }] })
       .mockResolvedValueOnce({ rowCount: 1, rows: [{ state: { users: [] }, version: "not-a-version" }] });
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_invalid");
 
@@ -96,7 +122,8 @@ describe("PostgresStore fresh reads", () => {
     pool.query
       .mockResolvedValueOnce(row(initial, "1"))
       .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
-      .mockReturnValueOnce(pendingRead);
+      .mockReturnValueOnce(pendingRead)
+      .mockResolvedValueOnce(row({ ...initial, protocolSequence: 3 }, "2"));
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_close");
 
     const read = store.readState();
@@ -205,6 +232,7 @@ describe("PostgresStore fresh reads", () => {
     let persistedState: StoreState = structuredClone(initial);
     let persistedVersion = 1;
     const projectedAuditIds = new Set(initial.auditEvents.map((event) => event.id));
+    const projectedAuditEvents = [...initial.auditEvents];
     const projectedOutboxIds = new Set(initial.outbox.map((message) => message.id));
     const client = {
       query: vi.fn(async (text: string, values?: readonly unknown[]) => {
@@ -222,6 +250,11 @@ describe("PostgresStore fresh reads", () => {
           const eventId = String(values?.[0]);
           if (projectedAuditIds.has(eventId)) return { rowCount: 0, rows: [] };
           projectedAuditIds.add(eventId);
+          projectedAuditEvents.push({
+            id: eventId, eventType: String(values?.[1]), entityType: String(values?.[3]), entityId: String(values?.[4]),
+            previousState: values?.[5] == null ? undefined : String(values[5]), newState: values?.[6] == null ? undefined : String(values[6]),
+            correlationId: String(values?.[7]), metadata: JSON.parse(String(values?.[8])), occurredAt: String(values?.[9])
+          });
           return { rowCount: 1, rows: [{ id: eventId }] };
         }
         return { rowCount: 0, rows: [] };
@@ -238,8 +271,9 @@ describe("PostgresStore fresh reads", () => {
     await store.reset(resetTarget, { authorization: "ALLOW_DB_SMOKE_RESET" });
 
     expect(persistedState.protocolSequence).toBe(1);
-    expect(persistedState.auditEvents[0]).toEqual(existingAuditEvent);
-    const resetAuditEvents = persistedState.auditEvents.filter((event) => event.eventType === "PostgresAdministrativeReset");
+    expect(persistedState.auditEvents).toEqual([]);
+    expect(projectedAuditEvents[0]).toEqual(existingAuditEvent);
+    const resetAuditEvents = projectedAuditEvents.filter((event) => event.eventType === "PostgresAdministrativeReset");
     expect(resetAuditEvents).toHaveLength(2);
     expect(new Set(resetAuditEvents.map((event) => event.correlationId)).size).toBe(2);
     expect(resetAuditEvents.every((event) => event.actorId === undefined)).toBe(true);
@@ -431,6 +465,74 @@ describe("PostgresStore relational clinical core seam (static/mocked)", () => {
       "postgres://test.invalid/cvg_test_relational_not_ready"
     )).rejects.toThrow("POSTGRES_RELATIONAL_CLINICAL_CORE_NOT_READY");
     expect(pool.end).toHaveBeenCalledOnce();
+  });
+
+  it("checks relational readiness again during health probes and surfaces a later readiness loss", async () => {
+    const initial = createDemoState("postgres-relational-health-password");
+    pool.query.mockResolvedValueOnce(row(initial))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+    const store = await PostgresStore.createWithRelationalClinicalCore("postgres://test.invalid/cvg_test_relational_health");
+    try {
+      pool.query.mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+      await expect(store.healthcheck()).resolves.toBeUndefined();
+      pool.query.mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+        .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow({ constraints_ready: false })] });
+      await expect(store.healthcheck()).rejects.toThrow("POSTGRES_RELATIONAL_CLINICAL_CORE_NOT_READY");
+      expect(pool.query).toHaveBeenCalledTimes(7);
+      expect(store.getState()).toEqual(initial);
+      expect(pool.connect).not.toHaveBeenCalled();
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("forbids snapshot retention and authorized reset on a relational store before any writes", async () => {
+    vi.stubEnv("ALLOW_SYNTHETIC_SEED", "true");
+    const initial = createDemoState("postgres-relational-admin-password");
+    pool.query.mockResolvedValueOnce(row(initial))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+    const store = await PostgresStore.createWithRelationalClinicalCore("postgres://localhost/cvg_diagnostics_synthetic");
+    try {
+      await expect(store.compactRuntimeState()).rejects.toThrow("POSTGRES_RELATIONAL_RETENTION_UNSUPPORTED");
+      await expect(store.reset(initial, { authorization: "ALLOW_SYNTHETIC_SEED" }))
+        .rejects.toThrow("POSTGRES_RELATIONAL_RESET_UNSUPPORTED");
+      expect(pool.connect).not.toHaveBeenCalled();
+      expect(pool.query).toHaveBeenCalledTimes(3);
+      expect(store.getState()).toEqual(initial);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("rolls back a reconciliation with a missing snapshot and retains that error when rollback rejects", async () => {
+    const initial = createDemoState("postgres-relational-missing-probe-password");
+    const client = {
+      query: vi.fn(async (text: string) => {
+        if (text === "ROLLBACK") throw new Error("rollback connection lost");
+        return { rowCount: 0, rows: [] };
+      }),
+      release: vi.fn()
+    };
+    pool.query.mockResolvedValueOnce(row(initial))
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyRuntimeSchema] })
+      .mockResolvedValueOnce({ rowCount: 1, rows: [readyAdapterRow()] });
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.createWithRelationalClinicalCore("postgres://test.invalid/cvg_test_relational_missing_probe");
+    try {
+      await expect(store.reconcileRelationalClinicalRequest("request-a"))
+        .rejects.toThrow("PostgreSQL runtime state row is missing.");
+      expect(client.query.mock.calls.map(([text]) => text)).toEqual([
+        "BEGIN", "SET TRANSACTION ISOLATION LEVEL REPEATABLE READ",
+        expect.stringContaining("SELECT state, version FROM cvg_runtime_state"), "ROLLBACK"
+      ]);
+      expect(client.release).toHaveBeenCalledOnce();
+      expect(store.getState()).toEqual(initial);
+    } finally {
+      await store.close();
+    }
   });
 
   it("exposes the relational request read seam only after opt-in readiness", async () => {

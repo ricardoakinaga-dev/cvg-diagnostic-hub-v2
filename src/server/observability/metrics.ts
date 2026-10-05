@@ -1,4 +1,6 @@
-import type { StoreState } from "../domain/models";
+import type { AuditMetrics, AuditMetricsQuery, StoreState } from "../domain/models";
+import { auditMetrics } from "../domain/audit-metrics";
+import { outboxMetrics } from "../domain/outbox-read";
 
 type HttpMetric = { count: number; totalDurationMs: number; maxDurationMs: number };
 export type RealtimePollMode = "stream" | "snapshot";
@@ -150,14 +152,21 @@ export function releaseRealtimeConnection(): void {
   incrementGauge("sse_connections", -1);
 }
 
-export function refreshOperationalMetrics(state: StoreState, now = new Date()): void {
-  const pending = state.outbox.filter((message) => message.status === "PENDING" || message.status === "PROCESSING");
-  setGauge("outbox_pending", pending.length);
-  const oldestAvailableAt = pending
-    .map((message) => Date.parse(message.availableAt))
-    .filter((timestamp) => Number.isFinite(timestamp))
-    .sort((left, right) => left - right)[0];
-  const oldestAgeSeconds = oldestAvailableAt === undefined ? 0 : Math.max(0, (now.getTime() - oldestAvailableAt) / 1_000);
+export function operationalAuditQuery(state: StoreState): AuditMetricsQuery {
+  return { requestCount: state.requests.length, samples: state.samples.map(({ id, requestId }) => ({ id, requestId })),
+    releasedVersions: state.resultVersions.filter((version) => version.releasedAt).map((version) => ({ id: version.id, releasedAtMs: Date.parse(version.releasedAt!) })) };
+}
+
+export function refreshOperationalMetrics(
+  state: StoreState,
+  now = new Date(),
+  history: AuditMetrics = auditMetrics(state.auditEvents, operationalAuditQuery(state)),
+  outbox: ReturnType<typeof outboxMetrics> = outboxMetrics(state.outbox)
+): void {
+  setGauge("outbox_pending", outbox.pending);
+  const oldestAvailableAt = outbox.oldestAvailableAt === undefined ? undefined : Date.parse(outbox.oldestAvailableAt);
+  const oldestAgeSeconds = oldestAvailableAt === undefined || !Number.isFinite(oldestAvailableAt)
+    ? 0 : Math.max(0, (now.getTime() - oldestAvailableAt) / 1_000);
   setGauge("outbox_oldest_age_seconds", oldestAgeSeconds);
 
   // Business measures are bounded snapshot gauges; rates and latency need event policy and timestamps.
@@ -178,27 +187,8 @@ export function refreshOperationalMetrics(state: StoreState, now = new Date()): 
     .filter((value): value is number => value !== undefined);
   setOptionalGauge("diagnostic_turnaround_time_seconds", average(turnaroundSamples));
 
-  const recollectedRequestIds = new Set(
-    state.auditEvents
-      .filter((event) => event.eventType === "RecollectionRequested")
-      .map((event) => state.samples.find((sample) => sample.id === event.entityId)?.requestId)
-      .filter((requestId): requestId is string => Boolean(requestId))
-  );
-  setOptionalGauge(
-    "recollection_rate",
-    state.requests.length > 0 ? recollectedRequestIds.size / state.requests.length : undefined
-  );
-
-  const releasedAtByVersionId = new Map(
-    state.resultVersions
-      .filter((version) => version.releasedAt)
-      .map((version) => [version.id, version.releasedAt as string])
-  );
-  const viewLatencySamples = state.auditEvents
-    .filter((event) => event.eventType === "ResultViewed")
-    .map((event) => elapsedSeconds(releasedAtByVersionId.get(event.entityId), event.occurredAt))
-    .filter((value): value is number => value !== undefined);
-  setOptionalGauge("result_view_latency_seconds", average(viewLatencySamples));
+  setOptionalGauge("recollection_rate", history.recollectionRate);
+  setOptionalGauge("result_view_latency_seconds", history.resultViewLatencySeconds);
 }
 
 export function renderPrometheus(): string {

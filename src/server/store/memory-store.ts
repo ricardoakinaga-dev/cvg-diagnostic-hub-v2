@@ -1,4 +1,8 @@
-import type { RuntimeRetentionOptions, RuntimeRetentionSummary, SessionActivity, StateStore, StoreState } from "../domain/models";
+import type { AuditEntity, AuditMetrics, AuditMetricsQuery, AuditReadPage, AuditReadQuery, AuditTransactionReader, RuntimeRetentionOptions, RuntimeRetentionSummary, SessionActivity, StateStore, StoreState } from "../domain/models";
+import { auditPage } from "./audit-read";
+import { auditMetrics } from "../domain/audit-metrics";
+import { outboxMetrics, outboxPage } from "../domain/outbox-read";
+import type { OutboxTransactionQuery } from "../domain/models";
 import { activityRowsAfterPrune, compactRuntimeState, runtimeRetentionAuditEvent } from "./runtime-retention";
 
 function cloneState(state: StoreState): StoreState {
@@ -42,6 +46,40 @@ export class MemoryStore implements StateStore {
     return this.version;
   }
 
+  async readOutbox(query: { kind: "replay" | "dead-letter"; limit: number }) {
+    return outboxPage((await this.readState()).outbox, query);
+  }
+
+  async readOutboxMetrics() {
+    return outboxMetrics((await this.readState()).outbox);
+  }
+
+  async readRealtimeSnapshot(limit: number): Promise<{ state: StoreState; version: number }> {
+    const snapshot = await this.readStateSnapshot();
+    return { ...snapshot, state: { ...snapshot.state, outbox: outboxPage(snapshot.state.outbox, { kind: "replay", limit }) } };
+  }
+
+  async outboxTransaction<T>(_query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T> {
+    return this.transaction(operation);
+  }
+
+  async readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage> {
+    return auditPage((await this.readState()).auditEvents, query);
+  }
+
+  async readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]> {
+    const ids = new Set(entities.map((entity) => entity.entityId));
+    const pairs = new Map<string, { entityId: string; actorId: string }>();
+    for (const event of (await this.readState()).auditEvents) {
+      if (event.actorId && ids.has(event.entityId)) pairs.set(JSON.stringify([event.entityId, event.actorId]), { entityId: event.entityId, actorId: event.actorId });
+    }
+    return [...pairs.values()];
+  }
+
+  async readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics> {
+    return auditMetrics((await this.readState()).auditEvents, query);
+  }
+
   async readAuthorizationSnapshot(query: { userId: string; sessionId?: string }): Promise<{ user?: StoreState["users"][number]; session?: StoreState["sessions"][number] }> {
     const user = this.state.users.find((entry) => entry.id === query.userId);
     const session = query.sessionId ? this.state.sessions.find((entry) => entry.id === query.sessionId && entry.userId === query.userId) : undefined;
@@ -83,10 +121,10 @@ export class MemoryStore implements StateStore {
   }
 
   async transaction<T>(
-    operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }
+    operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }
   ): Promise<T> {
     const run = this.queue.then(async () => {
-      const outcome = await operation(this.getState());
+      const outcome = await operation(this.getState(), { hasAuditEvent: async (query) => this.state.auditEvents.some((event) => event.eventType === query.eventType && event.entityType === query.entityType && event.entityId === query.entityId && event.actorId === query.actorId) });
       const nextState = cloneState(outcome.state);
       const nextActivity = new Map(this.activity);
       const previousSessionIds = new Set(this.state.sessions.map((session) => session.id));

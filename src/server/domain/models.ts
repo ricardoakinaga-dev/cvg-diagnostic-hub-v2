@@ -406,7 +406,53 @@ export interface StoreState {
   protocolSequence: number;
 }
 
+export interface AuditEntity {
+  entityType: string;
+  entityId: string;
+}
+
+export interface AuditScope {
+  entities: AuditEntity[];
+  entityTypes?: string[];
+  /** ADMIN fallback for events without a resolved clinical request. */
+  unresolved?: { resolvedEntities: AuditEntity[] };
+}
+
+export interface AuditReadQuery {
+  scope: AuditScope;
+  order: "asc" | "desc";
+  limit: number;
+  cursor?: { occurredAt: string; id: string };
+}
+
+export interface AuditReadPage {
+  items: AuditEvent[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface AuditTransactionReader {
+  hasAuditEvent(query: { eventType: string; entityType: string; entityId: string; actorId: string }): Promise<boolean>;
+}
+
+export interface AuditMetricsQuery {
+  requestCount: number;
+  samples: { id: string; requestId: string }[];
+  releasedVersions: { id: string; releasedAtMs: number }[];
+}
+
+export interface AuditMetrics {
+  recollectionRate?: number;
+  resultViewLatencySeconds?: number;
+}
+
 export interface StateStore {
+  /** Relational outbox reads never restore delivery history into the snapshot. */
+  readOutbox(query: { kind: "replay" | "dead-letter"; limit: number }): Promise<OutboxMessage[]>;
+  readOutboxMetrics(): Promise<{ pending: number; oldestAvailableAt?: Timestamp }>;
+  readRealtimeSnapshot(limit: number): Promise<{ state: StoreState; version: number }>;
+  /** Hydrates only a locked message or the first eligible claim candidate. */
+  outboxTransaction<T>(query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
   getState(): StoreState;
   readState(): Promise<StoreState>;
   /**
@@ -417,6 +463,10 @@ export interface StateStore {
   readStateSnapshot(): Promise<{ state: StoreState; version: number }>;
   /** Current write version only. Cheap enough to call per connection tick. */
   readStateVersion(): Promise<number>;
+  /** Scoped historical reads; PostgreSQL reads the append-only table. */
+  readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage>;
+  readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]>;
+  readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics>;
   /**
    * Narrow authorization read. Implementations must answer from indexed single
    * rows or an equally bounded source; a full aggregate read here would
@@ -433,10 +483,17 @@ export interface StateStore {
    * idempotency records and processed outbox messages beyond their windows.
    */
   compactRuntimeState(options?: RuntimeRetentionOptions): Promise<RuntimeRetentionSummary>;
-  transaction<T>(operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
+  transaction<T>(operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
   reset?(state: StoreState): Promise<void>;
   healthcheck?(): Promise<void>;
 }
+
+export type OutboxTransactionQuery = { kind: "message"; id: string } | {
+  kind: "claim";
+  now: Timestamp;
+  leaseMs: number;
+  accepts: (message: OutboxMessage) => boolean;
+};
 
 export function userAsActor(user: User): Actor {
   return {

@@ -688,7 +688,11 @@ describe("Relational sample/accession lineage on disposable PostgreSQL", () => {
           writerMutation.then(() => true),
           delay(100).then(() => false)
         ])).resolves.toBe(false);
-        await expect(backfillPromise).rejects.toThrow("could not serialize access due to concurrent update");
+        // The writer can commit before or after the final transaction takes its
+        // snapshot. Both interleavings must reject and persist SOURCE_CHANGED.
+        await expect(backfillPromise).rejects.toThrow(
+          /^(?:could not serialize access due to concurrent update|POSTGRES_RELATIONAL_BACKFILL_SOURCE_CHANGED)$/
+        );
         await expect(writerMutation).resolves.toBeUndefined();
 
         const failed = await database.query(

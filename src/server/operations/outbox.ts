@@ -339,11 +339,13 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
 }
 
 export async function listDeadLetterMessages(store: StateStore, limit = 100): Promise<DeadLetterMessage[]> {
-  const state = await store.readState();
-  return state.outbox
+  const boundedLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  if (Number.isNaN(boundedLimit)) return [];
+  const messages = await store.readOutbox({ kind: "dead-letter", limit: boundedLimit });
+  return messages
     .filter((message): message is OutboxMessage & { status: "FAILED" | "DISCARDED" } => message.status === "FAILED" || message.status === "DISCARDED")
     .sort((left, right) => (right.deadLetteredAt ?? right.availableAt).localeCompare(left.deadLetteredAt ?? left.availableAt))
-    .slice(0, Math.min(Math.max(Math.trunc(limit), 1), 100))
+    .slice(0, boundedLimit)
     .map(deadLetterProjection);
 }
 
@@ -369,7 +371,7 @@ async function mutateDeadLetter(
   const payloadHash = createHash("sha256").update(JSON.stringify({ messageId, reason: normalizedReason })).digest("hex");
   const scope = `POST:/outbox/dead-letters/${action.toLowerCase()}`;
 
-  return store.transaction((state) => {
+  return store.outboxTransaction({ kind: "message", id: messageId }, (state) => {
     if (typeof command.authorize !== "function") throw new OutboxApiError("UNAUTHENTICATED", "Autorização necessária para alterar a dead-letter queue.", 401);
     command.authorize(state);
     const existing = state.idempotency.find((entry) => entry.actorId === command.actorId && entry.scope === scope && entry.key === command.idempotencyKey);
@@ -480,7 +482,7 @@ function deadLetterProjection(message: OutboxMessage): DeadLetterMessage {
 async function claimNext(store: StateStore, currentTime: Date, workerId: string, leaseMs: number, sink: OutboxSink): Promise<ClaimedMessage | undefined> {
   const nowIso = currentTime.toISOString();
   const nowMs = currentTime.getTime();
-  return store.transaction((state) => {
+  return store.outboxTransaction({ kind: "claim", now: nowIso, leaseMs, accepts: (message) => safelySupportsRoute(sink, message) }, (state) => {
     const index = state.outbox.findIndex((message) => {
       if (message.status === "PENDING") {
         if (message.availableAt > nowIso) return false;
@@ -502,7 +504,7 @@ async function claimNext(store: StateStore, currentTime: Date, workerId: string,
 }
 
 async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs: number, update: (message: OutboxMessage) => OutboxMessage, currentTime: Date): Promise<boolean> {
-  return store.transaction((state) => {
+  return store.outboxTransaction({ kind: "message", id: claimed.id }, (state) => {
     const current = state.outbox.find((message) => message.id === claimed.id);
     const ownsUnexpiredLease = current
       && current.status === "PROCESSING"
@@ -520,7 +522,7 @@ async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs:
       ? state.notifications.map((notification) => notification.id === deliveryNotification.id ? { ...notification, state: nextNotificationState, version: notification.version + 1 } : notification)
       : state.notifications;
     const auditEvents = deliveryNotification && nextNotificationState
-      ? [...state.auditEvents, { id: `audit-${claimed.id}-notification-${nextNotificationState.toLowerCase()}`, eventType: nextNotificationState === "DELIVERED" ? "NotificationDelivered" : "NotificationDeliveryFailed", entityType: "Notification", entityId: deliveryNotification.id, previousState: "PENDING", newState: nextNotificationState, correlationId: claimed.correlationId, metadata: { outboxId: claimed.id, channel: "IN_APP" }, occurredAt: currentTime.toISOString() }]
+      ? [...state.auditEvents, { id: `audit-${claimed.id}-notification-${nextNotificationState.toLowerCase()}-${randomUUID()}`, eventType: nextNotificationState === "DELIVERED" ? "NotificationDelivered" : "NotificationDeliveryFailed", entityType: "Notification", entityId: deliveryNotification.id, previousState: "PENDING", newState: nextNotificationState, correlationId: claimed.correlationId, metadata: { outboxId: claimed.id, channel: "IN_APP" }, occurredAt: currentTime.toISOString() }]
       : state.auditEvents;
     return { state: { ...state, outbox, notifications, auditEvents }, result: true };
   });

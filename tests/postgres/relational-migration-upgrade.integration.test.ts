@@ -367,10 +367,11 @@ async function validMigrationProbe(
 }
 
 describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL", () => {
-  it("upgrades a populated 001 baseline to 011, preserves valid rows, repairs membership losslessly, and retries by checksum", async () => {
+  it("upgrades a populated 001 baseline to the latest schema, preserves valid rows, repairs membership losslessly, and retries by checksum", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       await validMigrationProbe(database, async (probe, state) => {
-        const beforeState = (await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state;
+        const beforeState = (await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state as StoreState;
+        const beforeAudits = await probe.query("SELECT * FROM audit_events ORDER BY id");
         const result = await probe.applyProductionMigrations();
         expect(result.applied).toEqual([...RUNTIME_MIGRATION_VERSIONS.slice(8)]);
         expect(await schemaMigrationVersions(probe)).toEqual([...RUNTIME_MIGRATION_VERSIONS]);
@@ -397,7 +398,8 @@ describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL",
           rows: [{ schema_version: LATEST_RUNTIME_SCHEMA_VERSION }],
           rowCount: 1
         });
-        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual(beforeState);
+        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual({ ...beforeState, auditEvents: [], outbox: [] });
+        expect(await probe.query("SELECT * FROM audit_events ORDER BY id")).toEqual(beforeAudits);
 
         const adapter = new RelationalClinicalCoreAdapter();
         await expect(adapter.assertReady(probe.sql)).resolves.toBeUndefined();

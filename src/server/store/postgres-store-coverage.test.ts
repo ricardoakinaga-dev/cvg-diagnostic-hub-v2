@@ -10,16 +10,27 @@ const pool = vi.hoisted(() => ({
   query: vi.fn()
 }));
 
+const listenerPool = vi.hoisted(() => ({
+  connect: vi.fn(),
+  end: vi.fn(),
+  on: vi.fn(),
+  query: vi.fn(),
+  client: {
+    query: vi.fn(),
+    on: vi.fn(),
+    off: vi.fn(),
+    removeListener: vi.fn(),
+    release: vi.fn()
+  }
+}));
+
 vi.mock("pg", () => ({
   Pool: class MockPool {
-    constructor(options: unknown) {
+    constructor(options: { application_name?: string }) {
+      if (options.application_name === "cvg-runtime-state-cache") return listenerPool;
       pool.options.push(options);
+      return pool;
     }
-
-    connect = pool.connect;
-    end = pool.end;
-    on = pool.on;
-    query = pool.query;
   }
 }));
 
@@ -77,6 +88,15 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     pool.on.mockReset();
     pool.options.length = 0;
     pool.query.mockReset();
+    listenerPool.client.query.mockReset().mockResolvedValue(result(0));
+    listenerPool.client.on.mockReset();
+    listenerPool.client.off.mockReset();
+    listenerPool.client.removeListener.mockReset();
+    listenerPool.client.release.mockReset();
+    listenerPool.connect.mockReset().mockResolvedValue(listenerPool.client);
+    listenerPool.end.mockReset().mockResolvedValue(undefined);
+    listenerPool.on.mockReset();
+    listenerPool.query.mockReset().mockResolvedValue(result(0));
   });
 
   afterEach(() => {
@@ -223,7 +243,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       "COMMIT"
     ]);
     const updateCall = client.query.mock.calls.find(([text]) => String(text).startsWith("UPDATE cvg_runtime_state"));
-    expect((updateCall as readonly unknown[] | undefined)?.[1]).toEqual([JSON.stringify(nextState)]);
+    expect((updateCall as readonly unknown[] | undefined)?.[1]).toEqual([JSON.stringify({ ...nextState, auditEvents: [], outbox: [] })]);
     const auditCall = client.query.mock.calls.find(([text]) => String(text).startsWith("INSERT INTO audit_events"));
     expect((auditCall as readonly unknown[] | undefined)?.[1]).toEqual([
       auditEvent.id,
@@ -259,7 +279,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       null,
       null
     ]);
-    expect(store.getState()).toEqual(nextState);
+    expect(store.getState()).toEqual({ ...nextState, auditEvents: [], outbox: [] });
     expect(client.release).toHaveBeenCalledOnce();
 
     await store.close();
@@ -425,8 +445,9 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     pool.query
       .mockResolvedValueOnce(stateRow(initial, 1n))
       .mockResolvedValueOnce(result(1, [readyRuntimeSchema]))
+      .mockResolvedValueOnce(result(1, [{ version: 2n }]))
       .mockResolvedValueOnce(stateRow(initial, 2n))
-      .mockResolvedValueOnce(stateRow(initial, 0));
+      .mockResolvedValueOnce(result(1, [{ version: 0 }]));
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_version");
 
     await expect(store.readState()).resolves.toEqual(initial);
@@ -446,5 +467,232 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     await expect(store.readState()).rejects.toThrow("PostgreSQL store is closing or closed.");
     await expect(store.close()).resolves.toBeUndefined();
     expect(pool.end).toHaveBeenCalledOnce();
+  });
+
+  it("rejects multiple runtime rows and closes the pool before accepting a cache", async () => {
+    const initial = createDemoState("postgres-cardinality-password");
+    pool.query.mockResolvedValueOnce(result(2, [{ state: initial, version: "1" }, { state: initial, version: "2" }]));
+    await expect(PostgresStore.create("postgres://test.invalid/cvg_test_cardinality"))
+      .rejects.toThrow("PostgreSQL runtime state cardinality is invalid.");
+    expect(pool.query).toHaveBeenCalledOnce();
+    expect(pool.end).toHaveBeenCalledOnce();
+    expect(listenerPool.connect).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when an authorized seed does not produce a runtime row", async () => {
+    vi.stubEnv("ALLOW_POSTGRES_INTEGRATION_TESTS", "true");
+    const initial = createDemoState("postgres-seed-missing-password");
+    pool.query.mockResolvedValueOnce(result(0)).mockResolvedValueOnce(result(1)).mockResolvedValueOnce(result(0));
+    await expect(PostgresStore.create(`postgres://localhost/cvg_test_18_${"b".repeat(32)}`, initial,
+      { authorization: "ALLOW_POSTGRES_INTEGRATION_TESTS" }))
+      .rejects.toThrow("PostgreSQL runtime state row is missing after seed initialization.");
+    expect(pool.query).toHaveBeenCalledTimes(3);
+    expect(pool.end).toHaveBeenCalledOnce();
+    expect(listenerPool.connect).not.toHaveBeenCalled();
+  });
+
+  it("refuses relational operations without opt-in before acquiring a client and keeps normal writes available", async () => {
+    const initial = createDemoState("postgres-relational-disabled-password");
+    queueReadyOpen(initial);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_relational_disabled");
+    try {
+      await expect(store.readRelationalClinicalRequest("request-a")).rejects.toThrow("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
+      await expect(store.reconcileRelationalClinicalRequest("request-a")).rejects.toThrow("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
+      await expect(store.backfillRelationalClinicalCore()).rejects.toThrow("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
+      expect(pool.connect).not.toHaveBeenCalled();
+      expect(pool.query).toHaveBeenCalledTimes(2);
+      const client = createClient(initial);
+      pool.connect.mockResolvedValueOnce(client);
+      await expect(store.transaction((state) => ({ state, result: "available" }))).resolves.toBe("available");
+      expect(client.query).toHaveBeenCalledWith("COMMIT");
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("rejects missing realtime and version rows without replacing the validated cache, then recovers", async () => {
+    const initial = createDemoState("postgres-missing-read-password");
+    queueReadyOpen(initial);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_missing_read");
+    try {
+      pool.query.mockResolvedValueOnce(result(0));
+      await expect(store.readRealtimeSnapshot(5)).rejects.toThrow("PostgreSQL runtime state row is missing.");
+      pool.query.mockResolvedValueOnce(result(0));
+      await expect(store.readStateVersion()).rejects.toThrow("PostgreSQL runtime state row is missing.");
+      expect(store.getState()).toEqual(initial);
+      pool.query.mockResolvedValueOnce(result(1, [{ state: initial, version: "2", outbox: [] }]));
+      await expect(store.readRealtimeSnapshot(5)).resolves.toEqual({ state: initial, version: 2 });
+      pool.query.mockResolvedValueOnce(result(1, [{ version: "2" }]));
+      await expect(store.readStateVersion()).resolves.toBe(2);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("never invokes the operation without a locked snapshot and preserves its error if rollback also fails", async () => {
+    const initial = createDemoState("postgres-locked-missing-password");
+    const client = createClient(initial);
+    client.query.mockImplementation(async (text) => {
+      if (text === "ROLLBACK") throw new Error("rollback disconnected");
+      return result(0);
+    });
+    queueReadyOpen(initial);
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_locked_missing");
+    const operation = vi.fn((state: StoreState) => ({ state, result: "committed" }));
+    try {
+      await expect(store.transaction(operation)).rejects.toThrow("PostgreSQL runtime state row is missing.");
+      expect(operation).not.toHaveBeenCalled();
+      expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(client.query).not.toHaveBeenCalledWith("COMMIT");
+      expect(client.release).toHaveBeenCalledOnce();
+      expect(store.getState()).toEqual(initial);
+      const healthyClient = createClient(initial);
+      pool.connect.mockResolvedValueOnce(healthyClient);
+      await expect(store.transaction(operation)).resolves.toBe("committed");
+      expect(operation).toHaveBeenCalledOnce();
+      expect(healthyClient.query).toHaveBeenCalledWith("COMMIT");
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("returns an isolated state snapshot with its durable version", async () => {
+    const initial = createDemoState("postgres-snapshot-isolation-password");
+    queueReadyOpen(initial, "7");
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_snapshot_isolation");
+    try {
+      pool.query.mockResolvedValueOnce(result(1, [{ version: "7" }])).mockResolvedValueOnce(stateRow(initial, "7"));
+      const snapshot = await store.readStateSnapshot();
+      expect(snapshot).toEqual({ state: initial, version: 7 });
+      snapshot.state.users[0].active = false;
+      expect(store.getState()).toEqual(initial);
+      pool.query.mockResolvedValueOnce(result(0));
+      await expect(store.readStateSnapshot()).rejects.toThrow("PostgreSQL runtime state row is missing.");
+      expect(store.getState()).toEqual(initial);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("reads authorization and session liveness directly while a clinical transaction is waiting", async () => {
+    const initial = createDemoState("postgres-direct-session-password");
+    const session = {
+      id: "session-direct", userId: initial.users[0].id, tokenHash: "token", csrfTokenHash: "csrf",
+      createdAt: "2026-10-04T12:00:00.000Z", expiresAt: "2026-10-04T20:00:00.000Z", version: 1
+    };
+    queueReadyOpen(initial);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_direct_session");
+    const client = createClient(initial);
+    let releaseConnection: (value: typeof client) => void = () => { throw new Error("connection gate missing"); };
+    pool.connect.mockImplementationOnce(() => new Promise<typeof client>((resolve) => { releaseConnection = resolve; }));
+    const operation = vi.fn((state: StoreState) => ({ state, result: "committed" }));
+    const pending = store.transaction(operation);
+    try {
+      pool.query.mockResolvedValueOnce(result(1, [{ user: initial.users[0], session }]));
+      const authorization = await store.readAuthorizationSnapshot({ userId: session.userId, sessionId: session.id });
+      expect(authorization).toEqual({ user: initial.users[0], session });
+      expect(pool.query.mock.calls.at(-1)?.[1]).toEqual([session.userId, session.id]);
+      authorization.user!.active = false;
+      authorization.session!.revokedAt = session.createdAt;
+      expect(initial.users[0].active).toBe(true);
+      expect(session).not.toHaveProperty("revokedAt");
+
+      pool.query.mockResolvedValueOnce(result(0));
+      await expect(store.readSessionActivity(session.id)).resolves.toBeUndefined();
+      const lastSeenAt = "2026-10-04T12:30:00.000Z";
+      const activityRow = { session_id: session.id, user_id: session.userId, last_seen_at: new Date(lastSeenAt) };
+      pool.query.mockResolvedValueOnce(result(1, [activityRow]));
+      await expect(store.touchSessionActivity({ sessionId: session.id, userId: session.userId, lastSeenAt }))
+        .resolves.toEqual({ sessionId: session.id, userId: session.userId, lastSeenAt });
+      expect(pool.query.mock.calls.at(-1)?.[1]).toEqual([session.id, session.userId, lastSeenAt]);
+      pool.query.mockResolvedValueOnce(result(1, [activityRow]));
+      await expect(store.readSessionActivity(session.id)).resolves.toEqual({ sessionId: session.id, userId: session.userId, lastSeenAt });
+      pool.query.mockResolvedValueOnce(result(0));
+      await expect(store.touchSessionActivity({ sessionId: session.id, userId: session.userId, lastSeenAt }))
+        .rejects.toThrow("POSTGRES_SESSION_ACTIVITY_TOUCH_FAILED");
+      pool.query.mockResolvedValueOnce(result(0));
+      await expect(store.readAuthorizationSnapshot({ userId: session.userId }))
+        .rejects.toThrow("PostgreSQL runtime state row is missing.");
+      expect(operation).not.toHaveBeenCalled();
+      expect(store.getState()).toEqual(initial);
+    } finally {
+      releaseConnection(client);
+      await expect(pending).resolves.toBe("committed");
+      await store.close();
+    }
+  });
+
+  it("reads durable outbox pages and backlog metrics without expanding or mutating the snapshot", async () => {
+    const initial = createDemoState("postgres-durable-outbox-read-password");
+    const message: OutboxMessage = {
+      id: "message-old", eventType: "RequestCreated", aggregateType: "DiagnosticRequest", aggregateId: "request-a",
+      payload: { requestId: "request-a" }, consumerType: "DOMAIN_EVENT", routingKey: "domain.RequestCreated",
+      status: "PENDING", attempts: 0, availableAt: "2026-10-04T12:00:00.000Z", correlationId: "correlation-a"
+    };
+    const newer = { ...message, id: "message-new", status: "PROCESSED" as const };
+    queueReadyOpen(initial);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_durable_outbox_read");
+    try {
+      pool.query.mockResolvedValueOnce(result(2, [newer, message]));
+      await expect(store.readOutbox({ kind: "replay", limit: 2 })).resolves.toEqual([message, newer]);
+      expect(pool.query.mock.calls.at(-1)).toEqual([expect.stringContaining("'PENDING', 'PROCESSED'"), [2]]);
+      const failed = { ...message, id: "message-failed", status: "FAILED" as const, lastError: "delivery failed" };
+      pool.query.mockResolvedValueOnce(result(1, [failed]));
+      await expect(store.readOutbox({ kind: "dead-letter", limit: 1 })).resolves.toEqual([failed]);
+      expect(pool.query.mock.calls.at(-1)).toEqual([expect.stringContaining("'FAILED', 'DISCARDED'"), [1]]);
+      pool.query.mockResolvedValueOnce(result(1, [{ pending: "3", oldest: new Date(message.availableAt) }]));
+      await expect(store.readOutboxMetrics()).resolves.toEqual({ pending: 3, oldestAvailableAt: message.availableAt });
+      pool.query.mockResolvedValueOnce(result(1, [{ pending: "0", oldest: null }]));
+      await expect(store.readOutboxMetrics()).resolves.toEqual({ pending: 0 });
+      expect(pool.connect).not.toHaveBeenCalled();
+      expect(store.getState()).toEqual(initial);
+    } finally {
+      await store.close();
+    }
+    const calls = pool.query.mock.calls.length;
+    await expect(store.readOutbox({ kind: "replay", limit: 2 })).rejects.toThrow("PostgreSQL store is closing or closed.");
+    await expect(store.readOutboxMetrics()).rejects.toThrow("PostgreSQL store is closing or closed.");
+    expect(pool.query).toHaveBeenCalledTimes(calls);
+  });
+
+  it("reads durable audit pages, actors and metrics with bounded queries and rejects invalid pages before SQL", async () => {
+    const initial = createDemoState("postgres-durable-audit-read-password");
+    const event: AuditEvent = {
+      id: "audit-a", eventType: "RequestCreated", actorId: "user-vet", entityType: "DiagnosticRequest",
+      entityId: "request-a", correlationId: "correlation-a", metadata: { source: "unit" }, occurredAt: "2026-10-04T12:00:00.000Z"
+    };
+    const scope = { entities: [{ entityType: event.entityType, entityId: event.entityId }] };
+    queueReadyOpen(initial);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_durable_audit_read");
+    try {
+      const calls = pool.query.mock.calls.length;
+      await expect(store.readAuditEvents({ scope, order: "desc", limit: 0 })).rejects.toThrow("AUDIT_READ_QUERY_INVALID");
+      expect(pool.query).toHaveBeenCalledTimes(calls);
+      pool.query.mockResolvedValueOnce(result(1, [{ total: "2", events: [event, { ...event, id: "audit-b" }] }]));
+      await expect(store.readAuditEvents({ scope, order: "desc", limit: 1 }))
+        .resolves.toEqual({ total: 2, items: [event], hasMore: true });
+      expect(pool.query.mock.calls.at(-1)?.[1]).toEqual([JSON.stringify(scope.entities), [], false, "[]", null, null, 2]);
+      pool.query.mockResolvedValueOnce(result(1, [{ total: "2", events: [{ ...event, id: "audit-b" }] }]));
+      await expect(store.readAuditEvents({ scope, order: "desc", limit: 1, cursor: { occurredAt: event.occurredAt, id: event.id } }))
+        .resolves.toEqual({ total: 2, items: [{ ...event, id: "audit-b" }], hasMore: false });
+      const beforeActors = pool.query.mock.calls.length;
+      await expect(store.readAuditActors([])).resolves.toEqual([]);
+      expect(pool.query).toHaveBeenCalledTimes(beforeActors);
+      pool.query.mockResolvedValueOnce(result(1, [{ entityId: event.entityId, actorId: event.actorId }]));
+      await expect(store.readAuditActors([...scope.entities, ...scope.entities]))
+        .resolves.toEqual([{ entityId: "request-a", actorId: "user-vet" }]);
+      expect(pool.query.mock.calls.at(-1)?.[1]).toEqual([["request-a"]]);
+      pool.query.mockResolvedValueOnce(result(1, [{ recollections: 1, latency: 30 }]));
+      await expect(store.readAuditMetrics({ requestCount: 2, samples: [{ id: "sample-a", requestId: "request-a" }], releasedVersions: [] }))
+        .resolves.toEqual({ recollectionRate: 0.5, resultViewLatencySeconds: 30 });
+      pool.query.mockResolvedValueOnce(result(1, [{ recollections: 0, latency: null }]));
+      await expect(store.readAuditMetrics({ requestCount: 0, samples: [], releasedVersions: [] }))
+        .resolves.toEqual({ recollectionRate: undefined, resultViewLatencySeconds: undefined });
+      expect(pool.connect).not.toHaveBeenCalled();
+      expect(store.getState()).toEqual(initial);
+    } finally {
+      await store.close();
+    }
   });
 });

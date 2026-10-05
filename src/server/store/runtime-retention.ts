@@ -18,15 +18,12 @@ export function compactRuntimeState(
   options: RuntimeRetentionOptions = {}
 ): RuntimeRetentionCompaction {
   const nowMs = (options.now ?? new Date()).getTime();
-  const outboxHotWindow = boundedCount(options.outboxHotWindow, configuredPositiveInteger("STATE_OUTBOX_HOT_WINDOW", DEFAULT_OUTBOX_HOT_WINDOW));
+  const { hotWindow: outboxHotWindow, retentionMs: outboxRetentionMs } = outboxRetentionPolicy(options);
   const sessionRetentionMs = positiveDuration(options.sessionRetentionMs, configuredPositiveInteger("SESSION_RETENTION_MS", DEFAULT_SESSION_RETENTION_MS));
   const idempotencyRetentionMs = positiveDuration(options.idempotencyRetentionMs, configuredPositiveInteger("IDEMPOTENCY_RETENTION_MS", DEFAULT_IDEMPOTENCY_RETENTION_MS));
-  const outboxRetentionMs = positiveDuration(options.outboxRetentionMs, configuredPositiveInteger("OUTBOX_STATE_RETENTION_MS", DEFAULT_OUTBOX_RETENTION_MS));
 
-  // The JSONB audit log remains append-only until relational authority is cut
-  // over. Pruning it here would silently create a partial clinical history, so
-  // PROD-101 moves the audit read path to audit_events instead. The auditEvents
-  // copy is reported as untouched for that reason.
+  // Memory keeps its complete history; PostgreSQL passes only transaction-local
+  // events and retains durable history in audit_events. Retention removes neither.
   const auditEvents = [...state.auditEvents];
   const processedOutbox = state.outbox.filter((message) => {
     if (message.status !== "PROCESSED") return false;
@@ -65,6 +62,14 @@ export function compactRuntimeState(
     removedOutboxMessageIds: state.outbox
       .filter((message) => !retainedOutboxIds.has(message.id))
       .map((message) => message.id)
+  };
+}
+
+/** Same configured fallback for both authorities, including invalid overrides. */
+export function outboxRetentionPolicy(options: RuntimeRetentionOptions): { hotWindow: number; retentionMs: number } {
+  return {
+    hotWindow: boundedCount(options.outboxHotWindow, configuredPositiveInteger("STATE_OUTBOX_HOT_WINDOW", DEFAULT_OUTBOX_HOT_WINDOW)),
+    retentionMs: positiveDuration(options.outboxRetentionMs, configuredPositiveInteger("OUTBOX_STATE_RETENTION_MS", DEFAULT_OUTBOX_RETENTION_MS))
   };
 }
 

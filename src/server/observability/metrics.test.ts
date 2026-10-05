@@ -64,6 +64,31 @@ describe("bounded metrics", () => {
     expect(output).not.toContain("patient-secret");
   });
 
+  it("uses the authoritative outbox aggregate when the snapshot outbox is empty", () => {
+    resetMetrics();
+    const state = createDemoState();
+    state.outbox = [];
+    refreshOperationalMetrics(state, new Date("2026-08-20T10:00:00.000Z"), {}, {
+      pending: 250,
+      oldestAvailableAt: "2026-08-20T09:58:30.000Z"
+    });
+
+    expect(renderPrometheus()).toContain("cvg_outbox_pending 250\n");
+    expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 90\n");
+    refreshOperationalMetrics(state, new Date("2026-08-20T10:00:00.000Z"), {}, { pending: 0 });
+    expect(renderPrometheus()).toContain("cvg_outbox_pending 0\n");
+    expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 0\n");
+  });
+
+  it.each([undefined, "invalid", "2026-08-20T10:01:00.000Z"])("clamps aggregate oldest age for %s", (oldestAvailableAt) => {
+    resetMetrics();
+    refreshOperationalMetrics(createDemoState(), new Date("2026-08-20T10:00:00.000Z"), {}, {
+      pending: 2, oldestAvailableAt
+    });
+    expect(renderPrometheus()).toContain("cvg_outbox_pending 2\n");
+    expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 0\n");
+  });
+
   it("renders business snapshot gauges without identifiers or clinical content", () => {
     resetMetrics();
     const state = createDemoState();

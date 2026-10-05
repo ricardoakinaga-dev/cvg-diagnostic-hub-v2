@@ -25,13 +25,14 @@ interface AppliedMigrationRow {
   readonly checksum: string | null;
 }
 
-function fakeClient(applied: readonly AppliedMigrationRow[] = []) {
+function fakeClient(applied: readonly AppliedMigrationRow[] = [], otherSessions = 0) {
   const queries: RecordedQuery[] = [];
   const query = vi.fn(async (text: string, values: readonly unknown[] = []) => {
     queries.push({ text, values });
     if (text.includes("SELECT version, checksum FROM schema_migrations")) {
       return { rows: [...applied], rowCount: applied.length };
     }
+    if (text.includes("FROM pg_stat_activity")) return { rows: [{ other_sessions: otherSessions }], rowCount: 1 };
     return { rows: [], rowCount: 1 };
   });
   return { client: { query }, queries, query };
@@ -107,7 +108,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("012_session_activity");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("014_outbox_read_authority");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -169,7 +170,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["012_session_activity"],
+      applied: ["014_outbox_read_authority"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -311,6 +312,53 @@ describe("database migration runner", () => {
 
       expect(queries.some(({ text }) => text === "ROLLBACK")).toBe(true);
       expect(queries.at(-1)?.text).toBe("SELECT pg_advisory_unlock(hashtext($1))");
+    });
+  });
+
+  describe("coordinated cutover guard", () => {
+    const cutoverSql = "-- Coordinated cutover: stop old app/worker.\nSELECT 1;";
+
+    it("refuses a cutover migration while another session is connected, before running any SQL", async () => {
+      await withMigrationDirectory({ "001_first.sql": "SELECT 0;", "002_cutover.sql": cutoverSql }, async (directory) => {
+        const { client, queries } = fakeClient([], 2);
+
+        await expect(applyMigrations(client, { migrationDirectory: directory, logger: { info: vi.fn() } }))
+          .rejects.toThrow("MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:002_cutover:2");
+
+        expect(queries.some(({ text }) => text === "SELECT 0;" || text === cutoverSql)).toBe(false);
+        expect(queries.at(-1)?.text).toBe("SELECT pg_advisory_unlock(hashtext($1))");
+      });
+    });
+
+    it("runs the cutover when no other session is connected or the operator acknowledged it", async () => {
+      await withMigrationDirectory({ "001_cutover.sql": cutoverSql }, async (directory) => {
+        const quiet = fakeClient([], 0);
+        await expect(applyMigrations(quiet.client, { migrationDirectory: directory, logger: { info: vi.fn() } })).resolves.toMatchObject({ applied: ["001_cutover"] });
+
+        const busy = fakeClient([], 3);
+        await expect(applyMigrations(busy.client, { migrationDirectory: directory, logger: { info: vi.fn() }, cutoverAcknowledged: true })).resolves.toMatchObject({ applied: ["001_cutover"] });
+        expect(busy.queries.some(({ text }) => text.includes("pg_stat_activity"))).toBe(false);
+      });
+    });
+
+    it("does not look at sessions for ordinary migrations or for cutovers that were already applied", async () => {
+      await withMigrationDirectory({ "001_plain.sql": "SELECT 1;", "002_cutover.sql": cutoverSql }, async (directory) => {
+        const plain = fakeClient([{ version: "002_cutover", checksum: migrationChecksum(cutoverSql) }, { version: "001_plain", checksum: migrationChecksum("SELECT 1;") }], 5);
+        await expect(applyMigrations(plain.client, { migrationDirectory: directory, logger: { info: vi.fn() } })).resolves.toMatchObject({ applied: [] });
+        expect(plain.queries.some(({ text }) => text.includes("pg_stat_activity"))).toBe(false);
+      });
+    });
+
+    it("fails closed when the session count cannot be read", async () => {
+      await withMigrationDirectory({ "001_cutover.sql": cutoverSql }, async (directory) => {
+        const { client, query } = fakeClient();
+        query.mockImplementation(async (text: string) => {
+          if (text.includes("SELECT version, checksum FROM schema_migrations")) return { rows: [], rowCount: 0 };
+          if (text.includes("FROM pg_stat_activity")) return { rows: [], rowCount: 0 };
+          return { rows: [], rowCount: 1 };
+        });
+        await expect(applyMigrations(client, { migrationDirectory: directory, logger: { info: vi.fn() } })).rejects.toThrow("MIGRATION_CUTOVER_CHECK_FAILED:001_cutover");
+      });
     });
   });
 });

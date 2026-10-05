@@ -32,7 +32,10 @@ describe("PostgreSQL generated initial password lifecycle", () => {
         await expect(createApplicationService(observer).regenerateManagedUserPassword(admin, "user-vet", { expectedVersion: 1, idempotencyKey: "pg-stale-reset" })).rejects.toMatchObject({ status: 409 });
         const state = await observer.readState();
         expect(state.users.find((user) => user.id === "user-vet")).toMatchObject({ version: 2, mustChangePassword: true });
-        expect(state.auditEvents.filter((event) => event.eventType === "UserPasswordRegenerated")).toHaveLength(1);
+        expect(state.auditEvents).toEqual([]);
+        const audits = await observer.readAuditEvents({ scope: { entities: [{ entityType: "User", entityId: "user-vet" }] }, order: "asc", limit: 1000 });
+        expect(audits.items.filter((event) => event.eventType === "UserPasswordRegenerated")).toHaveLength(1);
+        expect(JSON.stringify(audits.items)).not.toContain(secret);
         expect(JSON.stringify(state)).not.toContain(secret);
         const temporary = await loginUser(observer, "vet@cvg.local", secret);
         await expect(authenticateRequest(store, passwordRequest(temporary))).rejects.toMatchObject({ code: "PASSWORD_CHANGE_REQUIRED" });
@@ -108,7 +111,11 @@ describe("PostgreSQL generated initial password lifecycle", () => {
         await expect(authenticateRequest(observer, passwordRequest(login))).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
         await expect(loginUser(observer, input.email, secret)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
         const final = await observer.readState();
-        expect(final.auditEvents).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: "InitialPasswordChanged", actorId: created.id })]));
+        expect(final.auditEvents).toEqual([]);
+        const audits = await observer.readAuditEvents({ scope: { entities: [{ entityType: "User", entityId: created.id }, { entityType: "USER", entityId: created.id }] }, order: "asc", limit: 1000 });
+        expect(audits.items).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: "InitialPasswordChanged", actorId: created.id })]));
+        expect(JSON.stringify(audits.items)).not.toContain(secret);
+        expect(JSON.stringify(audits.items)).not.toContain("My-personal-password-5678");
         expect(JSON.stringify(final)).not.toContain(secret);
         expect(JSON.stringify(final)).not.toContain("My-personal-password-5678");
       } finally { await database.closeStore(observer); await database.closeStore(store); }

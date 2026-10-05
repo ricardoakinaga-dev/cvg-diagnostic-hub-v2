@@ -267,17 +267,20 @@ describe("PostgreSQL session activity and narrow reads", () => {
           rows: [{ count: 0 }],
           rowCount: 1
         });
-        // Retention keeps the JSONB projection and the relational outbox in
-        // exact agreement, which is what runtime readiness asserts.
+        // Delivery history stays relational after retention; the snapshot is transient.
         const outboxCounts = await database.query(
           `SELECT jsonb_array_length(state->'outbox')::text AS snapshot,
                   (SELECT count(*) FROM outbox_messages)::text AS relational
              FROM cvg_runtime_state WHERE id = 1`
         );
         const [snapshotCount, relationalCount] = Object.values(outboxCounts.rows[0] ?? {}).map(Number);
-        expect(snapshotCount).toBeGreaterThanOrEqual(0);
-        expect(snapshotCount).toBe(relationalCount);
-        const auditEvent = store.getState().auditEvents.at(-1);
+        expect(snapshotCount).toBe(0);
+        expect(relationalCount).toBe((await store.readOutbox({ kind: "replay", limit: 100 })).length);
+        expect(store.getState().outbox).toEqual([]);
+        await expect(store.healthcheck()).resolves.toBeUndefined();
+        expect(store.getState().auditEvents).toEqual([]);
+        const audits = await store.readAuditEvents({ scope: { entities: [], unresolved: { resolvedEntities: [] } }, order: "desc", limit: 1 });
+        const auditEvent = audits.items[0];
         expect(auditEvent?.eventType).toBe("RuntimeStateRetentionApplied");
       } finally {
         await database.closeStore(store);

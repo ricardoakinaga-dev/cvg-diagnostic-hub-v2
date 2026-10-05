@@ -58,6 +58,12 @@ export function validatePostgresIntegrationEnvironment(
   if (!LOOPBACK_HOSTS.has(adminUrl.hostname.toLowerCase())) {
     throw new Error("POSTGRES_TEST_ADMIN_URL must target a loopback host.");
   }
+  // pg-connection-string permits query parameters such as ?host= to override
+  // the validated authority. Dedicated disposable admin URLs use only the
+  // authority/path so the driver cannot silently connect to a different host.
+  if (adminUrl.search) {
+    throw new Error("POSTGRES_TEST_ADMIN_URL must not contain query parameters.");
+  }
   if (!adminUrl.pathname || adminUrl.pathname === "/") {
     throw new Error("POSTGRES_TEST_ADMIN_URL must name an existing administrative database.");
   }

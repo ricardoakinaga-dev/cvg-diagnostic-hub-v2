@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "012_session_activity";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "014_outbox_read_authority";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -21,7 +21,9 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "009_relational_sample_lineage",
   "010_relational_backfill_control",
   "011_outbox_dead_letter",
-  "012_session_activity"
+  "012_session_activity",
+  "013_audit_read_authority",
+  "014_outbox_read_authority"
 ] as const;
 
 /**
@@ -41,7 +43,9 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "009_relational_sample_lineage": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c",
   "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f",
   "011_outbox_dead_letter": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073",
-  "012_session_activity": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5"
+  "012_session_activity": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5",
+  "013_audit_read_authority": "9b5ca0a5b3107e4cbe5770081bea50c6b1de3ff1f9fc44cc878a794dea463d98",
+  "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -63,6 +67,11 @@ interface MigrationLogger {
 export interface ApplyMigrationsOptions {
   readonly migrationDirectory: string;
   readonly logger?: MigrationLogger;
+  /**
+   * Operator acknowledgement for migrations marked "Coordinated cutover". Without it,
+   * such a migration is refused while any other session is connected to the database.
+   */
+  readonly cutoverAcknowledged?: boolean;
 }
 
 export interface MigrationRunResult {
@@ -153,26 +162,22 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
        AND pg_get_functiondef(tgfoid) ILIKE '%AUDIT_EVENTS_ARE_APPEND_ONLY%'
   ) AS audit_truncate_guard_ready,
   COALESCE((
-    SELECT jsonb_array_length(state->'auditEvents') = (SELECT count(*) FROM audit_events)
-       AND jsonb_array_length(state->'outbox') = (SELECT count(*) FROM outbox_messages)
-       AND NOT EXISTS (
-         SELECT 1
-           FROM audit_events relational
-          WHERE NOT EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(state->'auditEvents') snapshot
-             WHERE snapshot->>'id' = relational.id
-          )
-       )
-       AND NOT EXISTS (
-         SELECT 1
-           FROM outbox_messages relational
-          WHERE NOT EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(state->'outbox') snapshot
-             WHERE snapshot->>'id' = relational.id
-          )
-       )
+    SELECT state->'auditEvents' = '[]'::jsonb
+       AND state->'outbox' = '[]'::jsonb
+       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'cvg_runtime_state'::regclass
+         AND conname = 'runtime_audit_is_transient' AND convalidated
+         AND pg_get_constraintdef(oid) ILIKE '%auditEvents%[]%')
+       AND EXISTS (SELECT 1 FROM runtime_storage_boundaries WHERE boundary_key = 'audit-events-v1'
+         AND authoritative_store = 'audit_events' AND read_mode = 'RELATIONAL' AND write_mode = 'RELATIONAL'
+         AND status = 'RELATIONAL_READY' AND reconciliation_mode = 'COMPLETE' AND contract_version = 'AuditEvent-v1')
+       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'cvg_runtime_state'::regclass
+         AND conname = 'runtime_outbox_is_transient' AND convalidated
+         AND pg_get_constraintdef(oid) ILIKE '%outbox%[]%')
+       AND EXISTS (SELECT 1 FROM runtime_storage_boundaries WHERE boundary_key = 'outbox-messages-v1'
+         AND authoritative_store = 'outbox_messages' AND read_mode = 'RELATIONAL' AND write_mode = 'RELATIONAL'
+         AND status = 'RELATIONAL_READY' AND reconciliation_mode = 'COMPLETE' AND contract_version = 'OutboxMessage-v1')
+       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'outbox_messages'::regclass
+         AND conname = 'outbox_messages_event_position_unique' AND contype = 'u')
       FROM cvg_runtime_state
      WHERE id = 1
   ), false) AS event_projection_ready,
@@ -390,6 +395,7 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
        AND status = 'TRANSITIONAL'
        AND reconciliation_mode = 'CONTINUOUS'
        AND contract_version = 'StoreState-v1'
+       AND projected_relations = ARRAY[]::text[]
   ) AS transitional_storage_boundary_ready,
   EXISTS (
     SELECT 1
@@ -581,6 +587,8 @@ export async function applyMigrations(client: SqlQueryable, options: ApplyMigrat
       }
     }
 
+    await assertCutoverAllowed(client, migrations.filter((migration) => !ledger.has(migration.version)), options.cutoverAcknowledged === true);
+
     const applied: string[] = [];
     const alreadyApplied: string[] = [];
 
@@ -604,6 +612,28 @@ export async function applyMigrations(client: SqlQueryable, options: ApplyMigrat
   } finally {
     await client.query("SELECT pg_advisory_unlock(hashtext($1))", [MIGRATION_LOCK_NAME]);
   }
+}
+
+/** A migration whose first lines say "Coordinated cutover" needs the previous app and worker stopped. */
+export function isCoordinatedCutover(sql: string): boolean {
+  return /^\s*--\s*Coordinated cutover\b/i.test(sql);
+}
+
+/**
+ * Refuses to run a coordinated-cutover migration while another session is connected.
+ * The check runs before any pending SQL, so a refusal leaves the database untouched.
+ * pg_stat_activity hides the role of sessions owned by other roles, but still reports
+ * their database and pid, which is all this needs.
+ */
+async function assertCutoverAllowed(client: SqlQueryable, pending: readonly MigrationDefinition[], acknowledged: boolean): Promise<void> {
+  const cutover = pending.find((migration) => isCoordinatedCutover(migration.sql));
+  if (!cutover || acknowledged) return;
+  const result = await client.query(
+    "SELECT count(*)::int AS other_sessions FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid()"
+  );
+  const count = Number((result.rows[0] as { other_sessions?: unknown } | undefined)?.other_sessions);
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error(`MIGRATION_CUTOVER_CHECK_FAILED:${cutover.version}`);
+  if (count > 0) throw new Error(`MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:${cutover.version}:${count}`);
 }
 
 function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {

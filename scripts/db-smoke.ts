@@ -51,10 +51,15 @@ async function main(databaseUrl: string): Promise<void> {
   const second = await PostgresStore.create(databaseUrl);
   try {
     if (!second.getState().requests.some((request) => request.id === requestId)) throw new Error("Estado não persistiu após reabrir a conexão.");
-    if (!second.getState().auditEvents.some((event) => event.entityId === requestId)) throw new Error("Auditoria não foi projetada no PostgreSQL.");
+    const audit = await second.readAuditEvents({ scope: { entities: [{ entityType: "DiagnosticRequest", entityId: requestId }] }, order: "asc", limit: 100 });
+    if (!audit.items.some((event) => event.entityId === requestId)) throw new Error("Auditoria não foi projetada no PostgreSQL.");
     const bus = new InProcessEventBus();
     const summary = await processOutboxBatch(second, bus, { workerId: "db-smoke-worker", batchSize: 10, allowSyntheticDelivery: true });
     if (summary.processed < 1 || bus.read().length < 1) throw new Error("Outbox não foi processado após reabrir o PostgreSQL.");
+    if ((await second.readState()).outbox.length !== 0) throw new Error("Histórico de entrega retornou ao snapshot PostgreSQL.");
+    if (!(await second.readOutbox({ kind: "replay", limit: 100 })).some((message) => message.aggregateId === requestId && message.status === "PROCESSED")) {
+      throw new Error("Outbox processado não persistiu na autoridade relacional.");
+    }
     console.log("PostgreSQL smoke test passou: estado, lock transacional, auditoria e outbox persistem.");
   } finally {
     await second.close();

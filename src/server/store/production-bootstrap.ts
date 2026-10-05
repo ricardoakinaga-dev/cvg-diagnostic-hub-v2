@@ -113,7 +113,7 @@ export async function bootstrapProductionDatabase(connectionString: string, inpu
       try {
         const inserted = await client.query(
           "INSERT INTO cvg_runtime_state (id, state) VALUES (1, $1::jsonb) ON CONFLICT (id) DO NOTHING RETURNING id",
-          [JSON.stringify(state)]
+          [JSON.stringify({ ...state, auditEvents: [] })]
         );
         if (inserted.rowCount !== 1) throw new ProductionBootstrapAlreadyInitializedError();
         for (const event of state.auditEvents) {

@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { StateStore } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
+import { renderPrometheus, resetMetrics } from "./metrics";
 import {
   createSharedRealtimeStateReader,
   resetSharedRealtimeStateReaders,
@@ -13,15 +14,19 @@ function countingStore(): { store: StateStore; reads: () => number } {
   let reads = 0;
   const store: StateStore = {
     getState: backing.getState.bind(backing),
-    readState: async () => {
+    readState: backing.readState.bind(backing),
+    readStateSnapshot: backing.readStateSnapshot.bind(backing),
+    readRealtimeSnapshot: async (limit) => {
       reads += 1;
-      return backing.readState();
+      return backing.readRealtimeSnapshot(limit);
     },
-    readStateSnapshot: async () => {
-      reads += 1;
-      return backing.readStateSnapshot();
-    },
+    readOutbox: backing.readOutbox.bind(backing),
+    readOutboxMetrics: backing.readOutboxMetrics.bind(backing),
+    outboxTransaction: backing.outboxTransaction.bind(backing),
     readStateVersion: backing.readStateVersion.bind(backing),
+    readAuditEvents: backing.readAuditEvents.bind(backing),
+    readAuditActors: backing.readAuditActors.bind(backing),
+    readAuditMetrics: backing.readAuditMetrics.bind(backing),
     readAuthorizationSnapshot: backing.readAuthorizationSnapshot.bind(backing),
     readSessionActivity: backing.readSessionActivity.bind(backing),
     touchSessionActivity: backing.touchSessionActivity.bind(backing),
@@ -34,11 +39,13 @@ function countingStore(): { store: StateStore; reads: () => number } {
 describe("shared realtime state reader", () => {
   beforeEach(() => {
     resetSharedRealtimeStateReaders();
+    resetMetrics();
     delete process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
     delete process.env.REALTIME_SHARED_NOTIFY_DEBOUNCE_MS;
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     resetSharedRealtimeStateReaders();
     delete process.env.REALTIME_SHARED_READ_MIN_INTERVAL_MS;
     delete process.env.REALTIME_SHARED_NOTIFY_DEBOUNCE_MS;
@@ -46,6 +53,8 @@ describe("shared realtime state reader", () => {
 
   it("serves one aggregate read per cadence and collapses concurrent callers", async () => {
     const { store, reads } = countingStore();
+    const realtimeRead = vi.spyOn(store, "readRealtimeSnapshot");
+    const genericRead = vi.spyOn(store, "readStateSnapshot");
     let nowMs = 1_000;
     const reader = createSharedRealtimeStateReader(store, { minFullReadIntervalMs: 1_000, now: () => nowMs });
 
@@ -71,6 +80,8 @@ describe("shared realtime state reader", () => {
     expect(reader.fullReadCount()).toBe(0);
     await reader.read();
     expect(reads()).toBe(4);
+    expect(realtimeRead.mock.calls).toEqual([[100], [100], [100], [100]]);
+    expect(genericRead).not.toHaveBeenCalled();
   });
 
   it("bounds wake-up reads with the configured debounce", async () => {
@@ -86,6 +97,20 @@ describe("shared realtime state reader", () => {
     nowMs += 200;
     await reader.read("notify");
     expect(reads()).toBe(2);
+  });
+
+  it("counts completed aggregate reads in telemetry rather than shared-cache requests", async () => {
+    const { store, reads } = countingStore();
+    let nowMs = 0;
+    const reader = createSharedRealtimeStateReader(store, { minFullReadIntervalMs: 1_000, now: () => nowMs });
+    await Promise.all(Array.from({ length: 100 }, () => reader.read()));
+    await Promise.all(Array.from({ length: 100 }, () => reader.read()));
+    expect(reads()).toBe(1);
+    expect(renderPrometheus()).toContain('cvg_realtime_shared_reads_total{mode="stream"} 1\n');
+    nowMs = 1_001;
+    await reader.read();
+    expect(reads()).toBe(2);
+    expect(renderPrometheus()).toContain('cvg_realtime_shared_reads_total{mode="stream"} 2\n');
   });
 
   it("keeps one reader per store and rebuilds it on reset", async () => {
@@ -128,18 +153,20 @@ describe("shared realtime state reader", () => {
 
   it("propagates a failed read without caching a partial snapshot", async () => {
     const backing = new MemoryStore(createDemoState("realtime-reader-failure-password"));
-    const failing = backing as unknown as Record<string, unknown>;
-    failing.readState = async () => {
-      throw new Error("database unavailable");
-    };
-    failing.readStateSnapshot = async () => {
-      throw new Error("database unavailable");
-    };
-    const store = backing as unknown as StateStore;
-    const reader = createSharedRealtimeStateReader(store);
+    const realtimeRead = vi.spyOn(backing, "readRealtimeSnapshot")
+      .mockRejectedValueOnce(new Error("database unavailable"))
+      .mockRejectedValueOnce(new Error("database unavailable"));
+    const reader = createSharedRealtimeStateReader(backing);
 
     await expect(reader.read()).rejects.toThrow("database unavailable");
     expect(reader.fullReadCount()).toBe(0);
     await expect(reader.read()).rejects.toThrow("database unavailable");
+    expect(reader.fullReadCount()).toBe(0);
+    expect(renderPrometheus()).not.toContain('cvg_realtime_shared_reads_total{mode="stream"}');
+    const recovered = await reader.read();
+    expect(recovered.version).toBe(await backing.readStateVersion());
+    expect(reader.fullReadCount()).toBe(1);
+    expect(realtimeRead.mock.calls).toEqual([[100], [100], [100]]);
+    expect(renderPrometheus()).toContain('cvg_realtime_shared_reads_total{mode="stream"} 1\n');
   });
 });

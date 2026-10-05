@@ -952,18 +952,50 @@ describe("versioned API boundary", () => {
   it("exposes bounded metrics only to readiness-capable administrators", async () => {
     const admin = await login("admin@cvg.local");
     const store = await getRuntimeStoreAsync();
-    const freshRead = vi.spyOn(store, "readState");
+    const originalRead = store.readState.bind(store);
+    const freshRead = vi.spyOn(store, "readState").mockImplementation(async () => ({ ...await originalRead(), outbox: [] }));
+    const auditRead = vi.spyOn(store, "readAuditMetrics").mockResolvedValue({ recollectionRate: 0.25, resultViewLatencySeconds: 12 });
+    const outboxRead = vi.spyOn(store, "readOutboxMetrics").mockResolvedValue({ pending: 250, oldestAvailableAt: "2026-01-01T00:00:00.000Z" });
     const response = await GET(new Request("http://localhost/api/v1/metrics", { headers: { cookie: admin.cookie } }), params(["metrics"]));
     const body = await response.text();
     expect(response.status).toBe(200);
     expect(freshRead).toHaveBeenCalled();
+    expect(auditRead).toHaveBeenCalledTimes(1);
+    expect(outboxRead).toHaveBeenCalledTimes(1);
     expect(response.headers.get("content-type")).toContain("text/plain");
     expect(body).toContain("http_requests_total");
+    expect(body).toContain("cvg_outbox_pending 250\n");
+    expect(Number(body.match(/^cvg_outbox_oldest_age_seconds (.+)$/m)?.[1])).toBeGreaterThan(0);
+    expect(body).toContain("cvg_recollection_rate 0.25\n");
+    expect(body).toContain("cvg_result_view_latency_seconds 12\n");
     expect(body).not.toContain("patient-thor");
 
     const vet = await login();
+    auditRead.mockClear();
+    outboxRead.mockClear();
     const denied = await GET(new Request("http://localhost/api/v1/metrics", { headers: { cookie: vet.cookie } }), params(["metrics"]));
     expect(denied.status).toBe(404);
+    expect(auditRead).not.toHaveBeenCalled();
+    expect(outboxRead).not.toHaveBeenCalled();
+
+    const unauthenticated = await GET(new Request("http://localhost/api/v1/metrics"), params(["metrics"]));
+    expect(unauthenticated.status).toBe(401);
+    expect(auditRead).not.toHaveBeenCalled();
+    expect(outboxRead).not.toHaveBeenCalled();
+  });
+
+  it.each(["readAuditMetrics", "readOutboxMetrics"] as const)("fails metrics closed when %s is unavailable", async (method) => {
+    const admin = await login("admin@cvg.local");
+    const store = await getRuntimeStoreAsync();
+    const failedRead = vi.spyOn(store, method).mockRejectedValue(new Error("aggregate-private-database-failure"));
+
+    const response = await GET(new Request("http://localhost/api/v1/metrics", { headers: { cookie: admin.cookie } }), params(["metrics"]));
+    const body = await response.text();
+    expect(failedRead).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(500);
+    expect(JSON.parse(body).error.code).toBe("INTERNAL_ERROR");
+    expect(body).not.toContain("aggregate-private-database-failure");
+    expect(body).not.toContain("cvg_outbox_pending");
   });
 
   it("emits realtime poll, resync, and closure metrics without event identifiers", async () => {
@@ -1046,12 +1078,10 @@ describe("versioned API boundary", () => {
     try {
       const auth = await login();
       const store = await getRuntimeStoreAsync();
-      const originalRead = store.readState.bind(store);
-      let calls = 0;
-      vi.spyOn(store, "readState").mockImplementation(async () => {
-        calls += 1;
-        if (calls > 1) await new Promise((resolve) => setTimeout(resolve, 25));
-        return originalRead();
+      const originalRead = store.readRealtimeSnapshot.bind(store);
+      const realtimeRead = vi.spyOn(store, "readRealtimeSnapshot").mockImplementation(async (limit) => {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        return originalRead(limit);
       });
 
       const stream = await GET(new Request("http://localhost/api/v1/realtime/events", { headers: { cookie: auth.cookie } }), params(["realtime", "events"]));
@@ -1059,6 +1089,7 @@ describe("versioned API boundary", () => {
       expect(reader).toBeTruthy();
       const result = await reader!.read();
       expect(result.done).toBe(true);
+      expect(realtimeRead).toHaveBeenCalledWith(100);
       expect(renderPrometheus()).toContain('cvg_realtime_poll_failures_total{mode="stream",reason="poll_timeout"} 1');
       expect(renderPrometheus()).toContain('cvg_realtime_stream_closures_total{reason="poll_timeout"} 1');
     } finally {
@@ -1127,14 +1158,14 @@ describe("versioned API boundary", () => {
         }
       })();
 
-      const originalRead = store.readStateSnapshot.bind(store);
-      vi.spyOn(store, "readStateSnapshot").mockImplementation(async () => {
+      const originalRead = store.readRealtimeSnapshot.bind(store);
+      const realtimeRead = vi.spyOn(store, "readRealtimeSnapshot").mockImplementation(async (limit) => {
         calls += 1;
         inFlight += 1;
         maximumInFlight = Math.max(maximumInFlight, inFlight);
         await new Promise((resolve) => setTimeout(resolve, 35));
         try {
-          return await originalRead();
+          return await originalRead(limit);
         } finally {
           inFlight -= 1;
         }
@@ -1147,6 +1178,7 @@ describe("versioned API boundary", () => {
       expect(calls).toBeGreaterThanOrEqual(1);
       expect(calls).toBeLessThanOrEqual(3);
       expect(maximumInFlight).toBe(1);
+      expect(realtimeRead).toHaveBeenCalledWith(100);
       await reader.cancel();
       await draining;
     } finally {
@@ -1169,7 +1201,7 @@ describe("versioned API boundary", () => {
       const reader = stream.body?.getReader();
       expect(reader).toBeTruthy();
       await reader!.read();
-      vi.spyOn(store, "readStateSnapshot").mockRejectedValue(new Error("fresh state unavailable"));
+      const realtimeRead = vi.spyOn(store, "readRealtimeSnapshot").mockRejectedValue(new Error("fresh state unavailable"));
 
       let done = false;
       for (let attempt = 0; attempt < 10 && !done; attempt += 1) {
@@ -1180,6 +1212,7 @@ describe("versioned API boundary", () => {
         if (result && "done" in result) done = result.done;
       }
       expect(done).toBe(true);
+      expect(realtimeRead).toHaveBeenCalledWith(100);
     } finally {
       if (previousInterval === undefined) delete process.env.REALTIME_STREAM_INTERVAL_MS;
       else process.env.REALTIME_STREAM_INTERVAL_MS = previousInterval;

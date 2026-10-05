@@ -12,6 +12,7 @@ export interface NextHttpTestServerOptions {
   mode?: "dev" | "start";
   distDir?: string;
   storageEndpoint?: string;
+  realtime?: { connections: number; intervalMs: number; maxStreamMs: number; pollTimeoutMs?: number };
 }
 
 export interface NextHttpTestServer {
@@ -66,7 +67,8 @@ export async function startNextHttpTestServer(options: NextHttpTestServerOptions
     realtimeChannel: options.realtimeChannel,
     storageRoot,
     distDir,
-    storageEndpoint: options.storageEndpoint
+    storageEndpoint: options.storageEndpoint,
+    realtime: options.realtime
   });
   const command = mode === "start"
     ? [nextBinary, "start", "--hostname", "127.0.0.1"]
@@ -163,7 +165,8 @@ export async function buildNextHttpTestBundle(options: Omit<NextHttpTestServerOp
     realtimeChannel: options.realtimeChannel,
     storageRoot,
     distDir,
-    storageEndpoint: options.storageEndpoint
+    storageEndpoint: options.storageEndpoint,
+    realtime: options.realtime
   });
   const child = spawn(process.execPath, [nextBinary, "build"], {
     cwd: process.cwd(),
@@ -203,6 +206,7 @@ function nextHttpEnvironment(options: {
   storageRoot: string;
   distDir: string;
   storageEndpoint?: string;
+  realtime?: NextHttpTestServerOptions["realtime"];
 }): NodeJS.ProcessEnv {
   const productionStorage = options.mode === "start";
   if (productionStorage && !options.storageEndpoint) {
@@ -223,10 +227,10 @@ function nextHttpEnvironment(options: {
     REALTIME_NOTIFICATION_ADAPTER: "postgres-listen",
     REALTIME_NOTIFICATION_CHANNEL: options.realtimeChannel,
     REALTIME_LISTEN_POOL_MAX: "2",
-    REALTIME_STREAM_INTERVAL_MS: "60000",
-    REALTIME_POLL_TIMEOUT_MS: "5000",
-    REALTIME_MAX_STREAM_MS: "60000",
-    REALTIME_MAX_CONNECTIONS: "10",
+    REALTIME_STREAM_INTERVAL_MS: String(options.realtime?.intervalMs ?? 60000),
+    REALTIME_POLL_TIMEOUT_MS: String(options.realtime?.pollTimeoutMs ?? 5000),
+    REALTIME_STREAM_MAX_MS: String(options.realtime?.maxStreamMs ?? 60000),
+    REALTIME_MAX_CONNECTIONS: String(options.realtime?.connections ?? 10),
     STORAGE_MODE: productionStorage ? "s3" : "local",
     STORAGE_ROOT: options.storageRoot,
     ...(productionStorage ? {
@@ -255,6 +259,7 @@ async function waitForChild(
   timeoutMs: number,
   appendOutput: (chunk: Buffer | string) => void
 ): Promise<{ exited: boolean; code: number | null; signal: NodeJS.Signals | null }> {
+  if (child.exitCode !== null || child.signalCode !== null) return { exited: true, code: child.exitCode, signal: child.signalCode };
   let exited = false;
   let code: number | null = null;
   let signal: NodeJS.Signals | null = null;
@@ -279,17 +284,20 @@ async function waitForChild(
   return { exited, code, signal };
 }
 
-async function terminateChild(child: ChildProcess): Promise<void> {
+export async function terminateChild(child: ChildProcess): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return;
-  try {
-    if (process.platform === "win32" || !child.pid) child.kill("SIGTERM");
-    else process.kill(-child.pid, "SIGTERM");
-  } catch {
+  const signal = (value: NodeJS.Signals) => {
     try {
-      child.kill("SIGTERM");
-    } catch {
-      // The process may have exited between the timeout and the signal.
-    }
+      if (process.platform === "win32" || !child.pid) child.kill(value);
+      else process.kill(-child.pid, value);
+    } catch { child.kill(value); }
+  };
+  signal("SIGTERM");
+  const terminated = await waitForChild(child, SHUTDOWN_TIMEOUT_MS, () => undefined);
+  if (!terminated.exited && child.exitCode === null && child.signalCode === null) {
+    signal("SIGKILL");
+    const killed = await waitForChild(child, SHUTDOWN_TIMEOUT_MS, () => undefined);
+    if (!killed.exited && child.exitCode === null && child.signalCode === null) throw new Error("Next build process did not exit during cleanup.");
   }
 }
 

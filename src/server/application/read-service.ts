@@ -9,6 +9,7 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import { decodeQueueCursor, encodeQueueCursor } from "./queue-pagination";
 import * as helpers from "./service-common";
+import { auditScopeForActor, requestAuditScope } from "./audit-read";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -121,21 +122,11 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       requirePermission(currentActor, "audit.view", { departmentCode: currentActor.departmentCode });
       const limit = pageSize(filters.limit);
       const cursor = decodeAuditCursor(filters.cursor);
-      const events = state.auditEvents
-        .filter((event) => {
-          const request = requestForAuditEvent(state, event);
-          if (!request) return currentActor.role === "ADMIN" || (currentActor.role === "MANAGER" && canViewManagementAudit(state, currentActor, event));
-          const eventDepartmentCode = auditEventDepartmentCode(state, event);
-          if (currentActor.role === "MANAGER" && eventDepartmentCode && !managerCanAccessDepartment(currentActor, eventDepartmentCode)) return false;
-          return canViewRequest(state, currentActor, request) && auditEventItemIds(state, event).every((itemId) => canViewItem(state, currentActor, itemFor(state, itemId)));
-        })
-        .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt) || left.id.localeCompare(right.id));
-      const afterCursor = cursor ? events.filter((event) => event.occurredAt < cursor.occurredAt || (event.occurredAt === cursor.occurredAt && event.id > cursor.id)) : events;
-      const page = afterCursor.slice(0, limit);
-      const items = page.map((event) => ({ ...event, metadata: { ...event.metadata } }));
-      const last = page.at(-1);
-      const nextCursor = last && page.length < afterCursor.length ? encodeKeysetCursor({ occurredAt: last.occurredAt, id: last.id }) : undefined;
-      return { items, nextCursor, limit, total: events.length };
+      const page = await store.readAuditEvents({ scope: auditScopeForActor(state, currentActor), order: "desc", limit, cursor });
+      const items = page.items.map((event) => ({ ...event, metadata: { ...event.metadata } }));
+      const last = page.items.at(-1);
+      const nextCursor = last && page.hasMore ? encodeKeysetCursor({ occurredAt: last.occurredAt, id: last.id }) : undefined;
+      return { items, nextCursor, limit, total: page.total };
     },
 
     async getPatient(actor: User, patientId: string) {
@@ -352,21 +343,33 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         return undefined;
       };
       const ranked: Array<{ result: SearchResult; rank: number }> = [];
-      for (const request of state.requests) {
-        if ((from !== undefined && Date.parse(request.createdAt) < from) || (to !== undefined && Date.parse(request.createdAt) > to)) continue;
-        const items = request.itemIds.map((itemId) => itemFor(state, itemId));
-        const visibleItems = items.filter((item) => {
-          return canViewItem(state, currentActor, item) && (!filters.status || item.status === filters.status) && (!departmentCode || item.departmentCode === departmentCode);
-        });
-        if (!visibleItems.length) continue;
+      const visibleRequests = state.requests.flatMap((request) => {
+        if ((from !== undefined && Date.parse(request.createdAt) < from) || (to !== undefined && Date.parse(request.createdAt) > to)) return [];
+        const visibleItems = request.itemIds.map((itemId) => itemFor(state, itemId)).filter((item) =>
+          canViewItem(state, currentActor, item) && (!filters.status || item.status === filters.status) && (!departmentCode || item.departmentCode === departmentCode));
+        return visibleItems.length ? [{ request, visibleItems }] : [];
+      });
+      // Reviewer matching has always used entity IDs regardless of event type.
+      // The store returns distinct actor pairs for those authorized IDs.
+      const auditActors = await store.readAuditActors(visibleRequests.flatMap(({ request, visibleItems }) => [
+        { entityType: "DiagnosticRequest", entityId: request.id },
+        ...visibleItems.map((item) => ({ entityType: "DiagnosticRequestItem", entityId: item.id }))
+      ]));
+      const actorsByEntityId = new Map<string, Set<string>>();
+      for (const { entityId, actorId } of auditActors) {
+        const actors = actorsByEntityId.get(entityId) ?? new Set<string>();
+        actors.add(actorId);
+        actorsByEntityId.set(entityId, actors);
+      }
+      for (const { request, visibleItems } of visibleRequests) {
         const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
         const requester = state.users.find((user) => user.id === request.requesterId);
         const visibleEntityIds = new Set([request.id, ...visibleItems.map((item) => item.id)]);
-        const reviewerFields = state.auditEvents
-          .filter((event) => visibleEntityIds.has(event.entityId) && event.actorId)
-          .flatMap((event) => {
-            const user = state.users.find((entry) => entry.id === event.actorId);
-            return [event.actorId!, user?.displayName ?? "", user?.email ?? ""];
+        const reviewerFields = [...visibleEntityIds]
+          .flatMap((entityId) => [...(actorsByEntityId.get(entityId) ?? [])])
+          .flatMap((actorId) => {
+            const user = state.users.find((entry) => entry.id === actorId);
+            return [actorId, user?.displayName ?? "", user?.email ?? ""];
           });
         const requestFields = [request.requestCode, patient.displayName, patient.ownerLabel, patient.externalId, request.requesterId, requester?.displayName ?? "", requester?.email ?? "", ...reviewerFields];
         const requestRank = rankFor(requestFields);
@@ -428,25 +431,13 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       if (item && item.requestId !== request.id) throw new ApiError("NOT_FOUND", "A solicitação e o item não pertencem ao mesmo contexto.", 404);
       requireRequestPermission(state, currentActor, "timeline.view", request);
       if (item) requireItemPermission(state, currentActor, "timeline.view", item);
-      const visibleItemIds = request.itemIds.filter((entryId) => canViewItem(state, currentActor, itemFor(state, entryId)));
       const limit = pageSize(filters.limit);
       const cursor = decodeTimelineCursor(filters.cursor);
-      const events = state.auditEvents
-        .filter((event) => {
-          const eventRequest = requestForAuditEvent(state, event);
-          if (!eventRequest || eventRequest.id !== request.id) return false;
-          const eventItemIds = auditEventItemIds(state, event);
-          return eventItemIds.length === 0 || eventItemIds.every((eventItemId) => visibleItemIds.includes(eventItemId));
-        })
-        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt) || left.id.localeCompare(right.id));
-      const afterCursor = cursor
-        ? events.filter((event) => event.occurredAt > cursor.occurredAt || (event.occurredAt === cursor.occurredAt && event.id > cursor.id))
-        : events;
-      const page = afterCursor.slice(0, limit);
-      const last = page.at(-1);
-      const nextCursor = last && page.length < afterCursor.length ? encodeKeysetCursor({ occurredAt: last.occurredAt, id: last.id }) : undefined;
-      const items = page.map((event) => ({ ...event, metadata: { ...event.metadata } }));
-      return { items, nextCursor, limit, total: events.length };
+      const page = await store.readAuditEvents({ scope: requestAuditScope(state, currentActor, request), order: "asc", limit, cursor });
+      const last = page.items.at(-1);
+      const nextCursor = last && page.hasMore ? encodeKeysetCursor({ occurredAt: last.occurredAt, id: last.id }) : undefined;
+      const items = page.items.map((event) => ({ ...event, metadata: { ...event.metadata } }));
+      return { items, nextCursor, limit, total: page.total };
     },
 
     async dashboard(actor: User): Promise<DashboardView> {

@@ -1,8 +1,27 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "./fixtures";
 import { MemoryStore } from "./memory-store";
+import type { OutboxMessage } from "../domain/models";
 
 describe("memory store narrow seams", () => {
+  it("exposes only replayable messages in creation order through the bounded outbox seams", async () => {
+    const state = createDemoState("memory-outbox-authority-password");
+    state.outbox = (["PENDING", "PROCESSING", "FAILED", "DISCARDED", "PROCESSED", "PENDING", "PROCESSED"] as const)
+      .map((status, index): OutboxMessage => ({ id: `replay-${index}`, eventType: "SyntheticReplay", aggregateType: "DiagnosticRequest",
+        aggregateId: "request-synthetic", payload: {}, consumerType: "DOMAIN_EVENT", routingKey: "domain.SyntheticReplay",
+        status, attempts: 1, availableAt: new Date(Date.UTC(2026, 9, 4, 12, 0, 7 - index)).toISOString(), correlationId: "correlation-synthetic" }));
+    const store = new MemoryStore(state);
+    const before = await store.readStateSnapshot();
+    expect((await store.readOutbox({ kind: "replay", limit: 100 })).map(({ id }) => id)).toEqual(["replay-0", "replay-4", "replay-5", "replay-6"]);
+    const snapshot = await store.readRealtimeSnapshot(2);
+    expect(snapshot.version).toBe(before.version);
+    expect(snapshot.state.outbox.map(({ id }) => id)).toEqual(["replay-5", "replay-6"]);
+    expect((await store.readOutbox({ kind: "dead-letter", limit: 100 })).map(({ id }) => id)).toEqual(["replay-2", "replay-3"]);
+    for (const limit of [0, -1, Number.NaN, Number.POSITIVE_INFINITY, 1.5]) {
+      await expect(store.readRealtimeSnapshot(limit)).rejects.toThrow("OUTBOX_READ_LIMIT_INVALID");
+    }
+    expect(await store.readStateSnapshot()).toEqual(before);
+  });
   it("keeps liveness monotonic for stale, replayed and concurrent observations", async () => {
     const store = new MemoryStore(createDemoState("memory-monotonic-password"));
     const before = await store.readStateSnapshot();

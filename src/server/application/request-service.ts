@@ -8,6 +8,7 @@ import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext, PatientDiagnosticsAuxiliaryRead } from "./service-context";
 import * as helpers from "./service-common";
+import { patientAuditScope, readPatientAuditEvents } from "./audit-read";
 import { reprojectRequestForActor } from "./request-projection";
 const {
   MAX_NOTE_LENGTH,
@@ -354,12 +355,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           };
         })
         .sort((left, right) => left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id));
-      const events = state.auditEvents
-        .filter((event) => {
-          const request = requestForAuditEvent(state, event);
-          return request?.patientId === patient.id && visibleRequestIds.has(request.id) && auditEventItemIds(state, event).every((itemId) => visibleItemIds.has(itemId));
-        })
-        .sort((left, right) => left.occurredAt.localeCompare(right.occurredAt));
+      const events = await readPatientAuditEvents(store, patientAuditScope(state, patient.id, visibleRequestIds, visibleItemIds));
       const last = pageRequests.at(-1);
       const nextCursor = last && pageRequests.length < afterCursor.length ? encodeKeysetCursor({ createdAt: last.createdAt, id: last.id }) : undefined;
       const items = page.map((request) => ({

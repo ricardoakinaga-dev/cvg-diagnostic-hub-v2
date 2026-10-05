@@ -21,6 +21,13 @@ function storeRecordingTouches(): { store: StateStore; touches: { sessionId: str
     readState: backing.readState.bind(backing),
     readStateSnapshot: backing.readStateSnapshot.bind(backing),
     readStateVersion: backing.readStateVersion.bind(backing),
+    readAuditEvents: backing.readAuditEvents.bind(backing),
+    readAuditActors: backing.readAuditActors.bind(backing),
+    readAuditMetrics: backing.readAuditMetrics.bind(backing),
+    readOutbox: backing.readOutbox.bind(backing),
+    readOutboxMetrics: backing.readOutboxMetrics.bind(backing),
+    readRealtimeSnapshot: backing.readRealtimeSnapshot.bind(backing),
+    outboxTransaction: backing.outboxTransaction.bind(backing),
     readAuthorizationSnapshot: backing.readAuthorizationSnapshot.bind(backing),
     readSessionActivity: backing.readSessionActivity.bind(backing),
     touchSessionActivity: async (activity) => {

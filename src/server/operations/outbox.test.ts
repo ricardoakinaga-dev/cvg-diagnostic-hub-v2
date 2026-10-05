@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import type { StoreState, User } from "../domain/models";
+import type { StateStore, StoreState, User } from "../domain/models";
 import { requireActiveUser, requirePermission } from "../application/service-common";
 import { ApiError } from "../http/envelope";
 import { MemoryStore } from "../store/memory-store";
@@ -66,6 +66,159 @@ function deadLetterFixture() {
   };
   return { store: new MemoryStore(state), actor, authorize, command };
 }
+
+function outboxOnlyBoundary(backing: MemoryStore) {
+  const readState = vi.fn(() => { throw new Error("Full-state reads are unavailable at the outbox boundary"); });
+  const transaction = vi.fn(() => { throw new Error("Ordinary transactions are unavailable at the outbox boundary"); });
+  const readOutbox = vi.fn(backing.readOutbox.bind(backing));
+  const outboxTransaction = vi.fn(backing.outboxTransaction.bind(backing));
+  // Bind the scoped APIs to the real store so its internal memory delegation
+  // remains valid; only calls made by the operations consumer are forbidden.
+  const store: StateStore = new Proxy(backing, {
+    get(target, property, receiver) {
+      if (property === "readState") return readState;
+      if (property === "transaction") return transaction;
+      if (property === "readOutbox") return readOutbox;
+      if (property === "outboxTransaction") return outboxTransaction;
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  return { store, readState, transaction, readOutbox, outboxTransaction };
+}
+
+describe("scoped outbox store boundary", () => {
+  it.each([
+    { outcome: "delivered", fail: false, maxAttempts: 2, status: "PROCESSED", notificationState: "DELIVERED", processed: 1, retried: 0, failed: 0 },
+    { outcome: "retry", fail: true, maxAttempts: 2, status: "PENDING", notificationState: "PENDING", processed: 0, retried: 1, failed: 0 },
+    { outcome: "dead letter", fail: true, maxAttempts: 1, status: "FAILED", notificationState: "FAILED", processed: 0, retried: 0, failed: 1 }
+  ])("claims and finishes a notification ($outcome) without full-state APIs", async (scenario) => {
+    const state = deadLetterFixture().store.getState();
+    const domainMessage = stateWithMessage().outbox[0];
+    const notificationMessage = { ...state.outbox[0], id: "outbox-notification", status: "PENDING" as const, attempts: 0, deadLetteredAt: undefined, lastError: undefined };
+    state.outbox = [domainMessage, notificationMessage];
+    state.notifications[0] = { ...state.notifications[0], state: "PENDING" };
+    const backing = new MemoryStore(state);
+    const boundary = outboxOnlyBoundary(backing);
+    const sink: OutboxSink = {
+      supportsRoute(message) {
+        expect(this).toBe(sink);
+        return message.consumerType === "NOTIFICATION_DELIVERY";
+      },
+      publish: vi.fn(async (message) => {
+        if (scenario.fail) throw new Error("delivery unavailable");
+        return { confirmed: true as const, durability: "DURABLE" as const, sink: "notification-test", deliveryId: `delivery:${message.id}` };
+      })
+    };
+
+    const summary = await processOutboxBatch(boundary.store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"), workerId: "scoped-worker", leaseMs: 60_000,
+      batchSize: 1, maxAttempts: scenario.maxAttempts
+    });
+
+    expect(summary).toEqual({ claimed: 1, processed: scenario.processed, retried: scenario.retried, failed: scenario.failed });
+    const after = backing.getState();
+    expect(after.outbox[0]).toEqual(domainMessage);
+    expect(after.outbox[1]).toMatchObject({ id: notificationMessage.id, status: scenario.status, attempts: 1 });
+    expect(after.notifications[0]).toMatchObject({ state: scenario.notificationState, version: scenario.retried ? 2 : 3 });
+    if (!scenario.retried) {
+      expect(after.auditEvents).toContainEqual(expect.objectContaining({
+        eventType: scenario.fail ? "NotificationDeliveryFailed" : "NotificationDelivered",
+        entityId: state.notifications[0].id, metadata: { outboxId: notificationMessage.id, channel: "IN_APP" }
+      }));
+    } else {
+      expect(after.auditEvents).toEqual(state.auditEvents);
+    }
+    expect(boundary.outboxTransaction).toHaveBeenCalledWith({ kind: "message", id: notificationMessage.id }, expect.any(Function));
+    const claimQuery = boundary.outboxTransaction.mock.calls[0]?.[0];
+    expect(claimQuery).toMatchObject({ kind: "claim", now: "2026-08-20T10:01:00.000Z", leaseMs: 60_000 });
+    if (!claimQuery || claimQuery.kind !== "claim") throw new Error("Claim query absent");
+    expect(claimQuery.accepts(domainMessage)).toBe(false);
+    expect(claimQuery.accepts(notificationMessage)).toBe(true);
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows a route-probe exception through the claim query so delivery can decide its outcome", async () => {
+    const backing = new MemoryStore(stateWithMessage());
+    const boundary = outboxOnlyBoundary(backing);
+    const sink: OutboxSink = {
+      supportsRoute: () => { throw new Error("route registry unavailable"); },
+      publish: async () => ({ confirmed: true, durability: "DURABLE", sink: "durable-test", deliveryId: "delivery:outbox-1" })
+    };
+
+    const summary = await processOutboxBatch(boundary.store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"), batchSize: 1
+    });
+
+    const claimQuery = boundary.outboxTransaction.mock.calls[0]?.[0];
+    if (!claimQuery || claimQuery.kind !== "claim") throw new Error("Claim query absent");
+    expect(claimQuery.accepts(stateWithMessage().outbox[0])).toBe(true);
+    expect(summary).toEqual({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+    expect(backing.getState().outbox[0]).toMatchObject({ status: "PROCESSED", attempts: 1 });
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { action: "reprocess", mutate: reprocessDeadLetterMessage, eventType: "OutboxDeadLetterReprocessed", notificationState: "PENDING" },
+    { action: "discard", mutate: discardDeadLetterMessage, eventType: "OutboxDeadLetterDiscarded", notificationState: "FAILED" }
+  ])("authorizes and replays dead-letter $action without full-state APIs", async ({ mutate, eventType, notificationState }) => {
+    const { store: backing, command, authorize } = deadLetterFixture();
+    const boundary = outboxOnlyBoundary(backing);
+    const first = await mutate(boundary.store, "outbox-1", command);
+    const after = backing.getState();
+
+    await expect(mutate(boundary.store, "outbox-1", command)).resolves.toEqual(first);
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(backing.getState()).toEqual(after);
+    expect(after.notifications[0]).toMatchObject({ state: notificationState });
+    expect(after.auditEvents).toContainEqual(expect.objectContaining({ eventType, actorId: command.actorId, entityId: "outbox-1" }));
+    expect(after.idempotency).toContainEqual(expect.objectContaining({ key: command.idempotencyKey, response: first }));
+
+    await expect(mutate(boundary.store, "outbox-1", {
+      ...command, authorize: () => { throw new ApiError("UNAUTHENTICATED", "Session revoked", 401); }
+    })).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+    expect(backing.getState()).toEqual(after);
+    expect(boundary.outboxTransaction).toHaveBeenCalledWith({ kind: "message", id: "outbox-1" }, expect.any(Function));
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { limit: undefined, bounded: 100 },
+    { limit: 2.9, bounded: 2 },
+    { limit: 0, bounded: 1 },
+    { limit: 1_000, bounded: 100 }
+  ])("reads a bounded dead-letter projection (limit $limit) without full-state APIs", async ({ limit, bounded }) => {
+    const state = deadLetterFixture().store.getState();
+    state.outbox = [
+      { ...state.outbox[0], id: "failed-older", deadLetteredAt: "2026-08-20T10:00:00.000Z" },
+      stateWithMessage().outbox[0],
+      { ...state.outbox[0], id: "discarded-newer", status: "DISCARDED", deadLetteredAt: "2026-08-20T10:01:00.000Z", discardedBy: "user-admin", discardReason: "Poison message" }
+    ];
+    const boundary = outboxOnlyBoundary(new MemoryStore(state));
+
+    const messages = await listDeadLetterMessages(boundary.store, limit);
+
+    expect(messages.map((message) => message.id)).toEqual(["discarded-newer", "failed-older"].slice(0, bounded));
+    expect(messages[0]).toMatchObject({ status: "DISCARDED", discardedBy: "user-admin", discardReason: "Poison message" });
+    expect(messages[0]).not.toHaveProperty("payload");
+    expect(boundary.readOutbox).toHaveBeenCalledExactlyOnceWith({ kind: "dead-letter", limit: bounded });
+    expect(boundary.outboxTransaction).not.toHaveBeenCalled();
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it("preserves an empty dead-letter list for a NaN limit without an invalid scoped read", async () => {
+    const boundary = outboxOnlyBoundary(deadLetterFixture().store);
+
+    await expect(listDeadLetterMessages(boundary.store, Number.NaN)).resolves.toEqual([]);
+
+    expect(boundary.readOutbox).not.toHaveBeenCalled();
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+});
 
 describe.each([
   { action: "reprocess", mutate: reprocessDeadLetterMessage },
