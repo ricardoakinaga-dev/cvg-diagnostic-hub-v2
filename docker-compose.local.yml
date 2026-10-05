@@ -56,7 +56,11 @@ services:
       retries: 12
 
   storage:
-    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    image: cvg-minio-source:7aac2a2
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: deploy/minio/Dockerfile
     command: ["server", "/data", "--console-address", ":9001"]
     restart: unless-stopped
     mem_limit: 1g

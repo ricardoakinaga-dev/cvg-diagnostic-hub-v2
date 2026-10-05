@@ -3,6 +3,7 @@ import { signInAs } from "./support/auth";
 
 test.describe("visual baseline", () => {
   test("dashboard remains stable across the configured viewports", async ({ page }) => {
+    await page.clock.setFixedTime(new Date("2026-10-01T13:00:00.000Z"));
     await page.route("**/api/v1/**", async (route) => {
       const url = new URL(route.request().url());
       const meta = { correlationId: "visual-correlation", requestId: "visual-request" };
@@ -12,7 +13,7 @@ test.describe("visual baseline", () => {
       if (url.pathname === "/api/v1/notifications") return respond([]);
       if (url.pathname === "/api/v1/diagnostic-services") return respond([]);
       if (url.pathname === "/api/v1/dashboard") {
-        const timestamp = new Date().toISOString();
+        const timestamp = "2026-10-01T13:00:00.000Z";
         return respond({
           overdue: 0,
           recollections: 0,

@@ -1,6 +1,13 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS dependencies
+FROM node:22-bookworm-slim AS base
+
+# The published Node image can lag behind Debian security updates.
+RUN apt-get update \
+    && apt-get install --yes --only-upgrade --no-install-recommends libpcre2-8-0 \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS dependencies
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -17,7 +24,7 @@ ENV NODE_ENV=production
 COPY . .
 RUN npm run build
 
-FROM node:22-bookworm-slim AS production-dependencies
+FROM base AS production-dependencies
 
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -35,6 +42,20 @@ FROM dependencies AS ops
 WORKDIR /app
 ENV NODE_ENV=production
 
+# Operations use npm run; retain a patched CLI instead of the vulnerable
+# bundled npm. Runtime application dependencies still come from the lockfile.
+# Published npm 11/12 still bundle vulnerable patch versions; update only those
+# bundled dependencies, within their existing major versions (D-027).
+RUN npm install --global npm@11.21.0 \
+    && npm install --prefix /tmp/npm-cli-security \
+      --omit=dev --ignore-scripts --no-package-lock \
+      brace-expansion@5.0.11 undici@6.28.1 \
+    && rm -rf /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
+      /usr/local/lib/node_modules/npm/node_modules/undici \
+    && cp -a /tmp/npm-cli-security/node_modules/. /usr/local/lib/node_modules/npm/node_modules/ \
+    && rm -rf /tmp/npm-cli-security \
+    && npm cache clean --force
+
 COPY --chown=node:node package.json package-lock.json tsconfig.json ./
 COPY --chown=node:node db ./db
 COPY --chown=node:node packages ./packages
@@ -45,7 +66,7 @@ USER node
 
 CMD ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
 
-FROM node:22-bookworm-slim AS runner
+FROM base AS runner
 
 WORKDIR /app
 

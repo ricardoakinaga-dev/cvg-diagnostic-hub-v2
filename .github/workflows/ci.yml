@@ -185,6 +185,7 @@ jobs:
 
   browser:
     runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.55.1-noble@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c
     timeout-minutes: 20
     needs: verify
     strategy:
@@ -198,14 +199,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-${{ matrix.node-version }}-
-      - run: npx playwright install --with-deps chromium
+      # The pinned Playwright image supplies Chromium and the exact font set.
       - name: Run browser E2E without accessibility (fail on flaky retries)
         run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts --retries=0 --fail-on-flaky-tests
       - name: Upload browser E2E artifacts
@@ -322,8 +316,9 @@ jobs:
           fi
           psql "$POSTGRES_TEST_ADMIN_URL" \
             --set=ON_ERROR_STOP=1 \
-            --set="target_db=$E2E_DATABASE_NAME" \
-            --command='CREATE DATABASE :"target_db";' 2>&1 | tee logs/create-database.log
+            --set="target_db=$E2E_DATABASE_NAME" 2>&1 <<'SQL' | tee logs/create-database.log
+          CREATE DATABASE :"target_db";
+          SQL
       - name: Apply PostgreSQL migrations
         env:
           NODE_ENV: development
@@ -416,7 +411,10 @@ jobs:
           deadline=$((SECONDS + 120))
           readyz_status=000
           while (( SECONDS < deadline )); do
-            response="$(curl --silent --show-error --max-time 2 --write-out $'\n%{http_code}' "$BASE_URL/api/v1/readyz" || true)"
+            response="$(curl --silent --show-error --max-time 2 \
+              --header "x-cvg-proxy-secret: ${TRUST_PROXY_SHARED_SECRET}" \
+              --header "x-forwarded-for: 127.0.0.1" \
+              --write-out $'\n%{http_code}' "$BASE_URL/api/v1/readyz" || true)"
             readyz_status="${response##*$'\n'}"
             readyz_body="${response%$'\n'*}"
             if [[ "$readyz_status" == "200" ]] && node -e '
@@ -523,8 +521,11 @@ jobs:
       - name: Generate ephemeral Compose credentials
         run: |
           set -Eeuo pipefail
-          printf 'POSTGRES_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
-          printf 'MINIO_ROOT_PASSWORD=%s\n' "$(openssl rand -hex 32)" >> "$GITHUB_ENV"
+          for credential_name in POSTGRES_PASSWORD MINIO_ROOT_PASSWORD; do
+            credential_value="$(openssl rand -hex 32)"
+            echo "::add-mask::${credential_value}"
+            printf '%s=%s\n' "$credential_name" "$credential_value" >> "$GITHUB_ENV"
+          done
       - name: Start Compose dependencies
         run: |
           set -Eeuo pipefail
@@ -567,12 +568,30 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           severity: CRITICAL,HIGH
+      - name: Audit operational image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cvg-diagnostics-hub-ops:ci
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: Audit MinIO image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cvg-minio-source:7aac2a2
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
       - name: Boot image and verify livez and readyz
         run: |
           set -Eeuo pipefail
           database_url="postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@127.0.0.1:${POSTGRES_PORT}/${POSTGRES_DB}"
           proxy_secret="$(openssl rand -hex 32)"
           session_secret="$(openssl rand -hex 32)"
+          echo "::add-mask::${proxy_secret}"
+          echo "::add-mask::${session_secret}"
           docker run --detach --name cvg-diagnostics-hub-ci --network host \
             --env NODE_ENV=production \
             --env APP_DATA_MODE=postgres \
@@ -612,7 +631,7 @@ jobs:
           health_status="$(docker inspect --format '{{.State.Health.Status}}' cvg-diagnostics-hub-ci)"
           if [[ "$health_status" != healthy ]]; then
             docker logs cvg-diagnostics-hub-ci
-            docker inspect cvg-diagnostics-hub-ci
+            docker inspect --format '{{json .State}}' cvg-diagnostics-hub-ci
             exit 1
           fi
           curl --fail --silent --show-error \
