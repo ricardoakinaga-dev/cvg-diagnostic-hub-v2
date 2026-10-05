@@ -77,6 +77,8 @@ O scan de imagem foi ampliado para Ops e MinIO. Os achados do PCRE2 e do npm emb
 
 A execução remota `37272431800` confirmou **1.533/1.533**, as **22 exceções** de cobertura, build/audit/perf e o job de imagem completo (três scans, livez/readyz e CSP). O navegador PostgreSQL revelou uma corrida na inicialização: a primeira checagem de `setsid` consultava o grupo antes de ele existir. Reprodução local: **30/30** falhas no grupo, **30/30** sucessos verificando o PID vivo; o passo corrigido publicou as portas dinâmicas dos serviços e respondeu ao HEAD S3. A prontidão e o prazo permanecem obrigatórios, e a limpeza continua por grupo próprio. O candidato seguinte precisa terminar todos os jobs.
 
+A execução `37274203997` passou os **48/48 E2E PostgreSQL** e o job completo de imagens. Restou o arraste Chromium: a suíte local reproduziu **22/23**, apesar de o caso isolado passar três vezes. O trace mostrou scroll horizontal de 4 para 616 entre mouse down/up, sem POST de início de processamento. O gesto agora parte do padding do card e termina no título da coluna; mantém arraste nativo, resposta 200 e asserções de motivo/recoleta, sem retries ou aumento de timeout. A mesma suíte passou **23/23** após a correção; revisão independente favorável. O novo candidato ainda precisa completar o CI remoto.
+
 ## 5. Pendente e fora do alcance local
 
 E2E completo e aceite de carga em staging dependem de D2 (volume) e D11 (infraestrutura); CI remoto, pentest, UAT e piloto seguem como no [backlog até produção](build/PRODUCTION_BACKLOG.md).

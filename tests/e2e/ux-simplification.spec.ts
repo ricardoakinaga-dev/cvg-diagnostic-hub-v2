@@ -337,9 +337,12 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   else {
     // Cards are not draggable while the board refreshes after the previous command; wait for it.
     await expect(row).toHaveAttribute("draggable", "true");
-    // Keep source and target on screen: a mid-drag scroll cancels a native drag in Chromium.
-    await page.evaluate(() => window.scrollTo(0, 0));
-    await row.dragTo(page.getByRole("region", { name: "Em execução", exact: true }));
+    // Drag from the card's padding to the column heading. The centers of tall
+    // cards/columns can scroll the page mid-gesture and cancel a native drag.
+    const destination = page.getByRole("region", { name: "Em execução", exact: true })
+      .getByRole("heading", { name: "Em execução", exact: true });
+    await destination.scrollIntoViewIfNeeded();
+    await row.dragTo(destination, { sourcePosition: { x: 8, y: 8 } });
   }
   expect((await processing).status()).toBe(200);
   await expect(row.getByText("Em execução", { exact: true })).toBeVisible();
