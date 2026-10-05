@@ -8,7 +8,7 @@ Use for every pilot/production release; checkboxes require evidence link or comm
 
 ## Current local evidence (02/10/2026)
 
-The 2026-10-04 audit ([report](../RELATORIO_AUDITORIA_2026-10-04.md)) passes `npm test` with 1,438/1,438 tests in 126 files; the merged PostgreSQL coverage run adds 95/95 PostgreSQL tests in 16 files with 96.82/89.48/95.46 aggregate coverage (lines/branches/functions), and the full coverage gate passes with 22 declared temporary exceptions and no uncovered/stale entries. Migration validation (001-014), security scan, OpenAPI 73/68, traceability 43/43, typecheck, lint, build, E2E 81/81 without retry and mutation 7/7 pass. An update that contains migrations 013 or 014 must follow [DEPLOYMENT §4.1](DEPLOYMENT.md). No release item below is marked complete by these local results.
+The 2026-10-04 audit ([report](../RELATORIO_AUDITORIA_2026-10-04.md)) passes `npm test` with 1,449/1,449 tests in 126 files; the merged PostgreSQL coverage run adds 96/96 PostgreSQL tests in 17 files with 96.83/89.47/95.48 aggregate coverage (lines/branches/functions), and the full coverage gate passes with 22 declared temporary exceptions and no uncovered/stale entries. Migration validation (001-014), security scan, OpenAPI 73/68, traceability 43/43, typecheck, lint, build, E2E 81/81 without retry and mutation 7/7 pass. An update that contains migrations 013 or 014 must follow [DEPLOYMENT §4.1](DEPLOYMENT.md). No release item below is marked complete by these local results.
 
 ## Historical local evidence (06/09/2026; superseded)
 

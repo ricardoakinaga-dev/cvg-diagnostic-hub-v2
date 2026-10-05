@@ -11,9 +11,9 @@ Documentos relacionados: [roadmap de melhorias](build/IMPROVEMENT_ROADMAP_2026-1
 | Gate | Resultado |
 | --- | --- |
 | `typecheck`, `lint`, `test:config`, `test:perf` | PASS |
-| Testes unitários | **1.438/1.438** em 126 arquivos |
-| Testes PostgreSQL reais (PG 16) | **95/95** em 16 arquivos |
-| Cobertura agregada (`test:coverage`) | 96,82% lines · 95,46% functions · 89,48% branches · `coverage:gate` PASS, **22 exceções**, 0 novas, 0 stale (fechada com testes, sem exceção nova, depois que `confirm-dialog.tsx` e `system-console.tsx` ficaram abaixo do piso) |
+| Testes unitários | **1.449/1.449** em 126 arquivos |
+| Testes PostgreSQL reais (PG 16) | **96/96** em 17 arquivos |
+| Cobertura agregada (`test:coverage`) | 96,83% lines · 95,48% functions · 89,47% branches · `coverage:gate` PASS, **22 exceções**, 0 novas, 0 stale (fechada com testes, sem exceção nova, depois que `confirm-dialog.tsx` e `system-console.tsx` ficaram abaixo do piso) |
 | `validate:docs` / `openapi` / `traceability` / `migrations` | PASS · 73 operações em 68 paths · 43/43 · 001–014 |
 | `perf:snapshot:gate`, `perf:realtime-budget` | PASS (3 execuções seguidas) |
 | `npm audit` (completo e `--omit=dev`) | 0 vulnerabilidades (ver N-03) |
@@ -65,7 +65,7 @@ A bateria final foi executada no **Node 22.23.2** (o `engines` fixa `>=22 <23`).
 
 Na conferência pré-push, `test:config` revelou uma comparação instável no teste de symlink circular (159/160). `ELOOP` foi reproduzido também no pacote original; o teste agora mantém a comparação exata de todos os caminhos no sucesso e aceita somente esse erro no ciclo sem limite. O caso com profundidade limitada exige sucesso nas três APIs. Após o ajuste, três execuções passaram 160/160, sem skips; lint sem warnings, OpenAPI, docs, varredura de segredos e audit completo passaram. Revisão independente sem achados nesse escopo. Pacote vendorizado e oráculo histórico preservados; detalhes no COR-02 do backlog de melhorias. Nesse checkpoint o CI remoto permanecia pendente; a conclusão posterior está registrada abaixo.
 
-Em 05/10 o isolamento dos opt-ins PostgreSQL foi movido para `src/test/setup.ts`: os testes unitários passaram **1.438/1.438** mesmo com as duas variáveis exportadas. A suíte de integração mantém configuração própria. O verify remoto confirmou **1.533/1.533** agregados e cobertura com as mesmas **22 exceções**.
+Em 05/10 o isolamento dos opt-ins PostgreSQL foi movido para `src/test/setup.ts`: os testes unitários passaram **1.449/1.449** mesmo com as duas variáveis exportadas. A suíte de integração mantém configuração própria. O verify remoto confirmou **1.533/1.533** agregados e cobertura com as mesmas **22 exceções**.
 
 O CodeQL sinalizou cinco usos de SHA-256 como se fossem hashes de senha. A triagem independente examinou o SARIF e seus 14 fluxos: são comparação em memória de chave do scanner, tokens aleatórios de sessão, fingerprint de teste e hashes de integridade de backfill/cutover. As senhas humanas usam `scrypt`. Os cinco alertas foram encerrados individualmente como **falsos positivos**, com justificativa na API do GitHub; nenhuma consulta, regra ou código de autenticação foi desativado. A entropia da chave real do scanner continua dependente da configuração de produção.
 
@@ -79,10 +79,29 @@ A execução remota `37272431800` confirmou **1.533/1.533**, as **22 exceções*
 
 A execução `37274203997` passou os **48/48 E2E PostgreSQL** e o job completo de imagens. Restou o arraste Chromium: a suíte local reproduziu **22/23**, apesar de o caso isolado passar três vezes. O trace mostrou scroll horizontal de 4 para 616 entre mouse down/up, sem POST de início de processamento. O gesto agora parte do padding do card e termina no título da coluna; mantém arraste nativo, resposta 200 e asserções de motivo/recoleta, sem retries ou aumento de timeout. A mesma suíte passou **23/23** após a correção; revisão independente favorável. O novo candidato ainda precisa completar o CI remoto.
 
-**Conclusão remota em 05/10/2026:** candidato `63945e7`, [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde. Verify: **1.438 unitários + 95 PostgreSQL = 1.533/1.533**, cobertura **96,82% linhas / 95,46% funções / 89,48% branches**, mesmas **22 exceções**, mutação **7/7**, audit completo zerado e build aprovado. E2E: **69/69 funcionais/visuais + 12/12 acessibilidade** em memória e **48/48 PostgreSQL**, todos sem retries. CodeQL e os três scans de imagem, livez/readyz e CSP passaram. Benchmark CI sintético (100 mil auditorias, 100 SSE): p95 máximo de leitura **327,04 ms**, escrita **382,75 ms**, **12,56 gravações confirmadas/s**, nenhuma resposta com erro ou fechamento inesperado de stream; isso não comprova capacidade no volume D2 ou em staging. O review de dependências é exclusivo de PR e não foi declarado executado no push. COR-02/PROD-002 e N-05 estão resolvidos. A proteção da main foi conferida por API; não houve merge/deploy, e o stack instalado em `https://localhost:18443` permanece na versão anterior ao cutover/UX. D1/D2/D11 continuam como propostas/informações pendentes, os 37 itens bloqueados não foram liberados e M0 aguarda PROD-003.
+**Conclusão remota em 05/10/2026:** candidato `63945e7`, [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde. Verify: **1.449 unitários + 95 PostgreSQL = 1.533/1.533**, cobertura **96,83% linhas / 95,48% funções / 89,47% branches**, mesmas **22 exceções**, mutação **7/7**, audit completo zerado e build aprovado. E2E: **69/69 funcionais/visuais + 12/12 acessibilidade** em memória e **48/48 PostgreSQL**, todos sem retries. CodeQL e os três scans de imagem, livez/readyz e CSP passaram. Benchmark CI sintético (100 mil auditorias, 100 SSE): p95 máximo de leitura **327,04 ms**, escrita **382,75 ms**, **12,56 gravações confirmadas/s**, nenhuma resposta com erro ou fechamento inesperado de stream; isso não comprova capacidade no volume D2 ou em staging. O review de dependências é exclusivo de PR e não foi declarado executado no push. COR-02/PROD-002 e N-05 estão resolvidos. A proteção da main foi conferida por API; não houve merge/deploy, e o stack instalado em `https://localhost:18443` permanece na versão anterior ao cutover/UX. D1/D2/D11 continuam como propostas/informações pendentes, os 37 itens bloqueados não foram liberados e M0 aguarda PROD-003.
 
 ## 5. Pendente e fora do alcance local
 
 Aceite de carga e E2E no staging institucional dependem de D2 (volume) e D11 (infraestrutura); pentest, UAT e piloto seguem abertos no [backlog até produção](build/PRODUCTION_BACKLOG.md). O CI remoto está concluído (§4), sem substituir essas validações.
 
 Resultado do E2E desta rodada: **81/81** em Chromium, tablet e mobile (`playwright test --retries=0`, 9,5 min), mutação 7/7 e varredura de segredos sem achados.
+
+## 6. Segunda rodada (05/10/2026): execução real
+
+Auditoria por execução: dump do banco da instalação local restaurado e migrado (012 → 014), app ligado a esse banco, reinício real, 73 operações varridas (sem login, com login, corpos malformados), matriz de autorização entre usuários, rajada de escritas, 5 papéis × 15 rotas × 3 tamanhos de tela, e o Compose de produção levantado de verdade. Passou: migrations e trava, persistência, isolamento entre usuários, cabeçalhos de segurança, logs sem segredos, zero 5xx em cerca de 2.800 requisições, nenhum overflow horizontal. Achados e correções:
+
+| ID | Sev. | Achado | Correção |
+| --- | --- | --- | --- |
+| R-01 | Alto | O Compose de produção rodava tudo como superusuário, o app recebia as credenciais de DDL e o `.env` de exemplo apontava para um papel que nada criava | `migrate` provisiona os papéis; credenciais separadas por serviço (COR-07, D-028) |
+| R-02 | Médio | Escritas concorrentes da mesma sessão davam 401 (1 de 12 passava) | COR-08 |
+| R-03 | Médio | `rate_limit_buckets` nunca era podada | COR-09 |
+| R-04 | Médio | Executor novo via fila vazia; exame novo não chegava a quem já tinha todos | COR-10 |
+| R-05 | Baixo | Códigos de setor em texto livre | COR-11 |
+| R-06 | Baixo | Auditoria de retenção a cada hora sem remover nada | COR-12 |
+| R-07 | Baixo | Sem rotação de logs, sem teto de memória, sem backup agendado | COR-13 |
+| R-08 | Baixo | Telas: sem `h1` em estados de erro, "Tentar novamente" em acesso negado, mensagem enganosa, alvos de toque | COR-14 |
+| R-09 | Baixo | `next dev` reescrevia o `tsconfig.json` | COR-15 |
+
+Limites que continuam e estão documentados no [DEPLOYMENT §9](operations/DEPLOYMENT.md): não existe tela para criar o template de exame numérico (D10), o backup é local ao servidor (copiar para fora; PITR depende de D2/D11) e a política de resultado crítico vem desligada (D3). `test-results/` e `playwright-report/` ficaram com dono root por uma execução em Docker e bloqueiam o Playwright local: `sudo chown -R "$USER": test-results playwright-report .next-e2e-*`.
+

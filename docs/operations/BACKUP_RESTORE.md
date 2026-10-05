@@ -18,6 +18,9 @@ Backup must cover PostgreSQL data, object storage attachments, encryption/key me
 
 ## 3. Strategy
 
+> **Scheduled backup in the production Compose.** The `backup` service writes a custom-format `pg_dump` every `BACKUP_INTERVAL_SECONDS` (default daily) into the `cvg-backups` volume, validates it with `pg_restore --list`, and keeps `BACKUP_RETENTION_DAYS` (default 14). It runs as the runtime role, so no administrative credential is stored in it. It lives on the same host as the database: copy the volume off the machine and rehearse the restore below. To take one on demand: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm backup --once`.
+
+
 - PostgreSQL: encrypted point-in-time/WAL plus periodic full backup; verify completion and size.
 - Object storage: versioning/replication or scheduled encrypted snapshot according to provider; preserve checksum/metadata.
 - Config/secrets: never backup plaintext secrets in repo; store recoverable references and rotation procedure.

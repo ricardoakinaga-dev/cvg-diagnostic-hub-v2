@@ -37,6 +37,8 @@ O `/readyz` falha (503) em produção, antes de tocar no banco, se `SESSION_SECR
 
 ## 3. Primeiro deploy
 
+Preencha o `.env.production` com **quatro segredos diferentes** de banco e aplicação: `POSTGRES_PASSWORD` (papel administrativo, usado só pelo `migrate`), `POSTGRES_MIGRATION_PASSWORD` (DDL), `POSTGRES_RUNTIME_PASSWORD` (app e worker) e `SESSION_SECRET`.
+
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production build
 docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
@@ -44,10 +46,12 @@ docker compose -f docker-compose.prod.yml --env-file .env.production --profile b
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 ```
 
+O `migrate` (`scripts/db-roles.ts`) faz tudo o que o banco precisa, sem passo manual: cria os papéis `cvg_migrator` e `cvg_runtime` (e troca suas senhas se você as girar), entrega o banco, o schema e todos os objetos ao `cvg_migrator`, aplica as migrations e dá ao `cvg_runtime` só DML (sem DDL, e só `INSERT`/`SELECT` em `audit_events`). O `app`, o `worker` e o `backup` conectam como `cvg_runtime` e **não recebem** as credenciais de DDL nem a administrativa; só o `migrate` as tem. Funciona igual num banco novo e num banco que foi criado antes com um único superusuário.
+
 Depois do primeiro login do ADMIN:
 
 1. remova `BOOTSTRAP_ADMIN_PASSWORD` do `.env.production` e do secret manager;
-2. pela tela **Administração**, cadastre serviços diagnósticos, códigos de motivo e colaboradores (cada ação exige reautenticação recente e é auditada);
+2. pela tela **Administração**, cadastre serviços diagnósticos, códigos de motivo e colaboradores (tudo é auditado; só criar, promover, rebaixar, desativar ou redefinir um ADMIN pede a sua senha). Cadastre os **exames antes dos colaboradores**: um técnico novo recebe todos os exames ativos do setor, e um exame novo chega sozinho a quem já tinha todos os do setor (quem foi restrito a um subconjunto mantém o subconjunto);
 3. confirme a trilha em `audit_events` (evento `ProductionBootstrap`).
 
 O seed sintético (`npm run db:seed`) é proibido em produção e não deve ser usado para popular o ambiente.
@@ -68,7 +72,7 @@ O `up -d` reexecuta `migrate` antes de recriar `app` e `worker`. As migrations s
 As migrations `013_audit_read_authority` e `014_outbox_read_authority` movem a auditoria e o outbox do snapshot para `audit_events` e `outbox_messages`. A 013 cria a constraint `runtime_audit_is_transient`, então a versão antiga do app, que ainda grava auditoria no snapshot, passa a falhar em todo comando clínico. O `up -d` do §4 **não serve** para esta atualização, porque roda o `migrate` com `app` e `worker` antigos no ar. Use esta ordem:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production stop proxy app worker
+docker compose -f docker-compose.prod.yml --env-file .env.production stop proxy app worker backup
 npm run db:backup   # obrigatório: o rollback deste cutover é só de dados
 docker compose -f docker-compose.prod.yml --env-file .env.production build
 docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
@@ -174,12 +178,13 @@ A expiração absoluta de 8 h continua valendo para a tela em monitoramento
 | Variável | Padrão | Efeito |
 | --- | --- | --- |
 | `RUNTIME_RETENTION_INTERVAL_MS` | `3600000` (1 h) | Cadência da poda dentro do worker do outbox. |
+| `RATE_LIMIT_BUCKET_RETENTION_MS` | `7200000` (2 h; mínimo 1 h 1 min) | Por quanto tempo o worker mantém os contadores de limite de taxa depois que a janela acaba. Sem a poda, cada IP ou e-mail novo deixava uma linha para sempre. |
 | `SESSION_RETENTION_MS` | `86400000` (24 h) | Mantém sessão expirada/revogada por esse tempo depois do fim. |
 | `IDEMPOTENCY_RETENTION_MS` | `86400000` | Janela de replay de idempotência. |
 | `OUTBOX_STATE_RETENTION_MS` | `86400000` | Idem para mensagens processadas no snapshot. |
 | `STATE_OUTBOX_HOT_WINDOW` | `100` | Tamanho máximo da janela quente de mensagens processadas mantidas no snapshot. |
 
-Cada execução anexa um evento `RuntimeStateRetentionApplied` com contagens, sem
+Cada execução que **remove algo** anexa um evento `RuntimeStateRetentionApplied` com contagens (uma execução vazia não grava nada), sem
 identificador de sessão ou paciente. Para executar sob demanda:
 
 ```bash
@@ -223,24 +228,17 @@ processo.
 
 ## 7. Papéis de banco separados (PROD-305)
 
-O deploy inicial usa dois papéis distintos:
+Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:
 
-```bash
-# 1. papel de migração (DDL): roda as migrations e concede privilégios
-MIGRATION_DATABASE_URL=postgresql://cvg_migrator:...@postgres:5432/cvg_production \
-DATABASE_URL=postgresql://cvg_runtime:...@postgres:5432/cvg_production \
-  npm run db:roles
+| Variável | Papel | Quem recebe |
+| --- | --- | --- |
+| `DATABASE_ADMIN_URL` | `POSTGRES_USER` (administrativo) | só o `migrate` |
+| `MIGRATION_DATABASE_URL` | `POSTGRES_MIGRATION_USER` (padrão `cvg_migrator`) | só o `migrate` |
+| `DATABASE_URL` | `POSTGRES_RUNTIME_USER` (padrão `cvg_runtime`) | `app`, `worker`, `backup`, `bootstrap` |
 
-# 2. application e worker usam apenas DATABASE_URL
-```
+O papel de runtime recebe DML sobre as tabelas existentes, `INSERT`/`SELECT` sobre `audit_events` e **não** recebe `CREATE` no schema; um teste de integração executa seis operações proibidas (`DELETE`, `UPDATE`, `TRUNCATE`, `ALTER`, `DROP`, `CREATE`) como esse papel e exige o código `42501`. Outro teste parte de um banco criado por um único superusuário, provisiona os papéis e confere que nada ficou com o dono antigo. Os dois papéis têm de ser usuários diferentes (`DATABASE_ROLES_MUST_BE_SEPARATE`).
 
-`db:roles` é idempotente, recria a divisão a cada deploy e é a única etapa que
-precisa de conexão administrativa. O papel de runtime recebe DML sobre as
-tabelas existentes, `INSERT`/`SELECT` sobre `audit_events` e **não** recebe
-`CREATE` no schema; um teste de integração executa seis operações proibidas
-(`DELETE`, `UPDATE`, `TRUNCATE`, `ALTER`, `DROP`, `CREATE`) como esse papel e
-exige o código `42501`. Se os dois papéis forem o mesmo usuário, o script
-recusa com `DATABASE_ROLES_MUST_BE_SEPARATE`.
+Para um **banco gerenciado** em que um administrador já criou os papéis, deixe `DATABASE_ADMIN_URL` fora do `migrate`: o script então só aplica as migrations como migrador e os privilégios do runtime.
 
 ## 8. Rollback
 
@@ -251,4 +249,8 @@ recusa com `DATABASE_ROLES_MUST_BE_SEPARATE`.
 
 - Não há troca de senha self-service. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
 - RPO/RTO, roteamento de alertas e failover continuam abertos em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
+- **Backup:** o serviço `backup` do Compose grava um `pg_dump` diário (retenção de 14 dias) no volume `cvg-backups`, como o papel de runtime. É uma rede de segurança no mesmo servidor, não recuperação de desastre: copie o volume para fora da máquina e ensaie o restore ([BACKUP_RESTORE.md](BACKUP_RESTORE.md)). Recuperação para um ponto no tempo (WAL) exige banco gerenciado ou arquivamento de WAL (D2 e D11).
+- **Exames numéricos (hemograma em painel):** não existe tela nem API para criar o template laboratorial versionado; um serviço `NUMERIC_PANEL` só pode ser criado duplicando um que já tenha template. Em uma instalação nova, use serviços narrativos até a decisão D10 definir o catálogo e o carregamento dos templates.
+- **Códigos de setor:** são texto livre, mas rótulos em português e filas reconhecem `LABORATORY`, `RADIOLOGY`, `ULTRASOUND`, `INPATIENT` e `IT`. Outros códigos funcionam e aparecem como foram digitados.
+- **Logs e memória:** os containers rotacionam logs (`LOG_MAX_SIZE`, `LOG_MAX_FILE`) e têm teto de memória (`APP_MEM_LIMIT`, `WORKER_MEM_LIMIT`, `PROXY_MEM_LIMIT`).
 - O stack de Compose é de host único; escalar `app` horizontalmente é suportado pelo runtime (rate limit e realtime em PostgreSQL), mas exige balanceador fora deste arquivo.

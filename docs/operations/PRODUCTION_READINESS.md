@@ -13,9 +13,9 @@ Status: `NOT READY` until implementation, operational validation and human gates
 > **Audit 02/10/2026:** [report](../RELATORIO_AUDITORIA_2026-10-02.md) — new critical finding F-01: the JSONB snapshot serializes every store operation per process and grows without pruning (~0.6 s CPU per request at 100k audit events). The item "JSONB snapshot replaced or formally approved" below can no longer be closed by approval alone; it is tracked as PROD-101…111 in the [production backlog](../build/PRODUCTION_BACKLOG.md).
 
 > Audit of 2026-10-04 ([report](../RELATORIO_AUDITORIA_2026-10-04.md)): `npm test`
-> passes 1,438/1,438 tests in 126 files and `npm run test:postgres` passes 95/95
-> in 16 files. The merged coverage run records 96.82% lines, 95.46% functions and
-> 89.48% branches; `coverage:gate` passes with 22 declared temporary exceptions
+> passes 1,449/1,449 tests in 126 files and `npm run test:postgres` passes 96/96
+> in 17 files. The merged coverage run records 96.83% lines, 95.48% functions and
+> 89.47% branches; `coverage:gate` passes with 22 declared temporary exceptions
 > and no uncovered or stale entries. Migrations (001-014), docs, OpenAPI (73/68),
 > traceability, security scan, typecheck, lint, build, browser 81/81 and mutation
 > 7/7 pass. The candidate

@@ -34,7 +34,7 @@ Uma decisão documental não transforma uma hipótese operacional em fato. Pergu
 
 ## Snapshot executável corrente — auditoria de 04/10/2026
 
-Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com PostgreSQL 16 descartável: **1.438/1.438 testes unitários** em 126 arquivos e **95/95 testes PostgreSQL** em 16 arquivos. Cobertura agregada de **96,82% lines, 95,46% functions e 89,48% branches**; `coverage:gate` PASS com **22 exceções** declaradas, nenhuma nova. `validate:docs`, OpenAPI (**73 operações em 68 paths**), rastreabilidade (43/43), migrations (**001–014**), `perf:snapshot:gate`, `perf:realtime-budget`, typecheck, lint, build e `npm audit` (0 vulnerabilidades) passaram.
+Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com PostgreSQL 16 descartável: **1.449/1.449 testes unitários** em 126 arquivos e **96/96 testes PostgreSQL** em 17 arquivos. Cobertura agregada de **96,83% lines, 95,48% functions e 89,47% branches**; `coverage:gate` PASS com **22 exceções** declaradas, nenhuma nova. `validate:docs`, OpenAPI (**73 operações em 68 paths**), rastreabilidade (43/43), migrations (**001–014**), `perf:snapshot:gate`, `perf:realtime-budget`, typecheck, lint, build e `npm audit` (0 vulnerabilidades) passaram.
 
 A auditoria e o outbox saíram do snapshot (migrations 013 e 014, [D-025](DECISION_LOG.md)); a atualização que as contém exige parar o app antes do `migrate` ([DEPLOYMENT §4.1](operations/DEPLOYMENT.md)). A UX diária foi simplificada ([D-024](DECISION_LOG.md)): criar usuário em 4 interações, trocar setor em 2, liberar resultado em 1.
 
