@@ -354,7 +354,9 @@ jobs:
           echo "$service_pid" > .ci-e2e-storage.pid
           for _ in {1..50}; do
             if [[ -s .ci-e2e-s3.port && -s .ci-e2e-scanner.port ]]; then break; fi
-            if ! kill -0 -- "-$service_pid" 2>/dev/null; then
+            # setsid may not have established its process group on the first
+            # iteration. Check the live launcher PID until readiness arrives.
+            if ! kill -0 "$service_pid" 2>/dev/null; then
               echo "The disposable storage services exited before publishing their ports." >&2
               exit 1
             fi

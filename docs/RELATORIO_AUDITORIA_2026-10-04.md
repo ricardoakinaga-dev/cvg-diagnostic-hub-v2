@@ -75,6 +75,8 @@ O E2E remoto funcional passou **66/66**, mas os três screenshots do dashboard r
 
 O scan de imagem foi ampliado para Ops e MinIO. Os achados do PCRE2 e do npm embarcado na imagem operacional foram tratados na construção da imagem: update de segurança do Debian, npm 11.21.0 e duas dependências embarcadas corrigidas (D-027). A fonte/lockfile do aplicativo e o npm do host permanecem iguais; o comando `npm run validate:migrations` foi comprovado dentro da imagem Ops como usuário `node`. Os scans locais de aplicação, Ops e MinIO passaram na mesma política HIGH/CRITICAL corrigíveis, sem novos ignores.
 
+A execução remota `37272431800` confirmou **1.533/1.533**, as **22 exceções** de cobertura, build/audit/perf e o job de imagem completo (três scans, livez/readyz e CSP). O navegador PostgreSQL revelou uma corrida na inicialização: a primeira checagem de `setsid` consultava o grupo antes de ele existir. Reprodução local: **30/30** falhas no grupo, **30/30** sucessos verificando o PID vivo; o passo corrigido publicou as portas dinâmicas dos serviços e respondeu ao HEAD S3. A prontidão e o prazo permanecem obrigatórios, e a limpeza continua por grupo próprio. O candidato seguinte precisa terminar todos os jobs.
+
 ## 5. Pendente e fora do alcance local
 
 E2E completo e aceite de carga em staging dependem de D2 (volume) e D11 (infraestrutura); CI remoto, pentest, UAT e piloto seguem como no [backlog até produção](build/PRODUCTION_BACKLOG.md).
