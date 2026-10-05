@@ -18,7 +18,7 @@
 | ID | Pri | Status | Tam. | Entrega e aceite | Origem |
 | --- | --- | --- | --- | --- | --- |
 | COR-01 | P0 | DONE | S | **Cutover 013/014 sem janela de erro.** (a) Procedimento "parar app/worker → backup → migrate → subir" no DEPLOYMENT §4.1 (feito). (b) O `migrate` recusa aplicar 013/014 se houver outra sessão conectada. Aceite: ensaio em PostgreSQL com a versão antiga ligada termina com recusa clara, sem escrita perdida; teste automatizado. **Feito em 05/10/2026:** `applyMigrations` + `tests/postgres/cutover-guard.integration.test.ts` (PostgreSQL real) + 4 testes unitários. | N-01 |
-| COR-02 | P0 | READY | S | **Commit em fatias e CI remoto.** Dividir os 101 arquivos em commits revisáveis (endurecimento de produção; auditoria/outbox relacional; UX; dependências vendorizadas), push, CI verde. Aceite: link da execução com todos os jobs verdes (fecha PROD-001/002). | N-05 |
+| COR-02 | P0 | IN_PROGRESS | S | **Commit em fatias e CI remoto.** Commits por tema feitos em 05/10/2026 (`090cf99`, `fc3a05c`, `dccc786`, `104a17b`, `1cb5293`), árvore limpa. Falta: push da branch e CI remoto verde (fecha PROD-001/002). Aceite: link da execução com todos os jobs verdes. | N-05 |
 | COR-03 | P0 | DONE | S | **Pôr o E2E da UX no CI.** `tests/e2e/ux-simplification.spec.ts` entrou no job de browser (`--retries=0`). Aceite: job falha se qualquer meta de interações regredir. | N-02 |
 | COR-04 | P1 | IN_PROGRESS | S | **Governar o `fast-glob` vendorizado.** O CI já confere hash e proveniência (`test:config`). Falta: o dono confirmar a D-026 e fixar o gatilho de revisão (proposto: todo upgrade de eslint/next, e 04/01/2027 no máximo); remover o vendor quando sair correção upstream do `braces`. Aceite: D-026 com `DECISION` e dono. | N-03 |
 | COR-05 | P1 | DONE | S | **Teto de latência no benchmark.** `perf:postgres` reprova acima de p95 absoluto (2× as metas do PRD: 1.000 ms leitura, 1.600 ms busca/escrita; `PERF_POSTGRES_P95_CEILING_FACTOR`). Medido em 05/10/2026: leitura 126 ms, escrita 146 ms. A "piora de latência" citada na primeira versão da auditoria não se confirmou. O aceite com o volume de D2 segue no PROD-110. | N-04 |
@@ -66,10 +66,10 @@ Já entregue e medido (não reabrir): criar usuário em 4 interações, trocar s
 
 | Grupo | Itens | `DONE` | `IN_PROGRESS` | `READY` | `BLOCKED` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| COR | 6 | 4 | 1 | 1 | 0 |
+| COR | 6 | 4 | 2 | 0 | 0 |
 | UX | 11 | 0 | 0 | 8 | 3 |
 | DOC | 5 | 0 | 0 | 5 | 0 |
 | TEC | 5 | 0 | 0 | 4 | 1 |
-| **Total** | **27** | **4** | **1** | **18** | **4** |
+| **Total** | **27** | **4** | **2** | **17** | **4** |
 
-Ordem de ataque: COR-01, COR-03, COR-05 e COR-06 estão feitos (05/10/2026); falta o COR-02 (push e CI remoto) e a confirmação do dono no COR-04 antes de qualquer deploy. Depois UX-01…04 e DOC-01…03 em paralelo, que são os que mais reduzem a fricção que o dono relatou.
+Ordem de ataque: COR-01, COR-03, COR-05 e COR-06 estão feitos (05/10/2026); falta o push com CI remoto (COR-02) e a confirmação do dono no COR-04 antes de qualquer deploy. Depois UX-01…04 e DOC-01…03 em paralelo, que são os que mais reduzem a fricção que o dono relatou.

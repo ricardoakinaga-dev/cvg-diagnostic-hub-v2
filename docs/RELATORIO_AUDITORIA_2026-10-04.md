@@ -59,7 +59,7 @@ A bateria final foi executada no **Node 22.23.2** (o `engines` fixa `>=22 <23`).
 | N-02 | **Resolvido** | `ux-simplification.spec.ts` entrou no job de E2E do CI (`.github/workflows/ci.yml`). |
 | N-03 | **Parcial** | A proveniência já era conferida no CI. Falta o dono confirmar a decisão D-026 e a data de revisão (veja a decisão no [DECISION_LOG](DECISION_LOG.md)). |
 | N-04 | **Resolvido** | O `perf:postgres` agora reprova acima de tetos absolutos de p95 (2× as metas do PRD: 1.000 ms leitura, 1.600 ms busca e escrita; `PERF_POSTGRES_P95_CEILING_FACTOR`). Passou: leitura 126 ms, escrita 146 ms. Aceite com volume real continua no PROD-110. |
-| N-05 | Ver commits | Trabalho dividido em commits por tema (sem push). |
+| N-05 | **Parcial** | Trabalho dividido em 5 commits por tema, árvore limpa. Falta o push e o CI remoto verde (PROD-002). |
 | N-06 | **Resolvido** | Nenhum `window.confirm` restante: `useConfirm`/`ConfirmDialog` (foco preso, Escape cancela, foco volta ao botão) em revogar sessão, reprocessar/descartar e gerar nova senha. |
 | N-07 | **Resolvido** | Números e afirmações defasadas corrigidos; consolidação de `docs/build/` segue como DOC-01. |
 
