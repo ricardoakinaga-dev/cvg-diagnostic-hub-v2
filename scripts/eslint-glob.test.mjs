@@ -291,25 +291,29 @@ const input = JSON.parse(fs.readFileSync(0, 'utf8'));
 const nextRequire = createRequire(input.pluginPackage);
 const fg = nextRequire('fast-glob');
 const { getRootDirs } = nextRequire('./dist/utils/get-root-dirs.js');
+const globOptions = { cwd: input.cwd, onlyDirectories: true,
+  ...(input.mode === 'cycle-bounded' ? { deep: 3 } : {}) };
 async function stream(pattern) {
   const results = [];
-  for await (const item of fg.stream(pattern, { cwd: input.cwd, onlyDirectories: true })) results.push(item);
+  for await (const item of fg.stream(pattern, globOptions)) results.push(item);
   return results;
 }
 const globMethods = {
-  sync: (pattern) => fg.sync(pattern, { cwd: input.cwd, onlyDirectories: true }),
-  async: (pattern) => fg(pattern, { cwd: input.cwd, onlyDirectories: true }),
+  sync: (pattern) => fg.sync(pattern, globOptions),
+  async: (pattern) => fg(pattern, globOptions),
   stream,
   generateTasks: (pattern) => fg.generateTasks(pattern, { onlyDirectories: true }),
   roots: (pattern) => getRootDirs({ cwd: input.cwd, settings: { next: { rootDir: pattern } } }),
 };
 async function main() {
   process.chdir(input.cwd);
-  if (input.mode === 'cycle') {
+  if (input.mode === 'cycle' || input.mode === 'cycle-bounded') {
     const results = {};
-    for (const name of ['sync', 'async', 'stream', 'roots']) {
+    const names = input.mode === 'cycle-bounded' ? ['sync', 'async', 'stream'] : ['sync', 'async', 'stream', 'roots'];
+    for (const name of names) {
       try { results[name] = { roots: (await globMethods[name]('cycle/**')).sort() }; }
       catch (error) {
+        if (input.mode === 'cycle-bounded') throw error;
         assert.equal(error.code, 'ELOOP', name + ': preserve original cycle failure');
         results[name] = { error: { name: error.name, code: error.code } };
       }
@@ -466,7 +470,7 @@ main().then((result) => process.stdout.write(JSON.stringify(result))).catch((err
 `;
 
 function runProbe(mode, dir, cases = []) {
-  if (mode !== 'cycle') {
+  if (mode !== 'cycle' && mode !== 'cycle-bounded') {
     assert.equal(fgPackage.version, '3.3.1-cvg.1', 'Never run hostile probes against the original');
     assert.equal(hash(nextRequire.resolve('fast-glob/out/utils/bounded-braces/limits.cjs')), hash(path.join(projectDir, 'scripts/fast-glob-brace-limits.cjs')), 'Install the current range/AST guards before running hostile probes');
   }
@@ -792,14 +796,23 @@ if (captureOriginal) {
     const dir = fixture();
     try {
       assert.deepEqual(Object.keys(oracle.symlinkCycle), ['sync', 'async', 'stream', 'roots']);
-      for (const result of Object.values(oracle.symlinkCycle)) {
-        if (result.error) assert.deepEqual(result, { error: { name: 'Error', code: 'ELOOP' } });
-        else {
-          assert(Array.isArray(result.roots));
-          assert(result.roots.includes('cycle/loop'));
-        }
+      const originalRoots = Array.from({ length: 40 }, (_, index) => `cycle${'/loop'.repeat(index + 1)}`).sort();
+      for (const result of Object.values(oracle.symlinkCycle)) assert.deepEqual(result, { roots: originalRoots });
+      // Unbounded symlink traversal can return ELOOP even for the unpatched
+      // walker. Successful traversals must still match every original path;
+      // an empty/partial result, other error or timeout remains a failure.
+      const observed = runProbe('cycle', dir);
+      assert.deepEqual(Object.keys(observed), Object.keys(oracle.symlinkCycle));
+      for (const [name, result] of Object.entries(observed)) {
+        if (result.error) assert.deepEqual(result, { error: { name: 'Error', code: 'ELOOP' } }, name);
+        else assert.deepEqual(result, oracle.symlinkCycle[name], name);
       }
-      assert.deepEqual(runProbe('cycle', dir), oracle.symlinkCycle);
+      // A finite depth avoids the kernel limit and must succeed identically
+      // through all three APIs; ELOOP is not accepted for this case.
+      const roots = ['cycle/loop', 'cycle/loop/loop', 'cycle/loop/loop/loop'];
+      assert.deepEqual(runProbe('cycle-bounded', dir), {
+        sync: { roots }, async: { roots }, stream: { roots },
+      });
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 }

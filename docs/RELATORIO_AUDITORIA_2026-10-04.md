@@ -59,9 +59,11 @@ A bateria final foi executada no **Node 22.23.2** (o `engines` fixa `>=22 <23`).
 | N-02 | **Resolvido** | `ux-simplification.spec.ts` entrou no job de E2E do CI (`.github/workflows/ci.yml`). |
 | N-03 | **Parcial** | A proveniência já era conferida no CI. Falta o dono confirmar a decisão D-026 e a data de revisão (veja a decisão no [DECISION_LOG](DECISION_LOG.md)). |
 | N-04 | **Resolvido** | O `perf:postgres` agora reprova acima de tetos absolutos de p95 (2× as metas do PRD: 1.000 ms leitura, 1.600 ms busca e escrita; `PERF_POSTGRES_P95_CEILING_FACTOR`). Passou: leitura 126 ms, escrita 146 ms. Aceite com volume real continua no PROD-110. |
-| N-05 | **Parcial** | Trabalho dividido em 5 commits por tema, árvore limpa. Falta o push e o CI remoto verde (PROD-002). |
+| N-05 | **Parcial** | Trabalho dividido em 5 commits por tema. Conferência adicional em 05/10: o filtro de push do CI não incluía a branch de release; corrigido para aceitar `release/production-readiness`, sem mudar jobs, gates ou permissões. YAML validado e `validate:openapi` passou (73/68). Falta autorização de publicação, push e CI remoto verde (PROD-002). |
 | N-06 | **Resolvido** | Nenhum `window.confirm` restante: `useConfirm`/`ConfirmDialog` (foco preso, Escape cancela, foco volta ao botão) em revogar sessão, reprocessar/descartar e gerar nova senha. |
 | N-07 | **Resolvido** | Números e afirmações defasadas corrigidos; consolidação de `docs/build/` segue como DOC-01. |
+
+Na conferência pré-push, `test:config` revelou uma comparação instável no teste de symlink circular (159/160). `ELOOP` foi reproduzido também no pacote original; o teste agora mantém a comparação exata de todos os caminhos no sucesso e aceita somente esse erro no ciclo sem limite. O caso com profundidade limitada exige sucesso nas três APIs. Após o ajuste, três execuções passaram 160/160, sem skips; lint sem warnings, OpenAPI, docs, varredura de segredos e audit completo passaram. Revisão independente sem achados nesse escopo. Pacote vendorizado e oráculo histórico preservados; detalhes no COR-02 do backlog de melhorias. CI remoto permanece pendente.
 
 ## 5. Pendente e fora do alcance local
 

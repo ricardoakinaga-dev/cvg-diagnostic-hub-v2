@@ -2,7 +2,7 @@ name: CVG Diagnostics Hub CI
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master", "release/production-readiness"]
   pull_request:
 
 permissions:
@@ -140,7 +140,7 @@ jobs:
       - name: Prepare benchmark artifacts
         run: mkdir -p logs
       # The harness builds production Next and defaults to 100k audit events
-      # and 100 SSE connections. CI gates correctness; latency is informational.
+      # and 100 SSE connections. CI gates correctness and absolute p95 ceilings.
       - name: Run real HTTP/PostgreSQL/SSE benchmark
         shell: bash
         run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres.log
