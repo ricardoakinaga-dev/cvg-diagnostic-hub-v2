@@ -1,3 +1,4 @@
+import { ensureScratchTsconfig } from "../../scripts/scratch-tsconfig";
 import { spawn, type ChildProcess } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:net";
@@ -218,6 +219,7 @@ function nextHttpEnvironment(options: {
     NEXT_TELEMETRY_DISABLED: "1",
     PORT: String(options.port),
     NEXT_DIST_DIR: options.distDir,
+    NEXT_TSCONFIG_PATH: ensureScratchTsconfig(),
     APP_DATA_MODE: "postgres",
     DATABASE_URL: options.databaseUrl,
     DB_POOL_MAX: "4",

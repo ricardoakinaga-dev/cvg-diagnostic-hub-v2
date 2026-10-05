@@ -32,6 +32,8 @@ const nextConfig = {
       .map((origin) => origin.trim())
       .filter(Boolean)
   ],
+  // Disposable servers (E2E, benchmarks) point this at a throw-away tsconfig so Next never rewrites the real one.
+  typescript: { tsconfigPath: process.env.NEXT_TSCONFIG_PATH || "tsconfig.json" },
   turbopack: { root: process.cwd() },
   experimental: { proxyClientMaxBodySize: "25mb" },
   transpilePackages: ["@cvg/contracts", "@cvg/domain", "@cvg/ui", "@cvg/services", "@cvg/shared-state"],
