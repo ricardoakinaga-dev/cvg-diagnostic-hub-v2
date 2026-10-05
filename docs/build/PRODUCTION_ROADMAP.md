@@ -4,7 +4,7 @@
 **Data:** 03/10/2026
 **Knowledge status:** `DECISION` para a ordem, os marcos e os critérios; `ASSUMPTION` para os tamanhos, que viram prazo só depois de D2 (volume) e D11 (infraestrutura).
 
-[Backlog](PRODUCTION_BACKLOG.md) · [Plano](PRODUCTION_PLAN.md) · [Auditoria de 02/10](../RELATORIO_AUDITORIA_2026-10-02.md)
+[Roadmap de melhorias e correções](IMPROVEMENT_ROADMAP_2026-10.md) · [Auditoria de 04/10/2026](../RELATORIO_AUDITORIA_2026-10-04.md) · [Backlog](PRODUCTION_BACKLOG.md) · [Plano](PRODUCTION_PLAN.md) · [Auditoria de 02/10](../RELATORIO_AUDITORIA_2026-10-02.md)
 
 ## 1. Duas trilhas paralelas
 
@@ -41,10 +41,10 @@ Antes de qualquer coisa: um commit candidato, um CI remoto verde e as primeiras 
 
 ### W1 — Escala (esforço L–XL; começa já)
 
-Estado em 03/10/2026: PROD-106 `DONE`; PROD-103, 104 e 110 em `VERIFY`, com
+Estado em 04/10/2026: PROD-106 `DONE`; PROD-103 e 104 em `VERIFY`; PROD-110 em `IN_PROGRESS`, com
 correção dos achados A-01 a A-09 da [revisão de 02/10](../RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md).
-Os passos 3 e 4 ficaram provados apenas no Synthetic: PROD-101, 102 e 105
-continuam `READY` porque a linha de base do benchmark de 12 meses depende de D2.
+PROD-101 e PROD-102 estão `DONE` no aceite técnico local: auditoria/outbox fora do snapshot, cobertura combinada 1.235/1.235, E2E 81/81 sem retries, mutação 7/7 e nova carga com 100 SSE aprovadas. A revisão estática independente não deixou pendências P0/P1/P2 no escopo. PROD-105 também está `DONE` no aceite técnico local: leituras fora da fila, cache validado por versão, 1.279/1.279 testes combinados, E2E 81/81 e mesma carga de 100 SSE aprovados; p95 aumentou nesta amostra e não há alegação de ganho de latência. A concorrência física exige pool ≥ 2 e cada store adiciona uma conexão LISTEN dedicada. PROD-108 também está `DONE` no aceite local: registro dos 73 handlers validado contra o manifesto, arquivos centrais com 92/452 linhas, arquitetura verde, 1.410/1.410 testes combinados, 24 exceções de cobertura, E2E 81/81 e carga de 100 SSE aprovados. PROD-109 também está `DONE` localmente: audit completo zerado, 160 testes nativos e 1.517 combinados aprovados. Os aceites de staging e o recorte completo de W1 permanecem abertos. O benchmark provisório de 100 mil eventos independe de D2;
+o volume aprovado de 12 meses e o aceite em staging continuam dependendo dessa decisão.
 
 A ordem importa:
 
@@ -53,9 +53,14 @@ A ordem importa:
 3. **PROD-103, PROD-101, PROD-102:** tirar do snapshot tudo o que só cresce.
 4. **PROD-104, PROD-105:** realtime incremental e leituras sem fila serial.
 5. **PROD-107** em `VERIFY` (orçamento e backoff por par, com testes PostgreSQL).
-   **PROD-108 e PROD-109** seguem abertos; a extração do codec e do runner de backfill
-   reduziu `postgres-store.ts`, que ainda supera a meta de 600 linhas, mas o dispatcher por
-   mapa continua sendo o trabalho restante. O gate de snapshot mede bytes;
+   **PROD-108** está `DONE` localmente: despacho por mapa validado e arquivos centrais
+   abaixo de 600 linhas. **PROD-109** está `DONE` no aceite local: Vitest/coverage
+   4.1.11, configuração de origens e fork reproduzível de glob com parser/expansor
+   efetivamente limitado. Audit completo e de produção sem vulnerabilidades;
+   22 regras Next preservadas, 160 testes nativos e 1.517 testes combinados
+   aprovados. O gate de audit da CI permanece intacto. A proveniência, os limites,
+   a revisão independente e a manutenção do fork estão registrados no backlog.
+   O gate de snapshot mede bytes;
    p95 HTTP/SSE e throughput no PostgreSQL ainda mantêm PROD-110 em `IN_PROGRESS`.
 6. **PROD-111** (cutover relacional) logo depois do M1, porque requisições, itens, resultados e notificações continuam crescendo no snapshot. Os passos 3–5 compram margem, mas não resolvem.
 

@@ -1,6 +1,6 @@
 # Relatório de status de construção — CVG Diagnostics Hub V2
 
-> **Status corrente (02/10/2026):** ver a [auditoria de 02/10/2026](RELATORIO_AUDITORIA_2026-10-02.md) (nota 77/100), o [roadmap](build/PRODUCTION_ROADMAP.md) e o [backlog PROD-2026-10](build/PRODUCTION_BACKLOG.md). Linha de base: 809/809 testes, cobertura de 94,98%/95,30%/89,10% (lines/functions/branches), migrations 001–011, caminho de deploy verificado em modo produção. Bloqueador técnico principal: o teto de escala do snapshot JSONB (F-01). O texto abaixo é histórico.
+> **Status corrente (04/10/2026):** ver a [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md), o [roadmap](build/PRODUCTION_ROADMAP.md) e o [backlog PROD-2026-10](build/PRODUCTION_BACKLOG.md), mais o [roadmap](build/IMPROVEMENT_ROADMAP_2026-10.md) e o [backlog](build/IMPROVEMENT_BACKLOG_2026-10.md) de melhorias. Linha de base: 1.438 testes unitários + 95 PostgreSQL, cobertura de 96,82%/95,46%/89,48% (lines/functions/branches), E2E 81/81, OpenAPI 73/68, migrations 001–014. Auditoria e outbox já saíram do snapshot JSONB; abertos: carga com p95 em staging (PROD-110), CI remoto e as decisões D1–D12. O texto abaixo é histórico.
 
 **Auditoria realizada:** 04/09/2026  
 **Revisão observada:** `01bb1804682b4bb503e00e41c1361dc704d2294d`  

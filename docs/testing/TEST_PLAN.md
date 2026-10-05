@@ -6,7 +6,7 @@
 
 ### Current executable evidence — 02/10/2026
 
-`npm test` passed **768/768 tests in 91 files**. The unit-only coverage run records **92.79% lines, 86.12% branches and 94.23% functions**. The merged `npm run test:coverage` run passed **809/809 tests in 98 files** with **94.98% lines, 89.09% branches and 95.30% functions**; `coverage:gate` passed with 29 declared temporary exceptions and no uncovered/stale entries. `npm run test:postgres` passed **41/41**. Migration validation, docs, OpenAPI 70/65, traceability, security scan, typecheck, lint, build, E2E 63/63 without retry and mutation 7/7 pass. Target load/failover, real storage/AV, full restore/RPO/RTO, remote CI and human/clinical acceptance remain open.
+Audit of 2026-10-04 (PostgreSQL 16 disposable, see [report](../RELATORIO_AUDITORIA_2026-10-04.md)): `npm test` passed **1,438/1,438 tests in 126 files** and `npm run test:postgres` passed **95/95 in 16 files**. The merged `npm run test:coverage` run records **96.82% lines, 89.48% branches and 95.46% functions**; `coverage:gate` passed with 22 declared temporary exceptions and no uncovered/stale entries. Migration validation (001-014), docs, OpenAPI 73 operations/68 paths, traceability 43/43, security scan, typecheck, lint, build, E2E 81/81 without retry and mutation 7/7 pass. Target load/failover, real storage/AV, full restore/RPO/RTO, remote CI and human/clinical acceptance remain open.
 
 ## 1. Objectives
 

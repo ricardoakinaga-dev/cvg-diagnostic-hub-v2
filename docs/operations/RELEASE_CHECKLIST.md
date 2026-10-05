@@ -8,7 +8,7 @@ Use for every pilot/production release; checkboxes require evidence link or comm
 
 ## Current local evidence (02/10/2026)
 
-The current AUDIT-2026-10 candidate passes `npm test` with 768/768 tests in 91 files. Unit-only coverage is 92.79/86.12/94.23 (lines/branches/functions); the merged PostgreSQL coverage run passes 809/809 tests in 98 files with 94.98/89.09/95.30 aggregate coverage, and the full coverage gate passes with 29 declared temporary exceptions and no uncovered/stale entries. `npm run test:postgres` passes 41/41. Migration validation, security scan, OpenAPI 70/65, traceability 43/43, typecheck, lint, build, E2E 63/63 without retry and mutation 7/7 pass. No release item below is marked complete by these local results.
+The 2026-10-04 audit ([report](../RELATORIO_AUDITORIA_2026-10-04.md)) passes `npm test` with 1,438/1,438 tests in 126 files; the merged PostgreSQL coverage run adds 95/95 PostgreSQL tests in 16 files with 96.82/89.48/95.46 aggregate coverage (lines/branches/functions), and the full coverage gate passes with 22 declared temporary exceptions and no uncovered/stale entries. Migration validation (001-014), security scan, OpenAPI 73/68, traceability 43/43, typecheck, lint, build, E2E 81/81 without retry and mutation 7/7 pass. An update that contains migrations 013 or 014 must follow [DEPLOYMENT §4.1](DEPLOYMENT.md). No release item below is marked complete by these local results.
 
 ## Historical local evidence (06/09/2026; superseded)
 

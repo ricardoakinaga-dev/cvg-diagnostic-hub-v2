@@ -63,6 +63,24 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
 O `up -d` reexecuta `migrate` antes de recriar `app` e `worker`. As migrations são versionadas com checksum; uma migration alterada depois de aplicada aborta o deploy.
 
+### 4.1 Atualização que contém as migrations 013 ou 014 (cutover)
+
+As migrations `013_audit_read_authority` e `014_outbox_read_authority` movem a auditoria e o outbox do snapshot para `audit_events` e `outbox_messages`. A 013 cria a constraint `runtime_audit_is_transient`, então a versão antiga do app, que ainda grava auditoria no snapshot, passa a falhar em todo comando clínico. O `up -d` do §4 **não serve** para esta atualização, porque roda o `migrate` com `app` e `worker` antigos no ar. Use esta ordem:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production stop proxy app worker
+npm run db:backup   # obrigatório: o rollback deste cutover é só de dados
+docker compose -f docker-compose.prod.yml --env-file .env.production build
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d
+```
+
+- Combine a janela de manutenção antes: o sistema fica indisponível entre o `stop` e o `up -d` (no ensaio com 100 mil eventos de auditoria a 013 levou cerca de 3 s; confirme com o volume real).
+- As duas migrations abortam inteiras se encontrarem ID duplicado ou divergência entre snapshot e tabela; nesse caso nada é aplicado e o app antigo pode voltar com `up -d` da tag anterior.
+- Depois de aplicadas, o código anterior **não** roda no schema novo. O rollback é o restore do backup tirado acima (§8).
+- O `migrate` tem uma trava: uma migration que começa com `-- Coordinated cutover` (013 e 014) **recusa rodar** enquanto houver outra sessão conectada ao banco, antes de executar qualquer SQL, com o erro `MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:<versão>:<sessões>`. Se aparecer, algum `app`, `worker` ou console ainda está conectado: pare-o e rode de novo. `MIGRATION_CUTOVER_ACKNOWLEDGED=true` ignora a trava e só se usa quando se confirmou que as sessões restantes são inofensivas; nunca no Compose.
+- Ensaie o cutover com um dump representativo antes de produção (PROD-503).
+
 ## 5. Verificação pós-deploy
 
 ```bash
@@ -169,9 +187,7 @@ docker compose -f docker-compose.prod.yml --env-file .env.production \
   run --rm worker npm run runtime:retention
 ```
 
-A poda da auditoria no snapshot está **fora** de escopo: `audit_events` é
-append-only por trigger e por contrato, e só sai do snapshot com o cutover
-relacional (PROD-101/PROD-111).
+A auditoria não passa por esta poda: `audit_events` é append-only por trigger e por contrato, e desde a migration 013 é a única fonte de leitura. O snapshot guarda `auditEvents` vazio (constraint `runtime_audit_is_transient`).
 
 ### 6.3 Realtime
 
@@ -233,6 +249,6 @@ recusa com `DATABASE_ROLES_MUST_BE_SEPARATE`.
 
 ## 9. Limites conhecidos
 
-- Não há troca/redefinição de senha self-service. Para um colaborador que perdeu a senha, o ADMIN desativa a conta e cria outra.
+- Não há troca de senha self-service. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
 - RPO/RTO, roteamento de alertas e failover continuam abertos em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
 - O stack de Compose é de host único; escalar `app` horizontalmente é suportado pelo runtime (rate limit e realtime em PostgreSQL), mas exige balanceador fora deste arquivo.

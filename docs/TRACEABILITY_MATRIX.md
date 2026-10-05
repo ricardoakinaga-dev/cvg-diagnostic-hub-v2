@@ -40,7 +40,7 @@ The previous 06/09 coverage table is retained below as historical evidence and m
 
 | Criterion | State | Evidence and limit |
 | --- | --- | --- |
-| Local implementation and regression | `CONDITIONAL PASS` | Current AUDIT-2026-10 evidence records typecheck, lint, 768/768 local tests, 809/809 aggregate tests including 41/41 PostgreSQL tests, aggregate coverage 94.98/89.09/95.30, OpenAPI 70/65, traceability, migrations, security scan, build, E2E 63/63 and mutation 7/7. |
+| Local implementation and regression | `CONDITIONAL PASS` | The 2026-10-04 audit records typecheck, lint, 1,438/1,438 unit tests plus 95/95 PostgreSQL tests, aggregate coverage 96.82/89.48/95.46 (lines/branches/functions), OpenAPI 73/68, traceability 43/43, migrations 001-014, security scan, build, E2E 81/81 and mutation 7/7. |
 | Clinical/data/operations authority | `BLOCKED EXTERNAL` | D-01 through D-06, relational cutover, target infrastructure, representative workload, restore and manual acceptance remain open. |
 | Release authority | `BLOCKED` | No named hospital authority, pilot sign-off or formal production decision exists; the independent AAA-3 critic therefore remains BLOCKED. |
 

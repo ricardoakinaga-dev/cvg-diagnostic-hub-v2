@@ -32,17 +32,17 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Snapshot executável corrente — PROD-2026-10.1 (03/10/2026)
+## Snapshot executável corrente — auditoria de 04/10/2026
 
-As correções locais da onda W1 e da revisão foram verificadas no Node 22.23.2: **853/853 testes unitários em 100 arquivos** e **59/59 testes PostgreSQL em 10 arquivos**, totalizando **912/912 testes em 110 arquivos**. A cobertura agregada registra **95,27% lines, 95,71% functions e 89,84% branches**. Três exceções ficaram obsoletas com essa cobertura e foram removidas: o registro agora tem **26 exceções**, sem novos arquivos dispensados.
+Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com PostgreSQL 16 descartável: **1.438/1.438 testes unitários** em 126 arquivos e **95/95 testes PostgreSQL** em 16 arquivos. Cobertura agregada de **96,82% lines, 95,46% functions e 89,48% branches**; `coverage:gate` PASS com **22 exceções** declaradas, nenhuma nova. `validate:docs`, OpenAPI (**73 operações em 68 paths**), rastreabilidade (43/43), migrations (**001–014**), `perf:snapshot:gate`, `perf:realtime-budget`, typecheck, lint, build e `npm audit` (0 vulnerabilidades) passaram.
 
-O contador de falhas é lido por `SELECT`, resetado por `DELETE` e isolado por par e-mail/cliente; o login não cria sessão se o reset ou a atividade inicial falharem. O UPSERT de atividade é monotônico.
+A auditoria e o outbox saíram do snapshot (migrations 013 e 014, [D-025](DECISION_LOG.md)); a atualização que as contém exige parar o app antes do `migrate` ([DEPLOYMENT §4.1](operations/DEPLOYMENT.md)). A UX diária foi simplificada ([D-024](DECISION_LOG.md)): criar usuário em 4 interações, trocar setor em 2, liberar resultado em 1.
 
-O gate temporal de snapshot anterior não era reproduzível: `perf:snapshot:gate` agora compara **bytes determinísticos**, com tempos informativos, e `perf:realtime-budget` verifica contagens em processo. Ambos passaram; nenhum comprova p95 ou locks PostgreSQL.
+Abertos: carga com p95 em staging (PROD-110), CI remoto, decisões D1–D12, pentest, UAT e piloto. Ver o [backlog até produção](build/PRODUCTION_BACKLOG.md) e, para correções e melhorias, o [roadmap](build/IMPROVEMENT_ROADMAP_2026-10.md) e o [backlog](build/IMPROVEMENT_BACKLOG_2026-10.md) de 04/10/2026.
 
-`validate:migrations` (001–012), `validate:docs`, `validate:openapi` (70 operações/65 paths), `validate:traceability` (43/43), `security:scan`, typecheck, lint, build, E2E (63/63 sem retries) e mutação (7/7) passaram. A onda W1 permanece parcial: PROD-110 está `IN_PROGRESS` até a carga HTTP/SSE com p95 e throughput. O candidato continua `CONDITIONAL PASS LOCAL / BLOCKED` para produção clínica. Evidências e limites estão na [atualização do relatório de revisão](RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md#7-correção-da-revisão--03102026).
+## Snapshot executável anterior — PROD-2026-10.1 (03/10/2026)
 
-Achados da [revisão de 02/10](RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md) tratados: **A-01 a A-05 e A-07 a A-09**. A-06 tem gates locais; o aceite de carga HTTP/SSE permanece pendente no PROD-110. Ver [backlog PROD-2026-10.1](build/PRODUCTION_BACKLOG.md) e [DECISION_LOG](DECISION_LOG.md) (D-018 a D-023).
+Histórico: 912/912 testes (853 unitários + 59 PostgreSQL), 95,27% lines, OpenAPI 70/65, migrations 001–012 e E2E 63/63. Detalhe nas seções 9 do [backlog até produção](build/PRODUCTION_BACKLOG.md) e na [revisão de 02/10](RELATORIO_REVISAO_ENTREGA_AGENTE_2026-10-02.md).
 
 ## Snapshot executável anterior — AUDIT-2026-10 (02/10/2026)
 
@@ -96,7 +96,7 @@ golden, aceite alvo/humano e produção continuam abertos.
 | API e erros | `api/API_SPEC.md` (ponteiro opcional em `spec/API_SPEC.md`) e `spec/ERROR_MODEL.md` |
 | Notificações/realtime | `spec/NOTIFICATIONS.md` e `spec/REALTIME.md` |
 | Segurança | `security/SECURITY.md`, `security/THREAT_MODEL.md`, `security/KNOWN_BAD_CONTROL_MATRIX.md` e `security/ADVERSARIAL_REVIEW_SUPPLEMENT_2026-09-07.md` |
-| Ordem de construção atual | `build/STATE_OF_ART_TRIPLE_AAA_ROADMAP.md` e `build/STATE_OF_ART_TRIPLE_AAA_BACKLOG.md`; `build/BUILD_PLAN.md` permanece como decomposição original |
+| Ordem de construção atual | `build/PRODUCTION_ROADMAP.md` e `build/PRODUCTION_BACKLOG.md` (caminho até produção); `build/IMPROVEMENT_ROADMAP_2026-10.md` e `build/IMPROVEMENT_BACKLOG_2026-10.md` (correções e melhorias). Os programas AAA-3 e anteriores são histórico; `build/BUILD_PLAN.md` permanece como decomposição original |
 | Barra, plano e estado AAA atual | `.orchestrate/aaa3-execution-20260907/quality-bar.json`, `build/STATE_OF_ART_TRIPLE_AAA_EXECUTIVE_PLAN.md`, `build/STATE_OF_ART_TRIPLE_AAA_ROADMAP.md`, `build/STATE_OF_ART_TRIPLE_AAA_BACKLOG.md` |
 | Glossário e vocabulário canônico | [`GLOSSARY.md`](GLOSSARY.md) |
 | Decisões de produto/técnica e registro de mudanças | [`DECISION_LOG.md`](DECISION_LOG.md); decisões arquiteturais duráveis com ADR em [`adr/README.md`](adr/README.md) |
