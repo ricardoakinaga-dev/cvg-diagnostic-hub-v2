@@ -27,7 +27,7 @@ Onda A  Estabilizar ──► Onda B  Fluidez de uso ──► Onda C  Escala de
 | `fast-glob` vendorizado sob controle (hash no CI, dono, revisão) | COR-04 |
 | Teto de latência no benchmark e causa da piora | COR-05 |
 
-**Estado em 05/10/2026:** COR-01 (trava do cutover), COR-03 (E2E da UX no CI), COR-05 (teto de p95) e COR-06 (diálogo de confirmação) estão `DONE`, com testes. Faltam o push com CI remoto verde (COR-02) e a confirmação do dono sobre o `fast-glob` vendorizado (COR-04).
+**Estado em 05/10/2026:** COR-01 (trava do cutover), COR-03 (E2E da UX no CI), COR-04 (continuidade do vendor e revisão), COR-05 (teto de p95), COR-06 (diálogo de confirmação) e TEC-05 (isolamento unitário) estão `DONE`. O push foi feito; a primeira execução remota encontrou links para logs locais ignorados, corrigidos sem enfraquecer o gate. Falta o CI remoto verde no candidato corrigido (COR-02).
 
 **Critério de saída (todos):** CI remoto verde no commit candidato; ensaio de cutover com a versão antiga ligada recusado com clareza; `ux-simplification.spec.ts` rodando no CI; benchmark com teto de p95 ativo.
 

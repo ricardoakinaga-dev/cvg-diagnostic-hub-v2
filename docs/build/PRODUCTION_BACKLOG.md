@@ -19,8 +19,8 @@
 
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
-| PROD-001 | P0 | READY | S | Revisar e commitar o trabalho pendente (dead-letter, migration 011, gestão de sessões, correção do E2E e docs desta auditoria). Aceite: working tree limpo e um único commit candidato. | — | F-11 |
-| PROD-002 | P0 | READY | S | CI do GitHub Actions verde no commit candidato; proteção da `main` (PR + checks obrigatórios). Aceite: link da execução com todos os jobs verdes. | PROD-001 | F-11, P1.1 |
+| PROD-001 | P0 | DONE | S | Trabalho revisado e dividido em commits por tema; candidato `5f83a92` publicado em 05/10 com árvore limpa. Correções dos achados remotos seguem como commits próprios no PROD-002. | — | F-11 |
+| PROD-002 | P0 | IN_PROGRESS | S | CI do GitHub Actions verde no commit candidato; proteção da `main` (PR + checks obrigatórios). [Primeira execução remota](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37266694955): benchmark/CodeQL passaram, docs falhou por links para logs locais ignorados; corrigido e validado em checkout limpo. Proteção da `main` ainda ausente na consulta de 05/10. Aceite: todos os jobs verdes no candidato e política de PR/checks aplicada. | PROD-001 | F-11, P1.1 |
 | PROD-003 | P0 | READY | S | Agendar as decisões D1 (identidade), D2 (volume/RPO/RTO) e D11 (infraestrutura) com os responsáveis. Aceite: atas no [DECISION_LOG](../DECISION_LOG.md). | — | Plano Fase 0 |
 
 ## 3. W1 — Escala e robustez da persistência (técnico, sem decisão humana)
@@ -108,13 +108,13 @@
 
 | Onda | Itens | `READY` | `DONE` | `IN_PROGRESS`/`VERIFY` | `BLOCKED` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| W0 Base | 3 | 3 | 0 | 0 | 0 |
+| W0 Base | 3 | 1 | 1 | 1 | 0 |
 | W1 Escala | 11 | 0 | 6 | 4 | 1 |
 | W2 Identidade | 6 | 0 | 0 | 1 | 5 |
 | W3 Infra | 9 | 1 | 0 | 2 | 6 |
 | W4 Clínico/dados/operação | 20 | 5 | 0 | 0 | 15 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **59** | **9** | **6** | **7** | **37** |
+| **Total** | **59** | **7** | **7** | **8** | **37** |
 
 Os 37 itens bloqueados dependem de 12 decisões humanas (D1–D12 do [plano](PRODUCTION_PLAN.md)). Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 

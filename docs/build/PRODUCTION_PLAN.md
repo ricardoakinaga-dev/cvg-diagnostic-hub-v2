@@ -69,6 +69,14 @@ Nada aqui é engenharia: cada linha precisa de uma ata com responsável, data e 
 
 **Critério de saída:** D1–D12 com ata. Se D3 ainda não estiver decidida, o piloto pode seguir com `CRITICAL_POLICY_ENABLED=false` e um fluxo de crítico fora do sistema documentado. Essa exceção precisa ser aceita por escrito pela direção clínica.
 
+**Preparação em 05/10/2026 — propostas para o piloto, ainda sem aceite hospitalar:**
+
+- **D1 (`PROPOSED`):** contas locais individuais já implementadas, com senha temporária e troca obrigatória; confirmar com TI se existe OIDC/AD institucional antes de escolher o caminho definitivo.
+- **D2 (`UNKNOWN` para o volume clínico):** informar exames/dia, pico de usuários simultâneos, volume de anexos e crescimento em 12 meses. Como proposta operacional inicial, avaliar disponibilidade de 99,5%, RPO de 15 minutos e RTO de 4 horas; são metas a aprovar e demonstrar por restore, não resultados medidos. O harness atual de 100 mil auditorias/100 SSE permanece uma carga sintética provisória e não determina capacidade clínica.
+- **D11 (`PROPOSED`):** Compose em um servidor dedicado ao piloto, staging isolado, backup externo ao host, PostgreSQL com recuperação point-in-time, storage/antivírus reais e segredos próprios de cada ambiente. Ainda faltam servidor/provedor, domínio, endpoints de storage/AV, secret manager e responsáveis operacionais. Servidor único implica indisponibilidade em falha/manutenção e não é um aceite de alta disponibilidade.
+
+Essas propostas não alteram o ambiente instalado, não definem retenção LGPD ou política de resultado crítico e não destravam itens `BLOCKED` antes da aprovação dos responsáveis da tabela.
+
 ---
 
 ## Fase 1 — Infraestrutura de produção (engenharia + SRE)

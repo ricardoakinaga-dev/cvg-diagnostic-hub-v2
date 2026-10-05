@@ -18,9 +18,9 @@
 | ID | Pri | Status | Tam. | Entrega e aceite | Origem |
 | --- | --- | --- | --- | --- | --- |
 | COR-01 | P0 | DONE | S | **Cutover 013/014 sem janela de erro.** (a) Procedimento "parar app/worker → backup → migrate → subir" no DEPLOYMENT §4.1 (feito). (b) O `migrate` recusa aplicar 013/014 se houver outra sessão conectada. Aceite: ensaio em PostgreSQL com a versão antiga ligada termina com recusa clara, sem escrita perdida; teste automatizado. **Feito em 05/10/2026:** `applyMigrations` + `tests/postgres/cutover-guard.integration.test.ts` (PostgreSQL real) + 4 testes unitários. | N-01 |
-| COR-02 | P0 | IN_PROGRESS | S | **Commit em fatias e CI remoto.** Commits por tema feitos em 05/10/2026 (`090cf99`, `fc3a05c`, `dccc786`, `104a17b`, `1cb5293`). Conferência adicional: o workflow só aceitava pushes para `main`/`master`; o filtro agora inclui `release/production-readiness`, mantendo os mesmos jobs, gates e permissões. YAML conferido contra o HEAD anterior; `validate:openapi` passou (73 operações/68 paths). Falta: autorização de publicação, push da branch e CI remoto verde (fecha PROD-001/002). Aceite: link da execução com todos os jobs aplicáveis verdes. | N-05 |
+| COR-02 | P0 | IN_PROGRESS | S | **Commit em fatias e CI remoto.** Push realizado em 05/10 sob o pedido de resolver as pendências. A [primeira execução remota](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37266694955) passou benchmark PostgreSQL/SSE e CodeQL, mas falhou em `validate:docs`: 18 links históricos apontavam para logs ignorados ausentes no checkout. Referências corrigidas para caminhos explicitamente locais, sem mudar o validador ou versionar logs; gate passou em checkout limpo. Falta: todos os jobs aplicáveis verdes no candidato corrigido e proteção da `main` (PROD-002). | N-05 |
 | COR-03 | P0 | DONE | S | **Pôr o E2E da UX no CI.** `tests/e2e/ux-simplification.spec.ts` entrou no job de browser (`--retries=0`). Aceite: job falha se qualquer meta de interações regredir. | N-02 |
-| COR-04 | P1 | IN_PROGRESS | S | **Governar o `fast-glob` vendorizado.** O CI já confere hash e proveniência (`test:config`). Falta: o dono confirmar a D-026 e fixar o gatilho de revisão (proposto: todo upgrade de eslint/next, e 04/01/2027 no máximo); remover o vendor quando sair correção upstream do `braces`. Aceite: D-026 com `DECISION` e dono. | N-03 |
+| COR-04 | P1 | DONE | S | **Governar o `fast-glob` vendorizado.** D-026 registra a continuidade técnica sob a instrução de resolver as pendências, responsável `ricardoakinaga-dev`, revisão a cada upgrade de eslint/next e até 04/01/2027. CI confere hashes/proveniência; substituição exige solução upstream corrigida passando os mesmos contratos e audit completo. | N-03 |
 | COR-05 | P1 | DONE | S | **Teto de latência no benchmark.** `perf:postgres` reprova acima de p95 absoluto (2× as metas do PRD: 1.000 ms leitura, 1.600 ms busca/escrita; `PERF_POSTGRES_P95_CEILING_FACTOR`). Medido em 05/10/2026: leitura 126 ms, escrita 146 ms. A "piora de latência" citada na primeira versão da auditoria não se confirmou. O aceite com o volume de D2 segue no PROD-110. | N-04 |
 | COR-06 | P2 | DONE | S | **Trocar `window.confirm`** por confirmação no padrão das demais telas (`useConfirm`, foco preso, Escape cancela, foco volta ao botão). Feito em revogar sessão, reprocessar/descartar dead-letter e gerar nova senha; testes de componente e E2E ajustados. | N-06 |
 
@@ -62,16 +62,16 @@ Já entregue e medido (não reabrir): criar usuário em 4 interações, trocar s
 | TEC-02 | P2 | READY | M | Quebrar os maiores arquivos: `service-common.ts` (757 linhas), `clinical-core-adapter.ts` (734), `validate-openapi.mjs` (702). Aceite: nenhum acima de 600 sem justificativa; testes verdes, sem exceção de cobertura nova. | — |
 | TEC-03 | P2 | READY | S | Reduzir as 22 exceções de cobertura declaradas, começando pelas de branches mais baixos (`clinical-core-adapter` 68%, `cutover` 69%). Aceite: número de exceções menor, nenhuma nova. | — |
 | TEC-04 | P2 | READY | S | Alinhar o Node: `engines` fixa `>=22 <23` e desenvolvedores rodam 24. Escolher e documentar (suportar 24 ou travar a 22 no `.nvmrc` e no hook). | — |
-| TEC-05 | P2 | READY | S | **Isolar os testes unitários do ambiente PostgreSQL.** Com `POSTGRES_TEST_ADMIN_URL` exportada, `postgres-store-coverage.test.ts` falha ("requires explicit authorization before initializing a missing runtime row"); só o `test:coverage` limpa as variáveis. Aceite: `npx vitest run` passa com ou sem as variáveis. | — |
+| TEC-05 | P2 | DONE | S | **Isolar os testes unitários do ambiente PostgreSQL.** `src/test/setup.ts` remove apenas os dois opt-ins herdados da integração antes dos testes unitários; autorização continua explícita por fixture. Reprodução: 1 falha/36 com as variáveis; após o ajuste, **1.438/1.438** em 126 arquivos com ambas exportadas e **36/36** dos casos afetados sem elas. Configuração PostgreSQL separada não usa esse setup. Typecheck/lint passam, controles e testes de autorização preservados. | — |
 
 ## 5. Resumo
 
 | Grupo | Itens | `DONE` | `IN_PROGRESS` | `READY` | `BLOCKED` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| COR | 6 | 4 | 2 | 0 | 0 |
+| COR | 6 | 5 | 1 | 0 | 0 |
 | UX | 11 | 0 | 0 | 8 | 3 |
 | DOC | 5 | 0 | 0 | 5 | 0 |
-| TEC | 5 | 0 | 0 | 4 | 1 |
-| **Total** | **27** | **4** | **2** | **17** | **4** |
+| TEC | 5 | 1 | 0 | 3 | 1 |
+| **Total** | **27** | **6** | **1** | **16** | **4** |
 
-Ordem de ataque: COR-01, COR-03, COR-05 e COR-06 estão feitos (05/10/2026); falta o push com CI remoto (COR-02) e a confirmação do dono no COR-04 antes de qualquer deploy. Depois UX-01…04 e DOC-01…03 em paralelo, que são os que mais reduzem a fricção que o dono relatou.
+Ordem de ataque: COR-01, COR-03…06 e TEC-05 estão feitos (05/10/2026); o push foi realizado e falta concluir o CI remoto (COR-02). Depois UX-01…04 e DOC-01…03 em paralelo, que são os que mais reduzem a fricção que o dono relatou.
