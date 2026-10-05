@@ -8,8 +8,9 @@
 x-app-environment: &app-environment
   NODE_ENV: production
   APP_DATA_MODE: postgres
-  DATABASE_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
-  MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-${POSTGRES_USER:?}}:${POSTGRES_MIGRATION_PASSWORD:-${POSTGRES_PASSWORD:?}}@postgres:5432/${POSTGRES_DB:?}
+  # The application and the worker connect as the runtime role: DML only, no DDL, append-only audit_events.
+  # The DDL credentials are NOT part of this shared block; only the one-shot migrate service receives them.
+  DATABASE_URL: postgresql://${POSTGRES_RUNTIME_USER:-cvg_runtime}:${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
   SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set}
   APP_ORIGIN: https://${APP_DOMAIN:?APP_DOMAIN must be set}
@@ -39,8 +40,17 @@ x-app-environment: &app-environment
   CRITICAL_POLICY_APPROVAL_REF: ${CRITICAL_POLICY_APPROVAL_REF:-}
   CRITICAL_POLICY_APPROVED_AT: ${CRITICAL_POLICY_APPROVED_AT:-}
 
+# Container logs rotate by default only if asked: without this a busy host fills its disk with json-file logs.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-5}
+
 services:
   postgres:
+    logging: *default-logging
+    init: true
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
@@ -55,11 +65,17 @@ services:
       timeout: 5s
       retries: 12
 
+  # One-shot, runs before app and worker on every `up`. It is the only service that holds the
+  # administrative and DDL credentials: it creates/rotates the migration and runtime roles, hands the
+  # schema to the migration role, applies migrations and grants the runtime role DML only.
   migrate:
     build: { context: ., target: ops }
     image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
-    command: ["node_modules/.bin/tsx", "scripts/migrate.ts"]
-    environment: *app-environment
+    command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
+    environment:
+      <<: *app-environment
+      DATABASE_ADMIN_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-cvg_migrator}:${POSTGRES_MIGRATION_PASSWORD:?POSTGRES_MIGRATION_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -80,6 +96,9 @@ services:
     restart: "no"
 
   app:
+    logging: *default-logging
+    init: true
+    mem_limit: ${APP_MEM_LIMIT:-1g}
     build: { context: ., target: runner }
     image: ${IMAGE_PREFIX:-cvg-hub}:${IMAGE_TAG:-latest}
     environment: *app-environment
@@ -90,6 +109,9 @@ services:
     expose: ["3000"]
 
   worker:
+    logging: *default-logging
+    init: true
+    mem_limit: ${WORKER_MEM_LIMIT:-512m}
     image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
     command: ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
     environment:
@@ -115,6 +137,8 @@ services:
       retries: 3
 
   proxy:
+    logging: *default-logging
+    mem_limit: ${PROXY_MEM_LIMIT:-256m}
     image: caddy:2-alpine
     restart: unless-stopped
     environment:
@@ -130,7 +154,28 @@ services:
     depends_on:
       app: { condition: service_healthy }
 
+  # Daily logical backup into the cvg-backups volume (see deploy/backup/backup-loop.sh).
+  backup:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/opt/backup-loop.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:?}
+      PGUSER: ${POSTGRES_RUNTIME_USER:-cvg_runtime}
+      PGPASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./deploy/backup/backup-loop.sh:/opt/backup-loop.sh:ro
+      - cvg-backups:/backups
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 256m
+
 volumes:
   cvg-postgres:
+  cvg-backups:
   cvg-caddy-data:
   cvg-caddy-config:
