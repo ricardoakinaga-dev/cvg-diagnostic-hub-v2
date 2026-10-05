@@ -27,6 +27,8 @@ import {
   loginAttemptKey,
   loginBackoffMultiplier,
   loginBackoffWindowMs,
+  pruneRateLimitBuckets,
+  rateLimitBucketRetentionMs,
   registerLoginFailure,
   registerLoginSuccess,
   resetRateLimits
@@ -243,5 +245,41 @@ describe("API rate limiter", () => {
     await expect(assertLoginAttempt(identity, { limit: 10, windowMs: 1_000 })).rejects.toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
     pool.query.mockRejectedValueOnce(new Error("unavailable"));
     await expect(registerLoginSuccess(identity)).rejects.toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
+  });
+});
+
+describe("rate limit bucket retention", () => {
+  beforeEach(() => { resetRateLimits(); pool.query.mockReset(); });
+  afterEach(() => { vi.unstubAllEnvs(); });
+
+  it("never retains less than the longest window a bucket can have", () => {
+    expect(rateLimitBucketRetentionMs({})).toBe(2 * 60 * 60 * 1000);
+    expect(rateLimitBucketRetentionMs({ RATE_LIMIT_BUCKET_RETENTION_MS: "600000" })).toBe(60 * 60 * 1000 + 60_000);
+    expect(rateLimitBucketRetentionMs({ RATE_LIMIT_BUCKET_RETENTION_MS: "-5" })).toBe(2 * 60 * 60 * 1000);
+    expect(rateLimitBucketRetentionMs({ RATE_LIMIT_BUCKET_RETENTION_MS: "86400000" })).toBe(86_400_000);
+  });
+
+  it("removes only buckets whose window ended before the cutoff (memory mode)", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    const now = 10_000_000_000;
+    await assertRateLimit("old", 5, 60_000, now - 3 * 60 * 60 * 1000);
+    await assertRateLimit("recent", 5, 60_000, now - 30 * 60 * 1000);
+    expect(await pruneRateLimitBuckets(now)).toBe(1);
+    expect(await pruneRateLimitBuckets(now)).toBe(0);
+    // The recent bucket survives and still counts.
+    await expect(assertRateLimit("recent", 1, 60_000, now - 30 * 60 * 1000 + 1)).rejects.toMatchObject({ code: "RATE_LIMITED" });
+  });
+
+  it("deletes by window start in PostgreSQL mode and reports the count, failing closed when the database is down", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "postgres");
+    vi.stubEnv("DATABASE_URL", "postgresql://runtime:secret@127.0.0.1:5432/cvg");
+    pool.query.mockResolvedValueOnce({ rowCount: 7, rows: [] });
+    expect(await pruneRateLimitBuckets(1_000_000_000_000, 7_200_000)).toBe(7);
+    const [sql, values] = pool.query.mock.calls[0]!;
+    expect(sql).toContain("DELETE FROM rate_limit_buckets WHERE window_started_at < $1");
+    expect((values[0] as Date).getTime()).toBe(1_000_000_000_000 - 7_200_000);
+    pool.query.mockRejectedValueOnce(new Error("connection refused"));
+    await expect(pruneRateLimitBuckets(1_000_000_000_000)).rejects.toMatchObject({ code: "DEPENDENCY_UNAVAILABLE" });
+    await closeRateLimitBackend();
   });
 });

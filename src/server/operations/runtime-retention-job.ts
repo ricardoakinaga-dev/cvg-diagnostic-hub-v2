@@ -38,7 +38,7 @@ export function createRuntimeRetentionSchedule(
 export async function runScheduledRuntimeRetention(
   store: StateStore,
   schedule: RuntimeRetentionSchedule,
-  options: { readonly now?: () => number } = {}
+  options: { readonly now?: () => number; readonly pruneRateLimitBuckets?: (nowMs: number) => Promise<number> } = {}
 ): Promise<boolean> {
   const nowMs = (options.now ?? Date.now)();
   if (!schedule.shouldRun(nowMs)) return false;
@@ -46,9 +46,12 @@ export async function runScheduledRuntimeRetention(
   // on the next cadence instead of on every cycle.
   schedule.record(nowMs);
   const summary = await store.compactRuntimeState({ now: new Date(nowMs) });
-  if (summary.sessionsRemoved + summary.sessionActivityRowsRemoved + summary.idempotencyRecordsRemoved + summary.outboxMessagesRemoved > 0) {
+  // Abuse-control buckets live in their own table and carry no clinical data: pruned here, logged, not audited.
+  const rateLimitBucketsRemoved = options.pruneRateLimitBuckets ? await options.pruneRateLimitBuckets(nowMs) : 0;
+  if (summary.sessionsRemoved + summary.sessionActivityRowsRemoved + summary.idempotencyRecordsRemoved + summary.outboxMessagesRemoved + rateLimitBucketsRemoved > 0) {
     console.log(JSON.stringify({
       event: "runtime.retention_applied",
+      rateLimitBucketsRemoved,
       sessionsRemoved: summary.sessionsRemoved,
       sessionActivityRowsRemoved: summary.sessionActivityRowsRemoved,
       idempotencyRecordsRemoved: summary.idempotencyRecordsRemoved,

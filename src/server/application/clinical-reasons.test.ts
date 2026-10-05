@@ -24,6 +24,9 @@ describe("clinical reason choices", () => {
     }
     const stale = state.users.find((user) => user.role === "LAB_TECH")!;
     await store.transaction((current) => ({ state: { ...current, users: current.users.map((user) => user.id === stale.id ? { ...user, version: user.version + 1 } : user) }, result: undefined }));
+    // A newer version alone no longer rejects (patient registration bumps it); a changed role still does.
+    await expect(listClinicalReasons(store, stale)).resolves.toEqual(expect.any(Array));
+    await store.transaction((current) => ({ state: { ...current, users: current.users.map((user) => user.id === stale.id ? { ...user, role: "VIEWER" as const } : user) }, result: undefined }));
     await expect(listClinicalReasons(store, stale)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
   });
 });

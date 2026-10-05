@@ -2,6 +2,7 @@ import { unlink } from "node:fs/promises";
 import { Pool } from "pg";
 import { createOutboxSinkFromEnv, type ConfiguredOutboxSink, type OutboxProcessSummary, type OutboxSqlExecutor, processOutboxBatch } from "../src/server/operations/outbox";
 import { nextOutboxHeartbeatErrorCount, outboxCycleHeartbeatResult, resolveOutboxHeartbeatFile, writeOutboxHeartbeat, type OutboxHeartbeat, type OutboxHeartbeatResult } from "../src/server/operations/outbox-heartbeat";
+import { pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { createRuntimeRetentionSchedule, runScheduledRuntimeRetention } from "../src/server/operations/runtime-retention-job";
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
 import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
@@ -34,7 +35,7 @@ async function runOnce(sink: ConfiguredOutboxSink): Promise<OutboxProcessSummary
 async function runRetention(): Promise<void> {
   try {
     const store = await getRuntimeStoreAsync();
-    await runScheduledRuntimeRetention(store, retentionSchedule);
+    await runScheduledRuntimeRetention(store, retentionSchedule, { pruneRateLimitBuckets });
   } catch (error) {
     console.error(JSON.stringify({ event: "runtime.retention_error", errorCode: "RUNTIME_RETENTION_FAILED" }));
     throw error;

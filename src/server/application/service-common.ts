@@ -216,7 +216,10 @@ export function requireActiveUser(state: StoreState, actor: User): User {
   if (
     !current
     || !current.active
-    || current.version !== actor.version
+    // A newer user version alone is not a reason to reject: registering a patient bumps it to publish the new
+    // patient scope, and requests already in flight (double click, second tab) carry the previous snapshot.
+    // Role, department and active are compared below and everything else is narrowed to the scope the
+    // request was authenticated with, so a stale snapshot can only ever see less, never more.
     || current.role !== actor.role
     || current.departmentCode !== actor.departmentCode
     || (actor.sessionId !== undefined && (!session || session.revokedAt !== undefined || Date.parse(session.expiresAt) <= Date.now()))

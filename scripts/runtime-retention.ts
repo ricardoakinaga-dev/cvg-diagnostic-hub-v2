@@ -1,4 +1,5 @@
 import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
+import { closeRateLimitBackend, pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { runtimeRetentionIntervalMs } from "../src/server/operations/runtime-retention-job";
 
 /**
@@ -10,8 +11,10 @@ import { runtimeRetentionIntervalMs } from "../src/server/operations/runtime-ret
 async function main(): Promise<void> {
   const store = await getRuntimeStoreAsync();
   const summary = await store.compactRuntimeState();
+  const rateLimitBucketsRemoved = await pruneRateLimitBuckets();
   console.log(JSON.stringify({
     event: "runtime.retention_completed",
+    rateLimitBucketsRemoved,
     intervalMs: runtimeRetentionIntervalMs(),
     ...summary
   }));
@@ -26,4 +29,4 @@ void main()
     }));
     process.exitCode = 1;
   })
-  .finally(() => closeRuntimeStore());
+  .finally(async () => { await closeRuntimeStore(); await closeRateLimitBackend(); });

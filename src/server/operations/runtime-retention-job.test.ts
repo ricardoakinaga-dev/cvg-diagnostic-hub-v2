@@ -84,4 +84,17 @@ describe("scheduled runtime retention", () => {
       .resolves.toBe(true);
     expect(base.getState().sessions.map((session) => session.id)).toEqual(["live"]);
   });
+
+  it("also prunes abuse-control buckets on the same cadence and logs the count", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const prune = vi.fn(async () => 4);
+    const store = new MemoryStore(createDemoState("retention-buckets-password"));
+    const schedule = createRuntimeRetentionSchedule(1_000);
+    expect(await runScheduledRuntimeRetention(store, schedule, { now: () => 5_000, pruneRateLimitBuckets: prune })).toBe(true);
+    expect(prune).toHaveBeenCalledWith(5_000);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('"rateLimitBucketsRemoved":4'));
+    expect(await runScheduledRuntimeRetention(store, schedule, { now: () => 5_500, pruneRateLimitBuckets: prune })).toBe(false);
+    expect(prune).toHaveBeenCalledTimes(1);
+    log.mockRestore();
+  });
 });

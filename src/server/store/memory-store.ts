@@ -3,7 +3,7 @@ import { auditPage } from "./audit-read";
 import { auditMetrics } from "../domain/audit-metrics";
 import { outboxMetrics, outboxPage } from "../domain/outbox-read";
 import type { OutboxTransactionQuery } from "../domain/models";
-import { activityRowsAfterPrune, compactRuntimeState, runtimeRetentionAuditEvent } from "./runtime-retention";
+import { activityRowsAfterPrune, compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 
 function cloneState(state: StoreState): StoreState {
   return structuredClone(state);
@@ -109,10 +109,9 @@ export class MemoryStore implements StateStore {
       this.activity.clear();
       for (const record of prunedActivity) this.activity.set(record.sessionId, record);
       const summary: RuntimeRetentionSummary = { ...compaction.summary, sessionActivityRowsRemoved };
-      this.state = {
-        ...compaction.state,
-        auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)]
-      };
+      this.state = retentionRemovedAnything(summary)
+        ? { ...compaction.state, auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)] }
+        : compaction.state;
       this.version += 1;
       return summary;
     });

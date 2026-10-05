@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createDemoState } from "./fixtures";
 import { MemoryStore } from "./memory-store";
-import { activityRowsAfterPrune, compactRuntimeState, runtimeRetentionAuditEvent } from "./runtime-retention";
+import { activityRowsAfterPrune, compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 
 const RETENTION_ENV_KEYS = [
   "STATE_OUTBOX_HOT_WINDOW",
@@ -128,6 +128,15 @@ describe("runtime snapshot retention", () => {
     });
     expect(JSON.stringify(event)).not.toContain("tokenHash");
     expect(event.occurredAt).toBe("2026-10-02T12:00:00.000Z");
+  });
+
+  it("adds no audit event when a compaction removes nothing, so an idle system does not fill the trail", async () => {
+    const store = new MemoryStore(createDemoState("retention-idle-password"));
+    const before = store.getState().auditEvents.length;
+    const summary = await store.compactRuntimeState({ now: new Date("2026-10-02T12:00:00.000Z") });
+    expect(retentionRemovedAnything(summary)).toBe(false);
+    expect(store.getState().auditEvents).toHaveLength(before);
+    expect(retentionRemovedAnything({ ...summary, outboxMessagesRemoved: 1 })).toBe(true);
   });
 
   it("compacts a live store, prunes liveness with the session and audits the run", async () => {

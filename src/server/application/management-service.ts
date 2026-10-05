@@ -97,17 +97,46 @@ const {
   transitionItem,
 } = helpers;
 
-function assignedServices(state: StoreState, role: RoleCode, departmentCode: string, codes: ReadonlyArray<string> = []): string[] | undefined {
-  if (!["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"].includes(role)) {
-    if (codes.length) throw new ApiError("VALIDATION_ERROR", "Somente equipes executoras podem receber exames autorizados.", 400);
+const EXECUTOR_ROLES: readonly RoleCode[] = ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"];
+
+function activeServiceCodes(state: StoreState, departmentCode: string): string[] {
+  return state.services.filter((service) => service.active && service.departmentCode === departmentCode).map((service) => service.code);
+}
+
+/**
+ * Exams an executor may work on. Left unspecified, an executor starts with every active exam of the
+ * department: a technician created in four interactions must not land on an empty queue because a
+ * collapsed checkbox list was never opened. An explicit list (even an empty one) is kept as given.
+ */
+function assignedServices(state: StoreState, role: RoleCode, departmentCode: string, codes?: ReadonlyArray<string>): string[] | undefined {
+  if (!EXECUTOR_ROLES.includes(role)) {
+    if (codes?.length) throw new ApiError("VALIDATION_ERROR", "Somente equipes executoras podem receber exames autorizados.", 400);
     return undefined;
   }
+  if (codes === undefined) return activeServiceCodes(state, departmentCode);
   if (codes.length > 200) throw new ApiError("VALIDATION_ERROR", "Limite de exames autorizados excedido.", 400);
   const normalized = [...new Set(codes.map((code) => requireText(code, "serviceCodes", 60).toUpperCase()))];
   if (normalized.some((code) => !state.services.some((service) => service.code === code && service.departmentCode === departmentCode))) {
     throw new ApiError("SCOPE_DENIED", "O exame autorizado deve pertencer ao setor do colaborador.", 404);
   }
   return normalized;
+}
+
+/**
+ * A new exam reaches the executors who already had every exam of the department. Someone who was
+ * deliberately restricted to a subset keeps the subset; the administrator grants the new exam to them.
+ */
+function authorizeNewServiceForExecutors(state: StoreState, service: DiagnosticService): { users: User[]; granted: number } {
+  const before = activeServiceCodes(state, service.departmentCode);
+  let granted = 0;
+  const users = state.users.map((user) => {
+    if (!user.active || !EXECUTOR_ROLES.includes(user.role) || user.departmentCode !== service.departmentCode) return user;
+    const held = new Set(user.serviceCodes ?? []);
+    if (!before.every((code) => held.has(code)) || held.has(service.code)) return user;
+    granted += 1;
+    return { ...user, serviceCodes: [...held, service.code], version: user.version + 1 };
+  });
+  return { users, granted };
 }
 
 export function createManagementService({ store, storage }: ApplicationServiceContext) {
@@ -380,7 +409,8 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           version: 1
         };
         const correlationId = input.correlationId ?? id("corr");
-        const nextState = { ...originalState, services: [...originalState.services, service], auditEvents: [...originalState.auditEvents, createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", service.id, correlationId, undefined, "ACTIVE", { code: service.code, workflowType: service.workflowType })] };
+        const authorized = authorizeNewServiceForExecutors(originalState, service);
+        const nextState = { ...originalState, users: authorized.users, services: [...originalState.services, service], auditEvents: [...originalState.auditEvents, createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", service.id, correlationId, undefined, "ACTIVE", { code: service.code, workflowType: service.workflowType, autoAuthorizedExecutors: String(authorized.granted) })] };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, service, { input }), result: service };
       });
     },

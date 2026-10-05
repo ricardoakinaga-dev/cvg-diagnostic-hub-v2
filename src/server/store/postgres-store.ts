@@ -28,7 +28,7 @@ import {
 import { projectDurableNotificationRows } from "./postgres-notification-projection";
 import { readPostgresAuthorizationSnapshot } from "./postgres-authorization-read";
 import { prunePostgresSessionActivity, readPostgresSessionActivity, touchPostgresSessionActivity } from "./postgres-session-activity";
-import { compactRuntimeState, runtimeRetentionAuditEvent } from "./runtime-retention";
+import { compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import {
   RelationalClinicalCoreAdapter,
   type RelationalClinicalCoreRuntime,
@@ -250,7 +250,9 @@ export class PostgresStore implements StateStore {
       const outboxMessagesRemoved = await prunePostgresOutbox(client, options, now);
       const summary: RuntimeRetentionSummary = { ...compaction.summary, sessionActivityRowsRemoved, outboxMessagesRemoved };
       return {
-        state: { ...compaction.state, auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)] },
+        state: retentionRemovedAnything(summary)
+          ? { ...compaction.state, auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)] }
+          : compaction.state,
         result: summary
       };
     });

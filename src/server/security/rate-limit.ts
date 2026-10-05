@@ -246,6 +246,37 @@ function rateLimitPool(): Pool {
   return databasePool;
 }
 
+/** The longest window any bucket can have (login backoff ceiling); a bucket older than this is dead. */
+const LONGEST_BUCKET_WINDOW_MS = LOGIN_BACKOFF_CEILING_MS;
+const DEFAULT_BUCKET_RETENTION_MS = 2 * 60 * 60 * 1000;
+
+export function rateLimitBucketRetentionMs(environment: Partial<NodeJS.ProcessEnv> = process.env): number {
+  const configured = Number(environment.RATE_LIMIT_BUCKET_RETENTION_MS);
+  const value = Number.isSafeInteger(configured) && configured > 0 ? configured : DEFAULT_BUCKET_RETENTION_MS;
+  // Never below the longest window, so a live counter can not be removed from under a client.
+  return Math.max(value, LONGEST_BUCKET_WINDOW_MS + 60_000);
+}
+
+/**
+ * Removes buckets whose window ended long ago. Every distinct client, e-mail or route key creates a row, so
+ * without this an internet-facing instance grows the table by whatever scanners and e-mail sprays send.
+ * Returns how many buckets were removed.
+ */
+export async function pruneRateLimitBuckets(nowMs = Date.now(), retentionMs = rateLimitBucketRetentionMs()): Promise<number> {
+  const cutoff = nowMs - retentionMs;
+  if (assertRateLimitConfiguration() === "memory") {
+    let removed = 0;
+    for (const [key, bucket] of buckets) if (bucket.resetAt <= cutoff) { buckets.delete(key); removed += 1; }
+    return removed;
+  }
+  try {
+    const result = await rateLimitPool().query("DELETE FROM rate_limit_buckets WHERE window_started_at < $1", [new Date(cutoff)]);
+    return result.rowCount ?? 0;
+  } catch {
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
 export async function closeRateLimitBackend(): Promise<void> {
   const pool = databasePool;
   databasePool = undefined;

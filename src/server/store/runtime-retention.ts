@@ -87,8 +87,14 @@ export function activityRowsAfterPrune<T extends { readonly sessionId: string }>
   return activity.filter((record) => retained.has(record.sessionId));
 }
 
+/** A run that removed nothing changes nothing worth auditing; it would only add one row per interval forever. */
+export function retentionRemovedAnything(summary: RuntimeRetentionSummary): boolean {
+  return summary.sessionsRemoved + summary.sessionActivityRowsRemoved + summary.idempotencyRecordsRemoved
+    + summary.outboxMessagesRemoved + summary.auditEventsRemoved > 0;
+}
+
 /**
- * Retention is an administrative act, so every compaction appends exactly one
+ * Retention is an administrative act, so every compaction that removes something appends exactly one
  * audit event describing what it removed. The event carries counts only: no
  * session, patient or payload value is ever written to the audit trail.
  */

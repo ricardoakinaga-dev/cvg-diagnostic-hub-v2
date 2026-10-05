@@ -50,7 +50,8 @@ describe("explicit executor assignments and catalog duplication", () => {
     const saved = await service.updateUserRole(admin, technician.id, { role: "LAB_TECH", departmentCode: "LABORATORY", expectedVersion: technician.version, idempotencyKey: "preserve-grants" });
     expect(saved.serviceCodes).toEqual(technician.serviceCodes);
     const moved = await service.updateUserRole(admin, technician.id, { role: "RADIOLOGY_TEAM", departmentCode: "RADIOLOGY", expectedVersion: saved.version, idempotencyKey: "move-grants" });
-    expect(moved.serviceCodes).toEqual([]);
+    // Moving without an explicit list starts from every active exam of the new department, not from the old grants.
+    expect(moved.serviceCodes).toEqual(store.getState().services.filter((item) => item.active && item.departmentCode === "RADIOLOGY").map((item) => item.code));
     const viewer = await service.updateUserRole(admin, technician.id, { role: "VIEWER", departmentCode: "RADIOLOGY", expectedVersion: moved.version, idempotencyKey: "clear-grants" });
     expect(viewer.serviceCodes).toBeUndefined();
   });
@@ -71,5 +72,30 @@ describe("explicit executor assignments and catalog duplication", () => {
     await expect(service.createDiagnosticService(admin, { ...command, code: "HEMOGRAM_INACTIVE", duplicateOfServiceId: "service-crp", idempotencyKey: "numeric-no-template" })).rejects.toMatchObject({ status: 422 });
     await store.transaction((state) => ({ state: { ...state, services: state.services.map((item) => item.id === source.id && item.resultTemplate ? { ...item, resultTemplate: { ...item.resultTemplate, status: "RETIRED" } } : item) }, result: undefined }));
     await expect(service.createDiagnosticService(admin, { ...command, code: "HEMOGRAM_RETIRED", idempotencyKey: "numeric-retired-template" })).rejects.toMatchObject({ status: 422 });
+  });
+
+  it("gives a new executor every active exam of the department unless a list is given, and keeps an explicit list", async () => {
+    const { store, admin, service } = setup();
+    const laboratory = store.getState().services.filter((item) => item.active && item.departmentCode === "LABORATORY").map((item) => item.code);
+    expect(laboratory.length).toBeGreaterThan(0);
+    const byDefault = await service.createManagedUser(admin, { email: "default-lab@cvg.local", displayName: "Default Lab", role: "LAB_TECH", departmentCode: "LABORATORY", idempotencyKey: "default-lab" });
+    expect(store.getState().users.find((user) => user.id === byDefault.id)?.serviceCodes).toEqual(laboratory);
+    const restricted = await service.createManagedUser(admin, { email: "one-exam@cvg.local", displayName: "One Exam", role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: [laboratory[0]!], idempotencyKey: "one-exam" });
+    expect(store.getState().users.find((user) => user.id === restricted.id)?.serviceCodes).toEqual([laboratory[0]]);
+    const none = await service.createManagedUser(admin, { email: "no-exam@cvg.local", displayName: "No Exam", role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: [], idempotencyKey: "no-exam" });
+    expect(store.getState().users.find((user) => user.id === none.id)?.serviceCodes).toEqual([]);
+  });
+
+  it("authorizes a newly created exam for executors who held every exam of the department, and only for them", async () => {
+    const { store, admin, service } = setup();
+    const laboratory = store.getState().services.filter((item) => item.active && item.departmentCode === "LABORATORY").map((item) => item.code);
+    const all = await service.createManagedUser(admin, { email: "all-lab@cvg.local", displayName: "All Lab", role: "LAB_TECH", departmentCode: "LABORATORY", idempotencyKey: "all-lab" });
+    const subset = await service.createManagedUser(admin, { email: "subset-lab@cvg.local", displayName: "Subset Lab", role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: [laboratory[0]!], idempotencyKey: "subset-lab" });
+    const created = await service.createDiagnosticService(admin, { code: "LAB_NEW_EXAM", name: "Novo exame", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, resultSchema: "NARRATIVE", slaHours: { ROUTINE: 24, URGENT: 4, EMERGENCY: 1 }, idempotencyKey: "new-exam" });
+    const users = store.getState().users;
+    expect(users.find((user) => user.id === all.id)?.serviceCodes).toContain(created.code);
+    expect(users.find((user) => user.id === subset.id)?.serviceCodes).toEqual([laboratory[0]]);
+    const event = store.getState().auditEvents.find((entry) => entry.eventType === "DiagnosticServiceCreated" && entry.entityId === created.id);
+    expect(Number(event?.metadata.autoAuthorizedExecutors)).toBeGreaterThanOrEqual(1);
   });
 });
