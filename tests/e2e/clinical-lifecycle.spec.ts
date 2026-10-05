@@ -96,6 +96,9 @@ async function createAndReleaseDraft(page: Page, requestId: string, serviceName:
   if (!href) throw new Error("O draft não expôs um link de edição.");
   await draftLink.click();
   await expect(page).toHaveURL(/\/results\/result-/);
+  // The URL changes before the per-request page and its result read complete.
+  // Wait for the real draft before running axe or interacting with its controls.
+  await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible({ timeout: 15000 });
   const resultId = page.url().split("/").pop();
   if (!resultId) throw new Error("Não foi possível identificar o resultado draft.");
   return resultId;
@@ -221,7 +224,8 @@ test.describe("clinical result lifecycle", () => {
     await replacementPeek.getByLabel("Resultado", { exact: true }).fill("Laudo substituto após invalidação controlada.");
     await replacementPeek.getByRole("button", { name: "Confirmar", exact: true }).click();
     await replacementPeek.getByRole("link", { name: "Abrir draft" }).click();
-    await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible();
+    await expect(page).toHaveURL(new RegExp(`/results/${xrayResultId}$`), { timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible({ timeout: 15000 });
     const replacementReleaseResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${xrayResultId}/release`) && response.request().method() === "POST");
     await page.getByRole("button", { name: "Liberar resultado" }).click();
     const replacementRelease = await replacementReleaseResponse;

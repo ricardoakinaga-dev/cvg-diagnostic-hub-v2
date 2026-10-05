@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AuditEvent, DeadLetterMessage, ManagedSession, SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
+import { useConfirm } from "./confirm-dialog";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 
 export function SystemConsole() {
@@ -59,31 +60,38 @@ export function SystemConsole() {
 }
 
 function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSaved: () => Promise<void> }) {
+  const { confirm, dialog } = useConfirm();
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
   async function revoke() {
-    if (submitting.current || session.current || session.status !== "ACTIVE" || !window.confirm(`Revogar a sessão de ${session.userEmail}?`)) return;
-    submitting.current = true; setBusy(true); setError("");
+    if (submitting.current || session.current || session.status !== "ACTIVE") return;
+    submitting.current = true;
+    const confirmed = await confirm({ title: "Revogar sessão", message: `Revogar a sessão de ${session.userEmail}?`, confirmLabel: "Revogar", tone: "danger" });
+    if (!confirmed) { submitting.current = false; return; }
+    setBusy(true); setError("");
     try { await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({}) }); await onSaved(); }
     catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão.")); }
     finally { submitting.current = false; setBusy(false); }
   }
-  return <div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>;
+  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}</>;
 }
 
 function DeadLetterRow({ message, onSaved }: { message: DeadLetterMessage; onSaved: () => Promise<void> }) {
+  const { confirm, dialog } = useConfirm();
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
   async function act(action: "reprocess" | "discard") {
-    if (submitting.current || message.status !== "FAILED") return;
+    if (submitting.current) return; // the actions are only rendered for FAILED messages
     const label = action === "discard" ? "Descartar" : "Reprocessar";
-    if (!window.confirm(`${label} a mensagem ${message.id}?`)) return;
-    submitting.current = true; setBusy(true); setError("");
+    submitting.current = true;
+    const confirmed = await confirm({ title: `${label} mensagem`, message: `${label} a mensagem ${message.id}?`, confirmLabel: label, tone: action === "discard" ? "danger" : "default" });
+    if (!confirmed) { submitting.current = false; return; }
+    setBusy(true); setError("");
     try { await apiFetch(`/outbox/dead-letters/${message.id}/${action}`, { method: "POST", body: JSON.stringify({}) }); await onSaved(); }
     catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível operar a dead-letter.")); }
     finally { submitting.current = false; setBusy(false); }
   }
-  return <div className="admin-row"><div className="admin-row-heading"><strong>{message.eventType}</strong><span>{message.status === "FAILED" ? "Retida" : message.status === "PENDING" ? "Em processamento" : "Descartada"}</span></div><small>{message.id} · {message.aggregateType}/{message.aggregateId} · tentativas {message.attempts}</small>{message.lastError && <small>Falha: {message.lastError}</small>}{message.status === "FAILED" && <div className="admin-action-row"><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void act("reprocess")}>Reprocessar</ActionButton><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void act("discard")}>Descartar</ActionButton></div>}{error && <p className="form-alert" role="alert">{error}</p>}</div>;
+  return <><div className="admin-row"><div className="admin-row-heading"><strong>{message.eventType}</strong><span>{message.status === "FAILED" ? "Retida" : message.status === "PENDING" ? "Em processamento" : "Descartada"}</span></div><small>{message.id} · {message.aggregateType}/{message.aggregateId} · tentativas {message.attempts}</small>{message.lastError && <small>Falha: {message.lastError}</small>}{message.status === "FAILED" && <div className="admin-action-row"><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void act("reprocess")}>Reprocessar</ActionButton><ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void act("discard")}>Descartar</ActionButton></div>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}</>;
 }

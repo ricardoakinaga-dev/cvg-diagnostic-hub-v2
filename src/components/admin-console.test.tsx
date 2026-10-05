@@ -89,11 +89,15 @@ function fillCreation(role = "LAB_TECH") {
   return form;
 }
 
+async function answerConfirm(name: string) {
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name }));
+}
+
 describe("AdminConsole", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); document.cookie = "cvg_csrf=; max-age=0; path=/"; });
 
   it("regenerates a credential with a simple confirmation, copies it once and preserves unsaved access edits", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
     const secret = "Cvg1-generated-recovery-password";
@@ -101,6 +105,7 @@ describe("AdminConsole", () => {
     await openAdmin();
     fireEvent.change(within(row()).getByLabelText("Setor"), { target: { value: "LABORATORY" } });
     fireEvent.click(within(row()).getByRole("button", { name: "Gerar nova senha" }));
+    await answerConfirm("Gerar nova senha");
     const dialog = await screen.findByRole("dialog", { name: "Nova senha temporária" });
     expect(payloadFor(mock, "/users/user-vet/password", "POST")).toEqual({ expectedVersion: 1 });
     expect(mock.mock.calls.some(([path]) => path === "/session/reauth")).toBe(false);
@@ -115,7 +120,6 @@ describe("AdminConsole", () => {
   });
 
   it("cancels regeneration before writing and retains an actionable retry after a failure", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
     let attempts = 0;
     const mock = mockApi((path) => {
       if (path !== "/users/user-vet/password") return undefined;
@@ -124,23 +128,25 @@ describe("AdminConsole", () => {
     });
     await openAdmin();
     fireEvent.click(within(row()).getByRole("button", { name: "Gerar nova senha" }));
+    await answerConfirm("Cancelar");
     expect(mock.mock.calls.some(([path]) => path.endsWith("/password"))).toBe(false);
-    confirm.mockReturnValue(true);
     fireEvent.click(within(row()).getByRole("button", { name: "Gerar nova senha" }));
+    await answerConfirm("Gerar nova senha");
     await screen.findByRole("alert");
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     fireEvent.click(within(row()).getByRole("button", { name: "Gerar nova senha" }));
+    await answerConfirm("Gerar nova senha");
     await screen.findByRole("dialog", { name: "Nova senha temporária" });
     expect(attempts).toBe(2);
   });
 
   it("requires reauthentication to recover ADMIN and does not offer recovery for self or inactive access", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     const target = { ...user, role: "ADMIN" as const };
     const mock = mockApi((path, init) => path === "/users" && !init?.method ? [target] : path === "/users/user-vet/password" ? { ...target, version: 2, initialPassword: "Cvg1-admin-recovery-password" } : undefined);
     await openAdmin();
     fireEvent.click(within(row()).getByRole("button", { name: "Gerar nova senha" }));
-    const stepUp = screen.getByRole("dialog", { name: "Confirmar recuperação de ADMIN" });
+    await answerConfirm("Gerar nova senha");
+    const stepUp = await screen.findByRole("dialog", { name: "Confirmar recuperação de ADMIN" });
     expect(mock.mock.calls.some(([path]) => path.endsWith("/password"))).toBe(false);
     fireEvent.change(within(stepUp).getByLabelText("Senha para reautenticar"), { target: { value: "admin-password-1234" } });
     fireEvent.click(within(stepUp).getByRole("button", { name: "Confirmar" }));
@@ -158,12 +164,12 @@ describe("AdminConsole", () => {
   });
 
   it("does not redisplay a secret on idempotent replay or submit a second reset while pending", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
     let finish!: (value: ManagedUser) => void;
     const mock = mockApi((path) => path === "/users/user-vet/password" ? new Promise<ManagedUser>((resolve) => { finish = resolve; }) : undefined);
     await openAdmin();
     const button = within(row()).getByRole("button", { name: "Gerar nova senha" });
     fireEvent.click(button); fireEvent.click(button);
+    await answerConfirm("Gerar nova senha");
     expect(mock.mock.calls.filter(([path]) => path.endsWith("/password"))).toHaveLength(1);
     finish({ ...user, version: 2 });
     await screen.findByText(/A senha já foi gerada/);

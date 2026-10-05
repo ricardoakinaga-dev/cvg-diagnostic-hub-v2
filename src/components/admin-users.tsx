@@ -4,6 +4,7 @@ import { useId, useRef, useState, type FormEvent, type MouseEvent, type RefObjec
 import { ROLES, type DiagnosticService, type ManagedUser, type RoleCode, type SessionUser } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { useConfirm } from "./confirm-dialog";
 import { useDialogFocus } from "./use-dialog-focus";
 
 export const roleLabels: Record<RoleCode, string> = {
@@ -119,6 +120,8 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
   const [undo, setUndo] = useState(false);
   const [recovering, setRecovering] = useState(false);
   const passwordOpenerRef = useRef<HTMLButtonElement>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
+  const confirming = useRef(false);
   const [initialPassword, setInitialPassword] = useState<string | null>(null);
   const [authorize, setAuthorize] = useState<(() => Promise<void>) | null>(null);
   const [busy, setBusy] = useState(false);
@@ -151,10 +154,20 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível gerar uma nova senha.")); if (propagateFailure) throw cause; }
     finally { submitting.current = false; setBusy(false); }
   }
-  function requestPassword(event: MouseEvent<HTMLButtonElement>) {
-    if (busy || authorize || initialPassword) return;
+  async function requestPassword(event: MouseEvent<HTMLButtonElement>) {
+    if (busy || authorize || initialPassword || confirming.current) return;
     passwordOpenerRef.current = event.currentTarget;
-    if (!window.confirm(`Gerar nova senha para ${user.displayName}? A senha anterior deixará de funcionar e as sessões serão encerradas.`)) return;
+    confirming.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirm({
+        title: "Gerar nova senha",
+        message: `Gerar nova senha para ${user.displayName}? A senha anterior deixará de funcionar e as sessões serão encerradas.`,
+        confirmLabel: "Gerar nova senha",
+        tone: "danger"
+      });
+    } finally { confirming.current = false; }
+    if (!confirmed) return;
     setRecovering(true);
     if (user.role === "ADMIN") setAuthorize(() => () => regenerate(true));
     else void regenerate();
@@ -166,5 +179,5 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     if (adminChange) setAuthorize(() => () => mutate(deactivate, values, true));
     else void mutate(deactivate, values);
   }
-  return <><form className="admin-row" aria-label={`Acesso de ${user.email}`} onSubmit={(event) => { event.preventDefault(); request(false, fields); }}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={user.active ? "text-success" : "text-danger"}>{user.active ? "Ativo" : "Desativado"}</span></div><small>{user.email}</small><div className="admin-role-grid"><ProfileField value={fields.role} technical={technical} onChange={(value) => set("role", value)} /><label>Setor<select value={fields.departmentCode} onChange={(event) => set("departmentCode", event.target.value)} required>{departments.map((code) => <option key={code} value={code}>{departmentLabels[code] ?? code}</option>)}</select></label></div>{technical && fields.role === "MANAGER" && <ManagedDepartments value={fields.managed} onChange={(value) => set("managed", value)} />}{executor(fields.role) && <ServiceAssignments services={services} departmentCode={fields.departmentCode} selected={fields.serviceCodes} onChange={(value) => set("serviceCodes", value)} />}<label className="admin-check"><input type="checkbox" checked={fields.active} onChange={(event) => set("active", event.target.checked)} /> Acesso operacional ativo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} aria-label={`Salvar ${user.email}`}>Salvar</ActionButton>{user.active && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} onClick={() => request(true, fields)} aria-label="Desativar acesso">Desativar</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} onClick={requestPassword}>Gerar nova senha</ActionButton>}</div>{undo && !user.active && <p role="status">Acesso desativado. <button type="button" className="button button-ghost" disabled={busy || !!authorize} onClick={() => request(false, { role: user.role, departmentCode: user.departmentCode, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [], active: true })}>Desfazer</button></p>}</form>{authorize && <ReauthDialog recovering={recovering} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} regenerated returnFocusRef={passwordOpenerRef} onClose={() => setInitialPassword(null)} />}</>;
+  return <><form className="admin-row" aria-label={`Acesso de ${user.email}`} onSubmit={(event) => { event.preventDefault(); request(false, fields); }}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={user.active ? "text-success" : "text-danger"}>{user.active ? "Ativo" : "Desativado"}</span></div><small>{user.email}</small><div className="admin-role-grid"><ProfileField value={fields.role} technical={technical} onChange={(value) => set("role", value)} /><label>Setor<select value={fields.departmentCode} onChange={(event) => set("departmentCode", event.target.value)} required>{departments.map((code) => <option key={code} value={code}>{departmentLabels[code] ?? code}</option>)}</select></label></div>{technical && fields.role === "MANAGER" && <ManagedDepartments value={fields.managed} onChange={(value) => set("managed", value)} />}{executor(fields.role) && <ServiceAssignments services={services} departmentCode={fields.departmentCode} selected={fields.serviceCodes} onChange={(value) => set("serviceCodes", value)} />}<label className="admin-check"><input type="checkbox" checked={fields.active} onChange={(event) => set("active", event.target.checked)} /> Acesso operacional ativo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} aria-label={`Salvar ${user.email}`}>Salvar</ActionButton>{user.active && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} onClick={() => request(true, fields)} aria-label="Desativar acesso">Desativar</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} onClick={requestPassword}>Gerar nova senha</ActionButton>}</div>{undo && !user.active && <p role="status">Acesso desativado. <button type="button" className="button button-ghost" disabled={busy || !!authorize} onClick={() => request(false, { role: user.role, departmentCode: user.departmentCode, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [], active: true })}>Desfazer</button></p>}</form>{authorize && <ReauthDialog recovering={recovering} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} regenerated returnFocusRef={passwordOpenerRef} onClose={() => setInitialPassword(null)} />}{confirmDialog}</>;
 }

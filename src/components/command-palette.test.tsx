@@ -24,7 +24,7 @@ function setup(overrides: Partial<React.ComponentProps<typeof CommandPalette>> =
 }
 
 describe("CommandPalette", () => {
-  beforeEach(() => vi.mocked(apiFetch).mockReset());
+  beforeEach(() => { vi.mocked(apiFetch).mockReset(); });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it("focuses the search field and runs create commands with arrows and Enter", () => {
@@ -131,6 +131,7 @@ describe("CommandPalette", () => {
     const { input } = setup({ canCreatePatient: false, canCreateRequest: false });
     fireEvent.change(input, { target: { value: "Amora" } });
     expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível buscar pacientes e exames.");
+    expect(screen.queryByText("private detail")).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /Novo/ })).not.toBeInTheDocument();
   });
 

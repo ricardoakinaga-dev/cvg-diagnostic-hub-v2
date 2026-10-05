@@ -1,4 +1,4 @@
-import { expect, test, type Locator } from "@playwright/test";
+import { expect, test, type Browser, type Locator, type TestInfo } from "@playwright/test";
 import { signInAs } from "./support/auth";
 
 class InteractionCounter {
@@ -30,12 +30,15 @@ test("recovers a collaborator with Gerar nova senha, revokes active access and f
     await expect(row).toBeVisible();
     let resetCommands = 0;
     page.on("request", (request) => { if (/\/users\/[^/]+\/password$/.test(request.url()) && request.method() === "POST") resetCommands += 1; });
-    page.once("dialog", (dialog) => dialog.dismiss());
     await row.getByRole("button", { name: "Gerar nova senha", exact: true }).click();
+    const confirmation = page.getByRole("dialog", { name: "Gerar nova senha", exact: true });
+    await expect(confirmation).toContainText("as sessões serão encerradas");
+    await confirmation.getByRole("button", { name: "Cancelar", exact: true }).click();
+    await expect(confirmation).toHaveCount(0);
     expect(resetCommands).toBe(0);
-    page.once("dialog", (dialog) => { expect(dialog.message()).toContain("as sessões serão encerradas"); return dialog.accept(); });
     const reset = page.waitForResponse((response) => /\/users\/[^/]+\/password$/.test(response.url()) && response.request().method() === "POST");
     await row.getByRole("button", { name: "Gerar nova senha", exact: true }).click();
+    await page.getByRole("dialog", { name: "Gerar nova senha", exact: true }).getByRole("button", { name: "Gerar nova senha", exact: true }).click();
     const response = await reset;
     expect(response.status()).toBe(200);
     expect(response.request().postDataJSON()).toEqual({ expectedVersion: 2 });
@@ -67,8 +70,26 @@ test("recovers a collaborator with Gerar nova senha, revokes active access and f
   } finally { await peer.close(); }
 });
 
-test("creates in four interactions, changes department in two and enforces the generated-password lifecycle", async ({ page }, testInfo) => {
+/** The demo state starts with an empty laboratory queue; give the scoped-queue check its own HEMOGRAM item. */
+async function seedHemogramRequest(browser: Browser, testInfo: TestInfo): Promise<void> {
+  const vet = await browser.newContext({ baseURL: testInfo.project.use.baseURL, extraHTTPHeaders: testInfo.project.use.extraHTTPHeaders });
+  try {
+    expect((await vet.request.post("/api/v1/session/login", { data: { email: "vet@cvg.local", password: "e2e-local-password-2026" } })).status()).toBe(200);
+    const csrf = (await vet.cookies()).find((cookie) => cookie.name === "cvg_csrf")!.value;
+    const created = await vet.request.post("/api/v1/diagnostic-requests", {
+      headers: { "x-csrf-token": csrf, "idempotency-key": `ux-seed-${testInfo.project.name}-${Date.now()}` },
+      data: { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }
+    });
+    // 409 means an earlier spec already left an active HEMOGRAM request for this patient, so the queue is not empty.
+    expect([201, 409]).toContain(created.status());
+  } finally {
+    await vet.close();
+  }
+}
+
+test("creates in four interactions, changes department in two and enforces the generated-password lifecycle", async ({ page, browser }, testInfo) => {
   const email = `ux-${Date.now()}-${testInfo.project.name}@cvg.local`;
+  await seedHemogramRequest(browser, testInfo);
   await signInAs(page, "admin@cvg.local", /Administração técnica/);
   await page.goto("/admin#users");
   const create = page.getByRole("form", { name: "Adicionar colaborador" });
@@ -249,9 +270,9 @@ test("keeps technical data in ADMIN System and revokes a real session with one c
     const row = page.locator("#sessions .admin-row").filter({ hasText: "vet@cvg.local" }).filter({ has: page.getByRole("button", { name: "Revogar sessão", exact: true }) }).first();
     await expect(row).toBeVisible();
     await expect(row.getByLabel("Senha para reautenticar")).toHaveCount(0);
-    page.once("dialog", (dialog) => dialog.accept());
     const revoked = page.waitForResponse((response) => /\/sessions\/[^/]+\/revoke$/.test(response.url()) && response.request().method() === "POST");
     await row.getByRole("button", { name: "Revogar sessão", exact: true }).click();
+    await page.getByRole("dialog", { name: "Revogar sessão", exact: true }).getByRole("button", { name: "Revogar", exact: true }).click();
     expect((await revoked).status()).toBe(200);
     expect((await peer.get("/api/v1/session/me")).status()).toBe(401);
     await expect(page.getByRole("heading", { name: "Auditoria recente", exact: true })).toBeVisible();
@@ -313,7 +334,13 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   await expect(row.getByRole("button", { name: "Iniciar processamento", exact: true })).toBeEnabled();
   const processing = page.waitForResponse((response) => response.url().endsWith("/start-processing") && response.request().method() === "POST");
   if (testInfo.project.name === "mobile") await row.getByRole("combobox", { name: `Mover Hemograma de ${patientName}`, exact: true }).selectOption("IN_PROGRESS");
-  else await row.dragTo(page.getByRole("region", { name: "Em execução", exact: true }));
+  else {
+    // Cards are not draggable while the board refreshes after the previous command; wait for it.
+    await expect(row).toHaveAttribute("draggable", "true");
+    // Keep source and target on screen: a mid-drag scroll cancels a native drag in Chromium.
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await row.dragTo(page.getByRole("region", { name: "Em execução", exact: true }));
+  }
   expect((await processing).status()).toBe(200);
   await expect(row.getByText("Em execução", { exact: true })).toBeVisible();
   await row.getByRole("combobox", { name: `Mover Hemograma de ${patientName}`, exact: true }).selectOption("RECOLLECTION_REQUIRED");
