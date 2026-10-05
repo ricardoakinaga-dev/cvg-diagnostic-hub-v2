@@ -18,7 +18,7 @@
 | ID | Pri | Status | Tam. | Entrega e aceite | Origem |
 | --- | --- | --- | --- | --- | --- |
 | COR-01 | P0 | DONE | S | **Cutover 013/014 sem janela de erro.** (a) Procedimento "parar app/worker → backup → migrate → subir" no DEPLOYMENT §4.1 (feito). (b) O `migrate` recusa aplicar 013/014 se houver outra sessão conectada. Aceite: ensaio em PostgreSQL com a versão antiga ligada termina com recusa clara, sem escrita perdida; teste automatizado. **Feito em 05/10/2026:** `applyMigrations` + `tests/postgres/cutover-guard.integration.test.ts` (PostgreSQL real) + 4 testes unitários. | N-01 |
-| COR-02 | P0 | IN_PROGRESS | S | **Commit em fatias e CI remoto.** Push realizado em 05/10; `main` protegida com PR e 7 checks obrigatórios (PROD-002). Os gates remotos de verify, benchmark PostgreSQL/SSE e CodeQL passaram. CI revelou links históricos para logs ignorados, ref inexistente do Trivy, interpolação incorreta do psql e imagem MinIO removida do registro; causas corrigidas sem relaxar gates. Provas locais: docs em checkout limpo, PG 16 criando/removendo banco e MinIO oficial compilado com round-trip S3 real. Falta: CI verde no candidato corrigido. | N-05 |
+| COR-02 | P0 | DONE | S | **Commit em fatias e CI remoto.** Candidato `63945e7` publicado em 05/10, [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde; `main` protegida com PR e 7 checks obrigatórios (PROD-002). Corrigidas as causas encontradas em checkout limpo, Trivy, psql, distribuição/dependências de imagens, inicialização dos serviços e geometria do arraste nativo. Gates, asserts clínicos, segurança e política de scan preservados; nenhum merge/deploy. | N-05 |
 | COR-03 | P0 | DONE | S | **Pôr o E2E da UX no CI.** `tests/e2e/ux-simplification.spec.ts` entrou no job de browser (`--retries=0`). Aceite: job falha se qualquer meta de interações regredir. | N-02 |
 | COR-04 | P1 | DONE | S | **Governar o `fast-glob` vendorizado.** D-026 registra a continuidade técnica sob a instrução de resolver as pendências, responsável `ricardoakinaga-dev`, revisão a cada upgrade de eslint/next e até 04/01/2027. CI confere hashes/proveniência; substituição exige solução upstream corrigida passando os mesmos contratos e audit completo. | N-03 |
 | COR-05 | P1 | DONE | S | **Teto de latência no benchmark.** `perf:postgres` reprova acima de p95 absoluto (2× as metas do PRD: 1.000 ms leitura, 1.600 ms busca/escrita; `PERF_POSTGRES_P95_CEILING_FACTOR`). Medido em 05/10/2026: leitura 126 ms, escrita 146 ms. A "piora de latência" citada na primeira versão da auditoria não se confirmou. O aceite com o volume de D2 segue no PROD-110. | N-04 |
@@ -68,10 +68,10 @@ Já entregue e medido (não reabrir): criar usuário em 4 interações, trocar s
 
 | Grupo | Itens | `DONE` | `IN_PROGRESS` | `READY` | `BLOCKED` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| COR | 6 | 5 | 1 | 0 | 0 |
+| COR | 6 | 6 | 0 | 0 | 0 |
 | UX | 11 | 0 | 0 | 8 | 3 |
 | DOC | 5 | 0 | 0 | 5 | 0 |
 | TEC | 5 | 1 | 0 | 3 | 1 |
-| **Total** | **27** | **6** | **1** | **16** | **4** |
+| **Total** | **27** | **7** | **0** | **16** | **4** |
 
-Ordem de ataque: COR-01, COR-03…06 e TEC-05 estão feitos (05/10/2026); o push foi realizado e falta concluir o CI remoto (COR-02). Depois UX-01…04 e DOC-01…03 em paralelo, que são os que mais reduzem a fricção que o dono relatou.
+Ordem de ataque: COR-01…06 e TEC-05 estão feitos (05/10/2026), com push e CI remoto verde (COR-02). Depois UX-01…04 e DOC-01…03 em paralelo, que são os que mais reduzem a fricção que o dono relatou.

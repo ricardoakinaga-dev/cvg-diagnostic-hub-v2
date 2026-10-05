@@ -38,7 +38,7 @@ Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com 
 
 A auditoria e o outbox saíram do snapshot (migrations 013 e 014, [D-025](DECISION_LOG.md)); a atualização que as contém exige parar o app antes do `migrate` ([DEPLOYMENT §4.1](operations/DEPLOYMENT.md)). A UX diária foi simplificada ([D-024](DECISION_LOG.md)): criar usuário em 4 interações, trocar setor em 2, liberar resultado em 1.
 
-Abertos: carga com p95 em staging (PROD-110), CI remoto, decisões D1–D12, pentest, UAT e piloto. Ver o [backlog até produção](build/PRODUCTION_BACKLOG.md) e, para correções e melhorias, o [roadmap](build/IMPROVEMENT_ROADMAP_2026-10.md) e o [backlog](build/IMPROVEMENT_BACKLOG_2026-10.md) de 04/10/2026.
+Atualização de 05/10: candidato `63945e7` publicado com [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde e `main` protegida; COR-02/PROD-002 concluídos. Abertos: carga com p95 em staging (PROD-110), decisões D1–D12, infraestrutura institucional, pentest, UAT e piloto. Ver o [backlog até produção](build/PRODUCTION_BACKLOG.md) e, para correções e melhorias, o [roadmap](build/IMPROVEMENT_ROADMAP_2026-10.md) e o [backlog](build/IMPROVEMENT_BACKLOG_2026-10.md) de 04/10/2026.
 
 ## Snapshot executável anterior — PROD-2026-10.1 (03/10/2026)
 

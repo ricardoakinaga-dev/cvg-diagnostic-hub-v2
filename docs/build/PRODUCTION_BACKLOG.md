@@ -20,7 +20,7 @@
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
 | PROD-001 | P0 | DONE | S | Trabalho revisado e dividido em commits por tema; candidato `5f83a92` publicado em 05/10 com árvore limpa. Correções dos achados remotos seguem como commits próprios no PROD-002. | — | F-11 |
-| PROD-002 | P0 | IN_PROGRESS | S | CI do GitHub Actions verde no commit candidato; proteção da `main` (PR + checks obrigatórios). `main` protegida em 05/10: PR obrigatório, 7 checks vinculados ao GitHub Actions, atualização com a base, administradores incluídos, force push/exclusão proibidos. A [execução remota 37268485070](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37268485070) passou verify/benchmark/CodeQL; revelou erro de interpolação do psql no E2E PostgreSQL e imagem MinIO indisponível. Correções comprovadas localmente com PG 16 e S3 real; falta CI verde no candidato corrigido. | PROD-001 | F-11, P1.1 |
+| PROD-002 | P0 | DONE | S | Candidato `63945e7` publicado e [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde em 05/10: verify, benchmark HTTP/PostgreSQL/SSE, CodeQL, navegador em memória e PostgreSQL, build/scans/smoke de imagens. Dependency review aplica-se ao PR, não ao push. `main` protegida: PR obrigatório, 7 checks vinculados ao GitHub Actions, atualização com a base, administradores incluídos, force push/exclusão proibidos. Nenhum merge ou deploy realizado. | PROD-001 | F-11, P1.1 |
 | PROD-003 | P0 | READY | S | Agendar as decisões D1 (identidade), D2 (volume/RPO/RTO) e D11 (infraestrutura) com os responsáveis. Aceite: atas no [DECISION_LOG](../DECISION_LOG.md). | — | Plano Fase 0 |
 
 ## 3. W1 — Escala e robustez da persistência (técnico, sem decisão humana)
@@ -108,13 +108,13 @@
 
 | Onda | Itens | `READY` | `DONE` | `IN_PROGRESS`/`VERIFY` | `BLOCKED` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| W0 Base | 3 | 1 | 1 | 1 | 0 |
+| W0 Base | 3 | 1 | 2 | 0 | 0 |
 | W1 Escala | 11 | 0 | 6 | 4 | 1 |
 | W2 Identidade | 6 | 0 | 0 | 1 | 5 |
 | W3 Infra | 9 | 1 | 0 | 2 | 6 |
 | W4 Clínico/dados/operação | 20 | 5 | 0 | 0 | 15 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **59** | **7** | **7** | **8** | **37** |
+| **Total** | **59** | **7** | **8** | **7** | **37** |
 
 Os 37 itens bloqueados dependem de 12 decisões humanas (D1–D12 do [plano](PRODUCTION_PLAN.md)). Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 
@@ -210,3 +210,5 @@ A validação revelou dois pressupostos de teste: um hook devolvia o mock como c
 A revisão dos testes exigiu controles mais discriminantes para foco desabilitado, um item real de RADIOLOGY com ator autorizado e shutdown com assinante ativo. O último revelou um defeito real: callbacks da conexão liberada ainda entregavam hints após `close()`. O ajuste em `realtime.ts` limpa os assinantes no fechamento e protege callbacks/fan-out com um token novo por aquisição, inclusive quando o pool reutiliza o mesmo client após falha de LISTEN. Testes reproduziram a entrega indevida após fechamento e a duplicação por reuso, e passaram após a correção; também cobrem fechamento durante fan-out e callbacks de erro antigos. O filtro de foco foi desafiado por uma mutação isolada que falhou na asserção reforçada. Nenhum controle de autorização, CSRF, auditoria, reautenticação ou replay mudou; nenhuma asserção foi removida, nem houve `skip`, `any` ou supressão. A revisão independente final aprovou o delta estático de 17 testes e um arquivo de runtime; não é aceite de release.
 
 Node 22.23.2/npm 10.9.8: **`npm run validate` PASS**, com **1.423 unitários + 94 PostgreSQL = 1.517/1.517** em 140 arquivos, **160 testes nativos**, typecheck, lint sem avisos, documentação, OpenAPI 73 operações/68 paths, rastreabilidade 43/43 e migrações 001–014. Cobertura final: **96,79% linhas, 95,44% funções e 89,34% branches**; gate por arquivo PASS com **22 exceções**, sem mudar thresholds ou exclusões de cobertura. Os 50 testes de performance e os gates de snapshot/realtime passaram no pacote final. Mutação **7/7** e E2E **81/81** são as provas da rodada anterior: não foram repetidos nesta correção de dependências, que preservou os arquivos de runtime e seus testes. O E2E anterior precedeu o ajuste do adaptador PostgreSQL, posteriormente coberto pelas suítes focada/PostgreSQL. Audit completo/de produção: zero; SBOM sem os pacotes `micromatch`/`braces`, com o subconjunto corrigido declarado na proveniência. Não houve benchmark de staging, teste do proxy real nem novo ensaio de 100 SSE nesta etapa. Evidência atual em `.data/prod109-audit-fix/verification.json`; os logs e achados anteriores foram preservados. Banco/servidores descartáveis encerrados, entradas temporárias de `tsconfig.json` retiradas e stack instalado preservado. Nenhum commit/deploy ou documento novo. **PROD-109 está `DONE` no aceite técnico local**; staging/release continuam sujeitos aos respectivos gates.
+
+Conclusão remota em 05/10/2026 — **PROD-002 DONE**, candidato `63945e7`, [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295). Provas remotas: **1.533/1.533**, cobertura com as mesmas **22 exceções**, mutação **7/7**, E2E **81/81** em memória e **48/48** PostgreSQL sem retries, scans de aplicação/Ops/MinIO e smoke aprovados. Todos os jobs aplicáveis ao push passaram; o review de dependências continua obrigatório no PR. O volume D2, a infraestrutura D11, o benchmark de staging do PROD-110 e os aceites humanos permanecem abertos. PROD-003 não está concluído: reuniões/atas não foram inventadas.

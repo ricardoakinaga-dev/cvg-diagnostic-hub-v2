@@ -37,7 +37,7 @@ Trilha humana    Fase 0: D1, D2, D11 ──► D3–D10 ──► D12           
 
 ### W0 — Base confiável (esforço S)
 
-Antes de qualquer coisa: um commit candidato, um CI remoto verde e as primeiras decisões agendadas. Sem isso, nenhuma evidência posterior é rastreável.
+Estado em 05/10/2026: PROD-001 e PROD-002 `DONE`; candidato `63945e7` publicado, [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) verde e `main` protegida. **M0 permanece aberto**: PROD-003 ainda exige agendar D1, D2 e D11 com os responsáveis. As propostas estão no plano e não são atas de aprovação.
 
 ### W1 — Escala (esforço L–XL; começa já)
 

@@ -1,6 +1,6 @@
 # Auditoria de 04/10/2026 — CVG Diagnostics Hub
 
-**Escopo:** branch `release/production-readiness` (2 commits locais à frente de `origin`, mais 101 arquivos sem commit).
+**Escopo original (04/10):** branch `release/production-readiness` (2 commits locais à frente de `origin`, mais 101 arquivos sem commit).
 **Método:** gates reexecutados do zero, PostgreSQL 16 descartável em Docker, leitura do código novo e do processo de deploy. A auditoria de 04/10 não alterou código; as correções dos achados vieram em 05/10 e estão no §4.
 **Veredito:** o código está em boa forma e os gates passam. Os riscos que restam estão no **processo de deploy**, no **CI** e na **carga**, não nas funcionalidades. Não havia bloqueio de commit; havia dois pontos a resolver **antes do deploy** (N-01 e N-02), ambos resolvidos em 05/10 (§4).
 
@@ -21,7 +21,7 @@ Documentos relacionados: [roadmap de melhorias](build/IMPROVEMENT_ROADMAP_2026-1
 | E2E (Playwright, sem retries) | **81/81** |
 | Mutação · varredura de segredos | 7/7 · sem achados |
 
-A bateria final foi executada no **Node 22.23.2** (o `engines` fixa `>=22 <23`). `test:config` exige Node 22 por desenho (`scripts/eslint-glob.test.mjs:688`) e falha no Node 24, onde a versão padrão desta máquina rodou o resto. Os testes unitários isolados dependem de não haver `POSTGRES_TEST_ADMIN_URL` exportada (um teste mockado de `postgres-store` conflita); o `test:coverage` já remove essas variáveis para a fase unitária.
+A bateria final foi executada no **Node 22.23.2** (o `engines` fixa `>=22 <23`). `test:config` exige Node 22 por desenho (`scripts/eslint-glob.test.mjs:688`) e falha no Node 24, onde a versão padrão desta máquina rodou o resto. Na auditoria de 04/10, os testes unitários isolados dependiam de não haver `POSTGRES_TEST_ADMIN_URL` exportada; essa limitação foi corrigida em 05/10 no setup unitário (TEC-05, §4).
 
 ## 2. Achados
 
@@ -59,11 +59,11 @@ A bateria final foi executada no **Node 22.23.2** (o `engines` fixa `>=22 <23`).
 | N-02 | **Resolvido** | `ux-simplification.spec.ts` entrou no job de E2E do CI (`.github/workflows/ci.yml`). |
 | N-03 | **Resolvido** | D-026 registra continuidade técnica do vendor sob a instrução de resolver as pendências, responsável `ricardoakinaga-dev` e revisão a cada upgrade de Next/ESLint e até 04/01/2027. Hash/proveniência seguem conferidos no CI. |
 | N-04 | **Resolvido** | O `perf:postgres` agora reprova acima de tetos absolutos de p95 (2× as metas do PRD: 1.000 ms leitura, 1.600 ms busca e escrita; `PERF_POSTGRES_P95_CEILING_FACTOR`). Passou: leitura 126 ms, escrita 146 ms. Aceite com volume real continua no PROD-110. |
-| N-05 | **Parcial** | Trabalho publicado em 05/10; `main` protegida com PR e 7 checks obrigatórios, inclusive para administradores. Verify, benchmark e CodeQL passaram no [CI remoto](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37268485070). Corrigidos os erros encontrados em checkout limpo, referência do Trivy, interpolação do psql e distribuição do MinIO. Falta CI completo verde no candidato corrigido (PROD-002). |
+| N-05 | **Resolvido** | Trabalho publicado, candidato `63945e7` com [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde em 05/10. `main` protegida com PR e 7 checks obrigatórios, inclusive para administradores. Correções verificadas nos jobs de aplicação, PostgreSQL, navegador, performance, CodeQL e imagens; nenhum merge/deploy. |
 | N-06 | **Resolvido** | Nenhum `window.confirm` restante: `useConfirm`/`ConfirmDialog` (foco preso, Escape cancela, foco volta ao botão) em revogar sessão, reprocessar/descartar e gerar nova senha. |
 | N-07 | **Resolvido** | Números e afirmações defasadas corrigidos; consolidação de `docs/build/` segue como DOC-01. |
 
-Na conferência pré-push, `test:config` revelou uma comparação instável no teste de symlink circular (159/160). `ELOOP` foi reproduzido também no pacote original; o teste agora mantém a comparação exata de todos os caminhos no sucesso e aceita somente esse erro no ciclo sem limite. O caso com profundidade limitada exige sucesso nas três APIs. Após o ajuste, três execuções passaram 160/160, sem skips; lint sem warnings, OpenAPI, docs, varredura de segredos e audit completo passaram. Revisão independente sem achados nesse escopo. Pacote vendorizado e oráculo histórico preservados; detalhes no COR-02 do backlog de melhorias. CI remoto permanece pendente.
+Na conferência pré-push, `test:config` revelou uma comparação instável no teste de symlink circular (159/160). `ELOOP` foi reproduzido também no pacote original; o teste agora mantém a comparação exata de todos os caminhos no sucesso e aceita somente esse erro no ciclo sem limite. O caso com profundidade limitada exige sucesso nas três APIs. Após o ajuste, três execuções passaram 160/160, sem skips; lint sem warnings, OpenAPI, docs, varredura de segredos e audit completo passaram. Revisão independente sem achados nesse escopo. Pacote vendorizado e oráculo histórico preservados; detalhes no COR-02 do backlog de melhorias. Nesse checkpoint o CI remoto permanecia pendente; a conclusão posterior está registrada abaixo.
 
 Em 05/10 o isolamento dos opt-ins PostgreSQL foi movido para `src/test/setup.ts`: os testes unitários passaram **1.438/1.438** mesmo com as duas variáveis exportadas. A suíte de integração mantém configuração própria. O verify remoto confirmou **1.533/1.533** agregados e cobertura com as mesmas **22 exceções**.
 
@@ -79,8 +79,10 @@ A execução remota `37272431800` confirmou **1.533/1.533**, as **22 exceções*
 
 A execução `37274203997` passou os **48/48 E2E PostgreSQL** e o job completo de imagens. Restou o arraste Chromium: a suíte local reproduziu **22/23**, apesar de o caso isolado passar três vezes. O trace mostrou scroll horizontal de 4 para 616 entre mouse down/up, sem POST de início de processamento. O gesto agora parte do padding do card e termina no título da coluna; mantém arraste nativo, resposta 200 e asserções de motivo/recoleta, sem retries ou aumento de timeout. A mesma suíte passou **23/23** após a correção; revisão independente favorável. O novo candidato ainda precisa completar o CI remoto.
 
+**Conclusão remota em 05/10/2026:** candidato `63945e7`, [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde. Verify: **1.438 unitários + 95 PostgreSQL = 1.533/1.533**, cobertura **96,82% linhas / 95,46% funções / 89,48% branches**, mesmas **22 exceções**, mutação **7/7**, audit completo zerado e build aprovado. E2E: **69/69 funcionais/visuais + 12/12 acessibilidade** em memória e **48/48 PostgreSQL**, todos sem retries. CodeQL e os três scans de imagem, livez/readyz e CSP passaram. Benchmark CI sintético (100 mil auditorias, 100 SSE): p95 máximo de leitura **327,04 ms**, escrita **382,75 ms**, **12,56 gravações confirmadas/s**, nenhuma resposta com erro ou fechamento inesperado de stream; isso não comprova capacidade no volume D2 ou em staging. O review de dependências é exclusivo de PR e não foi declarado executado no push. COR-02/PROD-002 e N-05 estão resolvidos. A proteção da main foi conferida por API; não houve merge/deploy, e o stack instalado em `https://localhost:18443` permanece na versão anterior ao cutover/UX. D1/D2/D11 continuam como propostas/informações pendentes, os 37 itens bloqueados não foram liberados e M0 aguarda PROD-003.
+
 ## 5. Pendente e fora do alcance local
 
-E2E completo e aceite de carga em staging dependem de D2 (volume) e D11 (infraestrutura); CI remoto, pentest, UAT e piloto seguem como no [backlog até produção](build/PRODUCTION_BACKLOG.md).
+Aceite de carga e E2E no staging institucional dependem de D2 (volume) e D11 (infraestrutura); pentest, UAT e piloto seguem abertos no [backlog até produção](build/PRODUCTION_BACKLOG.md). O CI remoto está concluído (§4), sem substituir essas validações.
 
 Resultado do E2E desta rodada: **81/81** em Chromium, tablet e mobile (`playwright test --retries=0`, 9,5 min), mutação 7/7 e varredura de segredos sem achados.
