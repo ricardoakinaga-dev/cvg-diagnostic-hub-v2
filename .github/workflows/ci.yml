@@ -51,6 +51,7 @@ jobs:
         run: npm --silent run security:sbom > sbom.cdx.json
       - run: npm run typecheck
       - run: npm run lint
+      - run: npm run test:config
       - run: npm run test:coverage
         env:
           ALLOW_POSTGRES_INTEGRATION_TESTS: "true"
@@ -62,8 +63,8 @@ jobs:
       - run: npm run test:perf
       - run: npm run test:recovery
       - run: npm run perf:synthetic
-      # PROD-110 regression gate: fails the build when the JSONB aggregate cost
-      # crosses the committed baseline or a hard ceiling.
+      # PROD-110 regression gate: snapshot bytes only against the committed
+      # baseline and byte ceiling; timings are informational.
       - run: npm run perf:snapshot:gate
       # PROD-104 acceptance: the aggregate read budget with many open streams.
       - run: npm run perf:realtime-budget
@@ -104,6 +105,52 @@ jobs:
           name: mutation-${{ github.run_id }}-${{ github.run_attempt }}
           path: mutation-report.json
           if-no-files-found: warn
+          retention-days: 14
+
+  perf-postgres:
+    name: Real HTTP/PostgreSQL/SSE benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: cvg
+          POSTGRES_PASSWORD: cvg_ci
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U cvg -d postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      ALLOW_POSTGRES_INTEGRATION_TESTS: "true"
+      POSTGRES_TEST_ADMIN_URL: postgresql://cvg:cvg_ci@127.0.0.1:5432/postgres
+      PERF_POSTGRES_REPORT: logs/perf-postgres.json
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.x"
+          cache: npm
+      - run: npm ci
+      - name: Prepare benchmark artifacts
+        run: mkdir -p logs
+      # The harness builds production Next and defaults to 100k audit events
+      # and 100 SSE connections. CI gates correctness; latency is informational.
+      - name: Run real HTTP/PostgreSQL/SSE benchmark
+        shell: bash
+        run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres.log
+      - name: Upload PostgreSQL benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+          path: logs/
+          if-no-files-found: error
           retention-days: 14
 
   dependency-review:
@@ -160,7 +207,7 @@ jobs:
             ${{ runner.os }}-playwright-${{ matrix.node-version }}-
       - run: npx playwright install --with-deps chromium
       - name: Run browser E2E without accessibility (fail on flaky retries)
-        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts --retries=0 --fail-on-flaky-tests
+        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts --retries=0 --fail-on-flaky-tests
       - name: Upload browser E2E artifacts
         if: always()
         uses: actions/upload-artifact@v4
