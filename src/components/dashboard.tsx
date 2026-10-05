@@ -88,7 +88,7 @@ export function Dashboard() {
   }, []);
 
   if (!user && !error) return <DashboardSkeleton />;
-  if (error) return <ErrorState title="Identidade indisponível" message={error} onRetry={() => window.location.reload()} />;
+  if (error) return <ErrorState page title="Identidade indisponível" message={error} onRetry={() => window.location.reload()} />;
   if (user?.role === "ADMIN") return <TechnicalAdminDashboard displayName={user.displayName} />;
   if (user?.role === "MANAGER") return <ManagementDashboard />;
   return <ClinicalDashboard displayName={user?.displayName ?? "Equipe"} role={user?.role} />;

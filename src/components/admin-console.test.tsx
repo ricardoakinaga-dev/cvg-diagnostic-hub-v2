@@ -361,9 +361,9 @@ describe("AdminConsole", () => {
     const mock = mockApi((path) => path === "/diagnostic-services?includeInactive=true" ? [service, imagingService] : undefined, { ...identity, departmentCode: "LABORATORY" });
     await openAdmin();
     const form = fillCreation();
-    const details = within(form).getByText("Exames autorizados").closest("details")!;
+    const details = within(form).getByText(/^Exames autorizados/).closest("details")!;
     expect(details).not.toHaveAttribute("open");
-    fireEvent.click(within(form).getByText("Exames autorizados"));
+    fireEvent.click(within(form).getByText(/^Exames autorizados/));
     expect(within(details).getByLabelText("Hemograma")).not.toBeChecked();
     expect(within(details).queryByLabelText("Radiografia")).not.toBeInTheDocument();
     fireEvent.click(within(details).getByLabelText("Hemograma"));
@@ -378,7 +378,7 @@ describe("AdminConsole", () => {
     const mock = mockApi((path) => path === "/diagnostic-services?includeInactive=true" ? [service, secondService] : undefined, identity, [executor]);
     await openAdmin();
     const form = row();
-    fireEvent.click(within(form).getByText("Exames autorizados"));
+    fireEvent.click(within(form).getByText(/^Exames autorizados/));
     expect(within(form).getByLabelText("Hemograma")).toBeChecked();
     expect(within(form).getByLabelText("Proteína C reativa")).not.toBeChecked();
     fireEvent.click(within(form).getByLabelText("Hemograma"));

@@ -232,7 +232,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     return <PatientWorkspaceSkeleton />;
   }
   if (!activeData) {
-    return <ErrorState className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
+    return <ErrorState page className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
   }
 
   const context = activeData.workspace.currentContext;

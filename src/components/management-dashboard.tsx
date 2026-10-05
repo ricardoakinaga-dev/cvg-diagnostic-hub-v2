@@ -76,7 +76,7 @@ export function ManagementDashboard() {
   }, [load]);
 
   if (!data && loading) return <LoadingState label="Carregando controle operacional" />;
-  if (!data) return <ErrorState title="Controle operacional indisponível" message={error || "Tente novamente em instantes."} onRetry={load} retrying={loading} />;
+  if (!data) return <ErrorState page title="Controle operacional indisponível" message={error || "Tente novamente em instantes."} onRetry={load} retrying={loading} />;
 
   const title = view === "overview" ? "Controle operacional." : `${viewLabels[view]}.`;
   return <div className="management-page">

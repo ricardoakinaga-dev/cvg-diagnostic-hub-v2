@@ -404,7 +404,7 @@ em { color: var(--teal-dark); font-family: var(--font-display); font-weight: 400
 .drawer-note { margin-top: 20px; color: var(--ink-faint); font-size: 10px; line-height: 1.5; }
 
 .tabs { display: flex; gap: 22px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
-.tabs button { position: relative; padding: 11px 0 13px; border: 0; color: var(--ink-faint); background: transparent; font-size: 11px; font-weight: 800; }
+.tabs button { position: relative; min-width: 44px; padding: 11px 0 13px; border: 0; color: var(--ink-faint); background: transparent; font-size: 11px; font-weight: 800; }
 .tabs button.active { color: var(--teal-dark); }
 .tabs button.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; border-radius: 2px; background: var(--teal); content: ""; }
 .inbox-row { display: grid; grid-template-columns: 9px minmax(0, 1fr) auto; align-items: center; gap: 15px; padding: 20px 22px; border-bottom: 1px solid var(--line); }
@@ -947,6 +947,8 @@ em { color: var(--teal-dark); font-family: var(--font-display); font-weight: 400
   .detail-item { grid-template-columns: 32px minmax(0, 1fr) 18px; padding-inline: 14px; }
   .detail-item .status-badge { grid-column: 2; grid-row: 2; }
   .detail-item .workflow-action { grid-column: 2; grid-row: 3; justify-self: start; }
+  /* A result link rendered without the .workflow-action wrapper used to fall into the 18px arrow column. */
+  .detail-item > .workflow-action-link { grid-column: 2; grid-row: 3; justify-self: start; min-height: 44px; }
   .detail-item .row-arrow { grid-column: 3; grid-row: 1 / span 2; }
   .result-actions { align-items: stretch; flex-direction: column; }
   .result-actions .button { width: 100%; }

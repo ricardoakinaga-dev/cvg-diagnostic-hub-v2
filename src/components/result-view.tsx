@@ -314,7 +314,7 @@ export function ResultView({ resultId }: { resultId: string }) {
   }
 
   if (!data && loading) return <LoadingState label="Carregando resultado" />;
-  if (!data) return <ErrorState title={invalidated ? "Resultado invalidado" : "Resultado indisponível"} message={notice || error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/notifications">Voltar às notificações</Link>} />;
+  if (!data) return <ErrorState page title={invalidated ? "Resultado invalidado" : "Resultado indisponível"} message={error || notice} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/notifications">Voltar às notificações</Link>} />;
 
   const isDraft = data.version.status === "DRAFT";
   const isReleased = data.version.status === "RELEASED";

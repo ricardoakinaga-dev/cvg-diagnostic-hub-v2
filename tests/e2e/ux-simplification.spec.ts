@@ -131,7 +131,7 @@ test("creates in four interactions, changes department in two and enforces the g
   await stepUp.getByRole("button", { name: "Confirmar", exact: true }).click();
   await expect(stepUp).toBeHidden();
   await row.getByRole("combobox", { name: "Perfil", exact: true }).selectOption("LAB_TECH");
-  await row.getByText("Exames autorizados", { exact: true }).click();
+  await row.getByText(/^Exames autorizados/).click();
   await row.getByRole("checkbox", { name: "Hemograma", exact: true }).check();
   const assigned = page.waitForResponse((response) => response.url().includes("/roles") && response.request().method() === "POST");
   await row.getByRole("button", { name: `Salvar ${email}`, exact: true }).click();

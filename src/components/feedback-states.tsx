@@ -1,4 +1,5 @@
 import { useId, type HTMLAttributes, type ReactNode } from "react";
+import { ACCESS_DENIED_MESSAGE } from "@cvg/services";
 import { ActionButton } from "@cvg/ui";
 
 export type FeedbackHandler = () => void | Promise<void>;
@@ -30,6 +31,8 @@ export interface PartialNoticeProps extends FeedbackSurfaceProps, RetryActionPro
 }
 
 export interface ErrorStateProps extends FeedbackSurfaceProps {
+  /** The state replaces the whole page: its title becomes the page's h1. */
+  page?: boolean;
   title?: ReactNode;
   message?: ReactNode;
   onRetry: FeedbackHandler;
@@ -71,18 +74,21 @@ function FeedbackCopy({
   title,
   message,
   titleId,
-  messageId
+  messageId,
+  level = "h2"
 }: {
   title: ReactNode;
   message: ReactNode;
   titleId: string;
   messageId: string;
+  level?: "h1" | "h2";
 }) {
+  const Heading = level;
   return (
     <div className="feedback-state__copy">
-      <h2 id={titleId} className="feedback-state__title">
+      <Heading id={titleId} className="feedback-state__title">
         {title}
-      </h2>
+      </Heading>
       <p id={messageId} className="feedback-state__message">
         {message}
       </p>
@@ -183,6 +189,7 @@ export function PartialNotice({
 }
 
 export function ErrorState({
+  page = false,
   title = "Não foi possível carregar esta informação",
   message = "Tente novamente em instantes.",
   onRetry,
@@ -206,9 +213,10 @@ export function ErrorState({
       aria-describedby={messageId}
       data-feedback-state="error"
     >
-      <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} />
+      <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} level={page ? "h1" : "h2"} />
       <div className="feedback-state__actions">
-        <RetryButton onRetry={onRetry} retryLabel={retryLabel} retryAriaLabel={retryAriaLabel} retrying={retrying} />
+        {/* Retrying an authorization refusal can not change the answer; offer the alternative action only. */}
+        <RetryButton onRetry={message === ACCESS_DENIED_MESSAGE ? undefined : onRetry} retryLabel={retryLabel} retryAriaLabel={retryAriaLabel} retrying={retrying} />
         {action}
       </div>
     </div>

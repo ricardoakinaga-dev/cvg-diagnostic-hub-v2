@@ -66,7 +66,7 @@ export function IndicatorsView() {
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
 
   if (!data && loading) return <LoadingState label="Carregando indicadores" />;
-  if (!data) return <ErrorState title="Indicadores indisponíveis" message={error} onRetry={load} retrying={loading} />;
+  if (!data) return <ErrorState page title="Indicadores indisponíveis" message={error} onRetry={load} retrying={loading} />;
 
   return (
     <div className="indicators-page">

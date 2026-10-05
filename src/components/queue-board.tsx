@@ -67,7 +67,7 @@ export function QueueBoard({ items, role, departments, refreshing, onComplete }:
   return <>
     {error && <p className="form-alert" role="alert">{error}</p>}
     {notice && <p role="status">{notice}</p>}
-    {!refreshing && items.length === 0 && <p className="queue-board-empty" role="status">Nenhum item nesta fila. Ajuste os filtros ou adicione um exame em Solicitado.</p>}
+    {!refreshing && items.length === 0 && <p className="queue-board-empty" role="status">Nenhum item nesta fila. Ajuste os filtros ou adicione um exame em Solicitado. Se você esperava ver exames aqui, peça à administração para conferir os exames autorizados no seu acesso.</p>}
     <div className="queue-board" aria-label="Fila de exames por estado">
       {columns.map((state) => <section key={state} className="queue-board-column" aria-label={queueColumnLabels[state]} onDragOver={(event) => { if (draggedId.current && !pendingRef.current && !refreshing) event.preventDefault(); }} onDrop={(event) => {
         event.preventDefault();
