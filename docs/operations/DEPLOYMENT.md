@@ -243,7 +243,7 @@ Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migr
 
 O papel de runtime recebe DML sobre as tabelas existentes, `INSERT`/`SELECT` sobre `audit_events` e **não** recebe `CREATE` no schema; um teste de integração executa seis operações proibidas (`DELETE`, `UPDATE`, `TRUNCATE`, `ALTER`, `DROP`, `CREATE`) como esse papel e exige o código `42501`. Outro teste parte de um banco criado por um único superusuário, provisiona os papéis e confere que nada ficou com o dono antigo. Os dois papéis têm de ser usuários diferentes (`DATABASE_ROLES_MUST_BE_SEPARATE`).
 
-Para um **banco gerenciado** em que um administrador já criou os papéis, deixe `DATABASE_ADMIN_URL` fora do `migrate`: o script então só aplica as migrations como migrador e os privilégios do runtime.
+Para um **banco gerenciado** em que um administrador já criou os papéis, deixe `DATABASE_ADMIN_URL` fora do `migrate`: o script então só aplica as migrations como migrador e os privilégios do runtime. Nesse caso, o administrador também deve conceder `GRANT pg_read_all_stats TO cvg_migrator`: sem ele, o PostgreSQL esconde do migrador o tipo das sessões de outros papéis, e a trava de cutover (§4.1) passa a esperar inclusive pelo autovacuum — continua segura, mas pode recusar sem necessidade. O `db:roles` concede esse papel sozinho quando recebe `DATABASE_ADMIN_URL` e registra `database.roles_stats_grant_skipped` se o administrador não puder concedê-lo.
 
 ## 8. Rollback
 

@@ -622,16 +622,18 @@ export function isCoordinatedCutover(sql: string): boolean {
 /**
  * Refuses to run a coordinated-cutover migration while another session is connected.
  * The check runs before any pending SQL, so a refusal leaves the database untouched.
- * pg_stat_activity hides the role of sessions owned by other roles, but still reports
- * their database and pid, which is all this needs. Only client backends count:
- * autovacuum and other server processes also report the database, are not writers,
- * and made the guard refuse at random (CI run 37522831663).
+ * pg_stat_activity still reports the database and pid of sessions owned by other
+ * roles, but hides their backend_type (NULL) unless the caller has pg_read_all_stats.
+ * The runtime connects under its own role, so an unknown type must count as a
+ * connected writer. Only an identified autovacuum worker is ignored: it also reports
+ * the database and made the guard refuse at random (CI run 37522831663).
+ * db:roles grants pg_read_all_stats to the migration role so autovacuum is identifiable.
  */
 async function assertCutoverAllowed(client: SqlQueryable, pending: readonly MigrationDefinition[], acknowledged: boolean): Promise<void> {
   const cutover = pending.find((migration) => isCoordinatedCutover(migration.sql));
   if (!cutover || acknowledged) return;
   const result = await client.query(
-    "SELECT count(*)::int AS other_sessions FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type = 'client backend'"
+    "SELECT count(*)::int AS other_sessions FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type IS DISTINCT FROM 'autovacuum worker'"
   );
   const count = Number((result.rows[0] as { other_sessions?: unknown } | undefined)?.other_sessions);
   if (!Number.isSafeInteger(count) || count < 0) throw new Error(`MIGRATION_CUTOVER_CHECK_FAILED:${cutover.version}`);

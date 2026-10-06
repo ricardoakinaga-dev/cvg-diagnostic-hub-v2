@@ -44,6 +44,8 @@ describe("production role provisioning from a single-superuser installation", ()
             WHERE ns.nspname = 'public' AND p.prokind = 'f' AND pg_get_userbyid(p.proowner) <> $1
               AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e')`, [migrator]);
         expect(functions.rows).toEqual([]);
+        // The cutover guard needs pg_read_all_stats to see the runtime's backend type.
+        await expect(migratorPool.query("SELECT pg_has_role(current_user, 'pg_read_all_stats', 'MEMBER') AS member")).resolves.toMatchObject({ rows: [{ member: true }] });
         // DDL belongs to the migrator.
         await migratorPool.query("CREATE TABLE migrator_can_create (id integer)");
         await migratorPool.query("DROP TABLE migrator_can_create");
@@ -60,6 +62,7 @@ describe("production role provisioning from a single-superuser installation", ()
         const superuser = await runtimePool.query<{ rolsuper: boolean; rolcreaterole: boolean; rolcreatedb: boolean }>(
           "SELECT rolsuper, rolcreaterole, rolcreatedb FROM pg_roles WHERE rolname = current_user");
         expect(superuser.rows[0]).toEqual({ rolsuper: false, rolcreaterole: false, rolcreatedb: false });
+        await expect(runtimePool.query("SELECT pg_has_role(current_user, 'pg_read_all_stats', 'MEMBER') AS member")).resolves.toMatchObject({ rows: [{ member: false }] });
       } finally {
         await runtimePool.end();
       }

@@ -327,8 +327,10 @@ describe("database migration runner", () => {
 
         expect(queries.some(({ text }) => text === "SELECT 0;" || text === cutoverSql)).toBe(false);
         expect(queries.at(-1)?.text).toBe("SELECT pg_advisory_unlock(hashtext($1))");
-        // Autovacuum workers also report the database; only client connections block.
-        expect(queries.find(({ text }) => text.includes("FROM pg_stat_activity"))?.text).toContain("backend_type = 'client backend'");
+        // Only an identified autovacuum worker is ignored; a hidden (NULL) type still blocks.
+        const guard = queries.find(({ text }) => text.includes("FROM pg_stat_activity"))?.text;
+        expect(guard).toContain("backend_type IS DISTINCT FROM 'autovacuum worker'");
+        expect(guard).not.toContain("backend_type = 'client backend'");
       });
     });
 

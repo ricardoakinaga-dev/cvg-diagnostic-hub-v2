@@ -43,6 +43,16 @@ export async function provisionDatabaseRoles(options: RoleProvisioningOptions): 
       const exists = (await client.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [role])).rowCount === 1;
       await client.query(`${exists ? "ALTER" : "CREATE"} ROLE ${quote(role)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD ${client.escapeLiteral(passwords.get(role)!)}`);
     }
+    // The cutover guard reads pg_stat_activity as the migrator. Without this predefined role,
+    // PostgreSQL hides the backend type of sessions owned by other roles; the guard then
+    // fails closed and also blocks on autovacuum workers. It grants statistics reads only.
+    // An administrator without ADMIN on pg_read_all_stats (some managed databases) cannot
+    // grant it; the guard stays safe, so warn instead of failing the deploy.
+    try {
+      await client.query(`GRANT pg_read_all_stats TO ${quote(roles.migrator)}`);
+    } catch {
+      console.warn(JSON.stringify({ event: "database.roles_stats_grant_skipped", migratorRole: roles.migrator, impact: "cutover guard may also wait for autovacuum workers" }));
+    }
     await client.query(`ALTER DATABASE ${quote(database)} OWNER TO ${quote(roles.migrator)}`);
     await client.query(`GRANT CONNECT ON DATABASE ${quote(database)} TO ${quote(roles.migrator)}, ${quote(roles.runtime)}`);
     await client.query(`ALTER SCHEMA public OWNER TO ${quote(roles.migrator)}`);
