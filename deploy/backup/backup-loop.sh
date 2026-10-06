@@ -6,6 +6,8 @@
 # (docs/operations/BACKUP_RESTORE.md) and rehearse a restore. Point-in-time recovery needs WAL archiving or a
 # managed database (decision D2/D11).
 set -eu
+# Dumps hold clinical data and credential hashes: owner-only files.
+umask 077
 
 : "${PGHOST:?}" "${PGUSER:?}" "${PGPASSWORD:?}" "${PGDATABASE:?}"
 INTERVAL="${BACKUP_INTERVAL_SECONDS:-86400}"

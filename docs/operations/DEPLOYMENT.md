@@ -59,11 +59,15 @@ O seed sintético (`npm run db:seed`) é proibido em produção e não deve ser 
 ## 4. Atualização (deploy contínuo)
 
 ```bash
+# Backup ANTES do pull/build: --no-deps impede o Compose de executar o migrate
+# (dependência do serviço backup) e aplicar migrations novas antes da cópia.
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm --no-deps backup --once
 git pull
 docker compose -f docker-compose.prod.yml --env-file .env.production build
-npm run db:backup   # ou o backup gerenciado equivalente — ver BACKUP_RESTORE.md
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 ```
+
+O PostgreSQL do Compose não publica porta no host, então `npm run db:backup` executado fora dos containers não o alcança; use o serviço `backup` (ou o backup gerenciado equivalente — ver [BACKUP_RESTORE.md](BACKUP_RESTORE.md)) e copie o arquivo para fora do host. Sem `--no-deps`, `run backup` inicia o `migrate` primeiro (verificado em 06/10/2026).
 
 O `up -d` reexecuta `migrate` antes de recriar `app` e `worker`. As migrations são versionadas com checksum; uma migration alterada depois de aplicada aborta o deploy.
 
@@ -73,7 +77,8 @@ As migrations `013_audit_read_authority` e `014_outbox_read_authority` movem a a
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production stop proxy app worker backup
-npm run db:backup   # obrigatório: o rollback deste cutover é só de dados
+# obrigatório: o rollback deste cutover é só de dados. --no-deps evita rodar o migrate antes da cópia.
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm --no-deps backup --once
 docker compose -f docker-compose.prod.yml --env-file .env.production build
 docker compose -f docker-compose.prod.yml --env-file .env.production run --rm migrate
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d

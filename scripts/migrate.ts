@@ -41,7 +41,7 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<void
 async function main(): Promise<void> {
   // MIGRATION_DATABASE_URL carries the DDL role; DATABASE_URL is the runtime
   // role and is deliberately not enough on its own to change the schema.
-  const connectionString = process.env.MIGRATION_DATABASE_URL?.trim() ?? process.env.DATABASE_URL;
+  const connectionString = process.env.MIGRATION_DATABASE_URL?.trim() || process.env.DATABASE_URL;
   if (!connectionString) throw new Error("MIGRATION_DATABASE_URL (ou DATABASE_URL) é obrigatório para executar as migrations.");
   // A "Coordinated cutover" migration refuses to run while the previous app or worker is still
   // connected. MIGRATION_CUTOVER_ACKNOWLEDGED=true is for an operator who has confirmed the
