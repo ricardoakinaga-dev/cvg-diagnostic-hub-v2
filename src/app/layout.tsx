@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import "./globals.css";
+import "./plane.css";
 
 export const metadata: Metadata = {
   title: "CVG Diagnostics Hub",

@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/app-shell";
-import { QueueView } from "@/components/queue-view";
+import { WorkItemsView } from "@/components/work-items/work-items-view";
 
 export default function QueuesPage() {
   return (
-    <AppShell>
-      <QueueView />
+    <AppShell flush>
+      <WorkItemsView />
     </AppShell>
   );
 }

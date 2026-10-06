@@ -1,14 +1,9 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { signInAs } from "./support/auth";
+import { GREETING, signInAs, signOut } from "./support/auth";
 
 async function signIn(page: import("@playwright/test").Page): Promise<void> {
   await signInAs(page, "vet@cvg.local");
-}
-
-async function signOut(page: import("@playwright/test").Page): Promise<void> {
-  await page.getByRole("button", { name: "Sair" }).click();
-  await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 }
 
 async function expectNoAxeViolations(page: import("@playwright/test").Page, name: string): Promise<void> {
@@ -24,16 +19,33 @@ test.describe("accessible operational surfaces", () => {
     await signIn(page);
     await expectNoAxeViolations(page, "dashboard");
 
+    // Give the clinician at least one exam so list, board and peek are all audited.
+    const csrf = (await page.context().cookies()).find((cookie) => cookie.name === "cvg_csrf")?.value;
+    const seeded = await page.request.post("/api/v1/diagnostic-requests", {
+      headers: { "x-csrf-token": csrf ?? "", "idempotency-key": `a11y-seed-${Date.now()}` },
+      data: { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }
+    });
+    expect([201, 409]).toContain(seeded.status());
     await page.goto("/queues");
-    await expect(page.getByRole("heading", { name: /Central de exames/ })).toBeVisible();
-    await expectNoAxeViolations(page, "queues");
+    await expect(page.getByRole("heading", { name: "Todos os exames" })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^Abrir Hemograma — Thor/ }).first()).toBeVisible();
+    await expectNoAxeViolations(page, "queues list");
+    await page.getByRole("radio", { name: "Quadro" }).click();
+    await expect(page.getByLabel("Quadro de exames")).toBeVisible();
+    await expectNoAxeViolations(page, "queues board");
+    await page.getByRole("button", { name: /^Abrir Hemograma — Thor/ }).first().click();
+    await expect(page.getByRole("dialog", { name: "Hemograma" })).toBeVisible();
+    await expectNoAxeViolations(page, "queues peek");
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Hemograma" })).toBeHidden();
+    await page.getByRole("radio", { name: "Lista" }).click();
 
     await page.goto("/notifications");
-    await expect(page.getByRole("heading", { name: /Notificações/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Caixa de entrada" })).toBeVisible();
     await expectNoAxeViolations(page, "notifications");
 
     await page.goto("/patients");
-    await expect(page.getByRole("heading", { name: /Meus pacientes/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pacientes" })).toBeVisible();
     await expectNoAxeViolations(page, "patients");
 
     await page.goto("/patients/patient-thor/diagnostics");
@@ -46,7 +58,7 @@ test.describe("accessible operational surfaces", () => {
   });
 
   test("account, management and administration surfaces have no axe violations", async ({ page }) => {
-    await signInAs(page, "manager@cvg.local", /Controle operacional/);
+    await signInAs(page, "manager@cvg.local", GREETING);
 
     await page.goto("/account");
     await expect(page.getByRole("heading", { name: /Minha conta/ })).toBeVisible();
@@ -94,7 +106,7 @@ test.describe("accessible operational surfaces", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await signIn(page);
     await page.goto("/patients", { waitUntil: "domcontentloaded" });
-    await expect(page.locator(".topbar")).toBeVisible();
+    await expect(page.locator(".app-topbar")).toBeVisible();
 
     const navigation = page.getByRole("navigation", { name: "Navegação rápida" });
     await expect(navigation).toBeVisible();

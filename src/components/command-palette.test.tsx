@@ -39,12 +39,13 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(input, { key: "Enter" });
     expect(props.onNewPatient).toHaveBeenCalledOnce();
     fireEvent.keyDown(input, { key: "ArrowDown" });
-    expect(screen.getByRole("option", { name: /Novo exame/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("option", { name: /Ir para Início/ })).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(input, { key: "End" });
-    expect(screen.getByRole("option", { name: /Novo paciente/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("option").at(-1)).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(input, { key: "Home" });
+    expect(screen.getByRole("option", { name: /Novo exame/ })).toHaveAttribute("aria-selected", "true");
     fireEvent.keyDown(input, { key: "ArrowUp" });
-    expect(screen.getByRole("option", { name: /Novo paciente/ })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("option").at(-1)).toHaveAttribute("aria-selected", "true");
     expect(apiFetch).not.toHaveBeenCalled();
   });
 
@@ -114,6 +115,16 @@ describe("CommandPalette", () => {
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await screen.findByRole("option", { name: /HEM/ });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("offers workspace navigation commands filtered by the typed term", () => {
+    const { input, props } = setup({ canCreatePatient: false, canCreateRequest: false });
+    expect(screen.getByRole("option", { name: /Ir para Caixa de entrada/ })).toBeInTheDocument();
+    fireEvent.change(input, { target: { value: "x" } });
+    fireEvent.change(input, { target: { value: "caixa" } });
+    expect(screen.getAllByRole("option")).toHaveLength(1);
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(props.onNavigate).toHaveBeenCalledWith("/notifications");
   });
 
   it("announces an empty search and excludes unsafe exam navigation targets", async () => {
@@ -199,7 +210,7 @@ describe("CommandPalette", () => {
     { canCreatePatient: false, canCreateRequest: true, visible: "Novo exame", hidden: "Novo paciente" }
   ])("limits creation commands independently to the permission for $visible", ({ canCreatePatient, canCreateRequest, visible, hidden }) => {
     const { input, props } = setup({ canCreatePatient, canCreateRequest });
-    expect(screen.getAllByRole("option")).toHaveLength(1);
+    expect(screen.getAllByRole("option").filter((option) => /Novo/.test(option.textContent ?? ""))).toHaveLength(1);
     expect(screen.getByRole("option", { name: new RegExp(visible) })).toHaveAttribute("aria-selected", "true");
     expect(screen.queryByRole("option", { name: new RegExp(hidden) })).not.toBeInTheDocument();
     fireEvent.keyDown(input, { key: "Enter" });

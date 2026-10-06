@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { signInAs } from "./support/auth";
+import { GREETING, signInAs } from "./support/auth";
 
 test.describe("visual baseline", () => {
   test("dashboard remains stable across the configured viewports", async ({ page }) => {
@@ -32,7 +32,7 @@ test.describe("visual baseline", () => {
     });
 
     await signInAs(page, "vet@cvg.local");
-    await expect(page.getByRole("heading", { name: /Bom dia/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
     await expect(page).toHaveScreenshot("dashboard.png", {
       animations: "disabled",
       caret: "hide",

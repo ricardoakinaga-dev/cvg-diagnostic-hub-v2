@@ -2,7 +2,7 @@ name: CVG Diagnostics Hub CI
 
 on:
   push:
-    branches: ["main", "master", "release/production-readiness"]
+    branches: ["main", "master", "release/production-readiness", "feat/plane-experience"]
   pull_request:
 
 permissions:
@@ -201,7 +201,7 @@ jobs:
       - run: npm ci
       # The pinned Playwright image supplies Chromium and the exact font set.
       - name: Run browser E2E without accessibility (fail on flaky retries)
-        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts --retries=0 --fail-on-flaky-tests
+        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts tests/e2e/plane-regressions.spec.ts --retries=0 --fail-on-flaky-tests
       - name: Upload browser E2E artifacts
         if: always()
         uses: actions/upload-artifact@v4

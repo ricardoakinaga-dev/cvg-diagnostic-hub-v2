@@ -30,8 +30,11 @@ preservação V1 seja demonstrada por evidência Git verificável.
   carregamento/erro/vazio e testes aplicáveis.
 - O V2 adotará modular monolith. Packages existem para fronteiras reais e
   reutilizáveis, não para fragmentar cada abstração.
-- O Plane foi estudado somente como referência de composição de produto. Não
-  são copiados branding, código, nomes, rotas ou arquitetura proprietária.
+- A experiência de uso replica o Plane adaptado ao hospital (D-029, 06/10/2026):
+  setores fazem o papel de projetos, exames o de work items e etapas o de
+  estados. O comportamento e os tokens visuais seguem o Plane; o código, a marca
+  e a arquitetura não são copiados (o Plane é AGPL-3.0) e o backend clínico
+  permanece o deste repositório.
 
 ## Mapa atual → alvo
 

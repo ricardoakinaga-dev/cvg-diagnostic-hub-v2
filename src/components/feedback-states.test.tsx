@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ACCESS_DENIED_MESSAGE } from "@cvg/services";
+import Link from "next/link";
 import { EmptyState, ErrorState, LoadingState, PartialNotice, StaleNotice } from "./feedback-states";
 
 describe("feedback state primitives", () => {
@@ -89,7 +90,7 @@ describe("feedback state primitives", () => {
 
   it("não oferece nova tentativa quando a recusa é de autorização, mas mantém a ação alternativa", () => {
     const onRetry = vi.fn();
-    render(<ErrorState page title="Controle operacional indisponível" message={ACCESS_DENIED_MESSAGE} onRetry={onRetry} action={<a href="/">Voltar</a>} />);
+    render(<ErrorState page title="Controle operacional indisponível" message={ACCESS_DENIED_MESSAGE} onRetry={onRetry} action={<Link href="/">Voltar</Link>} />);
     expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Voltar" })).toBeInTheDocument();
     cleanup();

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { Pool } from "pg";
 import type { StoreState } from "../../src/server/domain/models";
 import {
@@ -119,6 +120,18 @@ async function terminateAndDropDatabase(adminPool: Pool, databaseName: string): 
   await adminPool.query(`DROP DATABASE ${quotedDatabaseName(databaseName)}`);
 }
 
+async function waitForBootstrapShutdown(adminPool: Pool, databaseName: string): Promise<void> {
+  // pg-pool can resolve end() before the server has removed the connection.
+  // Observe the disposable database through the separate administrative one.
+  const deadline = Date.now() + 5000;
+  while (true) {
+    const sessions = await adminPool.query("SELECT pid, application_name, state FROM pg_stat_activity WHERE datname = $1", [databaseName]);
+    if (sessions.rows.length === 0) return;
+    if (Date.now() >= deadline) throw new Error(`Disposable bootstrap did not close its sessions: ${JSON.stringify(sessions.rows)}`);
+    await delay(25);
+  }
+}
+
 async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedDisposablePostgresDatabase> {
   const databaseName = createDatabaseName();
   const adminPool = new Pool({ connectionString: adminUrl.toString(), max: 1 });
@@ -135,6 +148,7 @@ async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedD
     await adminPool.query(`CREATE DATABASE ${quotedDatabaseName(databaseName)}`);
     databaseCreated = true;
     await applyRealMigrations(connectionString);
+    await waitForBootstrapShutdown(adminPool, databaseName);
   } catch (setupError) {
     const cleanupErrors: unknown[] = [];
     if (databaseCreated) {

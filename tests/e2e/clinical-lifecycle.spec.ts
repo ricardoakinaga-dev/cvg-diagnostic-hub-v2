@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { signInAs } from "./support/auth";
+import { signInAs, signOut } from "./support/auth";
 
 async function expectNoAxeViolations(page: Page, name: string): Promise<void> {
   const rules = ["aria-allowed-attr", "aria-required-attr", "aria-valid-attr", "button-name", "document-title", "duplicate-id-aria", "html-has-lang", "heading-order", "label", "landmark-one-main", "link-name", "nested-interactive", "role-img-alt", "tabindex"];
@@ -19,11 +19,6 @@ async function readApi<T>(page: Page, path: string): Promise<T> {
   }, path);
   if (!body.ok) throw new Error(`GET ${path} falhou com ${body.status}.`);
   return (body.body as { data: T }).data;
-}
-
-async function signOut(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Sair" }).click();
-  await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 }
 
 async function confirmDuplicateIfNeeded(page: Page): Promise<void> {
@@ -50,7 +45,7 @@ async function newRequestId(page: Page, previousIds: Set<string>): Promise<strin
 async function createRequest(page: Page, patientId = "patient-thor", encounterId = "encounter-thor"): Promise<string> {
   const previous = await readApi<RequestSummary[]>(page, "/diagnostic-requests?limit=100");
   const previousIds = new Set(previous.map((request) => request.id));
-  await page.getByRole("button", { name: /Nova solicitação/ }).click();
+  await page.getByRole("button", { name: /Nova solicitação/ }).or(page.getByRole("link", { name: /Nova solicitação/ })).click();
   const dialog = page.getByRole("dialog", { name: "Solicitar exames" });
   await expect(dialog).toBeVisible();
   await dialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption(patientId);
@@ -66,8 +61,8 @@ async function createRequest(page: Page, patientId = "patient-thor", encounterId
 
 async function queueRow(page: Page, requestId: string, serviceName: string) {
   const request = await readApi<{ requestCode: string }>(page, `/diagnostic-requests/${requestId}`);
-  const queueItem = page.locator(".queue-board .queue-card");
-  return queueItem.filter({ hasText: serviceName }).filter({ hasText: request.requestCode });
+  // Rows and cards carry their protocol; the visible key is the sector shortcut.
+  return page.locator(`[data-item-row][data-request-code="${request.requestCode}"]`).filter({ hasText: serviceName });
 }
 
 async function createAndReleaseDraft(page: Page, requestId: string, serviceName: string, narrative: string): Promise<string> {
@@ -80,6 +75,9 @@ async function createAndReleaseDraft(page: Page, requestId: string, serviceName:
     await peek.getByLabel("Accession").fill(`ACC-E2E-${Date.now()}`);
     await peek.getByLabel("Tipo de amostra").fill("EDTA");
     await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
+    // The Plane peek stays open on the exam and offers the next step itself.
+    await expect(peek.getByRole("button", { name: "Iniciar processamento", exact: true })).toBeVisible();
+    await peek.getByRole("button", { name: "Fechar contexto" }).click();
     await expect(peek).toBeHidden();
     await row.getByRole("button", { name: "Iniciar processamento", exact: true }).click();
   } else {
@@ -192,9 +190,10 @@ test.describe("clinical result lifecycle", () => {
     await signOut(page);
     await signInAs(page, "vet@cvg.local");
     await page.goto("/notifications");
-    const resultNotification = page.locator(".inbox-row").filter({ hasText: "Resultado disponível" }).filter({ hasText: "RX de tórax" }).first();
+    const resultNotification = page.locator(".inbox-item").filter({ hasText: "Resultado disponível" }).filter({ hasText: "RX de tórax" }).first();
     await expect(resultNotification).toBeVisible({ timeout: 15000 });
-    await resultNotification.getByRole("link", { name: "Abrir contexto" }).click();
+    await resultNotification.click();
+    await page.getByRole("region", { name: "Notificação selecionada" }).getByRole("link", { name: "Abrir contexto" }).click();
     await expect(page).toHaveURL(new RegExp(`/results/${xrayResultId}$`));
     await expectNoAxeViolations(page, "released result");
     await expect(page.getByText("Visualização registrada")).toBeVisible({ timeout: 15000 });
@@ -251,13 +250,16 @@ test.describe("clinical result lifecycle", () => {
 
     await signInAs(page, "vet@cvg.local");
     await page.goto("/notifications");
-    const criticalNotification = page.locator(".inbox-row").filter({ hasText: "Resultado crítico requer confirmação" }).filter({ hasText: "Hemograma" }).first();
-    await expect(criticalNotification).toBeVisible({ timeout: 15000 });
+    const criticalItem = page.locator(".inbox-item").filter({ hasText: "Resultado crítico requer confirmação" }).filter({ hasText: "Hemograma" }).first();
+    await expect(criticalItem).toBeVisible({ timeout: 15000 });
+    await criticalItem.click();
+    const criticalNotification = page.getByRole("region", { name: "Notificação selecionada" });
+    await expect(criticalNotification.getByRole("heading", { name: "Resultado crítico requer confirmação" })).toBeVisible();
     await expectNoAxeViolations(page, "critical notification");
     await criticalNotification.getByLabel("Motivo da confirmação").fill("Confirmei o resultado crítico no contexto do atendimento.");
     await criticalNotification.getByRole("checkbox").check();
     await criticalNotification.getByRole("button", { name: "Confirmar" }).click();
-    await expect(criticalNotification).toHaveClass(/is-acknowledged/, { timeout: 15000 });
+    await expect(criticalNotification.getByText("Confirmada", { exact: true })).toBeVisible({ timeout: 15000 });
     await criticalNotification.getByRole("link", { name: "Abrir contexto" }).click();
     await expect(page).toHaveURL(new RegExp(`/results/${resultId}$`));
     await expectNoAxeViolations(page, "critical result");

@@ -30,6 +30,20 @@ interface Command {
   run: () => void;
 }
 
+const navigationCommands = [
+  { label: "Ir para Início", href: "/" },
+  { label: "Ir para Meu trabalho", href: "/queues?view=mine" },
+  { label: "Ir para Todos os exames", href: "/queues" },
+  { label: "Ir para Caixa de entrada", href: "/notifications" },
+  { label: "Ir para Pacientes", href: "/patients" },
+  { label: "Exames em atraso", href: "/queues?preset=overdue" },
+  { label: "Resultados para revisar", href: "/queues?preset=results" }
+];
+
+function normalizeCommand(value: string): string {
+  return value.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLocaleLowerCase("pt-BR");
+}
+
 export function CommandPalette({ canCreatePatient, canCreateRequest, onClose, onNewPatient, onNewRequest, onNavigate }: CommandPaletteProps) {
   const dialogRef = useRef<HTMLElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -88,7 +102,8 @@ export function CommandPalette({ canCreatePatient, canCreateRequest, onClose, on
       run: () => onNavigate(exam.deepLink)
     })),
     ...(canCreateRequest ? [{ id: "new-request", label: "Novo exame", detail: "Abrir solicitação de exames", run: onNewRequest }] : []),
-    ...(canCreatePatient ? [{ id: "new-patient", label: "Novo paciente", detail: "Cadastrar paciente", run: onNewPatient }] : [])
+    ...(canCreatePatient ? [{ id: "new-patient", label: "Novo paciente", detail: "Cadastrar paciente", run: onNewPatient }] : []),
+    ...navigationCommands.filter((command) => !term || normalizeCommand(command.label).includes(normalizeCommand(term))).map((command) => ({ id: `go-${command.href}`, label: command.label, detail: "Navegar", run: () => onNavigate(command.href) }))
   ];
   const selectedIndex = Math.min(activeIndex, Math.max(0, commands.length - 1));
   const resultCount = searchable ? (currentSearch?.patients.length ?? 0) + (currentSearch?.exams.length ?? 0) : 0;
@@ -112,7 +127,7 @@ export function CommandPalette({ canCreatePatient, canCreateRequest, onClose, on
   }
 
   return <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
-    <section ref={dialogRef} className="dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} data-dialog-layer="true">
+    <section ref={dialogRef} className="dialog command-palette" role="dialog" aria-modal="true" aria-labelledby={titleId} data-dialog-layer="true">
       <div className="dialog-heading"><h2 id={titleId}>Atalhos e busca</h2><button type="button" className="icon-button" aria-label="Fechar atalhos e busca" onClick={onClose}><Icon name="close" size={18} /></button></div>
       <label>Buscar paciente ou exame<input ref={inputRef} role="combobox" aria-autocomplete="list" aria-expanded="true" aria-controls={listId} aria-activedescendant={commands.length ? `${listId}-${selectedIndex}` : undefined} value={query} maxLength={200} placeholder="Nome, tutor, identificador ou exame…" onChange={(event) => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeys} /></label>
       <p className="field-hint">Digite ao menos 2 caracteres. Use ↑ ↓ e Enter para escolher; Esc para fechar.</p>

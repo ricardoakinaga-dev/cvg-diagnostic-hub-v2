@@ -32,7 +32,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Snapshot executável corrente — auditoria de 04/10/2026
+## Auditoria corrente — experiência Plane (06/10/2026)
+
+O [relatório de 06/10/2026](RELATORIO_AUDITORIA_2026-10-06.md) registra os achados, correções e validações da migração D-029 na branch `feat/plane-experience`. A evidência desta interface complementa os gates e pendências institucionais do programa de produção.
+
+## Snapshot executável anterior — auditoria de 04/10/2026
 
 Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com PostgreSQL 16 descartável: **1.449/1.449 testes unitários** em 126 arquivos e **96/96 testes PostgreSQL** em 17 arquivos. Cobertura agregada de **96,83% lines, 95,48% functions e 89,47% branches**; `coverage:gate` PASS com **22 exceções** declaradas, nenhuma nova. `validate:docs`, OpenAPI (**73 operações em 68 paths**), rastreabilidade (43/43), migrations (**001–014**), `perf:snapshot:gate`, `perf:realtime-budget`, typecheck, lint, build e `npm audit` (0 vulnerabilidades) passaram.
 

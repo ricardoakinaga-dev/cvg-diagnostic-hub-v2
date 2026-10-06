@@ -52,6 +52,7 @@ const originalEventSource = globalThis.EventSource;
 
 describe("AppShell", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     navigationState.pathname = "/";
     navigationState.searchParams = new URLSearchParams();
     FakeEventSource.instances = [];
@@ -70,12 +71,94 @@ describe("AppShell", () => {
 
   afterEach(() => {
     cleanup();
+    window.localStorage.clear();
     if (originalEventSource) {
       Object.defineProperty(globalThis, "EventSource", { configurable: true, writable: true, value: originalEventSource });
     } else {
       Reflect.deleteProperty(globalThis, "EventSource");
     }
     vi.clearAllMocks();
+  });
+
+  it.each([
+    ["/patients/patient-1/diagnostics", "Diagnósticos do paciente"],
+    ["/patients", "Pacientes"],
+    ["/notifications", "Caixa de entrada"],
+    ["/account", "Minha conta"],
+    ["/system", "Sistema"],
+    ["/indicators", "Indicadores"],
+    ["/results/result-1", "Resultado"],
+    ["/requests/request-1", "Solicitação"],
+    ["/management?view=requests", "Solicitações"],
+    ["/other", "CVG"]
+  ])("keeps the page breadcrumb coherent on %s", async (path, label) => {
+    const url = new URL(path, "http://localhost");
+    navigationState.pathname = url.pathname;
+    navigationState.searchParams = url.searchParams;
+    render(<AppShell><h1>Workspace</h1></AppShell>);
+    const crumb = await screen.findByRole("navigation", { name: "Você está em" });
+    expect(crumb).toHaveTextContent(label);
+  });
+
+  it("persists desktop collapse and sector expansion and dismisses mobile query navigation", async () => {
+    navigationState.pathname = "/queues";
+    render(<AppShell flush><h1>Workspace</h1></AppShell>);
+    await screen.findByRole("heading", { name: "Workspace" });
+    fireEvent.click(screen.getByRole("button", { name: "Recolher barra lateral" }));
+    expect(window.localStorage.getItem("cvg.sidebar.collapsed")).toBe("1");
+    fireEvent.click(screen.getByRole("button", { name: "Expandir barra lateral" }));
+    expect(window.localStorage.getItem("cvg.sidebar.collapsed")).toBe("0");
+    const sector = screen.getByRole("button", { name: "Laboratório" });
+    fireEvent.click(sector);
+    expect(sector).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(sector);
+    expect(JSON.parse(window.localStorage.getItem("cvg.sidebar.sectors") ?? "[]")).toEqual(["LABORATORY"]);
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menu" }));
+    expect(document.querySelector(".app-frame")).toHaveClass("sidebar-mobile-open");
+    fireEvent.click(screen.getByRole("link", { name: "Em atraso", hidden: true }));
+    expect(document.querySelector(".app-frame")).not.toHaveClass("sidebar-mobile-open");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menu" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Fechar menu" }).at(-1)!);
+    expect(document.querySelector(".app-frame")).not.toHaveClass("sidebar-mobile-open");
+  });
+
+  it("restores saved sector expansion and caps unread badge text", async () => {
+    window.localStorage.setItem("cvg.sidebar.sectors", JSON.stringify(["LABORATORY", null]));
+    vi.mocked(apiFetch).mockImplementation(async (path) => path.startsWith("/notifications") ? Array.from({ length: 101 }, (_, index) => ({ id: String(index) })) as never : { user: { id: "u", email: "vet@cvg.local", displayName: "Ana Silva", role: "VET", departmentCode: "LABORATORY", timezone: "UTC" } } as never);
+    render(<AppShell><h1>Workspace</h1></AppShell>);
+    await screen.findByText("99+");
+    expect(screen.getAllByText("9+").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Laboratório" })).toHaveAttribute("aria-expanded", "true");
+    act(() => { window.dispatchEvent(new Event("cvg:notifications-changed")); window.dispatchEvent(new CustomEvent("cvg:peek", { detail: true })); });
+    expect(screen.getByRole("navigation", { name: "Navegação rápida" })).toHaveAttribute("inert");
+  });
+
+  it("navigates the account menu with keys and restores focus when dismissed", async () => {
+    render(<AppShell><h1>Workspace</h1></AppShell>);
+    await screen.findByRole("heading", { name: "Workspace" });
+    const trigger = screen.getByRole("button", { name: "Menu de Ana Silva" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const account = screen.getByRole("menuitem", { name: "Minha conta" });
+    const exit = screen.getByRole("menuitem", { name: "Sair" });
+    expect(account).toHaveFocus();
+    fireEvent.keyDown(account, { key: "ArrowDown" });
+    expect(exit).toHaveFocus();
+    fireEvent.keyDown(exit, { key: "ArrowUp" });
+    expect(account).toHaveFocus();
+    fireEvent.keyDown(account, { key: "End" });
+    expect(exit).toHaveFocus();
+    fireEvent.keyDown(exit, { key: "Home" });
+    expect(account).toHaveFocus();
+    fireEvent.keyDown(account, { key: "Escape" });
+    expect(trigger).toHaveFocus();
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(screen.getByRole("menuitem", { name: "Minha conta" }), { key: "Tab" });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    fireEvent.click(trigger);
+    fireEvent.mouseDown(document.body);
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("exposes an uncertainty banner and reconciliation action when SSE degrades", async () => {
@@ -140,12 +223,13 @@ describe("AppShell", () => {
     expect(navigation).toBeInTheDocument();
     expect(screen.getByText("Veterinário", { exact: true })).toBeInTheDocument();
     expect(screen.queryByText("VET", { exact: true })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Visão geral" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Início" })).toHaveAttribute("aria-current", "page");
     expect(navigation.querySelectorAll('[aria-current="page"]')).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "Central de exames" })).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "Central de exames" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Notificações" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Meus pacientes" })).toHaveAttribute("href", "/patients");
+    expect(screen.getByRole("link", { name: "Todos os exames" })).not.toHaveAttribute("aria-current");
+    expect(screen.getByRole("link", { name: "Todos os exames" })).toHaveAttribute("href", "/queues");
+    expect(screen.getByRole("link", { name: "Meu trabalho" })).toHaveAttribute("href", "/queues?view=mine");
+    expect(screen.getByRole("link", { name: "Caixa de entrada" })).toHaveAttribute("href", "/notifications");
+    expect(screen.getByRole("link", { name: "Pacientes" })).toHaveAttribute("href", "/patients");
     expect(screen.queryByRole("link", { name: "Indicadores" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Administração" })).not.toBeInTheDocument();
   });
@@ -165,7 +249,8 @@ describe("AppShell", () => {
     render(<AppShell><div>Conteúdo da página</div></AppShell>);
 
     await screen.findByRole("navigation", { name: "Navegação principal" });
-    expect(screen.getByRole("link", { name: "Central de exames" })).toHaveAttribute("href", "/queues");
+    expect(screen.getByRole("link", { name: "Todos os exames" })).toHaveAttribute("href", "/queues");
+    expect(screen.getByRole("link", { name: "Painel gerencial" })).toHaveAttribute("href", "/management");
     expect(screen.getByRole("link", { name: "Solicitações" })).toHaveAttribute("href", "/management?view=requests");
     expect(screen.getByRole("link", { name: "Pendências" })).toHaveAttribute("href", "/management?view=pending");
     expect(screen.getByRole("link", { name: "Estatísticas" })).toHaveAttribute("href", "/management?view=stats");
@@ -217,14 +302,15 @@ describe("AppShell", () => {
     render(<AppShell><div>Conteúdo da página</div></AppShell>);
 
     await screen.findByRole("navigation", { name: "Navegação principal" });
-    expect(screen.getByRole("link", { name: "Visão geral" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Início" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Administração" })).toHaveAttribute("href", "/admin");
     expect(screen.getByRole("link", { name: "Sistema" })).toHaveAttribute("href", "/system");
     expect(screen.getByRole("link", { name: "Acesso rápido: Sistema" })).toHaveAttribute("href", "/system");
-    expect(screen.queryByRole("link", { name: "Central de exames" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Meus pacientes" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Todos os exames" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Pacientes" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Indicadores" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Notificações" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Caixa de entrada" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Abrir notificações" })).not.toBeInTheDocument();
   });
 
@@ -352,8 +438,9 @@ describe("AppShell", () => {
     await screen.findByRole("navigation", { name: "Navegação principal" });
     navigationState.pathname = "/queues";
     rerender(<AppShell><div>Fila</div></AppShell>);
-    expect(await screen.findByRole("link", { name: "Central de exames" })).toBeInTheDocument();
-    expect(apiFetch).toHaveBeenCalledTimes(2);
+    expect(await screen.findByRole("link", { name: "Todos os exames" })).toBeInTheDocument();
+    // Identity loads once per route; the unread inbox count is a separate read.
+    expect(vi.mocked(apiFetch).mock.calls.filter(([path]) => path === "/session/me")).toHaveLength(2);
     expect(replace).not.toHaveBeenCalled();
     expect(screen.getByText("Fila", { exact: true, selector: "div" })).toBeInTheDocument();
   });
@@ -396,10 +483,10 @@ describe("AppShell", () => {
     const oldSignal = vi.mocked(apiFetch).mock.calls[0][1]?.signal;
     navigationState.pathname = "/patients";
     rerender(<AppShell><div>Pacientes</div></AppShell>);
-    await screen.findByRole("link", { name: "Meus pacientes" });
+    await screen.findByRole("link", { name: "Pacientes" });
     expect(oldSignal?.aborted).toBe(true);
     await act(async () => { resolveOld({ user: { role: "ADMIN", mustChangePassword: true } }); await oldSession; });
-    expect(screen.getByRole("link", { name: "Meus pacientes" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Pacientes" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Sistema" })).not.toBeInTheDocument();
     expect(replace).not.toHaveBeenCalled();
   });
@@ -431,7 +518,9 @@ describe("AppShell", () => {
     await screen.findByRole("navigation", { name: "Navegação principal" });
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     act(() => FakeEventSource.instances[0].triggerOpen());
-    fireEvent.click(screen.getByRole("button", { name: "Sair" }));
+    expect(screen.getByRole("img", { name: "Conexão em tempo real ativa" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Menu de Ana Silva" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Sair" }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/session/logout", expect.objectContaining({ method: "POST" })));
     expect(replace).toHaveBeenCalledWith("/login");
   });

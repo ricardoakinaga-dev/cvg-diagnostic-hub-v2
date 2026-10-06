@@ -8,16 +8,19 @@
 
 Premium, hospitalar, moderna, limpa e funcional. Informação e ação dominam a interface; efeitos decorativos não podem competir com status clínico.
 
-## 2. Tokens (reconciliados com `src/app/globals.css`)
+## 2. Tokens (padrão Plane, D-029 — `src/app/plane.css`)
 
-- radius — tokens reais em `:root` (`src/app/globals.css` linhas 28–31): `--radius-sm: 10px`, `--radius-md: 16px`, `--radius-lg: 24px`, `--radius-xl: 32px`. A proposta anterior de “8–12px para cards/inputs” não corresponde ao código e foi removida; superfícies grandes usam `--radius-md` (16px) e acima.
-- color — tokens reais: `--ink/--ink-soft/--ink-faint`, `--paper/--surface/--surface-muted`, `--line/--line-strong`, `--navy/--navy-deep`, `--teal/--teal-dark/--teal-action/--teal-soft`, `--coral/--coral-soft`, `--amber/--amber-dark/--amber-soft`, `--blue/--blue-soft`. Todo par de status mantém rótulo ou ícone junto da cor.
-- elevation — `--shadow-sm`, `--shadow-md`, `--shadow-lg`; agrupamento nunca depende só de sombra.
-- motion — `--motion-fast: 160ms`, `--motion-base: 240ms`, `--motion-slow: 520ms`, com `--ease-out` e `--ease-spring`; `prefers-reduced-motion` respeitado na regra global.
-- typography — `--font-sans` (UI) e `--font-display` (títulos editoriais) são tokens reais; o uso de números tabulares (`font-variant-numeric: tabular-nums`) em tempos e contagens **ainda não existe** no CSS e permanece proposta de BUILD.
-- spacing — **ainda proposta**: escala de base 4px e ritmo maior de seção não existem como tokens em `:root`; os espaçamentos hoje são valores por componente. Uniformizar é trabalho de BUILD.
-- density — `comfortable` é o padrão; `compact` para filas de laboratório **após validação de usuário**. Não há token de densidade no CSS.
-- alvo de interação — 44px é o piso já aplicado em `.nav-link` (`min-height: 44px`), `.icon-button` e `.notification-trigger` (44×44px), conforme a régua do E2E de acessibilidade; há ainda ações e campos entre 26 e 32px fora dessa régua (ACHADO AUD-026/F-15).
+**Estado refletido: 06/10/2026.** A experiência segue o Plane adaptado ao hospital (D-029). `src/app/plane.css` carrega depois de `globals.css`, define os tokens com os valores do design system do Plane (`@makeplane/propel`) e remapeia os tokens legados (`--ink`, `--paper`, `--teal`, `--radius-*` etc.) para a mesma paleta, de modo que telas antigas e novas leiam como um produto só.
+
+- superfícies — `--bg-canvas` (cinza neutro de fundo), `--surface-1` (painéis brancos), `--layer-1` (cabeçalhos de grupo), `--layer-hover`/`--layer-selected`; bordas finas `--border-subtle`, `--border-subtle-1`, `--border-strong`.
+- texto — `--txt-primary`, `--txt-secondary`, `--txt-tertiary`, `--txt-placeholder`, `--txt-accent`.
+- marca — `--accent` (azul do Plane), `--accent-hover`, `--accent-subtle`; estados semânticos `--success*`, `--warning*`, `--danger*`.
+- estados do workflow — `--state-unstarted`, `--state-started`, `--state-review`, `--state-completed`, `--state-attention`, `--state-cancelled`, desenhados pelo `StateIcon` (círculo preenchido pelo progresso, check, exclamação ou x); prioridade por `PriorityIcon` (quadrado vermelho para emergência, barras para urgente e rotina). Cor nunca aparece sem rótulo ou ícone.
+- radius — 4–6px em pílulas, botões e campos; 8px em painéis e menus; 10px em diálogos.
+- elevação — `--shadow-raised-100/200` em cards e `--shadow-overlay` em menus, diálogos e peek; superfícies planas, sem texturas.
+- tipografia — `--font-ui` (Inter quando instalada, senão a fonte do sistema), corpo de 13px; `--font-mono` em protocolos; números tabulares em chaves, contagens e prazos.
+- densidade — Plane: linhas de 44px, itens da sidebar de 30px e botões de cabeçalho de 28px **com mouse**.
+- alvo de interação — 44px continua o piso no toque: `@media (pointer: coarse)` e telas até 960px elevam links da navegação, botões, itens de menu e ações de linha a 44px; a navegação inferior móvel tem 50px. Com mouse fino, a densidade do Plane fica acima do mínimo de 24px do WCAG 2.5.8. Foco visível com contorno de 3px.
 
 ## 3. Shared components — inventário real em 01/10/2026
 
@@ -29,6 +32,18 @@ Premium, hospitalar, moderna, limpa e funcional. Informação e ação dominam a
 | `StatusBadge` | `src/components/status-badge.tsx` | Status do item com rótulo em pt-BR (`statusLabel`). |
 | `EmptyState`, `ErrorState`, `LoadingState`, `StaleNotice`, `PartialNotice` | `src/components/feedback-states.tsx` | Kit de feedback com `aria-live`; consumido hoje por `notifications-view.tsx` e `management-dashboard.tsx` (ACHADO AUD-027: demais telas ainda fazem markup próprio). |
 | `Surface`, `ActionButton`, `SectionHeading` | `packages/ui/src/index.tsx` (`@cvg/ui`) | Primitivos de layout/ação compartilhados; `ActionButton` tem `tone` e `state`. |
+
+### Workspace no padrão Plane (D-029, 06/10/2026)
+
+| Componente | Origem | Observação |
+| --- | --- | --- |
+| `AppShell` | `src/components/app-shell.tsx` | Barra superior (workspace, busca Ctrl+K, tempo real, caixa de entrada, menu do usuário), sidebar recolhível com setores expansíveis e painel principal. |
+| `PageHeader` | `src/components/page-header.tsx` | Breadcrumb fixo com contagem e ações; o último item é o `h1` da página. |
+| `WorkItemsView` | `src/components/work-items/work-items-view.tsx` | Exames em Lista, Quadro, Calendário e Planilha; filtros com chips; menu Exibição; atalhos `C` e `/`; avisos (toasts). |
+| `PeekOverview` | `src/components/work-items/peek-overview.tsx` | Painel lateral não modal com propriedades, ações clínicas (`WorkflowAction`) e atividade; tela cheia no celular. |
+| `StatePill`, `NextActionButtons`, `WorkItemProperties` | `src/components/work-items/properties.tsx` | Mudança de estado só pelas transições permitidas ao perfil; próxima ação em um clique. |
+| `StateIcon`, `PriorityIcon`, `DepartmentIcon`, `Avatar` | `src/components/work-items/icons.tsx` | Glifos de estado, prioridade, setor e iniciais. |
+| `Home` | `src/components/home-view.tsx` | Saudação, atalhos com contadores, atenção, resultados para revisar, setores e recentes. |
 
 ### Existe só como markup inline (sem componente próprio)
 

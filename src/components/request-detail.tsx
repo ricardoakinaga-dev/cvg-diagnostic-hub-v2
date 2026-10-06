@@ -10,21 +10,33 @@ import { WorkflowAction } from "./workflow-action";
 import { Icon } from "./ui-icons";
 
 const aggregateStatusLabels: Record<string, string> = { REQUESTED: "Solicitado", IN_PROGRESS: "Em execução", PARTIALLY_AVAILABLE: "Parcialmente disponível", RESULTS_AVAILABLE: "Resultados disponíveis", COMPLETED: "Concluído", CANCELLED: "Cancelado" };
-const eventLabels: Record<string, string> = { ResultReleased: "Resultado liberado", ResultRead: "Resultado consultado", ResultReviewed: "Resultado revisado", ResultAmended: "Resultado emendado", ResultVoided: "Resultado invalidado", SampleReceived: "Amostra recebida", ProcedureScheduled: "Exame agendado", ProcedurePerformed: "Exame realizado" };
+const eventLabels: Record<string, string> = {
+  DiagnosticRequestCreated: "Solicitação criada", DiagnosticItemRequested: "Exame solicitado", DiagnosticItemCancelled: "Exame cancelado", DiagnosticItemRejected: "Exame rejeitado",
+  DiagnosticItemResultAvailable: "Resultado disponível", RequestItemCompleted: "Exame concluído", SampleReceived: "Amostra recebida", SampleRejected: "Amostra rejeitada",
+  RecollectionRequested: "Recoleta solicitada", ProcessingStarted: "Processamento iniciado", ScheduleCreated: "Agenda criada", ProcedureScheduled: "Exame agendado",
+  ProcedureRescheduled: "Exame remarcado", ProcedureStarted: "Procedimento iniciado", ProcedurePerformed: "Exame realizado", ResultDraftCreated: "Rascunho de resultado criado",
+  ResultDraftUpdated: "Rascunho atualizado", ResultReleased: "Resultado liberado", ResultRead: "Resultado consultado", ResultViewed: "Resultado visualizado",
+  ReportRead: "Laudo consultado", ResultHistoryRead: "Histórico consultado", ResultReviewed: "Resultado revisado", ResultAmended: "Resultado emendado",
+  ResultVoided: "Resultado invalidado", AttachmentUploadSessionCreated: "Envio de anexo iniciado", AttachmentFinalized: "Anexo finalizado", AttachmentDownloaded: "Anexo baixado",
+  NotificationAcknowledged: "Notificação confirmada", CriticalNotificationSuperseded: "Notificação crítica substituída"
+};
+const recordStateLabels: Record<string, string> = { DRAFT: "rascunho", RELEASED: "liberado", SUPERSEDED: "substituído", VOIDED: "invalidado", REPLACED: "substituída", PERFORMED: "realizado", ACTIVE: "ativo", RECEIVED: "recebida", REJECTED: "rejeitada" };
 
 function aggregateStatusLabel(value: string): string {
   return aggregateStatusLabels[value] ?? value.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
 
-function eventLabel(value: string): string {
+export function eventLabel(value: string): string {
   return eventLabels[value] ?? value.replace(/([a-z])([A-Z])/g, "$1 $2");
 }
 
-function eventStateLabel(value: string | undefined): string {
+export function eventStateLabel(value: string | undefined): string {
   if (!value) return "Ação registrada";
   if (aggregateStatusLabels[value]) return `Estado: ${aggregateStatusLabel(value)}`;
   const label = statusLabel(value as Parameters<typeof statusLabel>[0]);
-  return label ? `Estado: ${label}` : `Estado: ${value.replaceAll("_", " ").toLowerCase()}`;
+  if (label) return `Estado: ${label}`;
+  const record = recordStateLabels[value.toUpperCase()];
+  return `Estado: ${record ?? value.replaceAll("_", " ").toLowerCase()}`;
 }
 
 export function RequestDetail({ requestId }: { requestId: string }) {

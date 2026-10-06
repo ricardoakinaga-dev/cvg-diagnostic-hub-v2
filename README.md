@@ -53,6 +53,9 @@ export ALLOW_SYNTHETIC_SEED=true
 npm run db:migrate
 npm run db:seed
 npm run dev
+# opcional, em outro terminal com as mesmas variáveis e o servidor no ar:
+# até 14 pacientes e 27 exames sintéticos; pacientes já existentes são preservados
+npm run db:demo
 ```
 
 Abra `http://localhost:3000`. Neste ambiente, outro dispositivo na mesma rede pode acessar `http://192.168.15.14:3000`; o host LAN está liberado apenas para a demonstração local. O comando acima inicia em `APP_DATA_MODE=postgres`. Para uma demonstração somente em memória, use `APP_DATA_MODE=memory`, omita `DATABASE_URL` e mantenha a senha sintética definida por `DEMO_PASSWORD`.

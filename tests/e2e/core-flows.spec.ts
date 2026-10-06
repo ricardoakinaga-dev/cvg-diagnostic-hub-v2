@@ -1,8 +1,8 @@
 import { expect, test } from "@playwright/test";
-import { signInAs } from "./support/auth";
+import { GREETING, signInAs, signOut } from "./support/auth";
 
 async function signIn(page: import("@playwright/test").Page): Promise<void> {
-  await signInAs(page, "vet@cvg.local", /Bom dia/);
+  await signInAs(page, "vet@cvg.local", GREETING);
 }
 
 async function confirmDuplicateIfNeeded(page: import("@playwright/test").Page): Promise<void> {
@@ -28,45 +28,42 @@ function responsiveNavLink(
 }
 
 test.describe("operational hub journeys", () => {
-  test("authenticates and renders the attention dashboard", async ({ page }, testInfo) => {
+  test("authenticates and renders the Plane-style home", async ({ page }, testInfo) => {
     await signIn(page);
-    await expect(page.getByRole("region", { name: "Indicadores de atenção" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Atenção primeiro" })).toBeVisible();
-    await expect(page.getByText("Visão por setor")).toBeVisible();
-    await expect(page.getByText("Solicitações em andamento")).toBeVisible();
-    await expect(responsiveNavLink(page, testInfo.project.name, "Central de exames", "Fila")).toBeVisible();
+    const shortcuts = page.getByRole("navigation", { name: "Atalhos" });
+    await expect(shortcuts.getByRole("link", { name: /Atrasados/ })).toHaveAttribute("href", "/queues?preset=overdue");
+    await expect(page.getByRole("heading", { name: "Precisa de atenção" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Setores" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Solicitações recentes" })).toBeVisible();
+    await expect(responsiveNavLink(page, testInfo.project.name, "Todos os exames", "Exames")).toBeVisible();
   });
 
   test("opens the server-derived operational context without leaving the exam queue", async ({ page }) => {
     await signIn(page);
-    await page.getByRole("button", { name: /Nova solicitação/ }).click();
+    await page.getByRole("button", { name: /Nova solicitação/ }).or(page.getByRole("link", { name: /Nova solicitação/ })).click();
     await page.getByRole("dialog", { name: "Solicitar exames" }).getByRole("combobox", { name: "Paciente", exact: true }).selectOption("patient-thor");
     await page.getByRole("dialog", { name: "Solicitar exames" }).getByLabel("Atendimento").selectOption("encounter-thor");
     await page.getByRole("dialog", { name: "Solicitar exames" }).getByText("Hemograma", { exact: true }).click();
     await page.getByRole("button", { name: /Confirmar solicitação/ }).click();
     await confirmDuplicateIfNeeded(page);
-    await page.getByRole("button", { name: "Sair" }).click();
+    await signOut(page);
     await expect(page).toHaveURL(/\/login/);
 
-    await signInAs(page, "lab@cvg.local", /Bom dia/);
+    await signInAs(page, "lab@cvg.local", GREETING);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/queues");
-    await expect(page.getByRole("heading", { name: /Central de exames/ })).toBeVisible();
-    const opener = page.getByRole("button", { name: /^Abrir contexto de Hemograma/ }).first();
+    await expect(page.getByRole("heading", { name: "Todos os exames" })).toBeVisible();
+    const opener = page.getByRole("button", { name: /^Abrir Hemograma — / }).first();
     await opener.click();
-    const drawer = page.getByRole("dialog", { name: "Hemograma" });
-    await expect(drawer).toBeVisible();
-    const closeButton = drawer.getByRole("button", { name: "Fechar contexto" });
-    await expect(closeButton).toBeFocused();
-    await expect(drawer.getByText("Responsável atual")).toBeVisible();
-    await expect(drawer.getByText("Próxima ação")).toBeVisible();
-    await expect(drawer.getByText("Escalonamento operacional")).toBeVisible();
-    await page.keyboard.press("Shift+Tab");
-    await expect(drawer.getByRole("link", { name: /Abrir workspace completo/ })).toBeFocused();
-    await page.keyboard.press("Tab");
-    await expect(closeButton).toBeFocused();
+    const peek = page.getByRole("dialog", { name: "Hemograma" });
+    await expect(peek).toBeVisible();
+    await expect(peek.getByRole("heading", { name: "Hemograma" })).toBeFocused();
+    await expect(peek.getByText("Responsável", { exact: true })).toBeVisible();
+    await expect(peek.getByText("Próxima ação", { exact: true })).toBeVisible();
+    await expect(peek.getByText("Escalonamento", { exact: true })).toBeVisible();
+    await expect(peek.getByRole("link", { name: /Abrir workspace completo/ })).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(drawer).toBeHidden();
+    await expect(peek).toBeHidden();
     await expect(opener).toBeFocused();
   });
 
@@ -74,8 +71,8 @@ test.describe("operational hub journeys", () => {
     await signInAs(page, "admin@cvg.local", /Administração técnica/);
     await expect(page.getByText("Você não tem acesso a este recurso.")).toHaveCount(0);
     await expect(responsiveNavLink(page, testInfo.project.name, "Administração", "Admin")).toBeVisible();
-    await expect(page.getByRole("link", { name: "Central de exames" })).toHaveCount(0);
-    await expect(page.getByRole("link", { name: "Notificações" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Todos os exames" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Caixa de entrada" })).toHaveCount(0);
   });
 
   test("lets an administrator configure a delegated manager scope", async ({ page }, testInfo) => {
@@ -104,7 +101,7 @@ test.describe("operational hub journeys", () => {
     const name = `Painel operacional E2E ${suffix}`;
     const reasonLabel = `Motivo operacional E2E ${suffix}`;
     const email = `e2e-${suffix}@cvg.local`;
-    await signInAs(page, "manager@cvg.local", /Controle operacional/);
+    await signInAs(page, "manager@cvg.local", GREETING);
     if (testInfo.project.name === "chromium") {
       const nav = page.getByRole("navigation", { name: "Navegação principal" });
       await expect(nav.getByRole("link", { name: "Solicitações", exact: true })).toBeVisible();
@@ -154,7 +151,7 @@ test.describe("operational hub journeys", () => {
       mobile: { patient: "patient-mel", services: ["Hemograma", "RX de tórax"] }
     }[testInfo.project.name] ?? { patient: "patient-thor", services: ["Hemograma", "RX de tórax"] };
     await signIn(page);
-    await page.getByRole("button", { name: /Nova solicitação/ }).click();
+    await page.getByRole("button", { name: /Nova solicitação/ }).or(page.getByRole("link", { name: /Nova solicitação/ })).click();
     const requestDialog = page.getByRole("dialog", { name: "Solicitar exames" });
     await expect(requestDialog).toBeVisible();
     await requestDialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption(scenario.patient);
@@ -163,7 +160,8 @@ test.describe("operational hub journeys", () => {
     await requestDialog.getByRole("button", { name: /Confirmar solicitação/ }).click();
     await confirmDuplicateIfNeeded(page);
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(page.getByText("EX-", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Solicitação criada", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Todos os exames" })).toBeVisible();
   });
 
   test("keeps request actions inside the items panel", async ({ page }) => {
@@ -214,7 +212,7 @@ test.describe("operational hub journeys", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.route("**/api/v1/realtime/events", async (route) => { await route.abort("failed"); });
     await signIn(page);
-    await expect(page.getByRole("heading", { name: /Bom dia/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
     const realtimeRefresh = page.locator(".realtime-banner .button");
     await expect(realtimeRefresh).toBeVisible();
     const realtimeBox = await realtimeRefresh.boundingBox();
@@ -222,14 +220,14 @@ test.describe("operational hub journeys", () => {
     expect(realtimeBox.height, "ação realtime abaixo de 44px").toBeGreaterThanOrEqual(44);
     await page.getByRole("link", { name: /Abrir notificações/ }).click();
     await expect(page).toHaveURL(/notifications/, { timeout: 15000 });
-    await expect(page.getByRole("heading", { name: /Notificações/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Caixa de entrada" })).toBeVisible();
   });
 
   test("opens the patient context without exposing an unscoped list", async ({ page }, testInfo) => {
     await signIn(page);
-    await responsiveNavLink(page, testInfo.project.name, "Meus pacientes", "Pacientes").click();
+    await responsiveNavLink(page, testInfo.project.name, "Pacientes", "Pacientes").click();
     await expect(page).toHaveURL(/\/patients$/);
-    await expect(page.getByRole("heading", { name: /Meus pacientes/ })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Pacientes" })).toBeVisible();
     await page.goto("/patients/patient-thor/diagnostics");
     await expect(page).toHaveURL(/\/patients\/patient-thor\/diagnostics$/);
     await expect(page.getByRole("heading", { name: /Thor/ })).toBeVisible();
@@ -269,7 +267,7 @@ test.describe("operational hub journeys", () => {
     }
     let baselineBody = JSON.parse(baselineResponse.body) as DiagnosticsFixture;
     if ((baselineBody.data?.items?.length ?? 0) === 0) {
-      await page.getByRole("button", { name: /Nova solicitação/ }).click();
+      await page.getByRole("button", { name: /Nova solicitação/ }).or(page.getByRole("link", { name: /Nova solicitação/ })).click();
       const requestDialog = page.getByRole("dialog", { name: "Solicitar exames" });
       await requestDialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption("patient-thor");
       await requestDialog.getByLabel("Atendimento").selectOption("encounter-thor");
@@ -358,10 +356,10 @@ test.describe("operational hub journeys", () => {
       } else {
         await expect(page.locator(".sidebar")).toBeVisible();
       }
-      await expect(page.locator(".topbar")).toBeVisible();
+      await expect(page.locator(".app-topbar")).toBeVisible();
       const shellGeometry = await page.evaluate(() => ({
         sidebar: document.querySelector<HTMLElement>(".sidebar")?.getBoundingClientRect().toJSON(),
-        topbar: document.querySelector<HTMLElement>(".topbar")?.getBoundingClientRect().toJSON(),
+        topbar: document.querySelector<HTMLElement>(".app-topbar")?.getBoundingClientRect().toJSON(),
         mobileNav: document.querySelector<HTMLElement>(".mobile-nav")?.getBoundingClientRect().toJSON()
       }));
       if (compact) {
@@ -375,16 +373,17 @@ test.describe("operational hub journeys", () => {
       expect(shellGeometry.topbar?.height, "barra superior sem altura visível").toBeGreaterThan(0);
       const navigationHeights = await navigation.locator("a").evaluateAll((links) => links.map((link) => link.getBoundingClientRect().height));
       expect(navigationHeights.length, "navegação sem links visíveis").toBeGreaterThan(0);
-      expect(Math.min(...navigationHeights), "alvo essencial de navegação abaixo de 44px").toBeGreaterThanOrEqual(44);
+      // Touch layouts keep the 44px floor; the desktop sidebar uses Plane density
+      // with a mouse and stays above the 24px WCAG 2.5.8 minimum.
+      expect(Math.min(...navigationHeights), "alvo essencial de navegação abaixo do piso").toBeGreaterThanOrEqual(compact ? 44 : 28);
       await expect(navigation.locator('[aria-current="page"]')).toHaveCount(1);
       await expect(page.locator(".user-copy small")).not.toContainText("VETERINARIAN");
     };
     await assertShell();
     const shellLinks = [
-      ["Central de exames", "Fila"],
-      ["Meus pacientes", "Pacientes"],
-      ["Notificações", "Alertas"],
-      ["Minha conta", "Conta"]
+      ["Todos os exames", "Exames"],
+      ["Pacientes", "Pacientes"],
+      ["Caixa de entrada", "Entrada"]
     ] as const;
     for (const [desktopLabel, mobileLabel] of shellLinks) {
       const link = responsiveNavLink(page, testInfo.project.name, desktopLabel, mobileLabel);
@@ -398,7 +397,7 @@ test.describe("operational hub journeys", () => {
         await expect(link.locator(".nav-label")).toBeVisible();
       }
     }
-    const patientsLink = responsiveNavLink(page, testInfo.project.name, "Meus pacientes", "Pacientes");
+    const patientsLink = responsiveNavLink(page, testInfo.project.name, "Pacientes", "Pacientes");
     await expect(patientsLink).toHaveAttribute("aria-current", "page");
     await patientsLink.focus();
     await expect(patientsLink).toBeFocused();
@@ -487,7 +486,7 @@ test.describe("operational hub journeys", () => {
     await page.reload({ waitUntil: "domcontentloaded" });
     await expect(page.getByRole("status", { name: "Carregando workspace do paciente" })).toBeVisible();
     await assertShell();
-    await expect(page.locator(".live-indicator")).toContainText("Conexão em tempo real");
+    await expect(page.getByRole("img", { name: "Conexão em tempo real ativa" })).toBeVisible();
     await captureState("loading");
     fixtureMode = "ready";
     const resolveLoading = releaseLoading as (() => void) | undefined;
@@ -564,7 +563,9 @@ test.describe("operational hub journeys", () => {
       else await route.continue();
     });
     await signIn(page);
-    await expect(page.getByRole("alert").filter({ hasText: "Não foi possível atualizar as notificações." })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Solicitações em andamento" })).toBeVisible();
+    // The unread badge is optional: the home keeps its exams and shortcuts without it.
+    await expect(page.getByRole("heading", { name: "Precisa de atenção" })).toBeVisible();
+    await expect(page.getByRole("navigation", { name: "Atalhos" })).toBeVisible();
+    await expect(page.locator(".topbar-badge")).toHaveCount(0);
   });
 });

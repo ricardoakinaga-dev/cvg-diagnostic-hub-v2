@@ -1,5 +1,5 @@
 import { expect, test, type Browser, type Locator, type TestInfo } from "@playwright/test";
-import { signInAs } from "./support/auth";
+import { GREETING, signInAs, signOut } from "./support/auth";
 
 class InteractionCounter {
   count = 0;
@@ -56,7 +56,7 @@ test("recovers a collaborator with Gerar nova senha, revokes active access and f
     await page.reload();
     await expect(page.getByRole("dialog", { name: "Nova senha temporária", exact: true })).toHaveCount(0);
     await expect(page.getByText(regenerated!, { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Sair", exact: true }).click();
+    await signOut(page);
     await page.getByLabel("E-mail profissional").fill(email);
     await page.getByLabel("Senha", { exact: true }).fill(regenerated!);
     await page.getByRole("button", { name: "Entrar no Hub" }).click();
@@ -141,7 +141,7 @@ test("creates in four interactions, changes department in two and enforces the g
   const audit = await page.request.get("/api/v1/audit-events?limit=100");
   expect(audit.status()).toBe(200);
   expect((await audit.json()).data).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: "UserCreated", actorId: "user-admin" })]));
-  await page.getByRole("button", { name: "Sair", exact: true }).click();
+  await signOut(page);
   await page.getByLabel("E-mail profissional").fill(email);
   await page.getByLabel("Senha", { exact: true }).fill(secret!);
   await page.getByRole("button", { name: "Entrar no Hub" }).click();
@@ -187,7 +187,7 @@ test("creates a catalog exam using only its name and duplicates a numeric panel 
 });
 
 test("registers a patient with three fields through the global shortcut and searches authorized records", async ({ page }, testInfo) => {
-  await signInAs(page, "vet@cvg.local", /Bom dia/);
+  await signInAs(page, "vet@cvg.local", GREETING);
   await page.keyboard.press("Control+k");
   const palette = page.getByRole("dialog", { name: "Atalhos e busca" });
   await expect(palette).toBeVisible();
@@ -291,8 +291,8 @@ test("keeps technical data in ADMIN System and revokes a real session with one c
       expect(status!.x + status!.width).toBeLessThanOrEqual(bounds!.x + bounds!.width);
     }
     await page.screenshot({ path: `.data/ux-simplification/system-${testInfo.project.name}.png`, fullPage: true });
-    await page.getByRole("button", { name: "Sair", exact: true }).click();
-    await signInAs(page, "manager@cvg.local", /Controle operacional/);
+    await signOut(page);
+    await signInAs(page, "manager@cvg.local", GREETING);
     await page.goto("/system");
     await expect(page.getByRole("heading", { name: "Sistema restrito à administração técnica" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Auditoria recente" })).toHaveCount(0);
@@ -301,7 +301,7 @@ test("keeps technical data in ADMIN System and revokes a real session with one c
 
 test("quick-add submits with Enter and moving to recollection requires a reason from the list", async ({ page }, testInfo) => {
   const patientName = `Paciente board ${Date.now()} ${testInfo.project.name}`;
-  await signInAs(page, "vet@cvg.local", /Bom dia/);
+  await signInAs(page, "vet@cvg.local", GREETING);
   await page.keyboard.press("Control+k");
   await page.getByRole("option", { name: /Novo paciente/ }).click();
   const patientDialog = page.getByRole("dialog", { name: "Cadastrar paciente" });
@@ -313,6 +313,8 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   const patientBody = await (await patientResponse).json() as { data: { patient: { id: string } } };
   await expect(patientDialog).toBeHidden();
   await page.goto("/queues");
+  // Plane's inline "New work item" row at the end of the Solicitado group.
+  await page.locator(".quick-add").first().click();
   const quickAdd = page.getByRole("form", { name: "Adicionar exame à fila" });
   await quickAdd.getByLabel("Buscar paciente", { exact: true }).fill(patientName);
   await expect(quickAdd.getByRole("option", { name: new RegExp(patientName) })).toHaveCount(1);
@@ -322,19 +324,26 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   const requestResponse = page.waitForResponse((response) => response.url().endsWith("/api/v1/diagnostic-requests") && response.request().method() === "POST");
   await quickAdd.getByLabel("Exame", { exact: true }).press("Enter");
   expect((await requestResponse).status()).toBe(201);
-  await page.getByRole("button", { name: "Sair", exact: true }).click();
+  await signOut(page);
   await signInAs(page, "lab@cvg.local");
   await page.goto("/queues");
-  const row = page.locator(".queue-board .queue-card").filter({ hasText: patientName });
+  const row = page.locator("[data-item-row]").filter({ hasText: patientName });
   await row.getByRole("button", { name: "Receber amostra", exact: true }).click();
   const peek = page.getByRole("dialog", { name: "Hemograma", exact: true });
   await peek.getByLabel("Accession", { exact: true }).fill(`ACC-${Date.now()}`);
   await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
+  await expect(peek.getByRole("button", { name: "Iniciar processamento", exact: true })).toBeVisible();
+  await peek.getByRole("button", { name: "Fechar contexto" }).click();
   await expect(peek).toBeHidden();
   await expect(row.getByRole("button", { name: "Iniciar processamento", exact: true })).toBeEnabled();
   const processing = page.waitForResponse((response) => response.url().endsWith("/start-processing") && response.request().method() === "POST");
-  if (testInfo.project.name === "mobile") await row.getByRole("combobox", { name: `Mover Hemograma de ${patientName}`, exact: true }).selectOption("IN_PROGRESS");
+  const moveTo = async (state: string) => {
+    await row.getByRole("button", { name: /^Estado: .*Mudar estado$/ }).click();
+    await page.getByRole("menu", { name: `Mover Hemograma de ${patientName}`, exact: true }).getByRole("menuitem", { name: state, exact: true }).click();
+  };
+  if (testInfo.project.name !== "chromium") await moveTo("Em execução");
   else {
+    await page.getByRole("radio", { name: "Quadro" }).click();
     // Cards are not draggable while the board refreshes after the previous command; wait for it.
     await expect(row).toHaveAttribute("draggable", "true");
     // Drag from the card's padding to the column heading. The centers of tall
@@ -346,7 +355,7 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   }
   expect((await processing).status()).toBe(200);
   await expect(row.getByText("Em execução", { exact: true })).toBeVisible();
-  await row.getByRole("combobox", { name: `Mover Hemograma de ${patientName}`, exact: true }).selectOption("RECOLLECTION_REQUIRED");
+  await moveTo("Recoleta necessária");
   await expect(peek.getByRole("combobox", { name: "Motivo", exact: true })).toBeVisible();
   await expect(peek.getByRole("button", { name: "Confirmar", exact: true })).toBeDisabled();
   await expect(peek.getByRole("textbox", { name: "Motivo", exact: true })).toHaveCount(0);

@@ -7,6 +7,7 @@ import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { Icon } from "./ui-icons";
+import { PageHeader } from "./page-header";
 
 interface NotificationActionsProps {
   item: Notification;
@@ -48,6 +49,7 @@ export function NotificationsView() {
   const [reasons, setReasons] = useState<Record<string, string>>({});
   const [confirmations, setConfirmations] = useState<Record<string, boolean>>({});
   const [acknowledgingId, setAcknowledgingId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const loadVersion = useRef(0);
 
   function focusTab(index: number) {
@@ -108,6 +110,7 @@ export function NotificationsView() {
     try {
       await apiFetch(`/notifications/${notification.id}/acknowledge`, { method: "POST", body: JSON.stringify({ expectedVersion: notification.version, reason, confirm: true }) });
       await load();
+      window.dispatchEvent(new Event("cvg:notifications-changed"));
     } catch (cause) {
       setError(getSafeErrorMessage(cause, "Não foi possível confirmar a notificação."));
     } finally {
@@ -115,20 +118,46 @@ export function NotificationsView() {
     }
   }
 
-  return <div className="notifications-page">
-    <div className="page-heading"><div><p className="eyebrow">Comunicação interna</p><h1>Notificações <em>que encontram você.</em></h1><p className="page-lede">Cada item leva ao contexto autorizado e permanece na auditoria.</p></div></div>
-    <div className="tabs" role="tablist" aria-label="Filtro de notificações">{notificationTabs.map(([value, label], index) => <button key={value} id={`notifications-tab-${value}`} data-notification-tab-index={index} role="tab" type="button" aria-controls="notifications-panel" aria-selected={filter === value} tabIndex={filter === value ? 0 : -1} className={filter === value ? "active" : ""} onClick={() => setFilter(value)} onKeyDown={(event) => handleTabKeyDown(event, index)}>{label}</button>)}</div>
-    {error && items.length > 0 && <StaleNotice title="Notificações confirmadas; atualização falhou" message={error} lastConfirmedAt={lastConfirmedAt ? formatRelativeTime(lastConfirmedAt) : undefined} onRetry={load} retrying={loading} />}
-    {error && items.length === 0 && <ErrorState title="Não foi possível carregar as notificações" message={error} onRetry={load} retrying={loading} />}
-    <section className="panel inbox-panel" id="notifications-panel" role="tabpanel" aria-labelledby={`notifications-tab-${filter}`} tabIndex={-1}>
-      {loading && items.length === 0 ? <LoadingState className="queue-loading" label="Carregando notificações" /> : items.length === 0 ? <EmptyState title="Nenhuma notificação nesta visão" message="Você está em dia no seu escopo." /> : items.map((item) => <article key={item.id} className={`inbox-row inbox-${item.category.toLowerCase()} ${item.state === "ACKNOWLEDGED" ? "is-acknowledged" : ""}`}>
-        <span className={`notification-dot notification-${item.category.toLowerCase()}`} />
-        <div><p className="inbox-meta">{item.category === "CRITICAL" ? "CRÍTICA" : item.category === "ACTIONABLE" ? "AÇÃO NECESSÁRIA" : "INFORMATIVA"} · {formatRelativeTime(item.createdAt)}</p><h2>{item.title}</h2><p>{item.body}</p></div>
-        <div className="inbox-actions">
-          <Link href={item.deepLink} className="button button-ghost">Abrir contexto <Icon name="arrow-right" size={15} /></Link>
-          <NotificationActions item={item} reason={reasons[item.id] ?? ""} confirmed={confirmations[item.id] === true} pending={acknowledgingId === item.id} blocked={acknowledgingId !== null && acknowledgingId !== item.id} onReasonChange={(value) => setReasons((current) => ({ ...current, [item.id]: value }))} onConfirmationChange={(value) => setConfirmations((current) => ({ ...current, [item.id]: value }))} onAcknowledge={() => void acknowledge(item)} />
-        </div>
-      </article>)}
-    </section>
-  </div>;
+  const selected = items.find((item) => item.id === selectedId) ?? null;
+  // Like Plane's inbox, the first item opens by default on wide screens.
+  useEffect(() => {
+    if (selected || items.length === 0 || (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 960px)").matches)) return;
+    const timer = window.setTimeout(() => setSelectedId(items[0].id), 0);
+    return () => window.clearTimeout(timer);
+  }, [items, selected]);
+  const categoryLabel = (item: Notification) => item.category === "CRITICAL" ? "Crítica" : item.category === "ACTIONABLE" ? "Ação necessária" : item.category === "ADMINISTRATIVE" ? "Administrativa" : "Informativa";
+  const categoryTone = (item: Notification) => item.category === "CRITICAL" ? "critical" : item.category === "ACTIONABLE" ? "actionable" : "info";
+  const isUnread = (item: Notification) => item.state !== "ACKNOWLEDGED" && item.state !== "SUPERSEDED";
+
+  return <>
+    <PageHeader crumbs={[{ label: "Caixa de entrada", icon: "inbox" }]} count={loading && items.length === 0 ? undefined : items.length}>
+      <button type="button" className="icon-button header-refresh" onClick={() => void load()} aria-label="Atualizar notificações" title="Atualizar"><Icon name="refresh" size={14} className={loading ? "spin" : undefined} /></button>
+    </PageHeader>
+    {error && items.length > 0 && <div className="page-body page-body-tight"><StaleNotice title="Notificações confirmadas; atualização falhou" message={error} lastConfirmedAt={lastConfirmedAt ? formatRelativeTime(lastConfirmedAt) : undefined} onRetry={load} retrying={loading} /></div>}
+    <div className={`inbox${selected ? " has-selection" : ""}`}>
+      <div className="inbox-list">
+        <div className="inbox-tabs" role="tablist" aria-label="Filtro de notificações">{notificationTabs.map(([value, label], index) => <button key={value} id={`notifications-tab-${value}`} data-notification-tab-index={index} role="tab" type="button" aria-controls="notifications-panel" aria-selected={filter === value} tabIndex={filter === value ? 0 : -1} className={filter === value ? "active" : ""} onClick={() => setFilter(value)} onKeyDown={(event) => handleTabKeyDown(event, index)}>{label}</button>)}</div>
+        <section id="notifications-panel" role="tabpanel" aria-labelledby={`notifications-tab-${filter}`} tabIndex={-1}>
+          {error && items.length === 0 && <div className="page-body-tight"><ErrorState title="Não foi possível carregar as notificações" message={error} onRetry={load} retrying={loading} /></div>}
+          {loading && items.length === 0 ? <LoadingState className="queue-loading" label="Carregando notificações" /> : items.length === 0 && !error ? <EmptyState title="Nenhuma notificação nesta visão" message="Você está em dia no seu escopo." /> : items.map((item) => <button key={item.id} type="button" className={`inbox-item${selectedId === item.id ? " is-active" : ""}${isUnread(item) ? " is-unread" : ""}`} aria-current={selectedId === item.id ? "true" : undefined} onClick={() => setSelectedId(item.id)}>
+            <span className="inbox-unread-dot" aria-hidden="true" />
+            <span className={`inbox-icon tone-${categoryTone(item)}`} aria-hidden="true"><Icon name={item.category === "CRITICAL" ? "attention" : item.category === "ACTIONABLE" ? "arrow-right" : "notifications"} size={14} /></span>
+            <span className="inbox-item-copy"><strong>{item.title}</strong><span>{item.body}</span><time dateTime={item.createdAt}>{categoryLabel(item)} · {formatRelativeTime(item.createdAt)}</time></span>
+          </button>)}
+        </section>
+      </div>
+      <section className="inbox-detail" aria-label="Notificação selecionada">
+        {selected ? <article>
+          <button type="button" className="header-button mobile-only-inline" onClick={() => setSelectedId(null)}><Icon name="arrow-left" size={13} />Voltar</button>
+          <div className="inbox-detail-meta"><span className={`inbox-icon tone-${categoryTone(selected)}`} aria-hidden="true"><Icon name={selected.category === "CRITICAL" ? "attention" : "notifications"} size={14} /></span><span>{categoryLabel(selected)}</span><span>·</span><time dateTime={selected.createdAt}>{formatRelativeTime(selected.createdAt)}</time>{selected.priority !== "NORMAL" && <span className="pill pill-danger"><span>{selected.priority === "URGENT" ? "Urgente" : "Alta"}</span></span>}</div>
+          <h2>{selected.title}</h2>
+          <p>{selected.body}</p>
+          <div className="inbox-detail-actions"><Link href={selected.deepLink} className="button button-primary">Abrir contexto <Icon name="arrow-right" size={15} /></Link></div>
+          <div className="inbox-ack">
+            <NotificationActions item={selected} reason={reasons[selected.id] ?? ""} confirmed={confirmations[selected.id] === true} pending={acknowledgingId === selected.id} blocked={acknowledgingId !== null && acknowledgingId !== selected.id} onReasonChange={(value) => setReasons((current) => ({ ...current, [selected.id]: value }))} onConfirmationChange={(value) => setConfirmations((current) => ({ ...current, [selected.id]: value }))} onAcknowledge={() => void acknowledge(selected)} />
+          </div>
+        </article> : <div className="empty-panel"><span className="empty-panel-icon" aria-hidden="true"><Icon name="inbox" size={26} /></span><h2>Selecione uma notificação</h2><p>Os detalhes e a confirmação aparecem aqui.</p></div>}
+      </section>
+    </div>
+  </>;
 }
