@@ -2,9 +2,11 @@
 
 FROM node:22-bookworm-slim AS base
 
-# The published Node image can lag behind Debian security updates.
+# The published Node image can lag behind Debian security updates (libpcre2,
+# perl-base, ...). Apply every pending upgrade instead of chasing single
+# packages, so the image gate does not fail each time Debian ships a fix.
 RUN apt-get update \
-    && apt-get install --yes --only-upgrade --no-install-recommends libpcre2-8-0 \
+    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS dependencies
@@ -31,7 +33,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json ./
 COPY vendor/fast-glob-3.3.1-cvg.1.tgz ./vendor/
-RUN npm ci --omit=dev && npm cache clean --force
+# Playwright is "devOptional" (an optional peer of next), so --omit=dev keeps
+# it. Next only loads it from its experimental test mode, never at runtime.
+RUN npm ci --omit=dev \
+    && rm -rf node_modules/@playwright node_modules/playwright node_modules/playwright-core \
+      node_modules/.bin/playwright node_modules/.bin/playwright-core \
+    && npm cache clean --force
 
 # Operational image for one-shot and background jobs (migrations, first-admin
 # bootstrap, outbox worker). These are TypeScript entrypoints executed by tsx,

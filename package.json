@@ -25,6 +25,7 @@
     "test:postgres": "vitest run --config vitest.postgres.config.ts",
     "test:e2e": "playwright test",
     "test:accessibility": "playwright test tests/e2e/accessibility.spec.ts",
+    "test:visual:update": "bash scripts/update-visual-baselines.sh",
     "test:e2e:ui": "playwright test --ui",
     "test:perf": "tsx --test scripts/perf-report.test.ts scripts/perf-postgres-report.test.ts scripts/perf-postgres.test.ts scripts/perf-postgres-sse.test.ts scripts/perf-workload.test.ts scripts/perf-snapshot.test.ts scripts/perf-realtime-budget.test.ts",
     "db:migrate": "tsx scripts/migrate.ts",

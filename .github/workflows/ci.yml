@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -35,8 +35,8 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -76,7 +76,7 @@ jobs:
       - run: npm run build
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage/
@@ -84,7 +84,7 @@ jobs:
           retention-days: 14
       - name: Upload coverage layer report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage-report.json
@@ -92,7 +92,7 @@ jobs:
           retention-days: 14
       - name: Upload dependency SBOM
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: sbom-${{ github.run_id }}-${{ github.run_attempt }}
           path: sbom.cdx.json
@@ -100,7 +100,7 @@ jobs:
           retention-days: 14
       - name: Upload mutation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mutation-${{ github.run_id }}-${{ github.run_attempt }}
           path: mutation-report.json
@@ -109,7 +109,7 @@ jobs:
 
   perf-postgres:
     name: Real HTTP/PostgreSQL/SSE benchmark
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     services:
       postgres:
@@ -131,8 +131,8 @@ jobs:
       PERF_POSTGRES_REPORT: logs/perf-postgres.json
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22.x"
           cache: npm
@@ -146,7 +146,7 @@ jobs:
         run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres.log
       - name: Upload PostgreSQL benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: perf-postgres-${{ github.run_id }}-${{ github.run_attempt }}
           path: logs/
@@ -156,35 +156,35 @@ jobs:
   dependency-review:
     name: Dependency review
     if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
       contents: read
     steps:
       - name: Review dependency changes
-        uses: actions/dependency-review-action@v4
+        uses: actions/dependency-review-action@v5
         with:
           fail-on-severity: high
 
   sast:
     name: CodeQL SAST
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: javascript-typescript
           build-mode: none
       - name: Analyze with CodeQL
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
 
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     container: mcr.microsoft.com/playwright:v1.55.1-noble@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c
     timeout-minutes: 20
     needs: verify
@@ -193,8 +193,8 @@ jobs:
       matrix:
         node-version: ["22.x"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
@@ -204,7 +204,7 @@ jobs:
         run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts tests/e2e/plane-regressions.spec.ts --retries=0 --fail-on-flaky-tests
       - name: Upload browser E2E artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -216,7 +216,7 @@ jobs:
         run: npm run test:accessibility -- --retries=0 --fail-on-flaky-tests
       - name: Upload accessibility artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -230,7 +230,7 @@ jobs:
 
   browser-postgres:
     name: Browser E2E with disposable PostgreSQL
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     needs: verify
     strategy:
@@ -291,16 +291,16 @@ jobs:
       CRITICAL_POLICY_APPROVED_AT: 2026-09-06T00:00:00.000Z
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Prepare browser gate artifacts
         run: mkdir -p logs
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
       - run: npm ci
       - name: Cache Playwright browsers
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
@@ -488,7 +488,7 @@ jobs:
           exit "$cleanup_status"
       - name: Upload PostgreSQL browser artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: playwright-postgres-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -503,7 +503,7 @@ jobs:
 
   image:
     name: Build and smoke-test application image
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     needs: verify
     env:
@@ -514,8 +514,8 @@ jobs:
       MINIO_API_PORT: "9000"
       MINIO_CONSOLE_PORT: "9001"
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: "22.x"
           cache: npm
