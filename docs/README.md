@@ -36,6 +36,8 @@ Uma decisão documental não transforma uma hipótese operacional em fato. Pergu
 
 O [relatório de 06/10/2026](RELATORIO_AUDITORIA_2026-10-06.md) registra os achados, correções e validações da migração D-029 na branch `feat/plane-experience`. A evidência desta interface complementa os gates e pendências institucionais do programa de produção.
 
+A [auditoria de prontidão de 06/10/2026](RELATORIO_AUDITORIA_PRODUCAO_2026-10-06.md) cobre CI, imagens, deploy em Compose, backup/restore ensaiado, integrações e responsividade, com as correções aplicadas na mesma branch.
+
 ## Snapshot executável anterior — auditoria de 04/10/2026
 
 Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com PostgreSQL 16 descartável: **1.449/1.449 testes unitários** em 126 arquivos e **96/96 testes PostgreSQL** em 17 arquivos. Cobertura agregada de **96,83% lines, 95,48% functions e 89,47% branches**; `coverage:gate` PASS com **22 exceções** declaradas, nenhuma nova. `validate:docs`, OpenAPI (**73 operações em 68 paths**), rastreabilidade (43/43), migrations (**001–014**), `perf:snapshot:gate`, `perf:realtime-budget`, typecheck, lint, build e `npm audit` (0 vulnerabilidades) passaram.
