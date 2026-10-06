@@ -112,7 +112,18 @@ async function applyRealMigrations(connectionString: string): Promise<void> {
   }
 }
 
+// Autovacuum and other server processes also report the database; only client
+// backends are connections opened by the code under test.
+const CLIENT_SESSIONS_SQL = "SELECT pid, application_name, state FROM pg_stat_activity WHERE datname = $1 AND backend_type = 'client backend'";
+
 async function terminateAndDropDatabase(adminPool: Pool, databaseName: string): Promise<void> {
+  // pg-pool resolves end() before the server removes the connection, and the
+  // client keeps re-emitting errors on its pool until the socket closes.
+  // Terminating such a closing backend raised an unhandled 57P01 in a pool
+  // without an error listener (CI run 37522831663). Let ended clients leave
+  // first; only connections still open after the grace period are terminated.
+  const deadline = Date.now() + 2000;
+  while ((await adminPool.query(CLIENT_SESSIONS_SQL, [databaseName])).rows.length > 0 && Date.now() < deadline) await delay(25);
   await adminPool.query(
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
     [databaseName]
@@ -125,7 +136,7 @@ async function waitForBootstrapShutdown(adminPool: Pool, databaseName: string): 
   // Observe the disposable database through the separate administrative one.
   const deadline = Date.now() + 5000;
   while (true) {
-    const sessions = await adminPool.query("SELECT pid, application_name, state FROM pg_stat_activity WHERE datname = $1", [databaseName]);
+    const sessions = await adminPool.query(CLIENT_SESSIONS_SQL, [databaseName]);
     if (sessions.rows.length === 0) return;
     if (Date.now() >= deadline) throw new Error(`Disposable bootstrap did not close its sessions: ${JSON.stringify(sessions.rows)}`);
     await delay(25);

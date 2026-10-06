@@ -37,6 +37,8 @@ humanos de [PRODUCTION_READINESS.md](operations/PRODUCTION_READINESS.md).
 | PR-12 | Baixa | `MIGRATION_DATABASE_URL=""` impedia o fallback para `DATABASE_URL`. | `||` no lugar de `??`. |
 | PR-13 | Baixa (CI) | Actions em Node 20 descontinuadas, CodeQL v3 descontinuado em dez/2026 e `ubuntu-latest` migrando para Ubuntu 26 em 19/10, antes do suporte do Playwright 1.55. | `checkout@v5`, `setup-node@v5`, `upload-artifact@v6`, `cache@v5`, `dependency-review-action@v5`, `codeql-action@v4` e `ubuntu-24.04` fixado; `actionlint` sem erros. |
 | PR-14 | Baixa (teste) | Com PR-03, o teste de navegador “failed exam loading…” falhou 1 vez em 90 (tablet): depois de remover a falha simulada, uma atualização em tempo real recarregava a lista sozinha e o botão “Tentar novamente” sumia antes do clique. A recuperação automática é o comportamento correto; o teste dependia da corrida. | O teste mantém a falha até o clique explícito; 105/105 em 5 repetições nos três viewports, sem instabilidade. |
+| PR-15 | Média | Revelado pelo CI remoto [37522831663](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37522831663): a trava de cutover contava toda linha de `pg_stat_activity` do banco, inclusive workers de autovacuum. Um autovacuum durante o `migrate` de uma atualização com cutover fazia o deploy recusar sem motivo (`MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:014…:1`, com autovacuum ativo no log). | Só `backend_type = 'client backend'` conta; teste unitário da consulta e teste de integração com sessão real continuam recusando. |
+| PR-16 | Baixa (teste) | Na mesma execução, um `57P01` não tratado falhou a suíte PostgreSQL: o `pool.end()` do `pg-pool` resolve antes de o socket fechar, e o teardown terminava o backend ainda fechando, cujo erro voltava a um pool sem listener. | O harness espera até 2 s as conexões já encerradas saírem antes de terminar as restantes; 3 execuções seguidas 96/96, com a mesma duração. |
 
 ## Verificado sem defeito
 
@@ -75,7 +77,7 @@ atalho ⌘K do `AppShell` apertava a tecla antes do efeito que registra o
 atalho, só sob carga de CPU (0 falhas em 20 execuções isoladas do arquivo).
 O teste agora espera o efeito do mesmo commit, como o teste
 vizinho já fazia. Nenhum limite, retry ou exceção de cobertura foi relaxado.
-O CI remoto não foi executado: nada foi enviado.
+A primeira execução do CI remoto após o envio revelou PR-15 e PR-16, corrigidos na sequência.
 
 ## Recomendações não aplicadas
 

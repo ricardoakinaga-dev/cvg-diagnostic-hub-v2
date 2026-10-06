@@ -327,6 +327,8 @@ describe("database migration runner", () => {
 
         expect(queries.some(({ text }) => text === "SELECT 0;" || text === cutoverSql)).toBe(false);
         expect(queries.at(-1)?.text).toBe("SELECT pg_advisory_unlock(hashtext($1))");
+        // Autovacuum workers also report the database; only client connections block.
+        expect(queries.find(({ text }) => text.includes("FROM pg_stat_activity"))?.text).toContain("backend_type = 'client backend'");
       });
     });
 
