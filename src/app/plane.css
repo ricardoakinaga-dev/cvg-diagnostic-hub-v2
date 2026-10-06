@@ -481,7 +481,7 @@ h1, h2, h3 { letter-spacing: -0.01em; }
 .work-items-canvas { min-width: 0; flex: 1; }
 .header-search { display: flex; width: 180px; height: 28px; align-items: center; gap: 6px; padding: 0 4px 0 8px; border: 1px solid var(--border-subtle-1); border-radius: 6px; color: var(--txt-placeholder); background: var(--surface-1); transition: width 160ms ease, border-color 120ms ease; }
 .header-search:focus-within { width: 240px; border-color: var(--accent); }
-.header-search input { width: 100%; min-width: 0; border: 0; outline: 0; color: var(--txt-primary); background: none; font: inherit; font-size: 13px; }
+.header-search input { align-self: stretch; width: 100%; min-width: 0; border: 0; outline: 0; color: var(--txt-primary); background: none; font: inherit; font-size: 13px; }
 .header-search .icon-button { width: 20px; height: 20px; }
 .layout-switcher { display: flex; gap: 2px; padding: 2px; border-radius: 6px; background: var(--layer-1-hover); }
 .layout-switcher button { display: grid; width: 28px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 4px; color: var(--txt-tertiary); background: none; }
@@ -1003,6 +1003,9 @@ body { background-image: none; }
   .pill-interactive, .calendar-more, .calendar-entry > button, .layout-switcher button, .segmented button, .property-chip, .group-toggle, .board-card-title, .board-column-collapsed, .spreadsheet th button, .user-menu-trigger, .link-button, .filter-chip button { min-width: 44px; min-height: 44px; }
   .filter-chip { height: auto; min-height: 44px; }
   .calendar-entry { flex-wrap: wrap; }
+  /* Section links keep their 18px line box; the negative margin grows only the hit area. */
+  .home-widget-head a { min-height: 44px; margin-block: -13px; }
+  .admin-check { min-height: 44px; }
 }
 
 /* Next clinical action on rows and cards */

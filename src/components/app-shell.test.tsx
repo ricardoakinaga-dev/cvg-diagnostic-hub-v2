@@ -170,7 +170,7 @@ describe("AppShell", () => {
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = FakeEventSource.instances[0];
     act(() => source.triggerNamed("diagnostic.updated"));
-    expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "cvg:realtime-updated" }));
+    await waitFor(() => expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "cvg:realtime-updated" })));
     act(() => source.triggerError());
 
     const banner = await screen.findByRole("status");
@@ -184,6 +184,31 @@ describe("AppShell", () => {
 
     await waitFor(() => expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "cvg:realtime-resync" })));
     expect(source.close).toHaveBeenCalled();
+  });
+
+  it("coalesces the replay burst of a new stream into one view refresh", async () => {
+    render(<AppShell><div>Conteúdo da página</div></AppShell>);
+    await screen.findByRole("navigation", { name: "Navegação principal" });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+    const refreshes = vi.fn();
+    window.addEventListener("cvg:realtime-updated", refreshes);
+    try {
+      // A fresh connection replays the server window (20 events by default) at once.
+      act(() => {
+        for (let event = 0; event < 20; event += 1) {
+          if (event % 2) source.onmessage?.();
+          else source.triggerNamed("diagnostic.updated");
+        }
+      });
+      expect(refreshes).not.toHaveBeenCalled();
+      await waitFor(() => expect(refreshes).toHaveBeenCalledOnce());
+      // A later, separate event still refreshes.
+      act(() => source.triggerNamed("diagnostic.updated"));
+      await waitFor(() => expect(refreshes).toHaveBeenCalledTimes(2));
+    } finally {
+      window.removeEventListener("cvg:realtime-updated", refreshes);
+    }
   });
 
   it("keeps the native EventSource reconnect path so Last-Event-ID survives a transient error", async () => {
@@ -333,6 +358,10 @@ describe("AppShell", () => {
   it.each([{ ctrlKey: true }, { metaKey: true }])("opens global search with %j and restores trigger focus on Escape", async (modifier) => {
     render(<AppShell><div>Conteúdo</div></AppShell>);
     const trigger = await screen.findByRole("button", { name: "Buscar paciente ou exame (Ctrl+K ou ⌘K)" });
+    // The shortcut listener is a passive effect of the commit that renders the
+    // trigger; under CPU load the trigger can be found before it runs. The
+    // stream is opened by an effect of the same commit.
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     trigger.focus();
     fireEvent.keyDown(window, { key: "k", ...modifier });
     expect(screen.getByRole("dialog", { name: "Atalhos e busca" })).toBeInTheDocument();

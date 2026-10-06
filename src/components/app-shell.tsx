@@ -16,6 +16,11 @@ import styles from "./app-shell.module.css";
 
 type LiveStatus = "connecting" | "connected" | "degraded";
 const REALTIME_FALLBACK_INTERVAL_MS = 30_000;
+// Every page mounts its own shell, so each navigation opens a new stream and
+// receives the server replay window (REALTIME_REPLAY_WINDOW, 20 by default) in
+// one burst. Listeners refetch their whole view per event, so a burst is
+// coalesced into a single refresh instead of up to 20.
+const REALTIME_COALESCE_MS = 150;
 const SIDEBAR_STORAGE_KEY = "cvg.sidebar.collapsed";
 const SECTORS_STORAGE_KEY = "cvg.sidebar.sectors";
 const roleLabels: Record<string, string> = {
@@ -164,7 +169,15 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
     if (!user || requiresPasswordChange) return;
     let source: EventSource | undefined;
     let fallbackTimer: ReturnType<typeof setInterval> | undefined;
+    let updateTimer: ReturnType<typeof setTimeout> | undefined;
     let stopped = false;
+    const dispatchUpdate = () => {
+      if (updateTimer !== undefined) return;
+      updateTimer = setTimeout(() => {
+        updateTimer = undefined;
+        window.dispatchEvent(new Event("cvg:realtime-updated"));
+      }, REALTIME_COALESCE_MS);
+    };
     const stopFallback = () => {
       if (fallbackTimer === undefined) return;
       clearInterval(fallbackTimer);
@@ -184,7 +197,6 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
       // a cursor reset when the transport recovers. A manual reconciliation
       // still replaces the source deliberately and refetches durable state.
       nextSource.onopen = () => { stopFallback(); setLive("connected"); };
-      const dispatchUpdate = () => window.dispatchEvent(new Event("cvg:realtime-updated"));
       nextSource.onmessage = dispatchUpdate;
       nextSource.addEventListener("diagnostic.updated", dispatchUpdate);
       nextSource.addEventListener("resync_required", () => window.dispatchEvent(new Event("cvg:realtime-resync")));
@@ -197,7 +209,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
       };
     };
     connect();
-    return () => { stopped = true; source?.close(); stopFallback(); };
+    return () => { stopped = true; source?.close(); stopFallback(); clearTimeout(updateTimer); };
   }, [reconnectToken, requiresPasswordChange, user]);
 
   function reconcile() {

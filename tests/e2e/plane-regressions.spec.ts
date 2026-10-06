@@ -46,11 +46,20 @@ test("a failed older move preserves the newer reconciled examination state", asy
 });
 
 test("failed exam loading never claims that the clinical workload is clear", async ({ page }) => {
-  await page.route("**/api/v1/diagnostic-requests?*", (route) => route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "UNAVAILABLE", message: "Falha sintética" } }) }));
+  // Realtime refreshes also reload the list and would recover on their own once
+  // the failure stops. Keep failing until the explicit retry so the recovery
+  // under test is the button's, not a background refresh racing the click.
+  await page.route("**/api/v1/diagnostic-requests?*", async (route) => {
+    const retried = await page.evaluate(() => (window as Window & { __cvgRetried?: boolean }).__cvgRetried === true).catch(() => false);
+    if (retried) return route.continue();
+    return route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ error: { code: "UNAVAILABLE", message: "Falha sintética" } }) });
+  });
   await signInAs(page, "vet@cvg.local");
   await expect(page.getByRole("heading", { name: "Não foi possível carregar os exames" })).toBeVisible();
   await expect(page.getByText("Nenhum exame exige atenção imediata.")).toHaveCount(0);
-  await page.unroute("**/api/v1/diagnostic-requests?*");
+  await page.evaluate(() => document.addEventListener("click", (event) => {
+    if ((event.target as Element | null)?.closest("button")?.textContent?.trim() === "Tentar novamente") (window as Window & { __cvgRetried?: boolean }).__cvgRetried = true;
+  }, true));
   await page.getByRole("button", { name: "Tentar novamente" }).click();
   await expect(page.getByRole("navigation", { name: "Atalhos" })).toBeVisible();
 });
