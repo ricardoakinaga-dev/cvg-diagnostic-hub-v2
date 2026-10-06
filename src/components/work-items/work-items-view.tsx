@@ -158,8 +158,11 @@ export function WorkItemsView() {
     return () => window.clearTimeout(timer);
   }, [consumedLink, items, linkedItem, loading]);
 
+  // Only an in-flight command blocks the list. Background refreshes run on
+  // every realtime event; disabling actions during them silently dropped
+  // clicks, and a stale version is still rejected by the server.
   const move = useCallback(async (item: WorkItem, target: ItemState) => {
-    if (busyId || refreshing) return;
+    if (busyId) return;
     const action = workflowActionForTransition(item, target);
     if (!action || !canUseWorkflowAction(role, action, item)) { notify({ tone: "error", title: "Mudança não permitida", message: "Use a próxima ação disponível no fluxo deste exame." }); return; }
     if (!DIRECT_ACTIONS.includes(action)) { setPeek({ id: item.id, action }); return; }
@@ -176,12 +179,12 @@ export function WorkItemsView() {
     } finally {
       setBusyId(undefined);
     }
-  }, [busyId, notify, patch, refreshing, reload, role]);
+  }, [busyId, notify, patch, reload, role]);
 
   const onMove = useCallback((item: WorkItem, target: ItemState) => { void move(item, target); }, [move]);
 
   const runAction = useCallback(async (item: WorkItem, action: WorkflowActionKind) => {
-    if (busyId || refreshing) return;
+    if (busyId) return;
     if (!DIRECT_ACTIONS.includes(action)) { setPeek({ id: item.id, action }); return; }
     setBusyId(item.id);
     try {
@@ -194,7 +197,7 @@ export function WorkItemsView() {
     } finally {
       setBusyId(undefined);
     }
-  }, [busyId, notify, refreshing, reload]);
+  }, [busyId, notify, reload]);
   const onAction = useCallback((item: WorkItem, action: WorkflowActionKind) => { void runAction(item, action); }, [runAction]);
   const onPeek = useCallback((item: WorkItem) => setPeek((current) => current?.id === item.id && !current.action ? undefined : { id: item.id }), []);
 
@@ -216,7 +219,7 @@ export function WorkItemsView() {
 
   // Inside a sector the sector pill is redundant, as in a Plane project.
   const effectiveDisplay = dept ? { ...display, properties: display.properties.filter((property) => property !== "department") } : display;
-  const layoutProps = { groups: display.layout === "board" ? boardGroups : listGroups, display: effectiveDisplay, role, peekId: peek?.id, busy: Boolean(busyId) || refreshing, canCreate, onPeek, onMove, onAction, onCreate: () => setShowCreate(true), quickAdd: { departments: role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : [], onCreated: () => { void reload(); } } };
+  const layoutProps = { groups: display.layout === "board" ? boardGroups : listGroups, display: effectiveDisplay, role, peekId: peek?.id, busy: Boolean(busyId), canCreate, onPeek, onMove, onAction, onCreate: () => setShowCreate(true), quickAdd: { departments: role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : [], onCreated: () => { void reload(); } } };
 
   return <div className={`work-items${peeked ? " has-peek" : ""}`}>
     <PageHeader crumbs={crumbs} count={loading ? undefined : visible.length}>

@@ -18,8 +18,11 @@ type LiveStatus = "connecting" | "connected" | "degraded";
 const REALTIME_FALLBACK_INTERVAL_MS = 30_000;
 // Every page mounts its own shell, so each navigation opens a new stream and
 // receives the server replay window (REALTIME_REPLAY_WINDOW, 20 by default) in
-// one burst. Listeners refetch their whole view per event, so a burst is
-// coalesced into a single refresh instead of up to 20.
+// one burst. Listeners refetch their whole view per event. The first event
+// refreshes at once, as before; later events inside the window collapse into
+// one trailing refresh, so a burst costs two refreshes instead of up to 20.
+// A trailing-only delay moved every refresh 150 ms later, onto the moment a
+// user acts after their own command, when list actions are briefly disabled.
 const REALTIME_COALESCE_MS = 150;
 const SIDEBAR_STORAGE_KEY = "cvg.sidebar.collapsed";
 const SECTORS_STORAGE_KEY = "cvg.sidebar.sectors";
@@ -170,13 +173,18 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
     let source: EventSource | undefined;
     let fallbackTimer: ReturnType<typeof setInterval> | undefined;
     let updateTimer: ReturnType<typeof setTimeout> | undefined;
+    let updatePending = false;
     let stopped = false;
+    const closeUpdateWindow = () => {
+      if (!updatePending) { updateTimer = undefined; return; }
+      updatePending = false;
+      window.dispatchEvent(new Event("cvg:realtime-updated"));
+      updateTimer = setTimeout(closeUpdateWindow, REALTIME_COALESCE_MS);
+    };
     const dispatchUpdate = () => {
-      if (updateTimer !== undefined) return;
-      updateTimer = setTimeout(() => {
-        updateTimer = undefined;
-        window.dispatchEvent(new Event("cvg:realtime-updated"));
-      }, REALTIME_COALESCE_MS);
+      if (updateTimer !== undefined) { updatePending = true; return; }
+      window.dispatchEvent(new Event("cvg:realtime-updated"));
+      updateTimer = setTimeout(closeUpdateWindow, REALTIME_COALESCE_MS);
     };
     const stopFallback = () => {
       if (fallbackTimer === undefined) return;

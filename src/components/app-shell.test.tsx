@@ -186,7 +186,7 @@ describe("AppShell", () => {
     expect(source.close).toHaveBeenCalled();
   });
 
-  it("coalesces the replay burst of a new stream into one view refresh", async () => {
+  it("refreshes at once and coalesces the rest of a replay burst into one trailing refresh", async () => {
     render(<AppShell><div>Conteúdo da página</div></AppShell>);
     await screen.findByRole("navigation", { name: "Navegação principal" });
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
@@ -201,11 +201,14 @@ describe("AppShell", () => {
           else source.triggerNamed("diagnostic.updated");
         }
       });
-      expect(refreshes).not.toHaveBeenCalled();
-      await waitFor(() => expect(refreshes).toHaveBeenCalledOnce());
-      // A later, separate event still refreshes.
-      act(() => source.triggerNamed("diagnostic.updated"));
+      // The first event refreshes immediately, with no added latency.
+      expect(refreshes).toHaveBeenCalledOnce();
       await waitFor(() => expect(refreshes).toHaveBeenCalledTimes(2));
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(refreshes).toHaveBeenCalledTimes(2);
+      // A later, separate event refreshes at once again.
+      act(() => source.triggerNamed("diagnostic.updated"));
+      expect(refreshes).toHaveBeenCalledTimes(3);
     } finally {
       window.removeEventListener("cvg:realtime-updated", refreshes);
     }

@@ -359,6 +359,18 @@ describe("WorkItemsView", () => {
     expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" }) !== null).toBe(role === "MANAGER");
   });
 
+  it("keeps row actions available while a background refresh is loading", async () => {
+    await renderView();
+    // Another user's activity triggers a refresh that is still loading.
+    vi.mocked(apiFetchWithMeta).mockImplementation(() => new Promise(() => {}) as never);
+    act(() => window.dispatchEvent(new Event("cvg:realtime-updated")));
+    await waitFor(() => expect(document.querySelector(".work-items-canvas")).toHaveAttribute("aria-busy", "true"));
+    const button = screen.getByRole("button", { name: "Iniciar processamento" });
+    expect(button).toBeEnabled();
+    fireEvent.click(button);
+    await waitFor(() => expect(vi.mocked(apiFetch).mock.calls.some(([path]) => path.endsWith("/start-processing"))).toBe(true));
+  });
+
   it("runs the direct next action, blocks duplicate submissions and expires its confirmation", async () => {
     await renderView();
     let resolve!: (value: never) => void;
