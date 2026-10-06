@@ -76,6 +76,12 @@ export interface PostgresRelationalClinicalCoreOptions {
   readonly relationalReadiness?: PostgresRelationalClinicalCoreReadiness;
 }
 
+/** pg-pool never reaches a NaN ceiling, so a malformed DB_POOL_MAX must fall back instead of becoming unbounded. */
+export function databasePoolMax(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 10;
+}
+
 export class PostgresStore implements StateStore {
   private readonly pool: Pool;
   private readonly connectionString: string;
@@ -125,7 +131,7 @@ export class PostgresStore implements StateStore {
   }
 
   private static async open(connectionString: string, fallbackState?: StoreState, initialization?: PostgresInitializationOptions, relationalClinicalCore?: RelationalClinicalCoreRuntime, relationalReadiness: PostgresRelationalClinicalCoreReadiness = "STRICT"): Promise<PostgresStore> {
-    const pool = new Pool({ connectionString, max: Number(process.env.DB_POOL_MAX ?? 10), idleTimeoutMillis: 30_000 });
+    const pool = new Pool({ connectionString, max: databasePoolMax(process.env.DB_POOL_MAX), idleTimeoutMillis: 30_000 });
     if (typeof pool.on === "function") {
       pool.on("error", () => {
         // Idle-client failures are surfaced by the next readiness/transaction call;

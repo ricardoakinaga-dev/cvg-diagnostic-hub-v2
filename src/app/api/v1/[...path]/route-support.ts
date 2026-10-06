@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createSuccessResponse, toApiErrorResponse } from "../../../../server/http/envelope";
@@ -88,7 +88,7 @@ export function clientIdentityFor(request: Request): ClientRateLimitIdentity {
     return { signal: "proxy_invalid" };
   const configuredSecret = process.env.TRUST_PROXY_SHARED_SECRET?.trim();
   const presentedSecret = request.headers.get("x-cvg-proxy-secret")?.trim();
-  if (!configuredSecret || !presentedSecret || presentedSecret !== configuredSecret)
+  if (!configuredSecret || !presentedSecret || !sameSecret(presentedSecret, configuredSecret))
     return { signal: "proxy_untrusted" };
   const forwarded = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
   const realIp = request.headers.get("x-real-ip")?.trim();
@@ -96,6 +96,11 @@ export function clientIdentityFor(request: Request): ClientRateLimitIdentity {
   if (!address || address.length > 200 || /[\r\n]/.test(address))
     return { signal: "client_address_missing" };
   return { key: createHash("sha256").update(address).digest("hex").slice(0, 32) };
+}
+/** Constant-time comparison; digests equalize lengths so the length does not leak either. */
+function sameSecret(presented: string, configured: string): boolean {
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(presented), digest(configured));
 }
 export function signalUnidentifiedClient(identity: ClientRateLimitIdentity): void {
   if (!identity.signal)

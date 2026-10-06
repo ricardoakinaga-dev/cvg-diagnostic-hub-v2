@@ -60,7 +60,8 @@ describe("file store environment boundary", () => {
       endpoint: "https://storage.example.test",
       region,
       forcePathStyle,
-      credentials: { accessKeyId: "test-access", secretAccessKey: "test-secret" }
+      credentials: { accessKeyId: "test-access", secretAccessKey: "test-secret" },
+      requestHandler: { connectionTimeout: 5_000, requestTimeout: 30_000, throwOnRequestTimeout: true }
     }]);
     expect(transport.send).toHaveBeenCalledTimes(2);
     expect(transport.send.mock.calls[0][0]).toMatchObject({ input: { Bucket: "private-reports" } });

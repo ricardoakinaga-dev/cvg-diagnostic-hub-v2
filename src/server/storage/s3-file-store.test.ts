@@ -46,3 +46,23 @@ describe("S3-compatible private file store", () => {
     expect(client.send).toHaveBeenCalledWith(expect.objectContaining({ input: expect.objectContaining({ Key: "tenant/delete-alias.bin" }) }));
   });
 });
+
+describe("S3-compatible store timeouts", () => {
+  it("fails readiness instead of hanging when the endpoint accepts but never answers", async () => {
+    const { createServer } = await import("node:net");
+    const sockets: import("node:net").Socket[] = [];
+    const server = createServer((socket) => { sockets.push(socket); });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as import("node:net").AddressInfo;
+    try {
+      const store = new S3FileStore({ endpoint: `http://127.0.0.1:${port}`, region: "us-east-1", bucket: "attachments", accessKeyId: "access", secretAccessKey: "secret", forcePathStyle: true, requestTimeoutMs: 200, connectionTimeoutMs: 200 });
+      const startedAt = Date.now();
+      await expect(store.healthcheck()).rejects.toThrow();
+      // Default SDK retries (3 attempts) stay bounded by the per-attempt timeout.
+      expect(Date.now() - startedAt).toBeLessThan(5_000);
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  });
+});

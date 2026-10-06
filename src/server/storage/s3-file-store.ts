@@ -9,7 +9,14 @@ export interface S3FileStoreConfig {
   accessKeyId: string;
   secretAccessKey: string;
   forcePathStyle: boolean;
+  /** TCP connect ceiling. The SDK default waits forever. */
+  connectionTimeoutMs?: number;
+  /** Socket idle ceiling per request; a black-holed endpoint otherwise pins uploads, downloads and readiness. */
+  requestTimeoutMs?: number;
 }
+
+const DEFAULT_CONNECTION_TIMEOUT_MS = 5_000;
+const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
 export class S3FileStore implements FileStore {
   private readonly client: S3Client;
@@ -19,7 +26,13 @@ export class S3FileStore implements FileStore {
       endpoint: config.endpoint,
       region: config.region,
       forcePathStyle: config.forcePathStyle,
-      credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey }
+      credentials: { accessKeyId: config.accessKeyId, secretAccessKey: config.secretAccessKey },
+      requestHandler: {
+        connectionTimeout: config.connectionTimeoutMs ?? DEFAULT_CONNECTION_TIMEOUT_MS,
+        requestTimeout: config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+        // Without this the handler only logs a warning when requestTimeout elapses and keeps waiting.
+        throwOnRequestTimeout: true
+      }
     });
   }
 

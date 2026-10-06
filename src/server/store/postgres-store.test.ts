@@ -49,7 +49,7 @@ vi.mock("pg", () => ({
   }
 }));
 
-import { PostgresStore } from "./postgres-store";
+import { databasePoolMax, PostgresStore } from "./postgres-store";
 
 function row(state: ReturnType<typeof createDemoState>, version: string | number = "1") {
   return { rowCount: 1, rows: [{ state, version }] };
@@ -647,5 +647,13 @@ describe("PostgresStore relational clinical core seam (static/mocked)", () => {
     expect(client.query).not.toHaveBeenCalledWith(expect.stringContaining("UPDATE cvg_runtime_state"), expect.anything());
     expect(store.getState()).toEqual(initial);
     await store.close();
+  });
+});
+
+describe("databasePoolMax", () => {
+  it("keeps a valid ceiling and never yields an unbounded pool", () => {
+    expect(databasePoolMax("4")).toBe(4);
+    expect(databasePoolMax(undefined)).toBe(10);
+    for (const malformed of ["", "abc", "0", "-3", "2.5"]) expect(databasePoolMax(malformed)).toBe(10);
   });
 });
