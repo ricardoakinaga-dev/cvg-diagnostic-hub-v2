@@ -5,8 +5,40 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    groups:
+      # Matched first: the coverage provider must share vitest's exact version.
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+      # main requires an up-to-date branch, so every separate PR costs a full
+      # CI cycle; compatible updates arrive together once a week.
+      npm-minor-and-patch:
+        update-types: ["minor", "patch"]
+    ignore:
+      # Runtime is Node 22 (engines, .nvmrc, Dockerfile, CI). Newer types would
+      # accept APIs that production does not have.
+      - dependency-name: "@types/node"
+        versions: [">=23"]
+      # Must move with the CI browser image digest and the visual baselines
+      # (scripts/update-visual-baselines.sh); bump the three together by hand.
+      - dependency-name: "@playwright/test"
+      # Majors that need a planned migration; evidence from 2026-10-07.
+      # typescript 7 is outside typescript-eslint's peer range (<6.1.0).
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # vitest 5 removed describe.sequential; four test files stop loading.
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/*"
+        update-types: ["version-update:semver-major"]
+      # jsdom 30 changes the accessible names four UI tests rely on.
+      - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
+
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns: ["*"]
