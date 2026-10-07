@@ -76,7 +76,7 @@ jobs:
       - run: npm run build
       - name: Upload coverage artifact
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage/
@@ -84,7 +84,7 @@ jobs:
           retention-days: 14
       - name: Upload coverage layer report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: coverage-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: coverage-report.json
@@ -92,7 +92,7 @@ jobs:
           retention-days: 14
       - name: Upload dependency SBOM
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ github.run_id }}-${{ github.run_attempt }}
           path: sbom.cdx.json
@@ -100,7 +100,7 @@ jobs:
           retention-days: 14
       - name: Upload mutation report
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: mutation-${{ github.run_id }}-${{ github.run_attempt }}
           path: mutation-report.json
@@ -146,7 +146,7 @@ jobs:
         run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres.log
       - name: Upload PostgreSQL benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: perf-postgres-${{ github.run_id }}-${{ github.run_attempt }}
           path: logs/
@@ -204,7 +204,7 @@ jobs:
         run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts tests/e2e/plane-regressions.spec.ts --retries=0 --fail-on-flaky-tests
       - name: Upload browser E2E artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -216,7 +216,7 @@ jobs:
         run: npm run test:accessibility -- --retries=0 --fail-on-flaky-tests
       - name: Upload accessibility artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
@@ -488,7 +488,7 @@ jobs:
           exit "$cleanup_status"
       - name: Upload PostgreSQL browser artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-postgres-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
