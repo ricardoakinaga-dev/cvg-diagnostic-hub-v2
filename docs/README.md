@@ -32,6 +32,10 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
+## Auditoria de dependências (07/10/2026)
+
+A [revisão dos PRs de dependências #15 e #23](RELATORIO_AUDITORIA_DEPENDENCIAS_2026-10-07.md) confere os merges, o CI remoto, a revalidação local sob Node 22, as regras do Dependabot e os limites das migrações adiadas.
+
 ## Auditoria corrente — experiência Plane (06/10/2026)
 
 O [relatório de 06/10/2026](RELATORIO_AUDITORIA_2026-10-06.md) registra os achados, correções e validações da migração D-029 na branch `feat/plane-experience`. A evidência desta interface complementa os gates e pendências institucionais do programa de produção.
