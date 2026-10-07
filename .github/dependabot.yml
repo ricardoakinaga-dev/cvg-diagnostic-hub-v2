@@ -9,6 +9,9 @@ updates:
       # Matched first: the coverage provider must share vitest's exact version.
       vitest:
         patterns: ["vitest", "@vitest/*"]
+      # react-dom requires the same react version (#18 bumped react-dom alone).
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
       # main requires an up-to-date branch, so every separate PR costs a full
       # CI cycle; compatible updates arrive together once a week.
       npm-minor-and-patch:
