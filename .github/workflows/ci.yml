@@ -300,7 +300,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Cache Playwright browsers
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ matrix.node-version }}-${{ hashFiles('package-lock.json') }}
