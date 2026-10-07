@@ -60,9 +60,9 @@
     "validate": "npm run typecheck && npm run lint && npm run test:config && npm run test:coverage && npm run validate:docs && npm run validate:openapi && npm run validate:traceability && npm run validate:migrations"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1114.0",
+    "@aws-sdk/client-s3": "^3.1146.0",
     "next": "16.3.8",
-    "pg": "^8.16.3",
+    "pg": "^8.23.1",
     "react": "19.2.0",
     "react-dom": "19.2.0",
     "zod": "^3.25.76"
@@ -70,9 +70,9 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@playwright/test": "1.55.1",
-    "@redocly/cli": "2.47.0",
+    "@redocly/cli": "2.57.0",
     "@testing-library/jest-dom": "^6.8.0",
-    "@testing-library/react": "^16.3.0",
+    "@testing-library/react": "^16.3.3",
     "@types/node": "^22.15.0",
     "@types/pg": "^8.15.5",
     "@types/react": "^19.1.0",
@@ -85,7 +85,7 @@
     "eslint-config-next": "16.3.0",
     "fast-glob": "file:vendor/fast-glob-3.3.1-cvg.1.tgz",
     "jsdom": "^26.1.0",
-    "tsx": "^4.19.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.8.3",
     "vitest": "4.1.11"
   },
