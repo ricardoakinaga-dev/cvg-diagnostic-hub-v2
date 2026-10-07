@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Patient, SessionResponse } from "@cvg/contracts";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { PatientDialog } from "./patient-dialog";
 import { Icon } from "./ui-icons";
-import { ActionButton } from "@cvg/ui";
-
-interface Patient { id: string; displayName: string; species: string; breed: string; sex: string; externalId: string; ownerLabel: string; active: boolean }
+import { PageHeader } from "./page-header";
+import { Avatar } from "./work-items/icons";
 
 export function PatientList() {
   const [query, setQuery] = useState("");
@@ -38,13 +39,28 @@ export function PatientList() {
     return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
   useEffect(() => {
-    void apiFetch<{ user: { role: string } }>("/session/me")
+    void apiFetch<SessionResponse>("/session/me")
       .then(({ user }) => setCanCreate(user.role === "VETERINARIAN" || user.role === "INPATIENT_TEAM"))
       .catch(() => setCanCreate(false));
   }, []);
 
   return <>
-    <div className="patient-page"><div className="page-heading"><div><p className="eyebrow">Contexto de cuidado</p><h1>Meus <em>pacientes.</em></h1><p className="page-lede">Identidade mínima, atendimento e próximos passos dentro do seu escopo.</p></div>{canCreate && <button type="button" className="button button-primary" onClick={() => setShowCreate(true)}><Icon name="add" size={16} /> Novo paciente</button>}</div><div className="search-bar"><span aria-hidden="true"><Icon name="search" size={19} /></span><input aria-label="Buscar pacientes" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar nome, identificador ou tutor…" /></div>{error && <div className="error-state" role="alert"><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Tentando novamente…" : "Tentar novamente"}</ActionButton></div>}{loading ? <div className="panel resource-loading" role="status">Carregando pacientes…</div> : patients.length === 0 ? <div className="panel empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum paciente atribuído</strong><p>Refine a busca ou confirme o escopo de atendimento.</p></div> : <section className="patient-grid" aria-label="Pacientes autorizados">{patients.map((patient) => <Link href={`/patients/${patient.id}/diagnostics`} className="panel patient-card" key={patient.id}><span className="patient-avatar">{patient.displayName.slice(0, 1)}</span><span className="patient-card-copy"><strong>{patient.displayName}</strong><small>{patient.species} · {patient.sex} · {patient.breed}</small><small>{patient.externalId} · tutor {patient.ownerLabel}</small></span><span className="row-arrow" aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link>)}</section>}
+    <PageHeader crumbs={[{ label: "Pacientes", icon: "paw" }]} count={loading ? undefined : patients.length}>
+      <div className="header-search"><Icon name="search" size={13} /><input aria-label="Buscar pacientes" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Nome, identificador ou tutor" /></div>
+      {canCreate && <button type="button" className="button-primary-sm" onClick={() => setShowCreate(true)}><Icon name="add" size={14} />Novo paciente</button>}
+    </PageHeader>
+    <div className="patient-page">
+      {error && <div className="page-body-tight"><ErrorState title="Não foi possível carregar os pacientes" message={error} onRetry={load} retrying={loading} /></div>}
+      {loading ? <LoadingState className="resource-loading" label="Carregando pacientes" /> : patients.length === 0 ? <EmptyState title="Nenhum paciente atribuído" message="Refine a busca ou confirme o escopo de atendimento." /> : <section className="patient-rows" aria-label="Pacientes autorizados">
+        <div className="patient-rows-head" aria-hidden="true"><span>Paciente</span><span>Espécie e raça</span><span>Identificador</span><span>Tutor</span></div>
+        {patients.map((patient) => <Link href={`/patients/${patient.id}/diagnostics`} className="patient-row" key={patient.id}>
+          <span className="patient-row-name"><Avatar name={patient.displayName} size="sm" /><strong>{patient.displayName}</strong><small>{patient.sex}</small></span>
+          <span className="patient-row-cell"><Icon name="paw" size={13} />{patient.species} · {patient.breed}</span>
+          <span className="patient-row-cell mono">{patient.externalId}</span>
+          <span className="patient-row-cell">{patient.ownerLabel}</span>
+          <Icon name="chevron-right" size={15} className="patient-row-arrow" />
+        </Link>)}
+      </section>}
     </div>
     {showCreate && <PatientDialog onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); void load(); }} />}
   </>;

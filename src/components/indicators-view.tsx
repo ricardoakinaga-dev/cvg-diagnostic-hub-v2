@@ -1,52 +1,19 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { DashboardView, IndicatorQueueItem, SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime } from "./api-client";
+import { EmptyState, ErrorState, LoadingState, PartialNotice } from "./feedback-states";
 import { priorityLabel, statusLabel } from "./status-badge";
 import { Icon } from "./ui-icons";
 
-type IndicatorKey = "overdue" | "recollections" | "newResults" | "critical" | "totalActive";
-
-interface DashboardIndicator {
-  key: IndicatorKey;
-  label: string;
-  count: number;
-  denominator: number;
-  denominatorDefinition: string;
-  definition: string;
-  nextAction: string;
-}
-
-interface DashboardWindow {
-  kind: "CURRENT_STATE";
-  label: string;
-  timezone: string;
-  asOf: string;
-}
-
-interface Stats {
-  overdue: number;
-  recollections: number;
-  newResults: number;
-  critical: number;
-  totalActive: number;
-  updatedAt: string;
-  window: DashboardWindow;
-  indicators: DashboardIndicator[];
-}
-
-interface QueueItem {
-  id: string;
-  status: string;
-  priority: string;
-  overdue: boolean;
-  nextAction: string;
-}
+type IndicatorKey = DashboardView["indicators"][number]["key"];
+type Stats = DashboardView;
 
 interface IndicatorData {
   stats: Stats;
-  queue: QueueItem[];
+  queue: IndicatorQueueItem[];
   department: string;
 }
 
@@ -74,7 +41,7 @@ export function IndicatorsView() {
     let sessionFailed = false;
     let department = dataRef.current?.department ?? "não identificado";
     try {
-      const session = await apiFetch<{ user: { departmentCode: string } }>("/session/me");
+      const session = await apiFetch<SessionResponse>("/session/me");
       department = session.user.departmentCode;
     } catch {
       sessionFailed = true;
@@ -82,7 +49,7 @@ export function IndicatorsView() {
     if (loadVersion.current !== version) return;
     const [stats, queue] = await Promise.allSettled([
       apiFetch<Stats>("/dashboard"),
-      apiFetch<QueueItem[]>(`/queues/${encodeURIComponent(department)}/items?limit=100`),
+      apiFetch<IndicatorQueueItem[]>(`/queues/${encodeURIComponent(department)}/items?limit=100`),
     ]);
     if (loadVersion.current !== version) return;
     if (stats.status === "fulfilled") {
@@ -98,8 +65,8 @@ export function IndicatorsView() {
 
   useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
 
-  if (!data && loading) return <div className="loading-state" role="status">Carregando indicadores…</div>;
-  if (!data) return <div className="error-state" role="alert"><strong>Indicadores indisponíveis</strong><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Tentando novamente…" : "Tentar novamente"}</ActionButton></div>;
+  if (!data && loading) return <LoadingState label="Carregando indicadores" />;
+  if (!data) return <ErrorState page title="Indicadores indisponíveis" message={error} onRetry={load} retrying={loading} />;
 
   return (
     <div className="indicators-page">
@@ -107,11 +74,11 @@ export function IndicatorsView() {
         <div><p className="eyebrow">Operação · visão de capacidade</p><h1>Indicadores <em>operacionais.</em></h1><p className="page-lede">Leitura do escopo autorizado, sem transformar o Hub em um painel de BI.</p></div>
         <ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> {loading ? "Atualizando…" : "Atualizar"}</ActionButton>
       </div>
-      {error && <div className="error-state" role="status"><span>{error}</span><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}>{loading ? "Reconciliando…" : "Reconciliar"}</ActionButton></div>}
+      {error && <PartialNotice message={error} onRetry={load} retrying={loading} retryLabel="Reconciliar" />}
       <section className="indicator-meta" aria-label="Contexto dos indicadores"><span>Setor: {departmentLabels[data.department] ?? data.department}</span><span>Janela: {data.stats.window.label}</span><span>Fuso: {data.stats.window.timezone}</span><span>Atualizado {formatRelativeTime(data.stats.window.asOf)}</span></section>
       <section className="metric-grid indicator-grid" aria-label="Indicadores operacionais">{cards.map((card) => { const indicator = data.stats.indicators.find((entry) => entry.key === card.key); return <article className={`metric-card metric-${card.tone}`} key={card.key}><div className="metric-top"><span>{card.label}</span></div><strong>{data.stats[card.key]}</strong><small>{card.caption}</small>{indicator && <small>Denominador: {indicator.denominator}</small>}</article>; })}</section>
-      <div className="indicator-columns">
-        <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Fila autorizada</p><h2>{data.queue.length} itens no setor</h2></div><span className="timeline-count">agora</span></div>{data.queue.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum item na fila deste setor</strong><p>O estado vazio é real para o escopo atual; nenhuma métrica foi estimada.</p></div> : <ul className="indicator-list">{data.queue.slice(0, 10).map((item) => <li key={item.id}><span><strong>{statusLabel(item.status as Parameters<typeof statusLabel>[0])}</strong><small>{priorityLabel(item.priority as Parameters<typeof priorityLabel>[0])}{item.overdue ? " · atrasado" : ""}</small></span><span className={item.overdue ? "text-danger" : "text-success"}>{item.overdue ? "Fora do SLA" : "No prazo"}</span></li>)}</ul>}</section>
+       <div className="indicator-columns">
+        <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Fila autorizada</p><h2>{data.queue.length} itens no setor</h2></div><span className="timeline-count">agora</span></div>{data.queue.length === 0 ? <EmptyState announce={!error && !loading} title="Nenhum item na fila deste setor" message="O estado vazio é real para o escopo atual; nenhuma métrica foi estimada." /> : <ul className="indicator-list">{data.queue.slice(0, 10).map((item) => <li key={item.id}><span><strong>{statusLabel(item.status)}</strong><small>{priorityLabel(item.priority)}{item.overdue ? " · atrasado" : ""}</small></span><span className={item.overdue ? "text-danger" : "text-success"}>{item.overdue ? "Fora do SLA" : "No prazo"}</span></li>)}</ul>}</section>
         <section className="panel"><div className="panel-heading"><div><p className="eyebrow">Definições</p><h2>Leitura honesta</h2></div></div><div className="indicator-copy"><ul className="indicator-definition-list">{data.stats.indicators.map((indicator) => <li key={indicator.key}><p><strong>{indicator.label}</strong> {indicator.definition}</p><small>Denominador: {indicator.denominator} ({indicator.denominatorDefinition}). Próxima ação: {indicator.nextAction}</small></li>)}</ul><p className="indicator-muted">Não há distribuição de tempo de resposta disponível neste ambiente.</p></div></section>
       </div>
     </div>

@@ -3,28 +3,32 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_DB: cvg_diagnostics
-      POSTGRES_USER: cvg
-      POSTGRES_PASSWORD: cvg_dev
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB must be set}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER must be set}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
     ports:
-      - "54329:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-54329}:5432"
     volumes:
       - cvg-postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cvg -d cvg_diagnostics"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
       timeout: 5s
       retries: 12
   minio:
-    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    image: cvg-minio-source:7aac2a2
+    pull_policy: build
+    build:
+      context: .
+      dockerfile: deploy/minio/Dockerfile
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: cvg-minio
-      MINIO_ROOT_PASSWORD: cvg-minio-development-only
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?MINIO_ROOT_USER must be set}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?MINIO_ROOT_PASSWORD must be set}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "127.0.0.1:${MINIO_API_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - cvg-minio:/data
 

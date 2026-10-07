@@ -1,9 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { signInAs } from "./support/auth";
+import { signInAs, signOut } from "./support/auth";
 
 async function expectNoAxeViolations(page: Page, name: string): Promise<void> {
   const rules = ["aria-allowed-attr", "aria-required-attr", "aria-valid-attr", "button-name", "document-title", "duplicate-id-aria", "html-has-lang", "heading-order", "label", "landmark-one-main", "link-name", "nested-interactive", "role-img-alt", "tabindex"];
+  // Pages render per request (CSP nonce); wait for the landmark instead of racing navigation.
+  await page.locator("main").first().waitFor({ state: "visible", timeout: 15_000 });
   const results = await new AxeBuilder({ page }).include("main").withRules(rules).setLegacyMode(true).analyze();
   expect(results.violations, `${name}: ${results.violations.map((violation) => `${violation.id}: ${violation.help}`).join("; ")}`).toEqual([]);
 }
@@ -17,11 +19,6 @@ async function readApi<T>(page: Page, path: string): Promise<T> {
   }, path);
   if (!body.ok) throw new Error(`GET ${path} falhou com ${body.status}.`);
   return (body.body as { data: T }).data;
-}
-
-async function signOut(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Sair" }).click();
-  await expect(page).toHaveURL(/\/login/, { timeout: 15000 });
 }
 
 async function confirmDuplicateIfNeeded(page: Page): Promise<void> {
@@ -48,10 +45,10 @@ async function newRequestId(page: Page, previousIds: Set<string>): Promise<strin
 async function createRequest(page: Page, patientId = "patient-thor", encounterId = "encounter-thor"): Promise<string> {
   const previous = await readApi<RequestSummary[]>(page, "/diagnostic-requests?limit=100");
   const previousIds = new Set(previous.map((request) => request.id));
-  await page.getByRole("button", { name: /Nova solicitação/ }).click();
+  await page.getByRole("button", { name: /Nova solicitação/ }).or(page.getByRole("link", { name: /Nova solicitação/ })).click();
   const dialog = page.getByRole("dialog", { name: "Solicitar exames" });
   await expect(dialog).toBeVisible();
-  await dialog.getByLabel("Paciente").selectOption(patientId);
+  await dialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption(patientId);
   await expect(dialog.getByLabel("Atendimento")).toBeEnabled();
   await dialog.getByLabel("Atendimento").selectOption(encounterId);
   await dialog.getByText("Hemograma", { exact: true }).click();
@@ -64,48 +61,42 @@ async function createRequest(page: Page, patientId = "patient-thor", encounterId
 
 async function queueRow(page: Page, requestId: string, serviceName: string) {
   const request = await readApi<{ requestCode: string }>(page, `/diagnostic-requests/${requestId}`);
-  const queueItem = (page.viewportSize()?.width ?? 1440) <= 960
-    ? page.locator(".queue-mobile-list .queue-card")
-    : page.locator("tbody tr");
-  return queueItem.filter({ hasText: serviceName }).filter({ hasText: request.requestCode });
+  // Rows and cards carry their protocol; the visible key is the sector shortcut.
+  return page.locator(`[data-item-row][data-request-code="${request.requestCode}"]`).filter({ hasText: serviceName });
 }
 
 async function createAndReleaseDraft(page: Page, requestId: string, serviceName: string, narrative: string): Promise<string> {
   await page.goto("/queues");
   const row = await queueRow(page, requestId, serviceName);
   await expect(row).toBeVisible({ timeout: 15000 });
-
   if (serviceName === "Hemograma") {
-    await row.getByRole("button", { name: "Receber amostra" }).click();
-    await row.getByLabel("Accession").fill(`ACC-E2E-${Date.now()}`);
-    await row.getByLabel("Tipo de amostra").fill("EDTA");
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(row.getByRole("button", { name: "Iniciar processamento" })).toBeVisible();
-  }
-
-  if (serviceName === "RX de tórax") {
-    await row.getByRole("button", { name: "Iniciar procedimento" }).click();
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(row.getByRole("button", { name: "Marcar realizado" })).toBeVisible();
-  }
-
-  if (serviceName === "Hemograma") {
-    await row.getByRole("button", { name: "Iniciar processamento" }).click();
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await row.getByRole("button", { name: "Receber amostra", exact: true }).click();
+    const peek = page.getByRole("dialog", { name: serviceName, exact: true });
+    await peek.getByLabel("Accession").fill(`ACC-E2E-${Date.now()}`);
+    await peek.getByLabel("Tipo de amostra").fill("EDTA");
+    await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
+    // The Plane peek stays open on the exam and offers the next step itself.
+    await expect(peek.getByRole("button", { name: "Iniciar processamento", exact: true })).toBeVisible();
+    await peek.getByRole("button", { name: "Fechar contexto" }).click();
+    await expect(peek).toBeHidden();
+    await row.getByRole("button", { name: "Iniciar processamento", exact: true }).click();
   } else {
-    await row.getByRole("button", { name: "Marcar realizado" }).click();
-    await row.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await row.getByRole("button", { name: "Iniciar procedimento", exact: true }).click();
+    await row.getByRole("button", { name: "Marcar realizado", exact: true }).click();
   }
-
-  await row.getByRole("button", { name: "Registrar resultado" }).click();
-  await row.getByLabel("Resultado").fill(narrative);
-  await row.getByRole("button", { name: "Confirmar", exact: true }).click();
-  const draftLink = row.getByRole("link", { name: "Abrir draft" });
+  await row.getByRole("button", { name: "Registrar resultado", exact: true }).click();
+  const peek = page.getByRole("dialog", { name: serviceName, exact: true });
+  await peek.getByLabel("Resultado", { exact: true }).fill(narrative);
+  await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
+  const draftLink = peek.getByRole("link", { name: "Abrir draft", exact: true });
   await expect(draftLink).toBeVisible();
-  const draftHref = await draftLink.getAttribute("href");
-  if (!draftHref) throw new Error("O draft não expôs um link de edição.");
+  const href = await draftLink.getAttribute("href");
+  if (!href) throw new Error("O draft não expôs um link de edição.");
   await draftLink.click();
   await expect(page).toHaveURL(/\/results\/result-/);
+  // The URL changes before the per-request page and its result read complete.
+  // Wait for the real draft before running axe or interacting with its controls.
+  await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible({ timeout: 15000 });
   const resultId = page.url().split("/").pop();
   if (!resultId) throw new Error("Não foi possível identificar o resultado draft.");
   return resultId;
@@ -123,7 +114,7 @@ async function fillStructuredHemogram(page: Page, narrative: string): Promise<vo
 }
 
 test.describe("clinical result lifecycle", () => {
-  test("fills and releases a structured hemogram through the laboratory editor", async ({ page }) => {
+  test("fills a structured hemogram and releases it in one board interaction", async ({ page }, testInfo) => {
     test.setTimeout(120_000);
 
     await signInAs(page, "vet@cvg.local");
@@ -146,8 +137,20 @@ test.describe("clinical result lifecycle", () => {
     ]));
     await expectNoAxeViolations(page, "structured laboratory draft");
 
-    await page.getByRole("button", { name: "Liberar resultado" }).click();
-    await expect(page.getByRole("heading", { name: /Laudo confirmado/ })).toBeVisible({ timeout: 15000 });
+    await page.goto("/queues");
+    const row = await queueRow(page, requestId, "Hemograma");
+    await expect(row.getByRole("button", { name: "Liberar resultado", exact: true })).toBeVisible();
+    await row.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: `.data/ux-simplification/board-${testInfo.project.name}.png`, fullPage: true });
+    let releaseInteractions = 0;
+    const releaseResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${resultId}/release`) && response.request().method() === "POST");
+    await row.getByRole("button", { name: "Liberar resultado", exact: true }).click();
+    releaseInteractions += 1;
+    expect((await releaseResponse).status()).toBe(200);
+    await expect(row.getByText("Resultado disponível", { exact: true })).toBeVisible();
+    expect(releaseInteractions).toBe(1);
+    expect((await readApi<{ version: { status: string } }>(page, `/results/${resultId}`)).version.status).toBe("RELEASED");
+    await testInfo.attach("board-release-interactions", { body: JSON.stringify({ release: releaseInteractions }), contentType: "application/json" });
     await signOut(page);
   });
 
@@ -187,9 +190,10 @@ test.describe("clinical result lifecycle", () => {
     await signOut(page);
     await signInAs(page, "vet@cvg.local");
     await page.goto("/notifications");
-    const resultNotification = page.locator(".inbox-row").filter({ hasText: "Resultado disponível" }).filter({ hasText: "RX de tórax" }).first();
+    const resultNotification = page.locator(".inbox-item").filter({ hasText: "Resultado disponível" }).filter({ hasText: "RX de tórax" }).first();
     await expect(resultNotification).toBeVisible({ timeout: 15000 });
-    await resultNotification.getByRole("link", { name: "Abrir contexto" }).click();
+    await resultNotification.click();
+    await page.getByRole("region", { name: "Notificação selecionada" }).getByRole("link", { name: "Abrir contexto" }).click();
     await expect(page).toHaveURL(new RegExp(`/results/${xrayResultId}$`));
     await expectNoAxeViolations(page, "released result");
     await expect(page.getByText("Visualização registrada")).toBeVisible({ timeout: 15000 });
@@ -215,10 +219,12 @@ test.describe("clinical result lifecycle", () => {
     const replacementRow = await queueRow(page, requestId, "RX de tórax");
     await expect(replacementRow.getByRole("button", { name: "Registrar resultado" })).toBeVisible({ timeout: 15000 });
     await replacementRow.getByRole("button", { name: "Registrar resultado" }).click();
-    await replacementRow.getByLabel("Resultado").fill("Laudo substituto após invalidação controlada.");
-    await replacementRow.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await replacementRow.getByRole("link", { name: "Abrir draft" }).click();
-    await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible();
+    const replacementPeek = page.getByRole("dialog", { name: "RX de tórax", exact: true });
+    await replacementPeek.getByLabel("Resultado", { exact: true }).fill("Laudo substituto após invalidação controlada.");
+    await replacementPeek.getByRole("button", { name: "Confirmar", exact: true }).click();
+    await replacementPeek.getByRole("link", { name: "Abrir draft" }).click();
+    await expect(page).toHaveURL(new RegExp(`/results/${xrayResultId}$`), { timeout: 15000 });
+    await expect(page.getByRole("heading", { name: "Draft em edição" })).toBeVisible({ timeout: 15000 });
     const replacementReleaseResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${xrayResultId}/release`) && response.request().method() === "POST");
     await page.getByRole("button", { name: "Liberar resultado" }).click();
     const replacementRelease = await replacementReleaseResponse;
@@ -244,13 +250,16 @@ test.describe("clinical result lifecycle", () => {
 
     await signInAs(page, "vet@cvg.local");
     await page.goto("/notifications");
-    const criticalNotification = page.locator(".inbox-row").filter({ hasText: "Resultado crítico requer confirmação" }).filter({ hasText: "Hemograma" }).first();
-    await expect(criticalNotification).toBeVisible({ timeout: 15000 });
+    const criticalItem = page.locator(".inbox-item").filter({ hasText: "Resultado crítico requer confirmação" }).filter({ hasText: "Hemograma" }).first();
+    await expect(criticalItem).toBeVisible({ timeout: 15000 });
+    await criticalItem.click();
+    const criticalNotification = page.getByRole("region", { name: "Notificação selecionada" });
+    await expect(criticalNotification.getByRole("heading", { name: "Resultado crítico requer confirmação" })).toBeVisible();
     await expectNoAxeViolations(page, "critical notification");
     await criticalNotification.getByLabel("Motivo da confirmação").fill("Confirmei o resultado crítico no contexto do atendimento.");
     await criticalNotification.getByRole("checkbox").check();
     await criticalNotification.getByRole("button", { name: "Confirmar" }).click();
-    await expect(criticalNotification).toHaveClass(/is-acknowledged/, { timeout: 15000 });
+    await expect(criticalNotification.getByText("Confirmada", { exact: true })).toBeVisible({ timeout: 15000 });
     await criticalNotification.getByRole("link", { name: "Abrir contexto" }).click();
     await expect(page).toHaveURL(new RegExp(`/results/${resultId}$`));
     await expectNoAxeViolations(page, "critical result");

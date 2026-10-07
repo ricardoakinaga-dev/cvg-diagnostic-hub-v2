@@ -64,6 +64,121 @@ describe("bounded metrics", () => {
     expect(output).not.toContain("patient-secret");
   });
 
+  it("uses the authoritative outbox aggregate when the snapshot outbox is empty", () => {
+    resetMetrics();
+    const state = createDemoState();
+    state.outbox = [];
+    refreshOperationalMetrics(state, new Date("2026-08-20T10:00:00.000Z"), {}, {
+      pending: 250,
+      oldestAvailableAt: "2026-08-20T09:58:30.000Z"
+    });
+
+    expect(renderPrometheus()).toContain("cvg_outbox_pending 250\n");
+    expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 90\n");
+    refreshOperationalMetrics(state, new Date("2026-08-20T10:00:00.000Z"), {}, { pending: 0 });
+    expect(renderPrometheus()).toContain("cvg_outbox_pending 0\n");
+    expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 0\n");
+  });
+
+  it.each([undefined, "invalid", "2026-08-20T10:01:00.000Z"])("clamps aggregate oldest age for %s", (oldestAvailableAt) => {
+    resetMetrics();
+    refreshOperationalMetrics(createDemoState(), new Date("2026-08-20T10:00:00.000Z"), {}, {
+      pending: 2, oldestAvailableAt
+    });
+    expect(renderPrometheus()).toContain("cvg_outbox_pending 2\n");
+    expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 0\n");
+  });
+
+  it("renders business snapshot gauges without identifiers or clinical content", () => {
+    resetMetrics();
+    const state = createDemoState();
+    state.requests = [{
+      id: "request-secret",
+      requestCode: "EX-260820-0001",
+      patientId: "patient-secret",
+      encounterId: "encounter-secret",
+      requesterId: "user-secret",
+      requestingDepartmentCode: "LABORATORY",
+      priority: "ROUTINE",
+      aggregateStatus: "IN_PROGRESS",
+      itemIds: ["item-completed", "item-overdue", "item-cancelled"],
+      createdAt: "2026-08-20T09:00:00.000Z",
+      updatedAt: "2026-08-20T09:00:00.000Z",
+      version: 1
+    }];
+    const item = (id: string, status: "COMPLETED" | "REQUESTED" | "CANCELLED", dueAt: string) => ({
+      id,
+      requestId: "request-secret",
+      serviceId: "service-secret",
+      departmentCode: "LABORATORY",
+      workflowType: "LABORATORY" as const,
+      priority: "ROUTINE" as const,
+      status,
+      requestedAt: "2026-08-20T09:00:00.000Z",
+      slaStartedAt: "2026-08-20T09:00:00.000Z",
+      dueAt,
+      slaPolicyVersion: 1,
+      version: 1
+    });
+    state.items = [
+      item("item-completed", "COMPLETED", "2026-08-20T09:30:00.000Z"),
+      item("item-overdue", "REQUESTED", "2026-08-20T09:59:00.000Z"),
+      item("item-cancelled", "CANCELLED", "2026-08-20T09:00:00.000Z")
+    ];
+    state.items[0] = { ...state.items[0], completedAt: "2026-08-20T09:30:00.000Z" };
+    state.results = [{ id: "result-secret", itemId: "item-completed", currentVersionId: "result-version-critical", lifecycleStatus: "RELEASED", needsReReview: false, version: 1 }];
+    state.samples = [{ id: "sample-recollection", requestId: "request-secret", accessionCode: "PENDING-RECOLLECTION", sampleType: "EDTA", status: "EXPECTED", itemIds: ["item-overdue"], version: 1 }];
+    state.auditEvents = [
+      { id: "audit-recollection", eventType: "RecollectionRequested", actorId: "user-secret", entityType: "Sample", entityId: "sample-recollection", correlationId: "corr-recollection", metadata: {}, occurredAt: "2026-08-20T09:10:00.000Z" },
+      { id: "audit-view", eventType: "ResultViewed", actorId: "user-secret", entityType: "ResultVersion", entityId: "result-version-critical", correlationId: "corr-view", metadata: {}, occurredAt: "2026-08-20T10:00:00.000Z" }
+    ];
+    state.resultVersions = [
+      {
+        id: "result-version-critical",
+        resultId: "result-secret",
+        sequence: 1,
+        status: "RELEASED",
+        content: { patientName: "clinical secret" },
+        narrative: "clinical secret",
+        authorId: "user-secret",
+        createdAt: "2026-08-20T09:00:00.000Z",
+        releasedAt: "2026-08-20T09:30:00.000Z",
+        releasedBy: "user-secret",
+        critical: true,
+        needsReReview: false,
+        version: 1
+      },
+      {
+        id: "result-version-superseded",
+        resultId: "result-secret",
+        sequence: 2,
+        status: "SUPERSEDED",
+        content: {},
+        narrative: "superseded",
+        authorId: "user-secret",
+        createdAt: "2026-08-20T09:00:00.000Z",
+        critical: true,
+        needsReReview: false,
+        version: 1
+      }
+    ];
+
+    refreshOperationalMetrics(state, new Date("2026-08-20T10:00:00.000Z"));
+
+    const output = renderPrometheus();
+    expect(output).toContain("cvg_diagnostic_requests_created 1");
+    expect(output).toContain("cvg_diagnostic_items_completed 1");
+    expect(output).toContain("cvg_diagnostic_turnaround_time_seconds 1800");
+    expect(output).toContain("cvg_recollection_rate 1");
+    expect(output).toContain("cvg_critical_results 1");
+    expect(output).toContain("cvg_overdue_items 1");
+    expect(output).toContain("cvg_result_view_latency_seconds 1800");
+    expect(output).toContain("# TYPE cvg_recollection_rate gauge");
+    expect(output).not.toContain("request-secret");
+    expect(output).not.toContain("patient-secret");
+    expect(output).not.toContain("clinical secret");
+  });
+
   it("records realtime poll, failure, closure, resync, and capacity signals with bounded labels", () => {
     resetMetrics();
     recordRealtimePoll("stream", "success", 12.5);

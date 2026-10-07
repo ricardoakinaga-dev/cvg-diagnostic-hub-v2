@@ -62,6 +62,7 @@ const requestSchemas = {
     password: stringSchema(1, 200)
   }, ["email", "password"]),
   ReauthenticationRequest: strictObject({ password: stringSchema(1, 200) }, ["password"]),
+  InitialPasswordRequest: strictObject({ password: { ...stringSchema(12, 200), pattern: passwordPattern } }, ["password"]),
   PatientCreate: {
     ...strictObject({
       displayName: normalizedTextSchema(2, 120), species: normalizedTextSchema(2, 60), breed: normalizedTextSchema(2, 120),
@@ -80,27 +81,30 @@ const requestSchemas = {
     ...strictObject({
     email: { type: "string", format: "email", maxLength: 320 }, displayName: normalizedTextSchema(2, 160),
     password: { ...stringSchema(12, 200), pattern: passwordPattern }, role: { type: "string", enum: roleCodes }, departmentCode: normalizedDepartmentCodeSchema,
-    managedDepartmentCodes: { type: "array", maxItems: 20, items: normalizedDepartmentCodeSchema },
+    managedDepartmentCodes: { type: "array", maxItems: 20, items: normalizedDepartmentCodeSchema }, serviceCodes: { type: "array", maxItems: 200, items: normalizedCatalogCodeSchema },
     timezone: { ...normalizedTextSchema(1, 80), "x-runtime-validation": "IANA time zone identifier validated by Intl.DateTimeFormat" },
     reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true }
-    }, ["email", "displayName", "password", "role", "departmentCode", "timezone", "reason", "confirm"]),
+    }, ["email", "displayName", "role"]),
     "x-role-constraints": { managedDepartmentCodes: "allowed only when role is MANAGER" }
   },
-  ManagedUserDeactivate: strictObject({ expectedVersion, reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }, ["reason", "confirm"]),
+  ManagedUserDeactivate: strictObject({ expectedVersion, reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
+  ManagedUserPasswordReset: strictObject({ expectedVersion }),
   UserRoleUpdate: {
     ...strictObject({
       role: { type: "string", enum: roleCodes }, departmentCode: normalizedDepartmentCodeSchema,
-      managedDepartmentCodes: { type: "array", maxItems: 20, items: normalizedDepartmentCodeSchema }, active: { type: "boolean" },
+      managedDepartmentCodes: { type: "array", maxItems: 20, items: normalizedDepartmentCodeSchema }, serviceCodes: { type: "array", maxItems: 200, items: normalizedCatalogCodeSchema }, active: { type: "boolean" },
       expectedVersion, reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true }
-    }, ["role", "departmentCode", "reason", "confirm"]),
+    }, ["role", "departmentCode"]),
     "x-role-constraints": { managedDepartmentCodes: "allowed only when role is MANAGER" }
   },
+  SessionRevoke: strictObject({ reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
+  DeadLetterCommand: strictObject({ reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
   DiagnosticServiceCreate: {
     ...strictObject({
     code: normalizedCatalogCodeSchema, name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
     departmentCode: normalizedDepartmentCodeSchema, workflowType: { type: "string", enum: ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] },
     requiresSample: { type: "boolean" }, requiresSchedule: { type: "boolean" }, allowsAttachment: { type: "boolean" },
-    resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] }, slaHours: schemaReference("SlaHours")
+    resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] }, duplicateOfServiceId: identifier, slaHours: schemaReference("SlaHours")
     }, ["code", "name", "category", "departmentCode", "workflowType", "requiresSample", "requiresSchedule", "allowsAttachment", "resultSchema", "slaHours"]),
     oneOf: [
       { properties: { category: { const: "LABORATORY" }, workflowType: { const: "LABORATORY" } } },
@@ -215,10 +219,10 @@ const arrayOf = (schema, options = {}) => ({ type: "array", items: schema, ...op
 const publicUserSchema = strictObject({
   id: identifier, email: { type: "string", format: "email", maxLength: 320 }, displayName: stringSchema(1, 160),
   role: { type: "string", enum: roleCodes }, departmentCode: stringSchema(1, 60),
-  managedDepartmentCodes: arrayOf(stringSchema(1, 60), { maxItems: 20 }), timezone: stringSchema(1, 80)
+  managedDepartmentCodes: arrayOf(stringSchema(1, 60), { maxItems: 20 }), timezone: stringSchema(1, 80), mustChangePassword: { type: "boolean" }
 }, ["id", "email", "displayName", "role", "departmentCode", "timezone"]);
 const managedUserSchema = strictObject({
-  ...publicUserSchema.properties, active: { type: "boolean" }, createdAt: timestamp, version: positiveVersion
+  ...publicUserSchema.properties, serviceCodes: arrayOf(normalizedCatalogCodeSchema, { maxItems: 200 }), active: { type: "boolean" }, createdAt: timestamp, version: positiveVersion
 }, ["id", "email", "displayName", "role", "departmentCode", "timezone", "active", "createdAt", "version"]);
 const patientSchema = strictObject({
   id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), breed: stringSchema(1, 100),
@@ -381,6 +385,18 @@ const responseDataSchemas = {
   JsonObject: { type: "object", additionalProperties: schemaReference("JsonValue"), maxProperties: 100 },
   PublicUser: publicUserSchema,
   ManagedUser: managedUserSchema,
+  ManagedUserCreation: strictObject({ ...managedUserSchema.properties, initialPassword: stringSchema(12, 200) }, managedUserSchema.required),
+  ManagedSession: strictObject({
+    id: identifier, userId: identifier, userDisplayName: stringSchema(1, 160), userEmail: { type: "string", format: "email", maxLength: 320 },
+    userRole: { type: "string", enum: roleCodes }, departmentCode: stringSchema(1, 60), createdAt: timestamp, expiresAt: timestamp,
+    status: { type: "string", enum: ["ACTIVE", "EXPIRED", "REVOKED"] }, current: { type: "boolean" }, revokedAt: timestamp
+  }, ["id", "userId", "userDisplayName", "userEmail", "userRole", "departmentCode", "createdAt", "expiresAt", "status", "current"]),
+  DeadLetterMessage: strictObject({
+    id: identifier, eventType: stringSchema(1, 200), aggregateType: stringSchema(1, 200), aggregateId: identifier,
+    status: { type: "string", enum: ["PENDING", "FAILED", "DISCARDED"] }, attempts: nonNegativeInteger, availableAt: timestamp,
+    correlationId: stringSchema(1, 100), lastError: stringSchema(1, 240), deadLetteredAt: timestamp, discardedAt: timestamp,
+    discardedBy: identifier, discardReason: stringSchema(1, 500)
+  }, ["id", "eventType", "aggregateType", "aggregateId", "status", "attempts", "availableAt", "correlationId"]),
   Patient: patientSchema,
   Encounter: encounterSchema,
   Admission: admissionSchema,
@@ -421,6 +437,9 @@ const responseDataSchemas = {
   LogoutData: strictObject({ loggedOut: { type: "boolean", const: true } }, ["loggedOut"]),
   ReauthenticationData: strictObject({ user: schemaReference("PublicUser"), reauthenticatedAt: timestamp }, ["user", "reauthenticatedAt"]),
   ManagedUserList: arrayOf(schemaReference("ManagedUser")),
+  ManagedSessionList: arrayOf(schemaReference("ManagedSession"), { maxItems: 100 }),
+  DeadLetterList: arrayOf(schemaReference("DeadLetterMessage"), { maxItems: 100 }),
+  DeadLetterMutation: strictObject({ message: schemaReference("DeadLetterMessage"), action: { type: "string", enum: ["REPROCESSED", "DISCARDED"] } }, ["message", "action"]),
   DiagnosticServiceList: arrayOf(schemaReference("DiagnosticService")),
   ReasonCodeList: arrayOf(schemaReference("ReasonCode")),
   PatientList: arrayOf(schemaReference("Patient"), { maxItems: 100 }),
@@ -656,7 +675,7 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  if (API_OPERATIONS.length !== 65 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 60) throw new Error("The audited API surface must remain exactly 65 operations across 60 paths.");
+  if (API_OPERATIONS.length !== 73 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 68) throw new Error("The audited API surface must remain exactly 73 operations across 68 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

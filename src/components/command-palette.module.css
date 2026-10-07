@@ -1,0 +1,39 @@
+.list {
+  max-height: min(45dvh, 24rem);
+  overflow-y: auto;
+  margin-block: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 12px 16px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+}
+
+.option:last-child {
+  border-bottom: 0;
+}
+
+.option[aria-selected="true"] {
+  color: var(--teal-dark);
+  background: var(--teal-soft);
+  box-shadow: inset 3px 0 var(--teal-dark);
+}
+
+.copy {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+.copy small {
+  color: var(--ink-muted);
+}

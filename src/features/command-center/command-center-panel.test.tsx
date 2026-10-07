@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { CommandCenterPanel, type CommandCenterData } from "./command-center-panel";
 
@@ -71,5 +71,26 @@ describe("CommandCenterPanel", () => {
     expect(screen.getByText("Atrasado")).toBeInTheDocument();
     expect(screen.getByText("Ativo")).toBeInTheDocument();
     expect(screen.getByText("Em dia")).toBeInTheDocument();
+  });
+
+  it("labels an unfamiliar department without losing its attention item's action or destination", () => {
+    const item = data.attention?.[0];
+    expect(item).toBeDefined();
+    render(<CommandCenterPanel data={{
+      ...data,
+      attention: [{ ...item!, departmentCode: "SPECIALIST_CARE" }],
+      departments: [{ departmentCode: "SPECIALIST_CARE", label: "Cuidados especializados", activeItems: 3, overdue: 2, attention: 0, state: "ACTIVE" }]
+    }} />);
+
+    const attentionLink = screen.getByRole("link", { name: /Thor/ });
+    expect(attentionLink).toHaveAttribute("href", "/requests/request-1#item-1");
+    expect(attentionLink).toHaveTextContent("Specialist care");
+    expect(attentionLink).not.toHaveTextContent("SPECIALIST_CARE");
+    expect(within(attentionLink).getByText("Receber amostra")).toBeInTheDocument();
+    const department = screen.getByRole("article");
+    expect(within(department).getByText("Cuidados especializados")).toBeInTheDocument();
+    expect(within(department).getByText("2 atrasado(s)")).toBeInTheDocument();
+    expect(within(department).getByText("3")).toBeInTheDocument();
+    expect(within(department).queryByText("itens ativos")).not.toBeInTheDocument();
   });
 });

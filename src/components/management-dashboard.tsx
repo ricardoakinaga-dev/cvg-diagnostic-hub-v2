@@ -3,23 +3,13 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { Priority } from "@cvg/contracts";
+import type { ItemState, ManagementOverview, Priority } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
-import { ErrorState, LoadingState, StaleNotice } from "./feedback-states";
+import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { Icon } from "./ui-icons";
 
 type ManagementView = "overview" | "requests" | "pending" | "stats";
-type ItemState = "REQUESTED" | "RECEIVED" | "SCHEDULED" | "IN_PROGRESS" | "AWAITING_REPORT" | "RESULT_AVAILABLE" | "REVIEWED" | "RECOLLECTION_REQUIRED" | "FAILED" | "CANCELLED" | "REJECTED" | "COMPLETED";
-
-interface ManagementOverview {
-  asOf: string;
-  scope: { departments: string[]; label: string };
-  summary: { totalRequests: number; activeItems: number; overdue: number; recollections: number; newResults: number; critical: number; pendingRequests: number; completedToday: number };
-  departments: Array<{ departmentCode: string; serviceCount: number; totalRequests: number; activeItems: number; overdue: number; pending: number }>;
-  pending: Array<{ id: string; requestId: string; requestCode: string; patient: string; service: string; departmentCode: string; status: ItemState; priority: Priority; dueAt: string; overdue: boolean; nextAction: string; deepLink: string }>;
-  recentRequests: Array<{ id: string; requestCode: string; patient: string; aggregateStatus: string; priority: Priority; updatedAt: string; itemCount: number; deepLink: string }>;
-}
 
 const viewLabels: Record<ManagementView, string> = { overview: "Controle", requests: "Solicitações", pending: "Pendências", stats: "Estatísticas" };
 const departmentLabels: Record<string, string> = { INPATIENT: "Internação", LABORATORY: "Laboratório", RADIOLOGY: "Radiologia", ULTRASOUND: "Ultrassom", IMAGING: "Imagem", OPERATIONS: "Operações" };
@@ -86,7 +76,7 @@ export function ManagementDashboard() {
   }, [load]);
 
   if (!data && loading) return <LoadingState label="Carregando controle operacional" />;
-  if (!data) return <ErrorState title="Controle operacional indisponível" message={error || "Tente novamente em instantes."} onRetry={load} retrying={loading} />;
+  if (!data) return <ErrorState page title="Controle operacional indisponível" message={error || "Tente novamente em instantes."} onRetry={load} retrying={loading} />;
 
   const title = view === "overview" ? "Controle operacional." : `${viewLabels[view]}.`;
   return <div className="management-page">
@@ -109,12 +99,12 @@ function OverviewPanels({ data }: { data: ManagementOverview }) {
 
 function PendingPanel({ data, compact = false }: { data: ManagementOverview; compact?: boolean }) {
   const items = compact ? data.pending.slice(0, 6) : data.pending;
-  return <section className="panel management-list-panel"><div className="panel-heading"><div><p className="eyebrow">Ação necessária</p><h2>Pendências de fluxo</h2></div>{compact ? <Link href="/management?view=pending" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link> : <span className="timeline-count">{data.pending.length}</span>}</div>{items.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Operação em dia</strong><p>Nenhum item pendente no escopo dos setores autorizados.</p></div> : <ul className="management-item-list">{items.map((item) => <li key={item.id}><Link href={item.deepLink}><span className="management-item-main"><strong>{item.service}</strong><small>{item.requestCode} · {item.patient} · {departmentLabel(item.departmentCode)}</small></span><span className="management-item-action"><b className={item.overdue ? "text-danger" : "text-success"}>{item.nextAction}</b><small>{priorityLabels[item.priority]} · {item.overdue ? "fora do SLA" : `vence ${formatRelativeTime(item.dueAt)}`}</small></span><span aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link></li>)}</ul>}</section>;
+  return <section className="panel management-list-panel"><div className="panel-heading"><div><p className="eyebrow">Ação necessária</p><h2>Pendências de fluxo</h2></div>{compact ? <Link href="/management?view=pending" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link> : <span className="timeline-count">{data.pending.length}</span>}</div>{items.length === 0 ? <EmptyState title="Operação em dia" message="Nenhum item pendente no escopo dos setores autorizados." /> : <ul className="management-item-list">{items.map((item) => <li key={item.id}><Link href={item.deepLink}><span className="management-item-main"><strong>{item.service}</strong><small>{item.requestCode} · {item.patient} · {departmentLabel(item.departmentCode)}</small></span><span className="management-item-action"><b className={item.overdue ? "text-danger" : "text-success"}>{item.nextAction}</b><small>{priorityLabels[item.priority]} · {item.overdue ? "fora do SLA" : `vence ${formatRelativeTime(item.dueAt)}`}</small></span><span aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link></li>)}</ul>}</section>;
 }
 
 function RequestsPanel({ data, compact = false }: { data: ManagementOverview; compact?: boolean }) {
   const requests = compact ? data.recentRequests.slice(0, 6) : data.recentRequests;
-  return <section className="panel management-list-panel"><div className="panel-heading"><div><p className="eyebrow">Acompanhamento</p><h2>Solicitações recentes</h2></div>{compact ? <Link href="/management?view=requests" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link> : <span className="timeline-count">{requests.length}</span>}</div>{requests.length === 0 ? <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhuma solicitação no escopo</strong><p>Quando um exame for criado nos setores autorizados, ele aparecerá aqui.</p></div> : <ul className="management-request-list">{requests.map((request) => <li key={request.id}><Link href={request.deepLink}><span><strong>{request.requestCode}</strong><small>{request.patient} · {request.itemCount} itens · {formatRelativeTime(request.updatedAt)}</small></span><span className="request-state-text">{stateLabel(request.aggregateStatus)}</span><span aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link></li>)}</ul>}</section>;
+  return <section className="panel management-list-panel"><div className="panel-heading"><div><p className="eyebrow">Acompanhamento</p><h2>Solicitações recentes</h2></div>{compact ? <Link href="/management?view=requests" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link> : <span className="timeline-count">{requests.length}</span>}</div>{requests.length === 0 ? <EmptyState title="Nenhuma solicitação no escopo" message="Quando um exame for criado nos setores autorizados, ele aparecerá aqui." /> : <ul className="management-request-list">{requests.map((request) => <li key={request.id}><Link href={request.deepLink}><span><strong>{request.requestCode}</strong><small>{request.patient} · {request.itemCount} itens · {formatRelativeTime(request.updatedAt)}</small></span><span className="request-state-text">{stateLabel(request.aggregateStatus)}</span><span aria-hidden="true"><Icon name="arrow-right" size={16} /></span></Link></li>)}</ul>}</section>;
 }
 
 function StatsPanel({ data }: { data: ManagementOverview }) {
@@ -123,6 +113,6 @@ function StatsPanel({ data }: { data: ManagementOverview }) {
 }
 
 function DepartmentTable({ data }: { data: ManagementOverview }) {
-  if (data.departments.length === 0) return <div className="empty-state"><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>Nenhum setor diagnóstico configurado</strong><p>Cadastre serviços no catálogo para que a capacidade seja distribuída.</p></div>;
-  return <div className="department-table" role="table" aria-label="Resumo por setor"><div className="department-table-head" role="row"><span>Setor</span><span>Ativos</span><span>Atrasados</span><span>Serviços</span></div>{data.departments.map((department) => <div className="department-table-row" role="row" key={department.departmentCode}><strong>{departmentLabel(department.departmentCode)}</strong><span>{department.activeItems}</span><span className={department.overdue > 0 ? "text-danger" : "text-success"}>{department.overdue}</span><span>{department.serviceCount}</span></div>)}</div>;
+  if (data.departments.length === 0) return <EmptyState title="Nenhum setor diagnóstico configurado" message="Cadastre serviços no catálogo para que a capacidade seja distribuída." />;
+  return <div className="department-table" role="table" aria-label="Resumo por setor"><div className="department-table-head" role="row"><span role="columnheader">Setor</span><span role="columnheader">Ativos</span><span role="columnheader">Atrasados</span><span role="columnheader">Serviços</span></div>{data.departments.map((department) => <div className="department-table-row" role="row" key={department.departmentCode}><strong role="rowheader">{departmentLabel(department.departmentCode)}</strong><span role="cell">{department.activeItems}</span><span role="cell" className={department.overdue > 0 ? "text-danger" : "text-success"}>{department.overdue}</span><span role="cell">{department.serviceCount}</span></div>)}</div>;
 }

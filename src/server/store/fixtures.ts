@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import type { LaboratoryPanelTemplate } from "@cvg/contracts";
 import type { StoreState, User } from "../domain/models";
 import { hashPassword } from "../security/password";
@@ -67,34 +67,38 @@ function demoUser(
   };
 }
 
-function resolveDemoPassword(password: string | undefined): string {
+function resolveDemoPassword(password: string | undefined): string | undefined {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("Fixtures sintéticas são proibidas em produção.");
+  }
   const configured = (password ?? process.env.DEMO_PASSWORD)?.trim();
   if (configured) {
     const isPlaceholder =
       /^<.*>$/.test(configured) ||
       /(local-demo-password|replace|configure|senha[-_ ]?sint[eé]tica)/i.test(configured);
-    if (
-      process.env.NODE_ENV !== "test" &&
-      (configured.length < 16 || isPlaceholder)
-    ) {
+    if (process.env.NODE_ENV !== "test" && (configured.length < 16 || isPlaceholder)) {
       throw new Error("DEMO_PASSWORD deve ser uma senha sintética única com pelo menos 16 caracteres.");
     }
     return configured;
   }
-  if (process.env.NODE_ENV === "test") return "test-only-demo-password";
-  throw new Error("DEMO_PASSWORD é obrigatório para criar dados sintéticos fora de testes.");
+  if (process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test") return undefined;
+  throw new Error("DEMO_PASSWORD é obrigatório para criar dados sintéticos fora de desenvolvimento/testes.");
+}
+
+function generatedDemoPassword(): string {
+  return `fixture-${randomBytes(32).toString("base64url")}`;
 }
 
 export function createDemoState(password?: string): StoreState {
   const resolvedPassword = resolveDemoPassword(password);
   return {
     users: [
-      demoUser("user-vet", "vet@cvg.local", "Dra. Marina Costa", "VETERINARIAN", "INPATIENT", resolvedPassword, ["patient-thor", "patient-mel"]),
-      demoUser("user-lab", "lab@cvg.local", "Técnica Joana Lima", "LAB_TECH", "LABORATORY", resolvedPassword, [], ["HEMOGRAM", "CRP"]),
-      demoUser("user-rx", "rx@cvg.local", "Equipe Radiologia", "RADIOLOGY_TEAM", "RADIOLOGY", resolvedPassword, [], ["XRAY_THORAX"]),
-      demoUser("user-us", "us@cvg.local", "Equipe Ultrassom", "ULTRASOUND_TEAM", "ULTRASOUND", resolvedPassword, [], ["ULTRASOUND_ABDOMEN"]),
-      demoUser("user-manager", "manager@cvg.local", "Gestão Operacional", "MANAGER", "INPATIENT", resolvedPassword),
-      demoUser("user-admin", "admin@cvg.local", "Administração Técnica", "ADMIN", "IT", resolvedPassword)
+      demoUser("user-vet", "vet@cvg.local", "Dra. Marina Costa", "VETERINARIAN", "INPATIENT", resolvedPassword ?? generatedDemoPassword(), ["patient-thor", "patient-mel"]),
+      demoUser("user-lab", "lab@cvg.local", "Técnica Joana Lima", "LAB_TECH", "LABORATORY", resolvedPassword ?? generatedDemoPassword(), [], ["HEMOGRAM", "CRP"]),
+      demoUser("user-rx", "rx@cvg.local", "Equipe Radiologia", "RADIOLOGY_TEAM", "RADIOLOGY", resolvedPassword ?? generatedDemoPassword(), [], ["XRAY_THORAX"]),
+      demoUser("user-us", "us@cvg.local", "Equipe Ultrassom", "ULTRASOUND_TEAM", "ULTRASOUND", resolvedPassword ?? generatedDemoPassword(), [], ["ULTRASOUND_ABDOMEN"]),
+      demoUser("user-manager", "manager@cvg.local", "Gestão Operacional", "MANAGER", "INPATIENT", resolvedPassword ?? generatedDemoPassword()),
+      demoUser("user-admin", "admin@cvg.local", "Administração Técnica", "ADMIN", "IT", resolvedPassword ?? generatedDemoPassword())
     ],
     sessions: [],
     patients: [

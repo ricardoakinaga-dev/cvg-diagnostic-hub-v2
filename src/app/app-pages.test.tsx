@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import RootLayout from "./layout";
 import HomePage from "./page";
 import AccountPage from "./account/page";
@@ -13,11 +13,15 @@ import QueuesPage from "./queues/page";
 import RequestPage from "./requests/[id]/page";
 import ResultPage from "./results/[id]/page";
 
-describe("Next route composition", () => {
-  it("keeps the document metadata boundary and renders its child", () => {
-    const child = <main>Conteúdo verificado</main>;
-    const layout = RootLayout({ children: child });
+const connection = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), connection }));
 
+describe("Next route composition", () => {
+  it("keeps the document metadata boundary, opts into request-time rendering and renders its child", async () => {
+    const child = <main>Conteúdo verificado</main>;
+    const layout = await RootLayout({ children: child });
+
+    expect(connection).toHaveBeenCalledTimes(1);
     expect(layout.props.lang).toBe("pt-BR");
     expect(layout.props.children.type).toBe("body");
     expect(layout.props.children.props.children).toBe(child);

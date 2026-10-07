@@ -8,6 +8,7 @@ import type { DiagnosticItem, DiagnosticRequest, Sample, StoreState } from "../.
 import { createDemoState } from "../../src/server/store/fixtures";
 import {
   applyMigrations,
+  LATEST_RUNTIME_SCHEMA_VERSION,
   RUNTIME_MIGRATION_CHECKSUMS,
   RUNTIME_MIGRATION_VERSIONS,
   type MigrationRunResult,
@@ -366,12 +367,13 @@ async function validMigrationProbe(
 }
 
 describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL", () => {
-  it("upgrades a populated 001 baseline to 010, preserves valid rows, repairs membership losslessly, and retries by checksum", async () => {
+  it("upgrades a populated 001 baseline to the latest schema, preserves valid rows, repairs membership losslessly, and retries by checksum", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       await validMigrationProbe(database, async (probe, state) => {
-        const beforeState = (await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state;
+        const beforeState = (await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state as StoreState;
+        const beforeAudits = await probe.query("SELECT * FROM audit_events ORDER BY id");
         const result = await probe.applyProductionMigrations();
-        expect(result.applied).toEqual(["009_relational_sample_lineage", "010_relational_backfill_control"]);
+        expect(result.applied).toEqual([...RUNTIME_MIGRATION_VERSIONS.slice(8)]);
         expect(await schemaMigrationVersions(probe)).toEqual([...RUNTIME_MIGRATION_VERSIONS]);
 
         const ledger = await probe.query("SELECT version, checksum FROM schema_migrations ORDER BY version");
@@ -393,10 +395,11 @@ describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL",
           rowCount: 1
         });
         expect(await probe.query("SELECT schema_version FROM relational_schema_markers")).toEqual({
-          rows: [{ schema_version: "010_relational_backfill_control" }],
+          rows: [{ schema_version: LATEST_RUNTIME_SCHEMA_VERSION }],
           rowCount: 1
         });
-        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual(beforeState);
+        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual({ ...beforeState, auditEvents: [], outbox: [] });
+        expect(await probe.query("SELECT * FROM audit_events ORDER BY id")).toEqual(beforeAudits);
 
         const adapter = new RelationalClinicalCoreAdapter();
         await expect(adapter.assertReady(probe.sql)).resolves.toBeUndefined();
@@ -471,7 +474,7 @@ describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL",
 
         const resumed = await probe.applyProductionMigrations();
         expect(resumed).toEqual({
-          applied: ["010_relational_backfill_control"],
+          applied: [...RUNTIME_MIGRATION_VERSIONS.slice(9)],
           alreadyApplied: [...RUNTIME_MIGRATION_VERSIONS.slice(0, 9)]
         });
 
@@ -518,7 +521,7 @@ describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL",
 
         await probe.query(repairSql, repairValues);
         const retry = await probe.applyProductionMigrations();
-        expect(retry.applied).toEqual(["009_relational_sample_lineage", "010_relational_backfill_control"]);
+        expect(retry.applied).toEqual([...RUNTIME_MIGRATION_VERSIONS.slice(8)]);
         expect(await schemaMigrationVersions(probe)).toEqual([...RUNTIME_MIGRATION_VERSIONS]);
       });
     });

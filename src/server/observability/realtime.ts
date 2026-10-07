@@ -82,6 +82,7 @@ export class PostgresListenRealtimeNotificationAdapter implements RealtimeNotifi
   readonly scope = "multi-instance" as const;
   private readonly listeners = new Set<() => void>();
   private listenerClient: RealtimeNotificationClient | undefined;
+  private listenerToken: object | undefined;
   private connectPromise: Promise<void> | undefined;
   private retryTimer: ReturnType<typeof setTimeout> | undefined;
   private closed = false;
@@ -113,6 +114,7 @@ export class PostgresListenRealtimeNotificationAdapter implements RealtimeNotifi
 
   async close(): Promise<void> {
     this.closed = true;
+    this.listeners.clear();
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
       this.retryTimer = undefined;
@@ -140,10 +142,13 @@ export class PostgresListenRealtimeNotificationAdapter implements RealtimeNotifi
         return;
       }
       const connectedClient = client;
+      const listenerToken = {};
       this.listenerClient = connectedClient;
+      this.listenerToken = listenerToken;
       connectedClient.on("notification", (message) => {
-        if (message.channel !== this.channel) return;
+        if (this.closed || this.listenerToken !== listenerToken || message.channel !== this.channel) return;
         for (const listener of [...this.listeners]) {
+          if (this.closed || this.listenerToken !== listenerToken) break;
           try {
             listener();
           } catch {
@@ -151,7 +156,7 @@ export class PostgresListenRealtimeNotificationAdapter implements RealtimeNotifi
           }
         }
       });
-      connectedClient.on("error", () => this.handleListenerFailure(connectedClient));
+      connectedClient.on("error", () => this.handleListenerFailure(connectedClient, listenerToken));
       await connectedClient.query(`LISTEN ${quotePostgresIdentifier(this.channel)}`);
     } catch {
       if (client && this.listenerClient === client) this.releaseListener();
@@ -160,8 +165,8 @@ export class PostgresListenRealtimeNotificationAdapter implements RealtimeNotifi
     }
   }
 
-  private handleListenerFailure(client: RealtimeNotificationClient): void {
-    if (this.listenerClient !== client || this.closed) return;
+  private handleListenerFailure(client: RealtimeNotificationClient, listenerToken: object): void {
+    if (this.listenerToken !== listenerToken || this.listenerClient !== client || this.closed) return;
     this.releaseListener();
     this.scheduleRetry();
   }
@@ -169,6 +174,7 @@ export class PostgresListenRealtimeNotificationAdapter implements RealtimeNotifi
   private releaseListener(): void {
     const client = this.listenerClient;
     this.listenerClient = undefined;
+    this.listenerToken = undefined;
     client?.release();
   }
 

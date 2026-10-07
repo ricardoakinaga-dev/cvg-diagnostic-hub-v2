@@ -12,6 +12,7 @@ interface RunMigrationsOptions {
   readonly connectionString: string;
   readonly migrationDirectory?: string;
   readonly logger?: { info(message: string): void };
+  readonly cutoverAcknowledged?: boolean;
 }
 
 export async function runMigrations(options: RunMigrationsOptions): Promise<void> {
@@ -25,7 +26,8 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<void
         { query: (text, values) => client.query(text, values) },
         {
           migrationDirectory,
-          logger: options.logger
+          logger: options.logger,
+          cutoverAcknowledged: options.cutoverAcknowledged
         }
       );
     } finally {
@@ -37,9 +39,14 @@ export async function runMigrations(options: RunMigrationsOptions): Promise<void
 }
 
 async function main(): Promise<void> {
-  const connectionString = process.env.DATABASE_URL;
-  if (!connectionString) throw new Error("DATABASE_URL é obrigatório para executar as migrations.");
-  await runMigrations({ connectionString });
+  // MIGRATION_DATABASE_URL carries the DDL role; DATABASE_URL is the runtime
+  // role and is deliberately not enough on its own to change the schema.
+  const connectionString = process.env.MIGRATION_DATABASE_URL?.trim() || process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("MIGRATION_DATABASE_URL (ou DATABASE_URL) é obrigatório para executar as migrations.");
+  // A "Coordinated cutover" migration refuses to run while the previous app or worker is still
+  // connected. MIGRATION_CUTOVER_ACKNOWLEDGED=true is for an operator who has confirmed the
+  // remaining sessions are harmless (for example a read-only console); never set it in compose.
+  await runMigrations({ connectionString, cutoverAcknowledged: process.env.MIGRATION_CUTOVER_ACKNOWLEDGED === "true" });
 }
 
 const entrypoint = process.argv[1] ? path.resolve(process.argv[1]) : undefined;

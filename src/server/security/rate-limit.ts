@@ -2,9 +2,17 @@ import { Pool } from "pg";
 import { ApiError } from "../http/envelope";
 import { isPostgresConnectionString } from "../domain/realtime-configuration";
 
-interface Bucket { count: number; resetAt: number }
+interface Bucket { count: number; resetAt: number; windowStartedAt: number }
 const buckets = new Map<string, Bucket>();
 let databasePool: Pool | undefined;
+
+/** Window growth applied to a credential pair after repeated wrong passwords. */
+const LOGIN_BACKOFF_STEPS = [1, 2, 4, 8, 16] as const;
+/** Failures younger than this still count towards the pair's backoff. */
+const LOGIN_FAILURE_DECAY_MS = 15 * 60 * 1000;
+const MAX_LOGIN_BACKOFF_MULTIPLIER = 16;
+const LOGIN_BACKOFF_CEILING_MS = 60 * 60 * 1000;
+const LOGIN_FAILURE_COUNTER_CEILING = 1_000_000;
 
 const POSTGRES_CONSUME_SQL = `
   INSERT INTO rate_limit_buckets (bucket_key, window_started_at, request_count)
@@ -57,8 +65,11 @@ function assertRateLimitPoolMax(value: string | undefined): number {
 
 function assertMemoryRateLimit(key: string, limit: number, windowMs: number, timestamp: number): void {
   const current = buckets.get(key);
-  const bucket = !current || current.resetAt <= timestamp ? { count: 0, resetAt: timestamp + windowMs } : current;
+  const bucket = !current || current.windowStartedAt + windowMs <= timestamp
+    ? { count: 0, resetAt: timestamp + windowMs, windowStartedAt: timestamp }
+    : { ...current, resetAt: current.windowStartedAt + windowMs };
   if (bucket.count >= limit) {
+    buckets.set(key, bucket);
     throw new ApiError("RATE_LIMITED", "Muitas tentativas. Aguarde antes de tentar novamente.", 429, { retryable: true });
   }
   buckets.set(key, { ...bucket, count: bucket.count + 1 });
@@ -70,15 +81,7 @@ function assertMemoryRateLimit(key: string, limit: number, windowMs: number, tim
 async function assertPostgresRateLimit(key: string, limit: number, windowMs: number, timestamp: number): Promise<void> {
   if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL é obrigatório quando RATE_LIMIT_MODE=postgres.");
   try {
-    if (!databasePool) {
-      databasePool = new Pool({ connectionString: process.env.DATABASE_URL, max: assertRateLimitPoolMax(process.env.RATE_LIMIT_DB_POOL_MAX), idleTimeoutMillis: 30_000 });
-      if (typeof databasePool.on === "function") {
-        databasePool.on("error", () => {
-          // The next bucket query will fail closed with DEPENDENCY_UNAVAILABLE.
-        });
-      }
-    }
-    const result = await databasePool.query<{ request_count: number | string; reset_at: number | string; allowed: boolean }>(POSTGRES_CONSUME_SQL, [key, new Date(timestamp), windowMs, limit]);
+    const result = await rateLimitPool().query<{ request_count: number | string; reset_at: number | string; allowed: boolean }>(POSTGRES_CONSUME_SQL, [key, new Date(timestamp), windowMs, limit]);
     const row = result.rows[0];
     if (!row) throw new Error("RATE_LIMIT_BUCKET_MISSING");
     const count = Number(row.request_count);
@@ -93,8 +96,185 @@ async function assertPostgresRateLimit(key: string, limit: number, windowMs: num
   }
 }
 
+/**
+ * Per-pair login budget.
+ *
+ * F-04: a bucket keyed only by e-mail let anybody lock a known user out of
+ * their own account by spending the account-wide budget from another origin.
+ * The budget is therefore keyed by (e-mail, client), so an attacker can only
+ * exhaust the pair they are actually using, and the progressive backoff grows
+ * that pair's window without touching any other pair for the same account.
+ */
+export interface LoginAttemptIdentity {
+  readonly email: string;
+  readonly clientKey: string;
+}
+
+export function loginAttemptKey(identity: LoginAttemptIdentity): string {
+  const email = identity.email.trim().toLowerCase();
+  const client = identity.clientKey?.trim();
+  if (!client) throw new ApiError("RATE_LIMIT_UNAVAILABLE", "O controle de abuso não está configurado para esta borda.", 503, { retryable: true });
+  return `login-account:${JSON.stringify([email, client])}`;
+}
+
+function loginFailureKey(identity: LoginAttemptIdentity): string {
+  return `login-failures:${loginAttemptKey(identity)}`;
+}
+
+/**
+ * Doubling steps every five wrong passwords, so a single typo never delays a
+ * legitimate user but a sustained guessing run is slowed by up to 16x.
+ */
+export function loginBackoffMultiplier(failures: number): number {
+  if (!Number.isSafeInteger(failures) || failures <= 0) return 1;
+  const stepIndex = Math.floor(failures / 5);
+  const step = LOGIN_BACKOFF_STEPS[Math.min(stepIndex, LOGIN_BACKOFF_STEPS.length - 1)] ?? 1;
+  return Math.min(step, MAX_LOGIN_BACKOFF_MULTIPLIER);
+}
+
+export function loginBackoffWindowMs(baseWindowMs: number, failures: number): number {
+  return Math.min(Math.max(1, baseWindowMs) * loginBackoffMultiplier(failures), LOGIN_BACKOFF_CEILING_MS);
+}
+
+/**
+ * Consumes the (e-mail, client) budget with the window the pair's recent
+ * failures justify. Throws the same RATE_LIMITED error as any other budget so
+ * the HTTP surface does not grow a new shape.
+ */
+export async function assertLoginAttempt(
+  identity: LoginAttemptIdentity,
+  limits: { limit: number; windowMs: number },
+  timestamp = Date.now()
+): Promise<void> {
+  const failures = await readLoginFailureCount(identity, timestamp);
+  await assertRateLimit(loginAttemptKey(identity), limits.limit, loginBackoffWindowMs(limits.windowMs, failures), timestamp);
+}
+
+/**
+ * Counts one wrong password for the pair. The counter decays, so an old
+ * incident does not keep a legitimate user under backoff forever. It never
+ * denies access by itself: it changes only this pair's attempt window.
+ */
+export async function registerLoginFailure(identity: LoginAttemptIdentity, timestamp = Date.now()): Promise<number> {
+  return consumeRateLimitCounter(loginFailureKey(identity), LOGIN_FAILURE_DECAY_MS, timestamp);
+}
+
+/** Clears only this pair's failure counter after a successful login. */
+export async function registerLoginSuccess(identity: LoginAttemptIdentity): Promise<void> {
+  const key = loginFailureKey(identity);
+  const mode = assertRateLimitConfiguration();
+  if (mode === "memory") {
+    buckets.delete(key);
+    return;
+  }
+  try {
+    await rateLimitPool().query("DELETE FROM rate_limit_buckets WHERE bucket_key = $1", [key]);
+  } catch {
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
+async function readLoginFailureCount(identity: LoginAttemptIdentity, timestamp: number): Promise<number> {
+  const key = loginFailureKey(identity);
+  if (assertRateLimitConfiguration() === "memory") {
+    const current = buckets.get(key);
+    if (!current || current.resetAt <= timestamp) return 0;
+    return current.count;
+  }
+  try {
+    const result = await rateLimitPool().query<{ request_count: number | string }>(
+      `SELECT request_count FROM rate_limit_buckets
+        WHERE bucket_key = $1 AND window_started_at + ($3 * interval '1 millisecond') > $2`,
+      [key, new Date(timestamp), LOGIN_FAILURE_DECAY_MS]
+    );
+    if (result.rows.length === 0) return 0;
+    const count = Number(result.rows[0].request_count);
+    if (!Number.isSafeInteger(count) || count < 0) throw new Error("RATE_LIMIT_BUCKET_INVALID");
+    return count;
+  } catch {
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
+/**
+ * Atomically increments one wrong-password counter. Dependency failures fail
+ * closed; reads and successful logins never consume this counter.
+ */
+async function consumeRateLimitCounter(key: string, windowMs: number, timestamp: number): Promise<number> {
+  if (assertRateLimitConfiguration() === "memory") {
+    const current = buckets.get(key);
+    const bucket = !current || current.resetAt <= timestamp ? { count: 0, resetAt: timestamp + windowMs, windowStartedAt: timestamp } : current;
+    const next = { ...bucket, count: bucket.count + 1 };
+    buckets.set(key, next);
+    return next.count;
+  }
+  if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL é obrigatório quando RATE_LIMIT_MODE=postgres.");
+  return assertPostgresRateLimitCounter(key, LOGIN_FAILURE_COUNTER_CEILING, windowMs, timestamp);
+}
+
 export function resetRateLimits(): void {
   buckets.clear();
+}
+
+async function assertPostgresRateLimitCounter(
+  key: string,
+  ceiling: number,
+  windowMs: number,
+  timestamp = Date.now()
+): Promise<number> {
+  try {
+    const result = await rateLimitPool().query<{ request_count: number | string }>(
+      POSTGRES_CONSUME_SQL.replace(/\n\s+RETURNING[\s\S]*$/, "\n  RETURNING request_count"),
+      [key, new Date(timestamp), windowMs, ceiling]
+    );
+    const count = Number(result.rows[0]?.request_count);
+    if (!Number.isSafeInteger(count)) throw new Error("RATE_LIMIT_BUCKET_INVALID");
+    return count;
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
+function rateLimitPool(): Pool {
+  if (!databasePool) {
+    databasePool = new Pool({ connectionString: process.env.DATABASE_URL, max: assertRateLimitPoolMax(process.env.RATE_LIMIT_DB_POOL_MAX), idleTimeoutMillis: 30_000 });
+    databasePool.on("error", () => {
+      // The next query fails closed with DEPENDENCY_UNAVAILABLE.
+    });
+  }
+  return databasePool;
+}
+
+/** The longest window any bucket can have (login backoff ceiling); a bucket older than this is dead. */
+const LONGEST_BUCKET_WINDOW_MS = LOGIN_BACKOFF_CEILING_MS;
+const DEFAULT_BUCKET_RETENTION_MS = 2 * 60 * 60 * 1000;
+
+export function rateLimitBucketRetentionMs(environment: Partial<NodeJS.ProcessEnv> = process.env): number {
+  const configured = Number(environment.RATE_LIMIT_BUCKET_RETENTION_MS);
+  const value = Number.isSafeInteger(configured) && configured > 0 ? configured : DEFAULT_BUCKET_RETENTION_MS;
+  // Never below the longest window, so a live counter can not be removed from under a client.
+  return Math.max(value, LONGEST_BUCKET_WINDOW_MS + 60_000);
+}
+
+/**
+ * Removes buckets whose window ended long ago. Every distinct client, e-mail or route key creates a row, so
+ * without this an internet-facing instance grows the table by whatever scanners and e-mail sprays send.
+ * Returns how many buckets were removed.
+ */
+export async function pruneRateLimitBuckets(nowMs = Date.now(), retentionMs = rateLimitBucketRetentionMs()): Promise<number> {
+  const cutoff = nowMs - retentionMs;
+  if (assertRateLimitConfiguration() === "memory") {
+    let removed = 0;
+    for (const [key, bucket] of buckets) if (bucket.resetAt <= cutoff) { buckets.delete(key); removed += 1; }
+    return removed;
+  }
+  try {
+    const result = await rateLimitPool().query("DELETE FROM rate_limit_buckets WHERE window_started_at < $1", [new Date(cutoff)]);
+    return result.rowCount ?? 0;
+  } catch {
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
 }
 
 export async function closeRateLimitBackend(): Promise<void> {

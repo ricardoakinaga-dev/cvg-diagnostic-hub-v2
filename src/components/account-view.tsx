@@ -2,20 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import type { SessionResponse, SessionUser } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
-
-interface SessionUser {
-  id: string;
-  email: string;
-  displayName: string;
-  role: string;
-  departmentCode: string;
-  managedDepartmentCodes?: string[];
-  timezone: string;
-}
 
 const roleLabels: Record<string, string> = {
   ADMIN: "Administração técnica",
@@ -46,9 +38,12 @@ export function AccountView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [loggingOut, setLoggingOut] = useState(false);
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [savingPassword, setSavingPassword] = useState(false);
 
   useEffect(() => {
-    void apiFetch<{ user: SessionUser }>("/session/me")
+    void apiFetch<SessionResponse>("/session/me")
       .then(({ user: currentUser }) => setUser(currentUser))
       .catch((cause) => setError(getSafeErrorMessage(cause, "Não foi possível carregar sua conta.")))
       .finally(() => setLoading(false));
@@ -60,8 +55,22 @@ export function AccountView() {
     finally { router.replace("/login"); }
   }
 
-  if (loading) return <div className="loading-state" role="status">Carregando sua conta…</div>;
-  if (!user) return <div className="error-state" role="alert"><strong>Conta indisponível</strong><span>{error}</span><Link className="button button-ghost" href="/">Voltar ao início</Link></div>;
+  async function replaceInitialPassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (password !== confirmation) { setError("As senhas precisam ser iguais."); return; }
+    setSavingPassword(true); setError("");
+    try {
+      await apiFetch<SessionResponse>("/session/password", { method: "POST", body: JSON.stringify({ password }) });
+      setPassword(""); setConfirmation("");
+      router.replace("/");
+      router.refresh();
+    } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível trocar sua senha.")); }
+    finally { setSavingPassword(false); }
+  }
+
+  if (loading) return <LoadingState label="Carregando sua conta" />;
+  if (!user) return <ErrorState page title="Conta indisponível" message={error} onRetry={() => window.location.reload()} action={<Link className="button button-ghost" href="/">Voltar ao início</Link>} />;
+  if (user.mustChangePassword) return <div className="account-page"><div className="page-heading"><div><p className="eyebrow">Primeiro acesso</p><h1>Crie sua senha</h1><p className="page-lede">Substitua a senha inicial para acessar o Hub. Use pelo menos 12 caracteres, com letras e números.</p></div></div><section className="panel account-panel"><form className="admin-create-form" onSubmit={(event) => void replaceInitialPassword(event)}><label>Nova senha<input type="password" autoComplete="new-password" minLength={12} maxLength={200} required value={password} onChange={(event) => setPassword(event.target.value)} /></label><label>Confirmar nova senha<input type="password" autoComplete="new-password" minLength={12} maxLength={200} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>{error && <p role="alert" className="form-alert">{error}</p>}<ActionButton type="submit" state={savingPassword ? "pending" : "idle"}>Salvar nova senha</ActionButton><ActionButton type="button" tone="ghost" state={loggingOut ? "pending" : "idle"} onClick={() => void logout()}>Encerrar sessão</ActionButton></form></section></div>;
 
   const managedDepartments = user.managedDepartmentCodes?.map((code) => labelFor(departmentLabels, code)).join(" · ");
   const canAccessClinical = user.role !== "ADMIN";

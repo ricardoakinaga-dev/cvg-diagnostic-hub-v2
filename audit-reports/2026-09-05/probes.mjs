@@ -10,7 +10,7 @@ import { GET, POST } from "../../src/app/api/v1/[...path]/route.ts";
 if (process.env.NODE_ENV !== "test" || process.env.APP_DATA_MODE !== "memory") {
   throw new Error("These probes require explicit test/memory mode.");
 }
-const state = createDemoState();
+const state = createDemoState("test-only-demo-password");
 const viewer = { ...state.users[0], id: "audit-viewer", email: "audit-viewer@cvg.local", role: "VIEWER", departmentCode: "LABORATORY", patientIds: ["patient-thor"] };
 state.users.push(viewer);
 const store = new MemoryStore(state);

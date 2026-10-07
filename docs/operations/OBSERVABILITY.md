@@ -2,9 +2,9 @@
 
 **Knowledge status:** `IMPLEMENTED LOCALLY / DECISION PENDING` — o boundary técnico, a redação e a correlação estão implementados; thresholds, owners e roteamento de plantão ainda dependem de D-05.
 
-## Current AAA-3 evidence (07/09/2026)
+## Current AUDIT-2026-10 evidence (02/10/2026)
 
-O working tree corrente passou `npm run validate` com **725/725 testes em 86 arquivos**, cobertura 92,72% statements/lines, 85,82% branches e 94,31% functions na execução full corrente. A matriz browser corrente passou 60/60 sem retry em Chromium/tablet/mobile, incluindo 12/12 de acessibilidade. O packet corrente e suas limitações estão no [manifesto AAA-3](../../.orchestrate/aaa3-execution-20260907/evidence-manifest.json). A evidência é local/condicional: não prova workload representativo, alert routing, failover ou readiness produtivo.
+A auditoria de 04/10/2026 ([relatório](../RELATORIO_AUDITORIA_2026-10-04.md)) passou `npm test` com **1.449/1.449 testes em 126 arquivos** e `npm run test:postgres` com **96/96 em 17 arquivos**. A cobertura agregada registra 96,83% lines, 95,48% functions e 89,47% branches; `coverage:gate` passou com 22 exceções temporárias sem entradas stale. Migrations 001–014, docs, OpenAPI 73/68, traceabilidade 43/43, security scan, typecheck, lint, build, E2E 81/81 sem retry e mutation 7/7 passam. A evidência é local/condicional: não prova workload representativo, alert routing, failover ou readiness produtivo.
 
 O boundary HTTP agora emite logs JSON estruturados somente com campos allowlisted (`event`, `level`, `component`, `method`, `route`, `status`, `durationMs` e correlação). Correlações controladas pelo chamador são emitidas como `external`; somente IDs `corr_<UUID>` gerados pelo servidor permanecem no log. Corpos, conteúdo clínico, credenciais, tokens, cookies, connection strings e payloads são descartados e labels têm limite de tamanho/cardinalidade. A emissão não altera o resultado de uma requisição quando o writer falha. O SBOM CycloneDX é gerado no CI pelo comando `npm run security:sbom` sob Node 22 e publicado como artefato de verificação.
 
@@ -26,9 +26,9 @@ Never use application logs as the clinical timeline source.
 ## 2. Metrics contract: implemented and proposed
 
 Technical (implemented locally): request count/latency/error by route, DB pool, storage failures, outbox depth/age/retries, SSE connections/reconnects, readiness failures and bounded backup signals exposed by the current metrics registry.
-Business (proposed/pilot, not yet emitted by the current runtime): `diagnostic_requests_created`, `diagnostic_items_completed`, `diagnostic_turnaround_time`, `recollection_rate`, `critical_results`, `overdue_items`, `result_view_latency`. These require an approved owner, aggregation policy, thresholds and pilot instrumentation before they can be treated as production signals.
+Business (bounded local snapshots, not yet approved as production SLOs): `diagnostic_requests_created`, `diagnostic_items_completed`, `diagnostic_turnaround_time_seconds`, `recollection_rate`, `critical_results`, `overdue_items`, `result_view_latency_seconds`. The runtime emits counts, averages and the recollection fraction without patient labels; owners, aggregation policy, thresholds and pilot validation remain pending before these can be treated as production signals.
 
-The local `GET /api/v1/metrics` implementation currently exposes the bounded technical registry; it does not claim to emit the business series above.
+The local `GET /api/v1/metrics` implementation exposes the bounded technical registry and these process-local business snapshot gauges. Derived gauges with no valid observations are omitted rather than rendered as fabricated zeroes.
 
 Metrics use bounded labels (service code, department code, priority); never patient name, result value or unbounded ID.
 

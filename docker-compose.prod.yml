@@ -1,0 +1,199 @@
+# Production stack: TLS edge -> web app, outbox worker and PostgreSQL.
+# Object storage (S3-compatible) and the malware scanner are external managed
+# services configured through .env.production; see docs/operations/DEPLOYMENT.md.
+#
+#   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm bootstrap   # first deploy only
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  APP_DATA_MODE: postgres
+  # The application and the worker connect as the runtime role: DML only, no DDL, append-only audit_events.
+  # The DDL credentials are NOT part of this shared block; only the one-shot migrate service receives them.
+  DATABASE_URL: postgresql://${POSTGRES_RUNTIME_USER:-cvg_runtime}:${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
+  DB_POOL_MAX: ${DB_POOL_MAX:-10}
+  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set}
+  APP_ORIGIN: https://${APP_DOMAIN:?APP_DOMAIN must be set}
+  TRUST_PROXY: "true"
+  TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?TRUST_PROXY_SHARED_SECRET must be set}
+  RATE_LIMIT_MODE: postgres
+  LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
+  ATTACHMENT_UPLOAD_RATE_LIMIT: ${ATTACHMENT_UPLOAD_RATE_LIMIT:-30}
+  ATTACHMENT_MAX_BYTES: ${ATTACHMENT_MAX_BYTES:-26214400}
+  REALTIME_NOTIFICATION_ADAPTER: postgres-listen
+  REALTIME_NOTIFICATION_CHANNEL: ${REALTIME_NOTIFICATION_CHANNEL:-cvg_realtime_wakeup}
+  REALTIME_LISTEN_POOL_MAX: ${REALTIME_LISTEN_POOL_MAX:-2}
+  STORAGE_MODE: s3
+  STORAGE_ENDPOINT: ${STORAGE_ENDPOINT:?STORAGE_ENDPOINT must be set}
+  STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
+  STORAGE_BUCKET: ${STORAGE_BUCKET:?STORAGE_BUCKET must be set}
+  STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY must be set}
+  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY must be set}
+  STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
+  STORAGE_SCAN_MODE: external
+  MALWARE_SCANNER_ENDPOINT: ${MALWARE_SCANNER_ENDPOINT:?MALWARE_SCANNER_ENDPOINT must be set}
+  MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?MALWARE_SCANNER_API_KEY must be set}
+  MALWARE_SCANNER_ALLOWED_HOSTS: ${MALWARE_SCANNER_ALLOWED_HOSTS:?MALWARE_SCANNER_ALLOWED_HOSTS must be set}
+  MALWARE_SCANNER_TIMEOUT_MS: ${MALWARE_SCANNER_TIMEOUT_MS:-10000}
+  CRITICAL_POLICY_ENABLED: ${CRITICAL_POLICY_ENABLED:-false}
+  CRITICAL_POLICY_VERSION: ${CRITICAL_POLICY_VERSION:-}
+  CRITICAL_POLICY_APPROVAL_REF: ${CRITICAL_POLICY_APPROVAL_REF:-}
+  CRITICAL_POLICY_APPROVED_AT: ${CRITICAL_POLICY_APPROVED_AT:-}
+  # Tunables documented in .env.production.example. --env-file only feeds
+  # interpolation, so a value not listed here never reaches the containers.
+  # The defaults repeat the code defaults.
+  APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+  SESSION_IDLE_TIMEOUT_MS: ${SESSION_IDLE_TIMEOUT_MS:-1800000}
+  SESSION_ACTIVITY_TOUCH_INTERVAL_MS: ${SESSION_ACTIVITY_TOUCH_INTERVAL_MS:-60000}
+  SESSION_RETENTION_MS: ${SESSION_RETENTION_MS:-86400000}
+  IDEMPOTENCY_RETENTION_MS: ${IDEMPOTENCY_RETENTION_MS:-86400000}
+  OUTBOX_STATE_RETENTION_MS: ${OUTBOX_STATE_RETENTION_MS:-86400000}
+  STATE_OUTBOX_HOT_WINDOW: ${STATE_OUTBOX_HOT_WINDOW:-100}
+  REALTIME_SHARED_READ_MIN_INTERVAL_MS: ${REALTIME_SHARED_READ_MIN_INTERVAL_MS:-1000}
+  REALTIME_SHARED_NOTIFY_DEBOUNCE_MS: ${REALTIME_SHARED_NOTIFY_DEBOUNCE_MS:-0}
+  AUTHENTICATED_RATE_LIMIT: ${AUTHENTICATED_RATE_LIMIT:-240}
+  UNAUTHENTICATED_RATE_LIMIT: ${UNAUTHENTICATED_RATE_LIMIT:-120}
+  HEALTH_RATE_LIMIT: ${HEALTH_RATE_LIMIT:-60}
+  JSON_BODY_MAX_BYTES: ${JSON_BODY_MAX_BYTES:-1048576}
+  JSON_BODY_MAX_DEPTH: ${JSON_BODY_MAX_DEPTH:-32}
+
+# Container logs rotate by default only if asked: without this a busy host fills its disk with json-file logs.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-5}
+
+services:
+  postgres:
+    logging: *default-logging
+    init: true
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - cvg-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # One-shot, runs before app and worker on every `up`. It is the only service that holds the
+  # administrative and DDL credentials: it creates/rotates the migration and runtime roles, hands the
+  # schema to the migration role, applies migrations and grants the runtime role DML only.
+  migrate:
+    build: { context: ., target: ops }
+    image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
+    command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
+    environment:
+      <<: *app-environment
+      DATABASE_ADMIN_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-cvg_migrator}:${POSTGRES_MIGRATION_PASSWORD:?POSTGRES_MIGRATION_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  # One-shot: creates the first ADMIN on an empty database. Refuses to run
+  # against an initialized database. Not started by `up`.
+  bootstrap:
+    image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
+    profiles: ["bootstrap"]
+    command: ["node_modules/.bin/tsx", "scripts/bootstrap-admin.ts"]
+    environment:
+      <<: *app-environment
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-Administração}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: "no"
+
+  app:
+    logging: *default-logging
+    init: true
+    mem_limit: ${APP_MEM_LIMIT:-1g}
+    build: { context: ., target: runner }
+    image: ${IMAGE_PREFIX:-cvg-hub}:${IMAGE_TAG:-latest}
+    environment: *app-environment
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    # No published port: only the edge proxy reaches the app.
+    expose: ["3000"]
+
+  worker:
+    logging: *default-logging
+    init: true
+    mem_limit: ${WORKER_MEM_LIMIT:-512m}
+    image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
+    command: ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
+    environment:
+      <<: *app-environment
+      OUTBOX_SINK: postgres
+      OUTBOX_DELIVERY_CHANNEL: ${OUTBOX_DELIVERY_CHANNEL:-IN_APP}
+      OUTBOX_HEARTBEAT_FILE: ${OUTBOX_HEARTBEAT_FILE:-/tmp/outbox-worker-heartbeat.json}
+      OUTBOX_HEARTBEAT_MAX_AGE_MS: ${OUTBOX_HEARTBEAT_MAX_AGE_MS:-30000}
+      OUTBOX_HEARTBEAT_ERROR_TOLERANCE: ${OUTBOX_HEARTBEAT_ERROR_TOLERANCE:-3}
+      RUNTIME_RETENTION_INTERVAL_MS: ${RUNTIME_RETENTION_INTERVAL_MS:-3600000}
+      RATE_LIMIT_BUCKET_RETENTION_MS: ${RATE_LIMIT_BUCKET_RETENTION_MS:-7200000}
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    # Plain node, not tsx: a probe that transpiles on every 10s interval costs
+    # more than the check. Docker Compose does not restart an unhealthy
+    # container by itself, so the signal is for external monitoring or an
+    # orchestrator; see docs/operations/DEPLOYMENT.md.
+    healthcheck:
+      test: ["CMD", "node", "scripts/outbox-healthcheck.mjs"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  proxy:
+    logging: *default-logging
+    mem_limit: ${PROXY_MEM_LIMIT:-256m}
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?}
+      TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?}
+    ports:
+      - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
+      - "${HTTP_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - cvg-caddy-data:/data
+      - cvg-caddy-config:/config
+    depends_on:
+      app: { condition: service_healthy }
+
+  # Daily logical backup into the cvg-backups volume (see deploy/backup/backup-loop.sh).
+  backup:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/opt/backup-loop.sh"]
+    environment:
+      PGHOST: postgres
+      PGDATABASE: ${POSTGRES_DB:?}
+      PGUSER: ${POSTGRES_RUNTIME_USER:-cvg_runtime}
+      PGPASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./deploy/backup/backup-loop.sh:/opt/backup-loop.sh:ro
+      - cvg-backups:/backups
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 256m
+
+volumes:
+  cvg-postgres:
+  cvg-backups:
+  cvg-caddy-data:
+  cvg-caddy-config:

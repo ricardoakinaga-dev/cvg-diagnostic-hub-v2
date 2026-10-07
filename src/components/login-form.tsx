@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { Icon } from "./ui-icons";
+import type { SessionResponse } from "@cvg/contracts";
 
 export function LoginForm() {
   const router = useRouter();
@@ -17,8 +18,8 @@ export function LoginForm() {
     event.preventDefault();
     setSubmitting(true); setError("");
     try {
-      await apiFetch("/session/login", { method: "POST", body: JSON.stringify({ email, password }) });
-      router.replace("/");
+      const session = await apiFetch<SessionResponse>("/session/login", { method: "POST", body: JSON.stringify({ email, password }) });
+      router.replace(session.user.mustChangePassword ? "/account?password=required" : "/");
     } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível entrar. Verifique os dados e tente novamente.")); }
     finally { setSubmitting(false); }
   }

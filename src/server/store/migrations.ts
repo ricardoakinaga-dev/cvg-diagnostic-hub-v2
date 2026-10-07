@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "010_relational_backfill_control";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "014_outbox_read_authority";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -19,7 +19,11 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "007_relational_clinical_core",
   "008_outbox_routing",
   "009_relational_sample_lineage",
-  "010_relational_backfill_control"
+  "010_relational_backfill_control",
+  "011_outbox_dead_letter",
+  "012_session_activity",
+  "013_audit_read_authority",
+  "014_outbox_read_authority"
 ] as const;
 
 /**
@@ -37,7 +41,11 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "007_relational_clinical_core": "59799c7880140036e500160bae84bd21bceb83894b7a98c6568e6577c5d29767",
   "008_outbox_routing": "3bf712b2b2bcccb1a51a1a03fd22a4a349c9e4362b75a4e0e42f70eca1a08eff",
   "009_relational_sample_lineage": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c",
-  "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f"
+  "010_relational_backfill_control": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f",
+  "011_outbox_dead_letter": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073",
+  "012_session_activity": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5",
+  "013_audit_read_authority": "9b5ca0a5b3107e4cbe5770081bea50c6b1de3ff1f9fc44cc878a794dea463d98",
+  "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -59,6 +67,11 @@ interface MigrationLogger {
 export interface ApplyMigrationsOptions {
   readonly migrationDirectory: string;
   readonly logger?: MigrationLogger;
+  /**
+   * Operator acknowledgement for migrations marked "Coordinated cutover". Without it,
+   * such a migration is refused while any other session is connected to the database.
+   */
+  readonly cutoverAcknowledged?: boolean;
 }
 
 export interface MigrationRunResult {
@@ -89,7 +102,9 @@ interface RuntimeSchemaRow {
   readonly event_projection_ready: boolean;
   readonly outbox_claim_ownership_ready: boolean;
   readonly outbox_routing_ready: boolean;
+  readonly outbox_dead_letter_ready: boolean;
   readonly rate_limit_schema_ready: boolean;
+  readonly session_activity_schema_ready: boolean;
   readonly relational_clinical_core_ready: boolean;
   readonly transitional_storage_boundary_ready: boolean;
   readonly invalidation_trigger_ready: boolean;
@@ -147,26 +162,22 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
        AND pg_get_functiondef(tgfoid) ILIKE '%AUDIT_EVENTS_ARE_APPEND_ONLY%'
   ) AS audit_truncate_guard_ready,
   COALESCE((
-    SELECT jsonb_array_length(state->'auditEvents') = (SELECT count(*) FROM audit_events)
-       AND jsonb_array_length(state->'outbox') = (SELECT count(*) FROM outbox_messages)
-       AND NOT EXISTS (
-         SELECT 1
-           FROM audit_events relational
-          WHERE NOT EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(state->'auditEvents') snapshot
-             WHERE snapshot->>'id' = relational.id
-          )
-       )
-       AND NOT EXISTS (
-         SELECT 1
-           FROM outbox_messages relational
-          WHERE NOT EXISTS (
-            SELECT 1
-              FROM jsonb_array_elements(state->'outbox') snapshot
-             WHERE snapshot->>'id' = relational.id
-          )
-       )
+    SELECT state->'auditEvents' = '[]'::jsonb
+       AND state->'outbox' = '[]'::jsonb
+       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'cvg_runtime_state'::regclass
+         AND conname = 'runtime_audit_is_transient' AND convalidated
+         AND pg_get_constraintdef(oid) ILIKE '%auditEvents%[]%')
+       AND EXISTS (SELECT 1 FROM runtime_storage_boundaries WHERE boundary_key = 'audit-events-v1'
+         AND authoritative_store = 'audit_events' AND read_mode = 'RELATIONAL' AND write_mode = 'RELATIONAL'
+         AND status = 'RELATIONAL_READY' AND reconciliation_mode = 'COMPLETE' AND contract_version = 'AuditEvent-v1')
+       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'cvg_runtime_state'::regclass
+         AND conname = 'runtime_outbox_is_transient' AND convalidated
+         AND pg_get_constraintdef(oid) ILIKE '%outbox%[]%')
+       AND EXISTS (SELECT 1 FROM runtime_storage_boundaries WHERE boundary_key = 'outbox-messages-v1'
+         AND authoritative_store = 'outbox_messages' AND read_mode = 'RELATIONAL' AND write_mode = 'RELATIONAL'
+         AND status = 'RELATIONAL_READY' AND reconciliation_mode = 'COMPLETE' AND contract_version = 'OutboxMessage-v1')
+       AND EXISTS (SELECT 1 FROM pg_constraint WHERE conrelid = 'outbox_messages'::regclass
+         AND conname = 'outbox_messages_event_position_unique' AND contype = 'u')
       FROM cvg_runtime_state
      WHERE id = 1
   ), false) AS event_projection_ready,
@@ -202,6 +213,20 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
          AND conname = 'outbox_messages_route_consistency_check'
     )
   ) AS outbox_routing_ready,
+  (
+    (SELECT count(*) = 4
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'outbox_messages'
+        AND column_name IN ('dead_lettered_at', 'discarded_at', 'discarded_by', 'discard_reason'))
+    AND EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conrelid = 'outbox_messages'::regclass
+         AND conname = 'outbox_messages_status_check'
+         AND pg_get_constraintdef(oid) ILIKE '%DISCARDED%'
+    )
+  ) AS outbox_dead_letter_ready,
   EXISTS (
     SELECT 1
       FROM information_schema.columns
@@ -211,6 +236,30 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
      GROUP BY table_name
     HAVING count(*) = 3
   ) AS rate_limit_schema_ready,
+  (
+    (SELECT count(*) = 4
+       FROM information_schema.columns
+      WHERE table_schema = current_schema()
+        AND table_name = 'session_activity'
+        AND column_name IN ('session_id', 'user_id', 'last_seen_at', 'updated_at')
+        AND is_nullable = 'NO')
+    AND EXISTS (
+      SELECT 1
+        FROM pg_class activity_table
+        JOIN pg_namespace activity_schema ON activity_schema.oid = activity_table.relnamespace
+       WHERE activity_schema.nspname = current_schema()
+         AND activity_table.relname = 'session_activity'
+         AND activity_table.relkind = 'r'
+         AND EXISTS (
+           SELECT 1
+             FROM pg_index activity_index
+            WHERE activity_index.indrelid = activity_table.oid
+              AND activity_index.indisunique
+              AND activity_index.indnatts = 1
+              AND pg_get_indexdef(activity_index.indexrelid) ILIKE '%(session_id)%'
+         )
+    )
+  ) AS session_activity_schema_ready,
   (
     EXISTS (
       SELECT 1
@@ -346,6 +395,7 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
        AND status = 'TRANSITIONAL'
        AND reconciliation_mode = 'CONTINUOUS'
        AND contract_version = 'StoreState-v1'
+       AND projected_relations = ARRAY[]::text[]
   ) AS transitional_storage_boundary_ready,
   EXISTS (
     SELECT 1
@@ -537,6 +587,8 @@ export async function applyMigrations(client: SqlQueryable, options: ApplyMigrat
       }
     }
 
+    await assertCutoverAllowed(client, migrations.filter((migration) => !ledger.has(migration.version)), options.cutoverAcknowledged === true);
+
     const applied: string[] = [];
     const alreadyApplied: string[] = [];
 
@@ -562,6 +614,32 @@ export async function applyMigrations(client: SqlQueryable, options: ApplyMigrat
   }
 }
 
+/** A migration whose first lines say "Coordinated cutover" needs the previous app and worker stopped. */
+export function isCoordinatedCutover(sql: string): boolean {
+  return /^\s*--\s*Coordinated cutover\b/i.test(sql);
+}
+
+/**
+ * Refuses to run a coordinated-cutover migration while another session is connected.
+ * The check runs before any pending SQL, so a refusal leaves the database untouched.
+ * pg_stat_activity still reports the database and pid of sessions owned by other
+ * roles, but hides their backend_type (NULL) unless the caller has pg_read_all_stats.
+ * The runtime connects under its own role, so an unknown type must count as a
+ * connected writer. Only an identified autovacuum worker is ignored: it also reports
+ * the database and made the guard refuse at random (CI run 37522831663).
+ * db:roles grants pg_read_all_stats to the migration role so autovacuum is identifiable.
+ */
+async function assertCutoverAllowed(client: SqlQueryable, pending: readonly MigrationDefinition[], acknowledged: boolean): Promise<void> {
+  const cutover = pending.find((migration) => isCoordinatedCutover(migration.sql));
+  if (!cutover || acknowledged) return;
+  const result = await client.query(
+    "SELECT count(*)::int AS other_sessions FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND backend_type IS DISTINCT FROM 'autovacuum worker'"
+  );
+  const count = Number((result.rows[0] as { other_sessions?: unknown } | undefined)?.other_sessions);
+  if (!Number.isSafeInteger(count) || count < 0) throw new Error(`MIGRATION_CUTOVER_CHECK_FAILED:${cutover.version}`);
+  if (count > 0) throw new Error(`MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:${cutover.version}:${count}`);
+}
+
 function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
   if (!value || typeof value !== "object") return undefined;
   const row = value as Partial<RuntimeSchemaRow>;
@@ -576,7 +654,9 @@ function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
     || typeof row.event_projection_ready !== "boolean"
     || typeof row.outbox_claim_ownership_ready !== "boolean"
     || typeof row.outbox_routing_ready !== "boolean"
+    || typeof row.outbox_dead_letter_ready !== "boolean"
     || typeof row.rate_limit_schema_ready !== "boolean"
+    || typeof row.session_activity_schema_ready !== "boolean"
     || typeof row.relational_clinical_core_ready !== "boolean"
     || typeof row.transitional_storage_boundary_ready !== "boolean"
     || typeof row.invalidation_trigger_ready !== "boolean"

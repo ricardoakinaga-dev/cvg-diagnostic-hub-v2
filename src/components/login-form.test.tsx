@@ -33,4 +33,13 @@ describe("LoginForm", () => {
     expect(screen.getByRole("alert")).not.toHaveTextContent("postgres://");
     expect(replace).not.toHaveBeenCalled();
   });
+
+  it("directs temporary credentials to mandatory password replacement", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { mustChangePassword: true } });
+    render(<LoginForm />);
+    fireEvent.change(screen.getByLabelText("E-mail profissional"), { target: { value: "new@cvg.local" } });
+    fireEvent.change(screen.getByLabelText("Senha"), { target: { value: "Initial-password-1234" } });
+    fireEvent.click(screen.getByRole("button", { name: "Entrar no Hub" }));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/account?password=required"));
+  });
 });

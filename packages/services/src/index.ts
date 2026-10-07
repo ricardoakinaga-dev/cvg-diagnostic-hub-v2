@@ -18,6 +18,8 @@ export interface ApiFailure {
   error?: { code?: string; message?: string; details?: Record<string, unknown>; correlationId?: string };
 }
 
+/** Shown for any 403/404 on a scoped resource; the UI also uses it to know a retry can not help. */
+export const ACCESS_DENIED_MESSAGE = "Você não tem acesso a este recurso.";
 const GENERIC_API_ERROR = "Não foi possível concluir a operação. Informe o código de correlação ao suporte.";
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
   CSRF_INVALID: "A sessão de segurança expirou. Atualize a página e tente novamente.",
@@ -25,13 +27,16 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   NOT_FOUND: "O recurso solicitado não está disponível.",
   CONFLICT: "Este registro já existe ou mudou. Atualize os dados e tente novamente.",
   RATE_LIMITED: "Muitas tentativas em pouco tempo. Aguarde e tente novamente.",
-  SCOPE_DENIED: "Você não tem acesso a este recurso.",
+  SCOPE_DENIED: ACCESS_DENIED_MESSAGE,
   SESSION_EXPIRED: "Sua sessão expirou. Entre novamente para continuar.",
   UNAUTHENTICATED: "Sua sessão não está disponível. Entre novamente para continuar.",
   VALIDATION_ERROR: "Revise os dados informados e tente novamente.",
   CRITICAL_ACK_REQUIRED: "Confirme a notificação crítica antes de revisar o resultado.",
   NOTIFICATION_NOT_DELIVERED: "A notificação ainda está sendo entregue. Atualize e tente novamente.",
   NOTIFICATION_STALE: "O resultado crítico mudou. Abra o contexto atual antes de confirmar.",
+  SESSION_ALREADY_REVOKED: "Esta sessão já foi revogada.",
+  OUTBOX_DEAD_LETTER_ALREADY_DISCARDED: "Esta mensagem já foi descartada.",
+  OUTBOX_NOT_DEAD_LETTERED: "Esta mensagem não está disponível para operação.",
   DUPLICATE_WARNING: "Já existe um exame ativo compatível. Confirme o motivo para prosseguir.",
   RESULT_RELEASE_BLOCKED: "Finalize ou remova os anexos pendentes antes de liberar o resultado.",
   SCHEDULE_CONFLICT: "O recurso já está reservado neste intervalo.",

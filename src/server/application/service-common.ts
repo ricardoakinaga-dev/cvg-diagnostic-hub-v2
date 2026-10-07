@@ -1,5 +1,5 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
-import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ItemState, ManagedSession, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import { outboxEnvelopeFor, type Admission, type Attachment, type AuditEvent, type DiagnosticItem, type DiagnosticRequest, type DiagnosticService, type Notification, type Procedure, type ProcedureSchedule, type ReasonCode, type Result, type ResultVersion, type Sample, type StateStore, type StoreState, type User } from "../domain/models";
 import type { FileStore } from "../storage/file-store";
 import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
@@ -13,8 +13,10 @@ export { transitionItem };
 export const MAX_NOTE_LENGTH = 2000;
 export const MAX_RESULT_NARRATIVE_LENGTH = 20000;
 export const MAX_ATTACHMENT_SIZE = 25 * 1024 * 1024;
-export const DEFAULT_PAGE_SIZE = 25;
 export const ALLOWED_ATTACHMENT_MIME = new Set(["application/pdf", "image/jpeg", "image/png"]);
+
+export { DEFAULT_PAGE_SIZE, dateFilter, decodeAuditCursor, decodeKeysetCursor, decodeRequestCursor, decodeSearchCursor, decodeTimelineCursor, encodeKeysetCursor, pageSize } from "./service-pagination";
+export type { AuditCursor, RequestCursor, SearchCursor, TimelineCursor } from "./service-pagination";
 
 export const INDICATOR_DEFINITIONS: Record<DashboardIndicatorKey, Omit<DashboardIndicator, "key" | "count" | "denominator">> = {
   overdue: {
@@ -75,10 +77,33 @@ export function managedUser(user: User): ManagedUser {
     role: user.role,
     departmentCode: user.departmentCode,
     managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined,
+    serviceCodes: user.serviceCodes ? [...user.serviceCodes] : undefined,
     timezone: user.timezone,
     active: user.active !== false,
     createdAt: user.createdAt,
     version: user.version
+  };
+}
+
+export function managedSession(session: StoreState["sessions"][number], user: User, currentSessionId?: string): ManagedSession {
+  const nowMs = Date.now();
+  const status = session.revokedAt
+    ? "REVOKED"
+    : Date.parse(session.expiresAt) <= nowMs || user.active === false
+      ? "EXPIRED"
+      : "ACTIVE";
+  return {
+    id: session.id,
+    userId: user.id,
+    userDisplayName: user.displayName,
+    userEmail: user.email,
+    userRole: user.role,
+    departmentCode: user.departmentCode,
+    createdAt: session.createdAt,
+    expiresAt: session.expiresAt,
+    status,
+    current: session.id === currentSessionId,
+    ...(session.revokedAt ? { revokedAt: session.revokedAt } : {})
   };
 }
 
@@ -179,18 +204,22 @@ export function revokeUserSessions(state: StoreState, userId: string): StoreStat
 
 export function requireRecentReauthentication(actor: User): void {
   const reauthenticatedAt = actor.reauthenticatedAt ? Date.parse(actor.reauthenticatedAt) : Number.NaN;
-  if (Number.isNaN(reauthenticatedAt) || Date.now() - reauthenticatedAt > 10 * 60 * 1000 || reauthenticatedAt > Date.now() + 30_000) {
+  if (!actor.sessionId || Number.isNaN(reauthenticatedAt) || Date.now() - reauthenticatedAt > 10 * 60 * 1000 || reauthenticatedAt > Date.now() + 30_000) {
     throw new ApiError("REAUTH_REQUIRED", "Confirme sua identidade novamente antes de alterar acessos.", 403, { retryable: true });
   }
 }
 
 export function requireActiveUser(state: StoreState, actor: User): User {
   const current = state.users.find((user) => user.id === actor.id);
+  if (current?.mustChangePassword) throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
   const session = actor.sessionId ? state.sessions.find((entry) => entry.id === actor.sessionId && entry.userId === actor.id) : undefined;
   if (
     !current
     || !current.active
-    || current.version !== actor.version
+    // A newer user version alone is not a reason to reject: registering a patient bumps it to publish the new
+    // patient scope, and requests already in flight (double click, second tab) carry the previous snapshot.
+    // Role, department and active are compared below and everything else is narrowed to the scope the
+    // request was authenticated with, so a stale snapshot can only ever see less, never more.
     || current.role !== actor.role
     || current.departmentCode !== actor.departmentCode
     || (actor.sessionId !== undefined && (!session || session.revokedAt !== undefined || Date.parse(session.expiresAt) <= Date.now()))
@@ -206,7 +235,7 @@ export function requireActiveUser(state: StoreState, actor: User): User {
     patientIds: narrowed(current.patientIds, actor.patientIds),
     serviceCodes: narrowed(current.serviceCodes, actor.serviceCodes),
     sessionId: actor.sessionId,
-    reauthenticatedAt: session?.reauthenticatedAt ?? actor.reauthenticatedAt
+    reauthenticatedAt: session?.reauthenticatedAt
   };
 }
 
@@ -665,74 +694,6 @@ export function requestForNotification(state: StoreState, notification: Notifica
   const result = version ? state.results.find((entry) => entry.id === version.resultId) : undefined;
   const item = result ? state.items.find((entry) => entry.id === result.itemId) : undefined;
   return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
-}
-
-export interface SearchCursor {
-  rank: number;
-  updatedAt: string;
-  id: string;
-}
-
-export interface TimelineCursor {
-  occurredAt: string;
-  id: string;
-}
-
-export interface RequestCursor {
-  createdAt: string;
-  id: string;
-}
-
-export interface AuditCursor {
-  occurredAt: string;
-  id: string;
-}
-
-export function decodeKeysetCursor<T>(cursor: string | undefined, valid: (value: Record<string, unknown>) => boolean): T | undefined {
-  if (!cursor) return undefined;
-  try {
-    const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
-    if (!decoded || typeof decoded !== "object" || Array.isArray(decoded) || !valid(decoded as Record<string, unknown>)) throw new Error("invalid");
-    return decoded as T;
-  } catch {
-    throw new ApiError("VALIDATION_ERROR", "Cursor inválido.", 400);
-  }
-}
-
-export function decodeSearchCursor(cursor: string | undefined): SearchCursor | undefined {
-  return decodeKeysetCursor<SearchCursor>(cursor, (value) => Number.isSafeInteger(value.rank) && Number(value.rank) >= 0 && Number(value.rank) <= 2 && typeof value.updatedAt === "string" && !Number.isNaN(Date.parse(value.updatedAt)) && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200);
-}
-
-export function decodeTimelineCursor(cursor: string | undefined): TimelineCursor | undefined {
-  return decodeKeysetCursor<TimelineCursor>(cursor, (value) => typeof value.occurredAt === "string" && !Number.isNaN(Date.parse(value.occurredAt)) && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200);
-}
-
-export function decodeRequestCursor(cursor: string | undefined): RequestCursor | undefined {
-  return decodeKeysetCursor<RequestCursor>(cursor, (value) => typeof value.createdAt === "string" && !Number.isNaN(Date.parse(value.createdAt)) && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200);
-}
-
-export function decodeAuditCursor(cursor: string | undefined): AuditCursor | undefined {
-  return decodeKeysetCursor<AuditCursor>(cursor, (value) => typeof value.occurredAt === "string" && !Number.isNaN(Date.parse(value.occurredAt)) && typeof value.id === "string" && value.id.length > 0 && value.id.length <= 200);
-}
-
-export function encodeKeysetCursor(value: SearchCursor | TimelineCursor | RequestCursor | AuditCursor): string {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-}
-
-export function pageSize(value: number | undefined): number {
-  const resolved = value ?? DEFAULT_PAGE_SIZE;
-  if (!Number.isSafeInteger(resolved) || resolved < 1 || resolved > 100) throw new ApiError("VALIDATION_ERROR", "O limite deve ser um inteiro entre 1 e 100.", 400);
-  return resolved;
-}
-
-export function dateFilter(value: string | undefined, field: string): number | undefined {
-  if (value === undefined) return undefined;
-  if (!value || value.length > 100 || !/^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(?:Z|[+-][0-9]{2}:[0-9]{2})$/.test(value)) {
-    throw new ApiError("VALIDATION_ERROR", `O filtro ${field} é inválido.`, 400);
-  }
-  const timestamp = Date.parse(value);
-  if (Number.isNaN(timestamp)) throw new ApiError("VALIDATION_ERROR", `O filtro ${field} é inválido.`, 400);
-  return timestamp;
 }
 
 export function resultView(state: StoreState, result: Result): ResultView {

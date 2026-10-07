@@ -1,7 +1,8 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Dashboard } from "./dashboard";
+import type { DashboardService } from "@cvg/contracts";
+import { Dashboard, RequestDialog } from "./dashboard";
 import * as apiClient from "./api-client";
 
 vi.mock("next/link", () => ({
@@ -44,7 +45,7 @@ const notifications = [{
   deepLink: "/requests/request-1",
 }];
 
-const services = [{
+const services: DashboardService[] = [{
   id: "service-1",
   name: "Hemograma",
   code: "HEMOGRAM",
@@ -82,6 +83,230 @@ function mockDashboardResponses(override?: (path: string, init?: RequestInit) =>
 function requestsValue() {
   return [request];
 }
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (cause: Error) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
+function renderRequestDialog() {
+  const onCreated = vi.fn();
+  return {
+    ...render(<RequestDialog canCreatePatient services={services} servicesError={null} onRetryServices={async () => {}} onClose={vi.fn()} onCreated={onCreated} />),
+    onCreated,
+  };
+}
+
+describe("RequestDialog patient search", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it("finds and submits an authorized patient beyond the first 100 using an encoded server query", async () => {
+    const first100 = Array.from({ length: 100 }, (_, index) => ({ ...patients[0], id: `patient-${index}`, displayName: `Paciente ${index}` }));
+    const remotePatient = { ...patients[0], id: "patient-101", displayName: "Amora & 101", externalId: "HIS-101" };
+    const remoteEncounter = { ...encounters[0], id: "encounter-101", patientId: remotePatient.id, externalId: "ATD-101" };
+    const lookup = deferred<typeof patients>();
+    const apiFetchMock = mockDashboardResponses((path, init) => {
+      if (path === "/patients") return Promise.resolve(first100);
+      if (path === "/patients?q=Amora%20%26%20101") return lookup.promise;
+      if (path === "/patients/patient-101/encounters") return Promise.resolve([remoteEncounter]);
+      if (path === "/diagnostic-requests" && init?.method === "POST") return Promise.resolve({ id: "request-101" });
+      return undefined;
+    });
+    const { onCreated } = renderRequestDialog();
+
+    const select = screen.getByRole("combobox", { name: "Paciente" });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(within(select).getAllByRole("option")).toHaveLength(101);
+    expect(screen.queryByRole("option", { name: /Amora & 101/ })).not.toBeInTheDocument();
+    const search = screen.getByRole("searchbox", { name: "Buscar pacientes" });
+    expect(search).toHaveAttribute("aria-controls", select.id);
+    fireEvent.change(search, { target: { value: "Amora & 101" } });
+    expect(screen.getByText("Carregando pacientes…")).toHaveAttribute("role", "status");
+    expect(select).toBeDisabled();
+    expect(select).toHaveAttribute("aria-busy", "true");
+    expect(search).toBeEnabled();
+    const searchCall = apiFetchMock.mock.calls.find(([path]) => path === "/patients?q=Amora%20%26%20101");
+    expect(searchCall?.[1]?.signal).toBeInstanceOf(AbortSignal);
+
+    await act(async () => lookup.resolve([remotePatient]));
+    expect(select).toBeEnabled();
+    expect(within(select).getAllByRole("option")).toHaveLength(2);
+    fireEvent.change(select, { target: { value: remotePatient.id } });
+    await screen.findByRole("option", { name: /ATD-101/ });
+    fireEvent.change(screen.getByLabelText("Atendimento"), { target: { value: remoteEncounter.id } });
+    fireEvent.click(screen.getByRole("checkbox", { name: /Hemograma/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar solicitação" }));
+
+    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+    const createCall = apiFetchMock.mock.calls.find(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST");
+    expect(JSON.parse(createCall?.[1]?.body as string)).toEqual({ patientId: remotePatient.id, encounterId: remoteEncounter.id, priority: "ROUTINE", items: [{ serviceId: "service-1" }] });
+    expect(createCall?.[1]?.headers).toMatchObject({ "x-correlation-id": expect.stringMatching(/^ui-/) });
+  });
+
+  it("announces an initial loading failure, disables choices and retries without fabricating a patient", async () => {
+    let attempts = 0;
+    const apiFetchMock = mockDashboardResponses((path) => {
+      if (path === "/patients") {
+        attempts += 1;
+        return attempts === 1 ? Promise.reject(new Error("private patient SQL")) : Promise.resolve(patients);
+      }
+      return undefined;
+    });
+    renderRequestDialog();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os pacientes.");
+    expect(screen.queryByText("private patient SQL")).not.toBeInTheDocument();
+    const select = screen.getByRole("combobox", { name: "Paciente" });
+    expect(select).toBeDisabled();
+    expect(within(select).getAllByRole("option")).toHaveLength(1);
+    expect(select).toHaveValue("");
+    expect(screen.getByLabelText("Atendimento")).toBeDisabled();
+    expect(screen.getByRole("searchbox", { name: "Buscar pacientes" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Confirmar solicitação" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar solicitação" }));
+    expect(apiFetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Tentar carregar pacientes" }));
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Thor · Canino · HIS-THOR-001/ })).toBeInTheDocument();
+    expect(attempts).toBe(2);
+  });
+
+  it("retries the current query and preserves the selected patient and encounter across errors, empty results and clearing", async () => {
+    let attempts = 0;
+    const apiFetchMock = mockDashboardResponses((path) => {
+      if (path === "/patients/patient-thor/encounters") return Promise.resolve(encounters);
+      if (path === "/patients?q=ausente") {
+        attempts += 1;
+        return attempts === 1 ? Promise.reject(new Error("private search detail")) : Promise.resolve([]);
+      }
+      return undefined;
+    });
+    renderRequestDialog();
+    const select = screen.getByRole("combobox", { name: "Paciente" });
+    await waitFor(() => expect(select).toBeEnabled());
+    fireEvent.change(select, { target: { value: "patient-thor" } });
+    await screen.findByRole("option", { name: /ATD-THOR-002/ });
+    const encounterSelect = screen.getByLabelText("Atendimento");
+    fireEvent.change(encounterSelect, { target: { value: "encounter-thor-2" } });
+    const search = screen.getByRole("searchbox", { name: "Buscar pacientes" });
+    fireEvent.change(search, { target: { value: "ausente" } });
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível carregar os pacientes.");
+    expect(screen.queryByText("private search detail")).not.toBeInTheDocument();
+    expect(select).toBeDisabled();
+    expect(encounterSelect).toBeDisabled();
+    expect(select).toHaveValue("patient-thor");
+    expect(encounterSelect).toHaveValue("encounter-thor-2");
+    fireEvent.click(screen.getByRole("button", { name: "Tentar carregar pacientes" }));
+    await screen.findByText("Nenhum paciente encontrado para esta busca.");
+    expect(select).toBeEnabled();
+    expect(encounterSelect).toBeEnabled();
+    expect(within(select).getAllByRole("option")).toHaveLength(2);
+    expect(select).toHaveValue("patient-thor");
+    expect(encounterSelect).toHaveValue("encounter-thor-2");
+    expect(attempts).toBe(2);
+
+    fireEvent.change(search, { target: { value: "" } });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select).toHaveValue("patient-thor");
+    expect(encounterSelect).toHaveValue("encounter-thor-2");
+    expect(within(select).getAllByRole("option")).toHaveLength(2);
+    expect(apiFetchMock.mock.calls.filter(([path]) => path === "/patients")).toHaveLength(2);
+    expect(apiFetchMock.mock.calls.filter(([path]) => path.endsWith("/encounters"))).toHaveLength(1);
+    fireEvent.change(select, { target: { value: "" } });
+    expect(encounterSelect).toHaveValue("");
+    expect(encounterSelect).toBeDisabled();
+  });
+
+  it("ignores stale success, rejection and completion while keeping selection until the patient actually changes", async () => {
+    const initial = deferred<typeof patients>();
+    const slow = deferred<typeof patients>();
+    const latest = deferred<typeof patients>();
+    const thorEncounters = deferred<typeof encounters>();
+    const amora = { ...patients[0], id: "patient-amora", displayName: "Amora" };
+    const amoraEncounter = { ...encounters[0], id: "encounter-amora", patientId: amora.id, externalId: "ATD-AMORA" };
+    const apiFetchMock = mockDashboardResponses((path) => {
+      if (path === "/patients") return initial.promise;
+      if (path === "/patients?q=slow") return slow.promise;
+      if (path === "/patients?q=amora") return latest.promise;
+      if (path === "/patients?q=thor") return Promise.resolve(patients);
+      if (path === "/patients/patient-amora/encounters") return Promise.resolve([amoraEncounter]);
+      if (path === "/patients/patient-thor/encounters") return thorEncounters.promise;
+      return undefined;
+    });
+    renderRequestDialog();
+    const search = screen.getByRole("searchbox", { name: "Buscar pacientes" });
+    const select = screen.getByRole("combobox", { name: "Paciente" });
+    const initialSignal = apiFetchMock.mock.calls.find(([path]) => path === "/patients")?.[1]?.signal;
+    fireEvent.change(search, { target: { value: "slow" } });
+    const slowSignal = apiFetchMock.mock.calls.find(([path]) => path === "/patients?q=slow")?.[1]?.signal;
+    fireEvent.change(search, { target: { value: "amora" } });
+    expect(initialSignal?.aborted).toBe(true);
+    expect(slowSignal?.aborted).toBe(true);
+    await act(async () => slow.reject(new Error("stale private failure")));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(select).toBeDisabled();
+    expect(select).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => latest.resolve([amora]));
+    fireEvent.change(select, { target: { value: amora.id } });
+    await screen.findByRole("option", { name: /ATD-AMORA/ });
+    const encounterSelect = screen.getByLabelText("Atendimento");
+    fireEvent.change(encounterSelect, { target: { value: amoraEncounter.id } });
+    await act(async () => initial.resolve(patients));
+    expect(screen.queryByRole("option", { name: /Thor · Canino/ })).not.toBeInTheDocument();
+    expect(select).toHaveValue(amora.id);
+    expect(encounterSelect).toHaveValue(amoraEncounter.id);
+
+    fireEvent.change(search, { target: { value: "thor" } });
+    await waitFor(() => expect(select).toBeEnabled());
+    expect(select).toHaveValue(amora.id);
+    expect(encounterSelect).toHaveValue(amoraEncounter.id);
+    expect(screen.getByRole("option", { name: /Amora · Canino/ })).toBeInTheDocument();
+    expect(apiFetchMock.mock.calls.filter(([path]) => path.endsWith("/encounters"))).toHaveLength(1);
+    fireEvent.change(select, { target: { value: "patient-thor" } });
+    expect(encounterSelect).toHaveValue("");
+    expect(encounterSelect).toBeDisabled();
+    expect(screen.queryByRole("option", { name: /ATD-AMORA/ })).not.toBeInTheDocument();
+    await act(async () => thorEncounters.resolve(encounters));
+    expect(encounterSelect).toBeEnabled();
+    expect(encounterSelect).toHaveValue("");
+    expect(screen.getByRole("option", { name: /ATD-THOR-002/ })).toBeInTheDocument();
+  });
+
+  it.each(["resolve", "reject"] as const)("aborts on unmount and ignores a late %s when a fresh dialog opens", async (completion) => {
+    const pending = deferred<typeof patients>();
+    const apiFetchMock = mockDashboardResponses((path) => path === "/patients?q=slow" ? pending.promise : undefined);
+    const { unmount } = renderRequestDialog();
+    await waitFor(() => expect(screen.getByLabelText("Paciente")).toBeEnabled());
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar pacientes" }), { target: { value: "slow" } });
+    const signal = apiFetchMock.mock.calls.find(([path]) => path === "/patients?q=slow")?.[1]?.signal;
+    expect(signal?.aborted).toBe(false);
+    unmount();
+    expect(signal?.aborted).toBe(true);
+    renderRequestDialog();
+    await waitFor(() => expect(screen.getByLabelText("Paciente")).toBeEnabled());
+
+    await act(async () => {
+      if (completion === "resolve") pending.resolve([{ ...patients[0], id: "stale-patient", displayName: "Stale" }]);
+      else pending.reject(new Error("late private failure"));
+    });
+    expect(screen.getByLabelText("Paciente")).toHaveValue("");
+    expect(screen.getByRole("option", { name: /Thor · Canino/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Stale/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
 
 describe("Dashboard resilience", () => {
   beforeEach(() => {
@@ -242,12 +467,15 @@ describe("Dashboard resilience", () => {
   });
 
   it("adds a new patient from the request dialog and keeps its encounter selected", async () => {
+    const pendingSearch = deferred<typeof patients>();
     const createdPatient = {
-      patient: { id: "patient-amora", displayName: "Amora", species: "Canino", breed: "Labrador", sex: "Fêmea", ownerLabel: "M. Ribeiro", externalId: "CVG-AMORA", active: true },
+      patient: { id: "patient-amora", displayName: "Amora", species: "Canino", breed: "Não informado", sex: "Não informado", ownerLabel: "M. Ribeiro", externalId: "CVG-AMORA", active: true },
       encounter: { id: "encounter-amora", patientId: "patient-amora", externalId: "ATD-AMORA", type: "OUTPATIENT", status: "OPEN", openedAt: "2026-08-20T14:00:00.000Z" }
     };
     const apiFetchMock = mockDashboardResponses((path, init) => {
       if (path === "/patients" && init?.method === "POST") return Promise.resolve(createdPatient);
+      if (path === "/patients?q=thor") return pendingSearch.promise;
+      if (path === "/patients?q=ausente") return Promise.resolve([]);
       if (path === "/diagnostic-requests" && init?.method === "POST") return Promise.resolve({ id: "request-amora" });
       return undefined;
     });
@@ -255,16 +483,28 @@ describe("Dashboard resilience", () => {
     render(<Dashboard />);
     await screen.findByText("Amostra recebida");
     fireEvent.click(screen.getByRole("button", { name: /Nova solicitação/i }));
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar pacientes" }), { target: { value: "thor" } });
     fireEvent.click(screen.getByRole("button", { name: /Cadastrar paciente/i }));
 
     fireEvent.change(screen.getByPlaceholderText("Ex.: Amora"), { target: { value: "Amora" } });
-    fireEvent.change(screen.getByPlaceholderText("Ex.: Labrador"), { target: { value: "Labrador" } });
+    fireEvent.change(screen.getByPlaceholderText("Ex.: Canino"), { target: { value: "Canino" } });
     fireEvent.change(screen.getByPlaceholderText("Nome para identificação no atendimento"), { target: { value: "M. Ribeiro" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar cadastro de paciente" }));
 
     await waitFor(() => expect(screen.getByLabelText("Paciente")).toHaveValue("patient-amora"));
+    const patientCall = apiFetchMock.mock.calls.find(([path, init]) => path === "/patients" && init?.method === "POST");
+    expect(JSON.parse(patientCall?.[1]?.body as string)).toMatchObject({ displayName: "Amora", species: "Canino", ownerLabel: "M. Ribeiro", breed: "Não informado", sex: "Não informado", encounterType: "OUTPATIENT" });
     expect(screen.getByRole("option", { name: /Amora · Canino · CVG-AMORA/ })).toBeInTheDocument();
     expect(screen.getByLabelText("Atendimento")).toHaveValue("encounter-amora");
+    await act(async () => pendingSearch.resolve(patients));
+    expect(screen.getByLabelText("Paciente")).toHaveValue("patient-amora");
+    expect(screen.getByLabelText("Atendimento")).toHaveValue("encounter-amora");
+    fireEvent.change(screen.getByRole("searchbox", { name: "Buscar pacientes" }), { target: { value: "ausente" } });
+    await screen.findByText("Nenhum paciente encontrado para esta busca.");
+    expect(screen.getByLabelText("Paciente")).toHaveValue("patient-amora");
+    expect(screen.getByLabelText("Atendimento")).toHaveValue("encounter-amora");
+    expect(screen.getByRole("option", { name: /Amora · Canino · CVG-AMORA/ })).toBeInTheDocument();
+    expect(apiFetchMock.mock.calls.some(([path]) => path.endsWith("/encounters"))).toBe(false);
     fireEvent.click(screen.getByRole("checkbox", { name: /Hemograma/i }));
     fireEvent.click(screen.getByRole("button", { name: /Confirmar solicitação/i }));
 

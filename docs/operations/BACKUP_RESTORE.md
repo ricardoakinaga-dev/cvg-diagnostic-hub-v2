@@ -18,6 +18,20 @@ Backup must cover PostgreSQL data, object storage attachments, encryption/key me
 
 ## 3. Strategy
 
+> **Scheduled backup in the production Compose.** The `backup` service writes a custom-format `pg_dump` every `BACKUP_INTERVAL_SECONDS` (default daily) into the `cvg-backups` volume, validates it with `pg_restore --list`, and keeps `BACKUP_RETENTION_DAYS` (default 14). It runs as the runtime role, so no administrative credential is stored in it. It lives on the same host as the database: copy the volume off the machine and rehearse the restore below. To take one on demand: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm --no-deps backup --once`. Keep `--no-deps`: the `backup` service depends on `migrate`, so without it Compose applies pending migrations before taking the copy (verified 06/10/2026). Dump files are created owner-only (`umask 077`). These dumps carry no recovery manifest, so restore them with the procedure in §4.1, not with `npm run db:restore`.
+
+### 3.1 Copy a dump off the host
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production run --rm --no-deps \
+  --entrypoint sh backup -c 'ls -1t /backups/cvg-*.dump | head -1'
+docker compose -f docker-compose.prod.yml --env-file .env.production cp \
+  backup:/backups/<file>.dump ./<file>.dump   # requires the backup service to be running
+```
+
+Then move the file to encrypted storage outside the machine and record its checksum (`sha256sum`).
+
+
 - PostgreSQL: encrypted point-in-time/WAL plus periodic full backup; verify completion and size.
 - Object storage: versioning/replication or scheduled encrypted snapshot according to provider; preserve checksum/metadata.
 - Config/secrets: never backup plaintext secrets in repo; store recoverable references and rotation procedure.
@@ -35,6 +49,35 @@ Backup must cover PostgreSQL data, object storage attachments, encryption/key me
 7. run smoke tests: login, scoped request view, result/version/timeline, notification queue;
 8. compare approved RPO/RTO and record gaps;
 9. approve cutover/rollback; preserve incident/audit evidence.
+
+### 4.1 Restore a Compose dump (rehearsed 06/10/2026)
+
+Rehearsed on an isolated copy of the production Compose stack: the database
+was dropped, the latest scheduled dump restored, and `readyz`, login, row
+counts, table ownership and the append-only guard on `audit_events` were
+verified afterwards. The dump is written with `--no-owner --no-privileges`, so
+it is restored as the administrative role and the `migrate` service then
+hands every object back to the migration role and re-grants the runtime role.
+This restores the database only; attachments in object storage need their own
+restore (§3).
+
+```bash
+DC="docker compose -f docker-compose.prod.yml --env-file .env.production"
+$DC stop proxy app worker backup
+# Destructive: only after the incident owner approved the recovery point.
+$DC exec postgres sh -c 'psql -U "$POSTGRES_USER" -d postgres -v ON_ERROR_STOP=1 \
+  -c "DROP DATABASE \"$POSTGRES_DB\" WITH (FORCE)" -c "CREATE DATABASE \"$POSTGRES_DB\""'
+$DC run --rm --no-deps -T --entrypoint sh -e PGUSER="$POSTGRES_USER" -e PGPASSWORD="$POSTGRES_PASSWORD" backup -c \
+  'pg_restore --no-owner --no-privileges --exit-on-error -d "$PGDATABASE" /backups/<file>.dump'
+$DC run --rm migrate      # ownership, runtime grants, migration checksums
+$DC up -d
+curl -fsS "https://$APP_DOMAIN/api/v1/readyz"
+```
+
+`POSTGRES_USER`/`POSTGRES_PASSWORD` are the administrative credentials from
+`.env.production` (export them in the shell first). Every migration must report
+"já aplicada"; a checksum error means the dump comes from a different release
+and the matching image tag must be used.
 
 ## 5. Drill cadence and evidence
 

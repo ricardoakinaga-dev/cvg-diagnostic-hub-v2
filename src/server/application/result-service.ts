@@ -423,7 +423,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
 
     async reviewResult(actor: User, resultId: string, input: ReviewInput) {
       const scope = "POST:/results/review";
-      return store.transaction(async (originalState) => {
+      return store.transaction(async (originalState, audit) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
         const result = resultFor(originalState, resultId);
@@ -439,7 +439,9 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         if (view.version.id !== input.versionId || view.item.status !== "RESULT_AVAILABLE") throw new ApiError("REVIEW_STALE", "O resultado mudou. Abra a versão atual antes de revisar.", 409);
         ensureExpectedVersion(view.item.version, input.expectedVersion);
-        const wasViewed = originalState.auditEvents.some((event) => event.eventType === "ResultViewed" && event.entityId === input.versionId && event.actorId === currentActor.id);
+        const wasViewed = audit
+          ? await audit.hasAuditEvent({ eventType: "ResultViewed", entityType: "ResultVersion", entityId: input.versionId, actorId: currentActor.id })
+          : originalState.auditEvents.some((event) => event.eventType === "ResultViewed" && event.entityId === input.versionId && event.actorId === currentActor.id);
         if (!wasViewed) throw new ApiError("VALIDATION_ERROR", "Abra o resultado antes de marcar como revisado.", 400);
         const reviewedAt = now();
         const reviewedItem = { ...view.item, status: transitionItem(view.item.status, "REVIEWED", view.item.workflowType), reviewedAt, version: view.item.version + 1 };

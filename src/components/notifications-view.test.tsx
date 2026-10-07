@@ -34,10 +34,16 @@ describe("NotificationsView", () => {
 
     render(<NotificationsView />);
 
+    // Plane-style inbox: the first notification opens beside the list.
     expect(await screen.findByRole("heading", { name: "Confirmada" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Pendente/ }));
     expect(screen.getByText(/Entrega pendente/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Falhou/ }));
     expect(screen.getByText(/Entrega não confirmada/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Substituída/ }));
     expect(screen.getByText(/Resultado substituído/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Para confirmar/ }));
+    expect(screen.getByRole("heading", { name: "Para confirmar" })).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Motivo da confirmação"), { target: { value: "Conferência operacional" } });
     fireEvent.click(screen.getByLabelText("Confirmo a ação"));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));

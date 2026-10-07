@@ -1,0 +1,18 @@
+# TLS-terminating edge for the CVG Diagnostics Hub.
+# - Caddy obtains and renews certificates for {$APP_DOMAIN} automatically.
+# - Incoming X-Forwarded-For is NOT trusted (no trusted_proxies), so the app
+#   always receives the real client address for per-client rate limiting.
+# - The shared secret proves to the app that the request crossed this edge.
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	request_body {
+		# ATTACHMENT_MAX_BYTES is 25 MiB; leave headroom (Caddy "MB" is decimal).
+		max_size 30MiB
+	}
+
+	reverse_proxy app:3000 {
+		header_up X-Cvg-Proxy-Secret {$TRUST_PROXY_SHARED_SECRET}
+		header_up X-Real-IP {remote_host}
+	}
+}

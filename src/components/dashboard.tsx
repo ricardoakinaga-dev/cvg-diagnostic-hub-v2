@@ -2,22 +2,19 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Priority } from "@cvg/contracts";
+import type { DashboardRequest, DashboardService, DashboardView, Encounter, Notification, Patient, Priority, SearchResult, SessionResponse, SessionUser } from "@cvg/contracts";
 import { ApiClientError, apiFetch, createClientUniqueId, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { PriorityBadge, statusLabel, StatusBadge } from "./status-badge";
 import { ManagementDashboard } from "./management-dashboard";
 import { PatientDialog, type CreatedPatientPayload } from "./patient-dialog";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon, type IconName } from "./ui-icons";
-import { CommandCenterPanel, type CommandCenterData } from "@/features/command-center/command-center-panel";
+import { CommandCenterPanel } from "@/features/command-center/command-center-panel";
 
-interface Item { id: string; status: Parameters<typeof StatusBadge>[0]["status"]; priority: Priority; dueAt: string; service: { name: string; code: string }; note?: string }
-interface Request { id: string; requestCode: string; patient: { displayName: string; species: string; sex: string; externalId: string }; priority: Priority; aggregateStatus: string; createdAt: string; items: Item[] }
-interface Service { id: string; name: string; code: string; workflowType: string; category: string; requiresSample: boolean; requiresSchedule: boolean }
-interface Encounter { id: string; patientId: string; externalId: string; type: "INPATIENT" | "EMERGENCY" | "OUTPATIENT"; status: "OPEN" | "CLOSED"; openedAt: string; closedAt?: string }
-interface Stats extends CommandCenterData { overdue: number; recollections: number; newResults: number; critical: number; totalActive: number; updatedAt: string }
-interface Notification { id: string; category: string; priority: string; title: string; body: string; createdAt: string; state: string; deepLink: string }
-interface SessionUser { displayName: string; role?: string }
+type Request = DashboardRequest;
+type Service = DashboardService;
+type Stats = DashboardView;
 
 const encounterTypeLabels: Record<Encounter["type"], string> = { INPATIENT: "Internação", EMERGENCY: "Emergência", OUTPATIENT: "Atendimento externo" };
 const encounterStatusLabels: Record<Encounter["status"], string> = { OPEN: "Em aberto", CLOSED: "Encerrado" };
@@ -84,14 +81,14 @@ export function Dashboard() {
 
   useEffect(() => {
     let active = true;
-    void apiFetch<{ user: SessionUser }>("/session/me")
+    void apiFetch<SessionResponse>("/session/me")
       .then((result) => { if (active) setUser(result.user); })
       .catch((cause) => { if (active) setError(getSafeErrorMessage(cause, "Não foi possível atualizar a identificação da equipe.")); });
     return () => { active = false; };
   }, []);
 
   if (!user && !error) return <DashboardSkeleton />;
-  if (error) return <div className="error-state" role="alert"><strong>{error}</strong></div>;
+  if (error) return <ErrorState page title="Identidade indisponível" message={error} onRetry={() => window.location.reload()} />;
   if (user?.role === "ADMIN") return <TechnicalAdminDashboard displayName={user.displayName} />;
   if (user?.role === "MANAGER") return <ManagementDashboard />;
   return <ClinicalDashboard displayName={user?.displayName ?? "Equipe"} role={user?.role} />;
@@ -124,7 +121,7 @@ function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
 function ClinicalDashboard({ displayName, role }: { displayName: string; role?: string }) {
   const [showRequest, setShowRequest] = useState(false);
   const [search, setSearch] = useState("");
-  const [searchResults, setSearchResults] = useState<Array<{ id: string; label: string; patient: string; deepLink: string; status: string }>>([]);
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchRequestVersion = useRef(0);
@@ -175,7 +172,7 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
     searchRequestVersion.current = version;
     const timer = window.setTimeout(() => {
       if (search.trim().length < 2) { setSearchResults([]); return; }
-      void apiFetch<typeof searchResults>(`/search?q=${encodeURIComponent(search)}`)
+      void apiFetch<SearchResult[]>(`/search?q=${encodeURIComponent(search)}`)
         .then((results) => { if (searchRequestVersion.current === version) setSearchResults(results); })
         .catch(() => { if (searchRequestVersion.current === version) setSearchResults([]); });
     }, 280);
@@ -264,12 +261,12 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
         <section className="panel attention-panel" aria-busy={requestsResource.status === "loading"}>
           <div className="panel-heading"><div><p className="eyebrow">Acompanhe de perto</p><h2>Solicitações em andamento</h2></div><Link href="/queues" className="text-link">Ver central <Icon name="arrow-right" size={15} /></Link></div>
           {requestsResource.error && requestsResource.data && <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} />}
-          {!requestsResource.data ? <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} /> : activeRequests.length === 0 ? <EmptyState title="Nenhuma solicitação pendente" description="Quando um exame precisar de ação, ele aparecerá aqui." /> : <div className="request-list">{activeRequests.slice(0, 6).map((request) => <RequestRow key={request.id} request={request} />)}</div>}
+          {!requestsResource.data ? <ResourceFeedback resource={requestsResource} label="solicitações" onRetry={loadRequests} /> : activeRequests.length === 0 ? <EmptyState title="Nenhuma solicitação pendente" message="Quando um exame precisar de ação, ele aparecerá aqui." /> : <div className="request-list">{activeRequests.slice(0, 6).map((request) => <RequestRow key={request.id} request={request} />)}</div>}
         </section>
         <section className="panel notification-panel" aria-busy={notificationsResource.status === "loading"}>
           <div className="panel-heading"><div><p className="eyebrow">Ação necessária</p><h2>Últimas notificações</h2></div><Link href="/notifications" className="text-link">Ver todas <Icon name="arrow-right" size={15} /></Link></div>
           {notificationsResource.error && notificationsResource.data && <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} />}
-          {!notificationsResource.data ? <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} /> : notifications.length === 0 ? <EmptyState title="Tudo em dia" description="Nenhuma nova ação no seu escopo." compact /> : <div className="notification-list">{notifications.slice(0, 4).map((notification) => <NotificationRow key={notification.id} notification={notification} />)}</div>}
+          {!notificationsResource.data ? <ResourceFeedback resource={notificationsResource} label="notificações" onRetry={loadNotifications} /> : notifications.length === 0 ? <EmptyState className="empty-compact" title="Tudo em dia" message="Nenhuma nova ação no seu escopo." /> : <div className="notification-list">{notifications.slice(0, 4).map((notification) => <NotificationRow key={notification.id} notification={notification} />)}</div>}
         </section>
       </div>
       <section className="bottom-strip"><div><span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span><div><strong>Visibilidade ponta a ponta</strong><p>Os estados são confirmados pelo servidor e auditados em uma única timeline.</p></div></div><span className="strip-status">Atualizado {stats ? formatRelativeTime(stats.updatedAt) : "indisponível"}</span></section>
@@ -279,14 +276,11 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
 }
 
 function ResourceFeedback<T>({ resource, label, onRetry }: { resource: ResourceState<T> & { load: () => Promise<void> }; label: string; onRetry: () => Promise<void> }) {
-  if (resource.status === "loading" && resource.data === null) return <div className="resource-loading" role="status">Carregando {label}…</div>;
+  if (resource.status === "loading" && resource.data === null) return <LoadingState className="resource-loading" label={`Carregando ${label}`} />;
   if (resource.status !== "error" || !resource.error) return null;
-  return (
-    <div className="resource-feedback" role="alert">
-      <div><strong>{resource.error}</strong>{resource.updatedAt && <><span>Dados possivelmente desatualizados</span><small>Atualizado {formatRelativeTime(resource.updatedAt)}</small></>}</div>
-      <button type="button" className="button button-ghost" onClick={() => void onRetry()} aria-label={`Tentar novamente: ${label}`}>Tentar novamente</button>
-    </div>
-  );
+  const retryAriaLabel = `Tentar novamente: ${label}`;
+  if (resource.data !== null) return <StaleNotice title="Dados possivelmente desatualizados" message={resource.error} lastConfirmedAt={resource.updatedAt ? formatRelativeTime(resource.updatedAt) : undefined} lastConfirmedPrefix="Atualizado " retryAriaLabel={retryAriaLabel} onRetry={onRetry} />;
+  return <ErrorState title={`${label[0]?.toUpperCase() ?? "Dado"} indisponíveis`} message={resource.error} retryAriaLabel={retryAriaLabel} onRetry={onRetry} />;
 }
 
 function MetricCard({ label, value, tone, caption, icon }: { label: string; value: number; tone: string; caption: string; icon: IconName }) {
@@ -302,14 +296,17 @@ function NotificationRow({ notification }: { notification: Notification }) {
   return <Link href={notification.deepLink} className="notification-row"><span className={`notification-dot notification-${notification.category.toLowerCase()}`} /><span className="notification-copy"><strong>{notification.title}</strong><small>{notification.body}</small><time>{formatRelativeTime(notification.createdAt)}</time></span><span aria-hidden="true" className="row-arrow"><Icon name="arrow-right" size={16} /></span></Link>;
 }
 
-function EmptyState({ title, description, compact = false }: { title: string; description: string; compact?: boolean }) { return <div className={`empty-state ${compact ? "empty-compact" : ""}`}><span aria-hidden="true"><Icon name="check" size={16} /></span><strong>{title}</strong><p>{description}</p></div>; }
-
 function DashboardSkeleton() { return <div className="dashboard-page"><div className="skeleton-heading skeleton-block" /><div className="skeleton-search skeleton-block" /><div className="metric-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="metric-card skeleton-card" />)}</div><div className="dashboard-columns"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></div>; }
 
-function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
+export function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const [patients, setPatients] = useState<Array<{ id: string; displayName: string; species: string; externalId: string }>>([]);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [patientsLoading, setPatientsLoading] = useState(true);
+  const [patientsError, setPatientsError] = useState("");
+  const [patientRetry, setPatientRetry] = useState(0);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [patientId, setPatientIdState] = useState("");
   const [encounters, setEncounters] = useState<Encounter[]>([]);
   const [encounterId, setEncounterId] = useState("");
@@ -327,7 +324,24 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
   const [patientNotice, setPatientNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   useDialogFocus(dialogRef, onClose, closeButtonRef);
-  useEffect(() => { void apiFetch<typeof patients>("/patients").then(setPatients).catch(() => setError("Não foi possível carregar os pacientes.")); }, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    const query = patientSearch.trim();
+    void apiFetch<Patient[]>(query ? `/patients?q=${encodeURIComponent(query)}` : "/patients", { signal: controller.signal })
+      .then((nextPatients) => {
+        if (!controller.signal.aborted) setPatients(nextPatients);
+      })
+      .catch((cause: unknown) => {
+        if (!controller.signal.aborted) setPatientsError(getSafeErrorMessage(cause, "Não foi possível carregar os pacientes."));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setPatientsLoading(false);
+      });
+    return () => controller.abort();
+  }, [patientSearch, patientRetry]);
+  const patientOptions = selectedPatient && !patients.some((patient) => patient.id === selectedPatient.id)
+    ? [selectedPatient, ...patients]
+    : patients;
   const loadEncounters = useCallback(async (nextPatientId: string) => {
     const version = encounterLoadVersion.current + 1;
     encounterLoadVersion.current = version;
@@ -346,6 +360,10 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     }
   }, []);
   function setPatientId(nextPatientId: string) {
+    if (nextPatientId === patientIdRef.current) return;
+    const nextPatient = patientOptions.find((patient) => patient.id === nextPatientId) ?? null;
+    if (nextPatientId && !nextPatient) return;
+    setSelectedPatient(nextPatient);
     encounterLoadVersion.current += 1;
     patientIdRef.current = nextPatientId;
     encounterIdRef.current = "";
@@ -361,7 +379,7 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     encounterLoadVersion.current += 1;
     patientIdRef.current = result.patient.id;
     encounterIdRef.current = result.encounter.id;
-    setPatients((current) => [...current.filter((patient) => patient.id !== result.patient.id), result.patient]);
+    setSelectedPatient(result.patient);
     setPatientIdState(result.patient.id);
     setEncounters([result.encounter]);
     setEncounterId(result.encounter.id);
@@ -418,7 +436,37 @@ function RequestDialog({ canCreatePatient, services, servicesError, onRetryServi
     }
   }
   return <>
-    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={dialogRef} className="dialog" data-dialog-layer="true" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title"><div className="dialog-heading"><div><p className="eyebrow">Novo fluxo</p><h2 id="request-dialog-title">Solicitar exames</h2><p>O atendimento e o setor serão confirmados pelo servidor.</p></div><button ref={closeButtonRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><Icon name="close" size={18} /></button></div><div className="dialog-field-heading"><label htmlFor="request-patient">Paciente</label>{canCreatePatient && <button type="button" className="text-button" onClick={() => setShowPatientCreate(true)}><Icon name="add" size={14} /> Cadastrar paciente</button>}</div><select id="request-patient" value={patientId} onChange={(event) => setPatientId(event.target.value)}><option value="">Selecione um paciente…</option>{patients.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}</select>{patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={!patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true"><Icon name="check" size={14} /></b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<Icon name="arrow-right" size={15} /></button></div></section></div>
+    <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><section ref={dialogRef} className="dialog" data-dialog-layer="true" role="dialog" aria-modal="true" aria-labelledby="request-dialog-title"><div className="dialog-heading"><div><p className="eyebrow">Novo fluxo</p><h2 id="request-dialog-title">Solicitar exames</h2><p>O atendimento e o setor serão confirmados pelo servidor.</p></div><button ref={closeButtonRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar"><Icon name="close" size={18} /></button></div><div className="dialog-field-heading"><label htmlFor="request-patient">Paciente</label>{canCreatePatient && <button type="button" className="text-button" onClick={() => setShowPatientCreate(true)}><Icon name="add" size={14} /> Cadastrar paciente</button>}</div>
+      <label htmlFor="request-patient-search">Buscar pacientes</label>
+      <input
+        id="request-patient-search"
+        type="search"
+        value={patientSearch}
+        onChange={(event) => {
+          setPatientsLoading(true);
+          setPatientsError("");
+          setPatientSearch(event.target.value);
+        }}
+        aria-controls="request-patient"
+        aria-describedby="request-patient-search-status"
+        placeholder="Buscar por nome ou prontuário…"
+      />
+      <p id="request-patient-search-status" className="field-hint" role="status">
+        {patientsLoading ? "Carregando pacientes…" : patientsError ? "" : patients.length === 0 ? "Nenhum paciente encontrado para esta busca." : `${patients.length} paciente${patients.length === 1 ? "" : "s"} encontrado${patients.length === 1 ? "" : "s"}. Refine a busca por nome ou prontuário.`}
+      </p>
+      {patientsError && <div id="request-patient-error" className="form-alert" role="alert">
+        <span>{patientsError}</span>
+        <button type="button" className="button button-ghost" onClick={() => {
+          setPatientsLoading(true);
+          setPatientsError("");
+          setPatientRetry((current) => current + 1);
+        }}>Tentar carregar pacientes</button>
+      </div>}
+      <select id="request-patient" value={patientId} onChange={(event) => setPatientId(event.target.value)} disabled={patientsLoading || Boolean(patientsError)} aria-busy={patientsLoading} aria-describedby={patientsError ? "request-patient-error" : "request-patient-search-status"}>
+        <option value="">Selecione um paciente…</option>
+        {patientOptions.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}
+      </select>
+      {patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={patientsLoading || Boolean(patientsError) || !patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true"><Icon name="check" size={14} /></b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting || patientsLoading || Boolean(patientsError)}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<Icon name="arrow-right" size={15} /></button></div></section></div>
     {showPatientCreate && <PatientDialog nested onClose={() => setShowPatientCreate(false)} onCreated={onPatientCreated} />}
   </>;
 }

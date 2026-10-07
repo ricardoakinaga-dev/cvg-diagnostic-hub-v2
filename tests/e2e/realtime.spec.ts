@@ -2,20 +2,24 @@ import { expect, test } from "@playwright/test";
 import { signInAs } from "./support/auth";
 
 test.describe("realtime browser contract", () => {
-  test("reconciles an open dashboard after a committed mutation from another page", async ({ page }) => {
+  test("reconciles an open home after a committed mutation from another page", async ({ page }) => {
     test.setTimeout(60_000);
     await signInAs(page, "vet@cvg.local");
-    await expect(page.getByRole("heading", { name: "Solicitações em andamento" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Solicitações recentes" })).toBeVisible();
 
     const mutationPage = await page.context().newPage();
     try {
       // The dashboard intentionally keeps an SSE request open; networkidle
       // can therefore never be reached on this page.
-      await mutationPage.goto("/", { waitUntil: "domcontentloaded" });
-      await expect(mutationPage.getByRole("button", { name: /Nova solicitação/ })).toBeVisible();
+      const mutationIdentity = mutationPage.waitForResponse((response) => (
+        response.url().endsWith("/api/v1/session/me") && response.request().method() === "GET"
+      ));
+      await mutationPage.goto("/queues?create=request", { waitUntil: "domcontentloaded" });
+      // The shell renders a skeleton until its identity request completes.
+      expect((await mutationIdentity).status()).toBe(200);
 
       const refreshedDashboard = page.waitForResponse((response) => (
-        response.url().endsWith("/api/v1/diagnostic-requests?limit=20") &&
+        response.url().includes("/api/v1/diagnostic-requests?limit=100") &&
         response.request().method() === "GET" &&
         response.status() === 200
       ));
@@ -25,9 +29,8 @@ test.describe("realtime browser contract", () => {
         response.status() === 201
       ));
 
-      await mutationPage.getByRole("button", { name: /Nova solicitação/ }).click();
       const dialog = mutationPage.getByRole("dialog", { name: "Solicitar exames" });
-      await dialog.getByLabel("Paciente").selectOption("patient-thor");
+      await dialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption("patient-thor");
       await dialog.getByLabel("Atendimento").selectOption("encounter-thor");
       await dialog.getByText("Hemograma", { exact: true }).click();
       await dialog.getByRole("button", { name: /Confirmar solicitação/ }).click();
@@ -47,7 +50,9 @@ test.describe("realtime browser contract", () => {
       expect(requestCode).toMatch(/^EX-/);
 
       await refreshedDashboard;
-      await expect(page.getByText(requestCode!, { exact: false })).toBeVisible({ timeout: 15_000 });
+      // The home lists exams by their sector key (LAB-0012), built from the protocol.
+      const key = `LAB-${requestCode!.split("-").at(-1)}`;
+      await expect(page.getByRole("link", { name: new RegExp(`${key}\\s*Thor — Hemograma`) }).first()).toBeVisible({ timeout: 15_000 });
       await expect(page).toHaveURL(/\/$/);
     } finally {
       await mutationPage.close();

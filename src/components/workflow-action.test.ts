@@ -18,6 +18,9 @@ describe("workflow action mapping", () => {
     expect(workflowActionFor(item("RECOLLECTION_REQUIRED", "LABORATORY", undefined, "sample-expected"))).toBe("RECEIVE_REPLACEMENT");
     expect(workflowActionFor(item("RECOLLECTION_REQUIRED", "LABORATORY"))).toBeUndefined();
     expect(workflowActionFor(item("COMPLETED", "LABORATORY"))).toBeUndefined();
+    expect(workflowActionFor(item("IN_PROGRESS", "LABORATORY", "draft-1"))).toBe("EDIT_RESULT");
+    expect(workflowActionFor(item("AWAITING_REPORT", "RADIOLOGY", "draft-2"))).toBe("EDIT_RESULT");
+    expect(workflowActionFor(item("RESULT_VOIDED", "ULTRASOUND", "voided-3"))).toBe("CREATE_RESULT");
   });
 
   it("exposes safe secondary actions and sends local date input as an offset datetime", () => {

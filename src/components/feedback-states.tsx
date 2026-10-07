@@ -1,4 +1,5 @@
 import { useId, type HTMLAttributes, type ReactNode } from "react";
+import { ACCESS_DENIED_MESSAGE } from "@cvg/services";
 import { ActionButton } from "@cvg/ui";
 
 export type FeedbackHandler = () => void | Promise<void>;
@@ -11,6 +12,7 @@ type FeedbackSurfaceProps = Omit<
 interface RetryActionProps {
   onRetry?: FeedbackHandler;
   retryLabel?: string;
+  retryAriaLabel?: string;
   retrying?: boolean;
 }
 
@@ -18,19 +20,26 @@ export interface StaleNoticeProps extends FeedbackSurfaceProps, RetryActionProps
   title?: ReactNode;
   message?: ReactNode;
   lastConfirmedAt?: ReactNode;
+  lastConfirmedPrefix?: ReactNode;
+  accessibleLabel?: string;
 }
 
 export interface PartialNoticeProps extends FeedbackSurfaceProps, RetryActionProps {
   title?: ReactNode;
   message?: ReactNode;
+  accessibleLabel?: string;
 }
 
 export interface ErrorStateProps extends FeedbackSurfaceProps {
+  /** The state replaces the whole page: its title becomes the page's h1. */
+  page?: boolean;
   title?: ReactNode;
   message?: ReactNode;
   onRetry: FeedbackHandler;
   retryLabel?: string;
+  retryAriaLabel?: string;
   retrying?: boolean;
+  action?: ReactNode;
 }
 
 export interface EmptyStateProps extends FeedbackSurfaceProps {
@@ -39,10 +48,12 @@ export interface EmptyStateProps extends FeedbackSurfaceProps {
   actionLabel?: string;
   onAction?: FeedbackHandler;
   actionDisabled?: boolean;
+  announce?: boolean;
 }
 
 export interface LoadingStateProps extends FeedbackSurfaceProps {
   label?: string;
+  progressClassName?: string;
 }
 
 function joinClassNames(...classNames: Array<string | undefined>) {
@@ -63,18 +74,21 @@ function FeedbackCopy({
   title,
   message,
   titleId,
-  messageId
+  messageId,
+  level = "h2"
 }: {
   title: ReactNode;
   message: ReactNode;
   titleId: string;
   messageId: string;
+  level?: "h1" | "h2";
 }) {
+  const Heading = level;
   return (
     <div className="feedback-state__copy">
-      <h2 id={titleId} className="feedback-state__title">
+      <Heading id={titleId} className="feedback-state__title">
         {title}
-      </h2>
+      </Heading>
       <p id={messageId} className="feedback-state__message">
         {message}
       </p>
@@ -85,6 +99,7 @@ function FeedbackCopy({
 function RetryButton({
   onRetry,
   retryLabel = "Tentar novamente",
+  retryAriaLabel,
   retrying = false
 }: RetryActionProps) {
   if (!onRetry) return null;
@@ -96,6 +111,7 @@ function RetryButton({
       type="button"
       onClick={() => void onRetry()}
       state={retrying ? "pending" : "idle"}
+      aria-label={retrying ? "Tentando novamente..." : retryAriaLabel}
     >
       {retrying ? "Tentando novamente..." : retryLabel}
     </ActionButton>
@@ -106,9 +122,12 @@ export function StaleNotice({
   title = "Dados desatualizados",
   message = "A última informação confirmada continua visível enquanto tentamos atualizar esta visão.",
   lastConfirmedAt,
+  lastConfirmedPrefix = "Última confirmação: ",
   onRetry,
   retryLabel,
+  retryAriaLabel,
   retrying,
+  accessibleLabel,
   className,
   ...props
 }: StaleNoticeProps) {
@@ -122,17 +141,18 @@ export function StaleNotice({
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      aria-labelledby={titleId}
+      aria-label={accessibleLabel}
+      aria-labelledby={accessibleLabel ? undefined : titleId}
       aria-describedby={describedBy}
       data-feedback-state="stale"
     >
       <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} />
       {lastConfirmedAt && (
         <p id={metaId} className="feedback-state__meta">
-          Última confirmação: {lastConfirmedAt}
+          {lastConfirmedPrefix}{lastConfirmedAt}
         </p>
       )}
-      <RetryButton onRetry={onRetry} retryLabel={retryLabel} retrying={retrying} />
+      <RetryButton onRetry={onRetry} retryLabel={retryLabel} retryAriaLabel={retryAriaLabel} retrying={retrying} />
     </div>
   );
 }
@@ -142,7 +162,9 @@ export function PartialNotice({
   message = "Alguns dados não estão disponíveis no momento. As informações carregadas continuam visíveis.",
   onRetry,
   retryLabel,
+  retryAriaLabel,
   retrying,
+  accessibleLabel,
   className,
   ...props
 }: PartialNoticeProps) {
@@ -155,22 +177,26 @@ export function PartialNotice({
       role="status"
       aria-live="polite"
       aria-atomic="true"
-      aria-labelledby={titleId}
+      aria-label={accessibleLabel}
+      aria-labelledby={accessibleLabel ? undefined : titleId}
       aria-describedby={messageId}
       data-feedback-state="partial"
     >
       <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} />
-      <RetryButton onRetry={onRetry} retryLabel={retryLabel} retrying={retrying} />
+      <RetryButton onRetry={onRetry} retryLabel={retryLabel} retryAriaLabel={retryAriaLabel} retrying={retrying} />
     </div>
   );
 }
 
 export function ErrorState({
+  page = false,
   title = "Não foi possível carregar esta informação",
   message = "Tente novamente em instantes.",
   onRetry,
   retryLabel,
+  retryAriaLabel,
   retrying,
+  action,
   className,
   ...props
 }: ErrorStateProps) {
@@ -187,8 +213,12 @@ export function ErrorState({
       aria-describedby={messageId}
       data-feedback-state="error"
     >
-      <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} />
-      <RetryButton onRetry={onRetry} retryLabel={retryLabel} retrying={retrying} />
+      <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} level={page ? "h1" : "h2"} />
+      <div className="feedback-state__actions">
+        {/* Retrying an authorization refusal can not change the answer; offer the alternative action only. */}
+        <RetryButton onRetry={message === ACCESS_DENIED_MESSAGE ? undefined : onRetry} retryLabel={retryLabel} retryAriaLabel={retryAriaLabel} retrying={retrying} />
+        {action}
+      </div>
     </div>
   );
 }
@@ -199,6 +229,7 @@ export function EmptyState({
   actionLabel = "Tentar novamente",
   onAction,
   actionDisabled = false,
+  announce = true,
   className,
   ...props
 }: EmptyStateProps) {
@@ -208,11 +239,11 @@ export function EmptyState({
     <div
       {...props}
       className={joinClassNames("feedback-state", "feedback-state--empty", className)}
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-      aria-labelledby={titleId}
-      aria-describedby={messageId}
+      role={announce ? "status" : undefined}
+      aria-live={announce ? "polite" : undefined}
+      aria-atomic={announce ? "true" : undefined}
+      aria-labelledby={announce ? titleId : undefined}
+      aria-describedby={announce ? messageId : undefined}
       data-feedback-state="empty"
     >
       <FeedbackCopy title={title} message={message} titleId={titleId} messageId={messageId} />
@@ -231,7 +262,7 @@ export function EmptyState({
   );
 }
 
-export function LoadingState({ label = "Carregando conteúdo...", className, ...props }: LoadingStateProps) {
+export function LoadingState({ label = "Carregando conteúdo...", progressClassName, className, ...props }: LoadingStateProps) {
   const { titleId } = useFeedbackIds("loading-state");
 
   return (
@@ -245,7 +276,7 @@ export function LoadingState({ label = "Carregando conteúdo...", className, ...
       aria-busy="true"
       data-feedback-state="loading"
     >
-      <span className="feedback-state__progress" aria-hidden="true" />
+      <span className={joinClassNames("feedback-state__progress", progressClassName)} aria-hidden="true" />
       <span id={titleId} className="feedback-state__loading-label">
         {label}
       </span>

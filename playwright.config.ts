@@ -1,9 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 import { existsSync } from "node:fs";
+import { ensureScratchTsconfig } from "./scripts/scratch-tsconfig";
 
 const systemChrome = process.env.PLAYWRIGHT_EXECUTABLE_PATH ?? (existsSync("/usr/bin/google-chrome") ? "/usr/bin/google-chrome" : undefined);
 const e2eLoginRateLimit = 100;
-const e2eProxySecret = "e2e-proxy-secret-2026";
+const e2eProxySecret = "e2e-proxy-secret-2026-0123456789abcdef";
 const e2eProxyHeaders = (clientAddress: string) => ({
   "x-cvg-proxy-secret": e2eProxySecret,
   "x-forwarded-for": clientAddress
@@ -15,7 +16,8 @@ if (!Number.isInteger(e2ePortBase) || e2ePortBase < 1024 || e2ePortBase > 65533)
 }
 const e2eProjectPorts = { chromium: e2ePortBase, tablet: e2ePortBase + 1, mobile: e2ePortBase + 2 } as const;
 const reuseExistingServer = process.env.E2E_REUSE_EXISTING_SERVER === "true";
-const e2eCommand = (port: number) => `PORT=${port} NEXT_DIST_DIR=.next-e2e-${port} APP_DATA_MODE=memory RATE_LIMIT_MODE=memory TRUST_PROXY=true TRUST_PROXY_SHARED_SECRET=${e2eProxySecret} OUTBOX_INLINE_LOCAL=true DEMO_PASSWORD=e2e-local-password-2026 CRITICAL_POLICY_ENABLED=true CRITICAL_POLICY_VERSION=e2e-policy-v1 CRITICAL_POLICY_APPROVAL_REF=e2e-approval-2026 CRITICAL_POLICY_APPROVED_AT=2026-08-20T10:00:00.000Z LOGIN_RATE_LIMIT=${e2eLoginRateLimit} STORAGE_SCAN_MODE=local npm run dev`;
+const scratchTsconfig = ensureScratchTsconfig();
+const e2eCommand = (port: number) => `PORT=${port} NEXT_DIST_DIR=.next-e2e-${port} NEXT_TSCONFIG_PATH=${scratchTsconfig} APP_DATA_MODE=memory RATE_LIMIT_MODE=memory TRUST_PROXY=true TRUST_PROXY_SHARED_SECRET=${e2eProxySecret} OUTBOX_INLINE_LOCAL=true DEMO_PASSWORD=e2e-local-password-2026 CRITICAL_POLICY_ENABLED=true CRITICAL_POLICY_VERSION=e2e-policy-v1 CRITICAL_POLICY_APPROVAL_REF=e2e-approval-2026 CRITICAL_POLICY_APPROVED_AT=2026-08-20T10:00:00.000Z LOGIN_RATE_LIMIT=${e2eLoginRateLimit} STORAGE_SCAN_MODE=local npm run dev`;
 const e2eWebServers = externalBaseUrl
   ? {
       // An explicit external target must fail closed instead of silently

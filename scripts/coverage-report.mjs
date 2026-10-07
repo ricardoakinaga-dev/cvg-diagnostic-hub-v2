@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 export const COVERAGE_THRESHOLDS = Object.freeze({ lines: 90, functions: 90, branches: 85 });
+export const COVERAGE_EXCEPTIONS_FILE = "docs/build/COVERAGE_EXCEPTIONS.json";
 
 const LAYERS = [
   ["contracts", "packages/contracts/"],
@@ -23,6 +24,22 @@ const LAYERS = [
 
 export async function readCoverageSummary(file = "coverage/coverage-summary.json") {
   return JSON.parse(await readFile(file, "utf8"));
+}
+
+export async function readCoverageExceptions(file = COVERAGE_EXCEPTIONS_FILE) {
+  const parsed = JSON.parse(await readFile(file, "utf8"));
+  if (parsed?.schemaVersion !== 1 || !Array.isArray(parsed.entries)) {
+    throw new Error(`Invalid coverage exception registry: ${file}`);
+  }
+  const entries = parsed.entries.map((entry) => {
+    if (!entry || typeof entry.file !== "string" || !entry.file || typeof entry.reason !== "string" || !entry.reason.trim()) {
+      throw new Error(`Coverage exception entries require file and reason: ${file}`);
+    }
+    return { file: entry.file, reason: entry.reason.trim() };
+  });
+  const duplicateFiles = entries.map((entry) => entry.file).filter((file, index, files) => files.indexOf(file) !== index);
+  if (duplicateFiles.length > 0) throw new Error(`Duplicate coverage exception: ${duplicateFiles[0]}`);
+  return entries;
 }
 
 export function buildCoverageReport(summary, root = process.cwd()) {
@@ -51,6 +68,14 @@ export function buildCoverageReport(summary, root = process.cwd()) {
     layers,
     belowThresholdFiles
   };
+}
+
+export function evaluateCoverageGate(report, exceptions) {
+  const belowThresholdFiles = report.belowThresholdFiles.map(({ file }) => file);
+  const exceptionFiles = new Set(exceptions.map(({ file }) => file));
+  const uncovered = belowThresholdFiles.filter((file) => !exceptionFiles.has(file));
+  const stale = exceptions.map(({ file }) => file).filter((file) => !belowThresholdFiles.includes(file));
+  return { passed: uncovered.length === 0 && stale.length === 0, uncovered, stale };
 }
 
 function hasCoverageMetrics(metrics) {
@@ -88,5 +113,17 @@ function aggregate(metricsList) {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const summary = await readCoverageSummary(process.env.COVERAGE_SUMMARY ?? "coverage/coverage-summary.json");
-  console.log(JSON.stringify(buildCoverageReport(summary), null, 2));
+  const report = buildCoverageReport(summary);
+  if (!process.argv.includes("--check")) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    const exceptions = await readCoverageExceptions(process.env.COVERAGE_EXCEPTIONS ?? COVERAGE_EXCEPTIONS_FILE);
+    const gate = evaluateCoverageGate(report, exceptions);
+    console.log(JSON.stringify({ schemaVersion: 1, status: gate.passed ? "PASS" : "FAIL", belowThresholdFiles: report.belowThresholdFiles.length, exceptions: exceptions.length, ...gate }, null, 2));
+    if (!gate.passed) {
+      if (gate.uncovered.length > 0) console.error(`Coverage files without a declared exception: ${gate.uncovered.join(", ")}`);
+      if (gate.stale.length > 0) console.error(`Stale coverage exceptions: ${gate.stale.join(", ")}`);
+      process.exitCode = 1;
+    }
+  }
 }

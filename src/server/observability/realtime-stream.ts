@@ -1,6 +1,8 @@
 import type { StateStore, StoreState, User } from "../domain/models";
+import { renewSessionActivity } from "../domain/session-activity";
 import { getRealtimeNotificationAdapter, type RealtimeNotificationAdapter } from "./realtime";
-import { recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, releaseRealtimeConnection, tryAcquireRealtimeConnection } from "./metrics";
+import { recordRealtimeAuthorizationStaleness, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, releaseRealtimeConnection, tryAcquireRealtimeConnection } from "./metrics";
+import { sharedRealtimeStateReader, type RealtimeReadTrigger, type RealtimeStateSnapshot } from "./realtime-state-reader";
 
 export interface RealtimeAccessPolicy {
   isAuthorized(state: StoreState, actor: User): boolean;
@@ -107,19 +109,18 @@ async function realtimeSnapshotResponse(
   const startedAt = performance.now();
   const pollTimeoutMs = boundedRealtimeInteger(process.env.REALTIME_POLL_TIMEOUT_MS, REALTIME_DEFAULT_POLL_TIMEOUT_MS, REALTIME_MAX_POLL_TIMEOUT_MS);
   try {
-    const state = await readRealtimeState(store, pollTimeoutMs, request.signal);
-    assertRealtimeAuthorization(state, actor, policy);
-    const boundedEvents = replayableOutboxMessages(state, boundedRealtimeInteger(process.env.REALTIME_REPLAY_WINDOW, REALTIME_DEFAULT_REPLAY_WINDOW, REALTIME_MAX_REPLAY_WINDOW));
+    const snapshot = await readRealtimeSnapshot(store, pollTimeoutMs, request.signal);
+    assertRealtimeAuthorization(snapshot.state, actor, policy);
+    const boundedEvents = replayableOutboxMessages(snapshot.state, boundedRealtimeInteger(process.env.REALTIME_REPLAY_WINDOW, REALTIME_DEFAULT_REPLAY_WINDOW, REALTIME_MAX_REPLAY_WINDOW));
     const lastIndex = lastEventId ? boundedEvents.findIndex((message) => message.id === lastEventId) : -1;
     const replayExpired = Boolean(lastEventId) && lastIndex < 0;
     const replayWindow = lastEventId && !replayExpired ? boundedEvents.slice(lastIndex + 1) : boundedEvents;
     const events = replayWindow
-      .filter((message) => policy.eventVisible(state, actor, message.aggregateType, message.aggregateId, message.payload))
+      .filter((message) => policy.eventVisible(snapshot.state, actor, message.aggregateType, message.aggregateId, message.payload))
       .map((message) => realtimeEventData(message));
+    await assertCurrentRealtimeAuthorization(store, snapshot, actor, pollTimeoutMs, request.signal, policy);
     const resync = replayExpired ? `event: resync_required\ndata: ${JSON.stringify({ reason: "event_window_expired" })}\n\n` : "";
     const payload = `${resync}${events.map((event) => formatRealtimeEvent(event)).join("")}`;
-    const authorizationState = await readRealtimeState(store, pollTimeoutMs, request.signal);
-    assertRealtimeAuthorization(authorizationState, actor, policy);
     if (replayExpired) recordRealtimeResync("event_window_expired");
     recordRealtimePoll("snapshot", "success", performance.now() - startedAt);
     return new Response(`retry: 5000\n\n${payload || ": heartbeat\n\n"}`, { headers });
@@ -201,11 +202,11 @@ function createRealtimeStream(
         if (closed || timer) return;
         timer = setTimeout(() => {
           timer = undefined;
-          requestPoll();
+          requestPoll("poll");
         }, intervalMs);
       };
 
-      const send = async () => {
+      const send = async (trigger: RealtimeReadTrigger = "poll") => {
         if (closed || pollInFlight) return;
         if (controller.desiredSize !== null && controller.desiredSize <= 0) {
           closeStream("backpressure");
@@ -217,21 +218,22 @@ function createRealtimeStream(
         let outcome: "success" | "failure" = "success";
         let failureReason: string | undefined;
         try {
-          const current = await readRealtimeState(store, pollTimeoutMs, request.signal);
+          const snapshot = await readRealtimeSnapshot(store, pollTimeoutMs, request.signal, trigger);
           if (closed) {
             outcome = "failure";
             failureReason = request.signal.aborted ? "client_aborted" : "stream_closed";
             return;
           }
-          if (!policy.isAuthorized(current, actor)) {
+          if (!policy.isAuthorized(snapshot.state, actor)) {
             closeStream("authorization_revoked");
             return;
           }
-          const messages = replayableOutboxMessages(current, replayWindow);
+          const messages = replayableOutboxMessages(snapshot.state, replayWindow);
           const cursorIndex = cursor ? messages.findIndex((message) => message.id === cursor) : -1;
           const expired = Boolean(cursor) && cursorIndex < 0;
           const replay = cursor && !expired ? messages.slice(cursorIndex + 1) : messages;
-          const visible = replay.filter((message) => policy.eventVisible(current, actor, message.aggregateType, message.aggregateId, message.payload));
+          const visible = replay.filter((message) => policy.eventVisible(snapshot.state, actor, message.aggregateType, message.aggregateId, message.payload));
+          await assertCurrentRealtimeAuthorization(store, snapshot, actor, pollTimeoutMs, request.signal, policy);
           const latestMessageId = messages.at(-1)?.id;
           const shouldResync = expired && lastResyncCursor !== cursor;
           if (latestMessageId) cursor = latestMessageId;
@@ -240,16 +242,6 @@ function createRealtimeStream(
             return realtimeEventData(message);
           });
           const nextPayload = `${preamblePending ? "retry: 5000\n\n" : ""}${shouldResync ? `event: resync_required\ndata: ${JSON.stringify({ reason: "event_window_expired" })}\n\n` : ""}${events.map((event) => formatRealtimeEvent(event)).join("") || ": heartbeat\n\n"}`;
-          const authorizationState = await readRealtimeState(store, pollTimeoutMs, request.signal);
-          if (closed) {
-            outcome = "failure";
-            failureReason = request.signal.aborted ? "client_aborted" : "stream_closed";
-            return;
-          }
-          if (!policy.isAuthorized(authorizationState, actor)) {
-            closeStream("authorization_revoked");
-            return;
-          }
           const encoded = encoder.encode(nextPayload);
           if (encoded.byteLength > REALTIME_MAX_PAYLOAD_BYTES) throw new RealtimeEnqueueError();
           if (controller.desiredSize !== null && controller.desiredSize <= 0) {
@@ -266,7 +258,16 @@ function createRealtimeStream(
             recordRealtimeResync("event_window_expired");
           }
           preamblePending = false;
+          // A monitoring screen that only receives realtime is still an active
+          // shift: renewing here keeps the idle timeout from logging a
+          // technician out of a queue they are watching.
+          renewSessionActivity(store, actor);
         } catch (error) {
+          if (error instanceof RealtimeAuthorizationError) {
+            outcome = "success";
+            closeStream("authorization_revoked");
+            return;
+          }
           outcome = "failure";
           failureReason = realtimePollFailureReason(error);
           if (!closed) closeStream(error instanceof RealtimeEnqueueError ? "backpressure" : error instanceof RealtimePollError && error.reason === "poll_timeout" ? "poll_timeout" : "poll_failure");
@@ -284,7 +285,7 @@ function createRealtimeStream(
         }
       };
 
-      const requestPoll = () => {
+      const requestPoll = (trigger: RealtimeReadTrigger = "poll") => {
         if (closed) return;
         if (timer) {
           clearTimeout(timer);
@@ -294,15 +295,21 @@ function createRealtimeStream(
           pollRequested = true;
           return;
         }
-        void send();
+        void send(trigger);
       };
 
       abortHandler = () => closeStream("client_abort");
       request.signal.addEventListener("abort", abortHandler, { once: true });
-      unsubscribe = adapter.subscribe(requestPoll);
+      // A committed mutation wakes the stream through a debounced read; the
+      // steady-state timer keeps the full cadence.
+      unsubscribe = adapter.subscribe(() => requestPoll("notify"));
       if (maxStreamMs > 0) expirationTimer = setTimeout(() => closeStream("max_duration"), maxStreamMs);
+      // A reconnect carrying Last-Event-ID must be answered from a snapshot
+      // taken after that cursor, or its replay window would silently omit the
+      // events it missed. A first subscription has no cursor, so it shares the
+      // process cadence like every other connection.
       if (request.signal.aborted) closeStream("client_abort");
-      else requestPoll();
+      else requestPoll(lastEventId ? "fresh" : "poll");
     },
     cancel() {
       if (closed) return;
@@ -320,14 +327,39 @@ function createRealtimeStream(
 }
 
 async function readRealtimeState(store: StateStore, timeoutMs: number, signal: AbortSignal): Promise<StoreState> {
+  return readWithRealtimeDeadline(() => store.readState(), timeoutMs, signal);
+}
+
+/**
+ * Aggregate read shared by every connection of this process. The cadence is a
+ * hard budget, so N connections cost one read per interval rather than N.
+ */
+async function readRealtimeSnapshot(
+  store: StateStore,
+  timeoutMs: number,
+  signal: AbortSignal,
+  trigger: RealtimeReadTrigger = "poll"
+): Promise<RealtimeStateSnapshot> {
+  const reader = sharedRealtimeStateReader(store);
+  return readWithRealtimeDeadline(async () => {
+    const snapshot = await reader.read(trigger);
+    return snapshot;
+  }, timeoutMs, signal);
+}
+
+async function readRealtimeAuthorization(store: StateStore, actor: User, timeoutMs: number, signal: AbortSignal): Promise<{ user?: User; session?: StoreState["sessions"][number] }> {
+  return readWithRealtimeDeadline(() => store.readAuthorizationSnapshot({ userId: actor.id, sessionId: actor.sessionId }), timeoutMs, signal);
+}
+
+async function readWithRealtimeDeadline<T>(read: () => Promise<T>, timeoutMs: number, signal: AbortSignal): Promise<T> {
   if (signal.aborted) throw new RealtimePollError("client_aborted");
-  const statePromise = Promise.resolve().then(() => store.readState());
+  const statePromise = Promise.resolve().then(read);
   let timeout: ReturnType<typeof setTimeout> | undefined;
   let abortHandler: (() => void) | undefined;
-  const timeoutPromise = new Promise<StoreState>((_, reject) => {
+  const timeoutPromise = new Promise<T>((_, reject) => {
     timeout = setTimeout(() => reject(new RealtimePollError("poll_timeout")), timeoutMs);
   });
-  const abortPromise = new Promise<StoreState>((_, reject) => {
+  const abortPromise = new Promise<T>((_, reject) => {
     abortHandler = () => reject(new RealtimePollError("client_aborted"));
     signal.addEventListener("abort", abortHandler, { once: true });
   });
@@ -340,6 +372,31 @@ async function readRealtimeState(store: StateStore, timeoutMs: number, signal: A
     if (timeout) clearTimeout(timeout);
     if (abortHandler) signal.removeEventListener("abort", abortHandler);
   }
+}
+
+/**
+ * Authorization recheck before anything reaches the client.
+ *
+ * The shared snapshot carries the version it was read at, and the version
+ * column is a single integer read. An unchanged version proves no write
+ * committed after the aggregate read, so the authorization decision already in
+ * the snapshot is exact and no second read is needed. When a write did
+ * intervene, the narrow user/session read runs so a deactivation or revocation
+ * that landed after our read still closes the stream.
+ */
+async function assertCurrentRealtimeAuthorization(
+  store: StateStore,
+  snapshot: RealtimeStateSnapshot,
+  actor: User,
+  timeoutMs: number,
+  signal: AbortSignal,
+  policy: RealtimeAccessPolicy
+): Promise<void> {
+  const currentVersion = await readWithRealtimeDeadline(() => store.readStateVersion(), timeoutMs, signal);
+  if (currentVersion === snapshot.version) return;
+  recordRealtimeAuthorizationStaleness();
+  const current = await readRealtimeAuthorization(store, actor, timeoutMs, signal);
+  assertRealtimeAuthorization({ ...snapshot.state, users: current.user ? [current.user] : [], sessions: current.session ? [current.session] : [] }, actor, policy);
 }
 
 function assertRealtimeAuthorization(state: StoreState, actor: User, policy: RealtimeAccessPolicy): void {

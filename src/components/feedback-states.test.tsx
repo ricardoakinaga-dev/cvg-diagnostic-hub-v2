@@ -1,6 +1,8 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ACCESS_DENIED_MESSAGE } from "@cvg/services";
+import Link from "next/link";
 import { EmptyState, ErrorState, LoadingState, PartialNotice, StaleNotice } from "./feedback-states";
 
 describe("feedback state primitives", () => {
@@ -76,5 +78,24 @@ describe("feedback state primitives", () => {
     expect(loading).toHaveAttribute("aria-live", "polite");
     expect(loading).toHaveAttribute("aria-busy", "true");
     expect(loading).toHaveTextContent("Carregando fila de exames");
+  });
+
+  it("usa o título como h1 quando o estado de erro ocupa a página inteira", () => {
+    const { rerender } = render(<ErrorState title="Contexto indisponível" message="Falha" onRetry={vi.fn()} />);
+    expect(screen.getByRole("heading", { level: 2, name: "Contexto indisponível" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { level: 1 })).not.toBeInTheDocument();
+    rerender(<ErrorState page title="Contexto indisponível" message="Falha" onRetry={vi.fn()} />);
+    expect(screen.getByRole("heading", { level: 1, name: "Contexto indisponível" })).toBeInTheDocument();
+  });
+
+  it("não oferece nova tentativa quando a recusa é de autorização, mas mantém a ação alternativa", () => {
+    const onRetry = vi.fn();
+    render(<ErrorState page title="Controle operacional indisponível" message={ACCESS_DENIED_MESSAGE} onRetry={onRetry} action={<Link href="/">Voltar</Link>} />);
+    expect(screen.queryByRole("button", { name: "Tentar novamente" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Voltar" })).toBeInTheDocument();
+    cleanup();
+    render(<ErrorState title="Falha" message="Servidor indisponível" onRetry={onRetry} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect(onRetry).toHaveBeenCalledTimes(1);
   });
 });

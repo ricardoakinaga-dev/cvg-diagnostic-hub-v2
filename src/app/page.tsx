@@ -1,10 +1,10 @@
 import { AppShell } from "@/components/app-shell";
-import { Dashboard } from "@/components/dashboard";
+import { Home } from "@/components/home-view";
 
 export default function HomePage() {
   return (
-    <AppShell>
-      <Dashboard />
+    <AppShell flush>
+      <Home />
     </AppShell>
   );
 }

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import path from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import { Pool } from "pg";
 import type { StoreState } from "../../src/server/domain/models";
 import {
@@ -58,6 +59,12 @@ export function validatePostgresIntegrationEnvironment(
   if (!LOOPBACK_HOSTS.has(adminUrl.hostname.toLowerCase())) {
     throw new Error("POSTGRES_TEST_ADMIN_URL must target a loopback host.");
   }
+  // pg-connection-string permits query parameters such as ?host= to override
+  // the validated authority. Dedicated disposable admin URLs use only the
+  // authority/path so the driver cannot silently connect to a different host.
+  if (adminUrl.search) {
+    throw new Error("POSTGRES_TEST_ADMIN_URL must not contain query parameters.");
+  }
   if (!adminUrl.pathname || adminUrl.pathname === "/") {
     throw new Error("POSTGRES_TEST_ADMIN_URL must name an existing administrative database.");
   }
@@ -105,12 +112,35 @@ async function applyRealMigrations(connectionString: string): Promise<void> {
   }
 }
 
+// Autovacuum and other server processes also report the database; only client
+// backends are connections opened by the code under test.
+const CLIENT_SESSIONS_SQL = "SELECT pid, application_name, state FROM pg_stat_activity WHERE datname = $1 AND backend_type = 'client backend'";
+
 async function terminateAndDropDatabase(adminPool: Pool, databaseName: string): Promise<void> {
+  // pg-pool resolves end() before the server removes the connection, and the
+  // client keeps re-emitting errors on its pool until the socket closes.
+  // Terminating such a closing backend raised an unhandled 57P01 in a pool
+  // without an error listener (CI run 37522831663). Let ended clients leave
+  // first; only connections still open after the grace period are terminated.
+  const deadline = Date.now() + 2000;
+  while ((await adminPool.query(CLIENT_SESSIONS_SQL, [databaseName])).rows.length > 0 && Date.now() < deadline) await delay(25);
   await adminPool.query(
     "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()",
     [databaseName]
   );
   await adminPool.query(`DROP DATABASE ${quotedDatabaseName(databaseName)}`);
+}
+
+async function waitForBootstrapShutdown(adminPool: Pool, databaseName: string): Promise<void> {
+  // pg-pool can resolve end() before the server has removed the connection.
+  // Observe the disposable database through the separate administrative one.
+  const deadline = Date.now() + 5000;
+  while (true) {
+    const sessions = await adminPool.query(CLIENT_SESSIONS_SQL, [databaseName]);
+    if (sessions.rows.length === 0) return;
+    if (Date.now() >= deadline) throw new Error(`Disposable bootstrap did not close its sessions: ${JSON.stringify(sessions.rows)}`);
+    await delay(25);
+  }
 }
 
 async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedDisposablePostgresDatabase> {
@@ -129,6 +159,7 @@ async function createDisposablePostgresDatabase(adminUrl: URL): Promise<ManagedD
     await adminPool.query(`CREATE DATABASE ${quotedDatabaseName(databaseName)}`);
     databaseCreated = true;
     await applyRealMigrations(connectionString);
+    await waitForBootstrapShutdown(adminPool, databaseName);
   } catch (setupError) {
     const cleanupErrors: unknown[] = [];
     if (databaseCreated) {

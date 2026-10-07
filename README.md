@@ -2,7 +2,9 @@
 
 Central operacional para solicitar, executar, acompanhar, liberar e revisar exames diagnósticos em um hospital veterinário.
 
-> **Status (07/09/2026):** candidato local tecnicamente forte, ainda **CONDITIONAL PASS / NOT READY** para produção clínica. A execução corrente passou 725/725 testes em 86 arquivos, cobertura de 92,72% statements/lines, 85,82% branches e 94,31% functions; build Next.js 16.3.0, OpenAPI 65/60, rastreabilidade 43/43, migrations 001–010, security scan, `npm audit`, SBOM CycloneDX com 560 componentes sob Node 22, recovery 5/5 e performance 7/7. O browser passou 60/60 na matriz completa, sem retry, em Chromium/tablet/mobile; isso inclui o fluxo principal, ciclo clínico, acessibilidade (12/12) e realtime. A evidência PostgreSQL descartável anterior passou 39/39 em 6 arquivos em Node 22/PostgreSQL 16.15, mas a repetição corrente ficou condicionada pela ausência de `initdb`/`pg_ctl`/Docker e não tocou `127.0.0.1:5432`; o lane local production-like passou 51/51 contra `next start`, PostgreSQL, S3/scanner sintéticos e outbox durável; o restore smoke PostgreSQL-only passou com checksum e banco restaurado isolado. JSONB continua autoridade clínica. O relatório corrente, a barra e o manifesto estão em [`RELATORIO_AUDITORIA_2026-09-07.md`](docs/RELATORIO_AUDITORIA_2026-09-07.md), [`quality-bar.json`](.orchestrate/aaa3-execution-20260907/quality-bar.json) e [`evidence-manifest.json`](.orchestrate/aaa3-execution-20260907/evidence-manifest.json).
+> **Status (02/10/2026):** implantável tecnicamente, **NOT READY** para produção clínica. Gates locais: 809/809 testes (unit + PostgreSQL), cobertura de 94,98% lines, 95,30% functions e 89,10% branches, E2E na matriz de 3 viewports, build, OpenAPI 70/65, rastreabilidade 43/43, migrations 001–011, security scan e `npm audit` (high/critical) passam. O stack sobe em modo produção ([deploy](docs/operations/DEPLOYMENT.md)). Bloqueadores: o teto de escala da persistência em snapshot JSONB ([auditoria de 02/10](docs/RELATORIO_AUDITORIA_2026-10-02.md)), as decisões clínicas e de infraestrutura em aberto, e a validação externa. Execução: [roadmap](docs/build/PRODUCTION_ROADMAP.md) e [backlog](docs/build/PRODUCTION_BACKLOG.md).
+>
+> Histórico (07/09/2026): candidato local tecnicamente forte, ainda **CONDITIONAL PASS / NOT READY** para produção clínica. A execução corrente passou 725/725 testes em 86 arquivos, cobertura de 92,72% statements/lines, 85,82% branches e 94,31% functions; build Next.js 16.3.0, OpenAPI 65/60, rastreabilidade 43/43, migrations 001–010, security scan, `npm audit`, SBOM CycloneDX com 560 componentes sob Node 22, recovery 5/5 e performance 7/7. O browser passou 60/60 na matriz completa, sem retry, em Chromium/tablet/mobile; isso inclui o fluxo principal, ciclo clínico, acessibilidade (12/12) e realtime. A evidência PostgreSQL descartável anterior passou 39/39 em 6 arquivos em Node 22/PostgreSQL 16.15, mas a repetição corrente ficou condicionada pela ausência de `initdb`/`pg_ctl`/Docker e não tocou `127.0.0.1:5432`; o lane local production-like passou 51/51 contra `next start`, PostgreSQL, S3/scanner sintéticos e outbox durável; o restore smoke PostgreSQL-only passou com checksum e banco restaurado isolado. JSONB continua autoridade clínica. O relatório corrente, a barra e o manifesto estão em [`RELATORIO_AUDITORIA_2026-09-07.md`](docs/RELATORIO_AUDITORIA_2026-09-07.md), [`quality-bar.json`](.orchestrate/aaa3-execution-20260907/quality-bar.json) e [`evidence-manifest.json`](.orchestrate/aaa3-execution-20260907/evidence-manifest.json).
 
 O repositório oficial do V2 é [`ricardoakinaga-dev/cvg-diagnostic-hub-v2`](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2). A linha V1 permanece disponível durante a migração. O mapa atual, a barra congelada e as limitações da onda estão em [`docs/v2/MIGRATION_MAP.md`](docs/v2/MIGRATION_MAP.md) e [`docs/v2/QUALITY_BAR.md`](docs/v2/QUALITY_BAR.md).
 
@@ -51,6 +53,9 @@ export ALLOW_SYNTHETIC_SEED=true
 npm run db:migrate
 npm run db:seed
 npm run dev
+# opcional, em outro terminal com as mesmas variáveis e o servidor no ar:
+# até 14 pacientes e 27 exames sintéticos; pacientes já existentes são preservados
+npm run db:demo
 ```
 
 Abra `http://localhost:3000`. Neste ambiente, outro dispositivo na mesma rede pode acessar `http://192.168.15.14:3000`; o host LAN está liberado apenas para a demonstração local. O comando acima inicia em `APP_DATA_MODE=postgres`. Para uma demonstração somente em memória, use `APP_DATA_MODE=memory`, omita `DATABASE_URL` e mantenha a senha sintética definida por `DEMO_PASSWORD`.
@@ -74,6 +79,8 @@ npm run validate:openapi
 npm run security:scan
 npm audit --audit-level=high
 ```
+
+Deploy de produção (imagens Docker, bootstrap do primeiro ADMIN com `npm run db:bootstrap`, migrations, worker de outbox e proxy TLS): [`docs/operations/DEPLOYMENT.md`](docs/operations/DEPLOYMENT.md) e [`docker-compose.prod.yml`](docker-compose.prod.yml).
 
 Para evidência operacional adicional: `PERF_PASSWORD="$DEMO_PASSWORD" npm run perf:smoke` exige um servidor já iniciado; `ALLOW_DB_RESTORE_SMOKE=true npm run db:restore:smoke` restaura apenas em um banco Docker descartável. O seed sintético é proibido com `NODE_ENV=production` e só executa com `ALLOW_SYNTHETIC_SEED=true`. O `db:smoke` também é destrutivo: exige `ALLOW_DB_SMOKE_RESET=true`, host de loopback e um banco dedicado cujo nome comece por `cvg_smoke` ou `cvg_test`. A integração descartável roda com `ALLOW_POSTGRES_INTEGRATION_TESTS=true`, `POSTGRES_TEST_ADMIN_URL` local e `npm run test:postgres`.
 

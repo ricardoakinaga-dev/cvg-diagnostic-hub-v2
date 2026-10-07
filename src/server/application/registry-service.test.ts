@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
+import { requireActiveUser } from "./service-common";
 
 function setup() {
   const store = new MemoryStore(createDemoState("registry-test-password-2026"));
@@ -84,5 +85,32 @@ describe("patient registry commands", () => {
     const freshVet = store.getState().users.find((user) => user.id === vet.id);
     await expect(service.createPatient(freshVet!, base, { idempotencyKey: "registry-luna-duplicate" })).rejects.toMatchObject({ code: "CONFLICT" });
     await expect(service.createPatient(freshVet!, { ...base, displayName: "Outra Luna" }, { idempotencyKey: "registry-luna-create" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED" });
+  });
+
+  it("does not reject concurrent commands that carry the actor snapshot from before a patient registration", async () => {
+    const { store, service, vet } = setup();
+    const stale = { ...vet };
+    const input = (name: string) => ({ displayName: name, species: "Canino", breed: "SRD", sex: "Macho", ownerLabel: "Tutor Teste", encounterType: "OUTPATIENT" as const });
+    const results = await Promise.allSettled(Array.from({ length: 8 }, (_, index) => service.createPatient(stale, input(`Concorrente ${index}`), { idempotencyKey: `registry-concurrent-${index}` })));
+    expect(results.map((result) => result.status)).toEqual(Array(8).fill("fulfilled"));
+    const persisted = store.getState().users.find((user) => user.id === vet.id)!;
+    expect(persisted.version).toBe(vet.version + 8);
+    expect(persisted.patientIds).toHaveLength((vet.patientIds?.length ?? 0) + 8);
+  });
+
+  it("keeps a stale snapshot from seeing more than it was authenticated with, and still rejects role, department and deactivation changes", async () => {
+    const { store, service, vet } = setup();
+    const created = await service.createPatient({ ...vet }, { displayName: "Nova", species: "Felino", breed: "SRD", sex: "Fêmea", ownerLabel: "Tutor Teste", encounterType: "OUTPATIENT" }, { idempotencyKey: "registry-scope-stale" });
+    // A snapshot taken before the registration is narrowed to the scope it carried: it never gains the new patient.
+    const state = store.getState();
+    expect(requireActiveUser(state, { ...vet }).patientIds).not.toContain(created.patient.id);
+    // A snapshot taken after it does.
+    const fresh = state.users.find((user) => user.id === vet.id)!;
+    expect(requireActiveUser(state, { ...fresh }).patientIds).toContain(created.patient.id);
+
+    expect(() => requireActiveUser(state, { ...fresh, role: "VIEWER" })).toThrow(expect.objectContaining({ code: "UNAUTHENTICATED" }));
+    expect(() => requireActiveUser(state, { ...fresh, departmentCode: "OTHER" })).toThrow(expect.objectContaining({ code: "UNAUTHENTICATED" }));
+    const deactivated = { ...state, users: state.users.map((user) => user.id === vet.id ? { ...user, active: false } : user) };
+    expect(() => requireActiveUser(deactivated, { ...fresh })).toThrow(expect.objectContaining({ code: "UNAUTHENTICATED" }));
   });
 });

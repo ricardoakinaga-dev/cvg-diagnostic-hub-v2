@@ -26,6 +26,8 @@ export interface User extends Actor {
   timezone: string;
   createdAt: Timestamp;
   version: number;
+  /** Temporary credentials can only establish a session for password replacement. */
+  mustChangePassword?: boolean;
   /** Ephemeral authentication context; never persisted or returned as a user field. */
   sessionId?: string;
   reauthenticatedAt?: Timestamp;
@@ -41,6 +43,33 @@ export interface Session {
   revokedAt?: Timestamp;
   reauthenticatedAt?: Timestamp;
   version: number;
+}
+
+/**
+ * Per-session liveness used by the idle timeout. It deliberately lives outside
+ * StoreState: recording activity in the snapshot turned every authenticated
+ * read into a global write against the single locked JSONB row.
+ */
+export interface SessionActivity {
+  sessionId: string;
+  userId: string;
+  lastSeenAt: Timestamp;
+}
+
+export interface RuntimeRetentionOptions {
+  readonly now?: Date;
+  readonly outboxHotWindow?: number;
+  readonly sessionRetentionMs?: number;
+  readonly idempotencyRetentionMs?: number;
+  readonly outboxRetentionMs?: number;
+}
+
+export interface RuntimeRetentionSummary {
+  readonly auditEventsRemoved: number;
+  readonly outboxMessagesRemoved: number;
+  readonly sessionsRemoved: number;
+  readonly idempotencyRecordsRemoved: number;
+  readonly sessionActivityRowsRemoved: number;
 }
 
 export interface Patient {
@@ -314,7 +343,7 @@ export interface OutboxMessage {
   payload: Record<string, unknown>;
   consumerType: OutboxConsumerType;
   routingKey: string;
-  status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED";
+  status: "PENDING" | "PROCESSING" | "PROCESSED" | "FAILED" | "DISCARDED";
   attempts: number;
   availableAt: Timestamp;
   correlationId: string;
@@ -322,6 +351,10 @@ export interface OutboxMessage {
   workerId?: string;
   claimToken?: string;
   lastError?: string;
+  deadLetteredAt?: Timestamp;
+  discardedAt?: Timestamp;
+  discardedBy?: string;
+  discardReason?: string;
 }
 
 export interface IdempotencyRecord {
@@ -373,13 +406,94 @@ export interface StoreState {
   protocolSequence: number;
 }
 
+export interface AuditEntity {
+  entityType: string;
+  entityId: string;
+}
+
+export interface AuditScope {
+  entities: AuditEntity[];
+  entityTypes?: string[];
+  /** ADMIN fallback for events without a resolved clinical request. */
+  unresolved?: { resolvedEntities: AuditEntity[] };
+}
+
+export interface AuditReadQuery {
+  scope: AuditScope;
+  order: "asc" | "desc";
+  limit: number;
+  cursor?: { occurredAt: string; id: string };
+}
+
+export interface AuditReadPage {
+  items: AuditEvent[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface AuditTransactionReader {
+  hasAuditEvent(query: { eventType: string; entityType: string; entityId: string; actorId: string }): Promise<boolean>;
+}
+
+export interface AuditMetricsQuery {
+  requestCount: number;
+  samples: { id: string; requestId: string }[];
+  releasedVersions: { id: string; releasedAtMs: number }[];
+}
+
+export interface AuditMetrics {
+  recollectionRate?: number;
+  resultViewLatencySeconds?: number;
+}
+
 export interface StateStore {
+  /** Relational outbox reads never restore delivery history into the snapshot. */
+  readOutbox(query: { kind: "replay" | "dead-letter"; limit: number }): Promise<OutboxMessage[]>;
+  readOutboxMetrics(): Promise<{ pending: number; oldestAvailableAt?: Timestamp }>;
+  readRealtimeSnapshot(limit: number): Promise<{ state: StoreState; version: number }>;
+  /** Hydrates only a locked message or the first eligible claim candidate. */
+  outboxTransaction<T>(query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
   getState(): StoreState;
   readState(): Promise<StoreState>;
-  transaction<T>(operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
+  /**
+   * Aggregate read that also returns the write version it observed, from a
+   * single statement. Realtime authorization is revalidated against that
+   * version, which is what lets many connections share one read.
+   */
+  readStateSnapshot(): Promise<{ state: StoreState; version: number }>;
+  /** Current write version only. Cheap enough to call per connection tick. */
+  readStateVersion(): Promise<number>;
+  /** Scoped historical reads; PostgreSQL reads the append-only table. */
+  readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage>;
+  readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]>;
+  readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics>;
+  /**
+   * Narrow authorization read. Implementations must answer from indexed single
+   * rows or an equally bounded source; a full aggregate read here would
+   * reintroduce the per-connection full-state read the realtime path removed.
+   */
+  readAuthorizationSnapshot(query: { userId: string; sessionId?: string }): Promise<{ user?: User; session?: Session }>;
+  /** Narrow liveness read for one session. Never rewrites the snapshot. */
+  readSessionActivity(sessionId: string): Promise<SessionActivity | undefined>;
+  /** Narrow liveness write for one session. Never rewrites the snapshot. */
+  touchSessionActivity(activity: { sessionId: string; userId: string; lastSeenAt: Timestamp }): Promise<SessionActivity>;
+  /**
+   * Applies runtime retention to the snapshot and to the session-activity
+   * table in one audited step. Removes expired/revoked sessions, expired
+   * idempotency records and processed outbox messages beyond their windows.
+   */
+  compactRuntimeState(options?: RuntimeRetentionOptions): Promise<RuntimeRetentionSummary>;
+  transaction<T>(operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
   reset?(state: StoreState): Promise<void>;
   healthcheck?(): Promise<void>;
 }
+
+export type OutboxTransactionQuery = { kind: "message"; id: string } | {
+  kind: "claim";
+  now: Timestamp;
+  leaseMs: number;
+  accepts: (message: OutboxMessage) => boolean;
+};
 
 export function userAsActor(user: User): Actor {
   return {

@@ -39,6 +39,57 @@ function jsonRequest(body: BodyInit, headers?: HeadersInit): Request {
 }
 
 describe("bounded request body reader", () => {
+  it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])("rejects invalid byte limit %s before reading a body", async (maxBytes) => {
+    const request = jsonRequest("{}");
+    await expect(readBytesWithLimit(request, maxBytes)).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(request.bodyUsed).toBe(false);
+  });
+
+  it("keeps the declared-length validation error when stream cancellation fails", async () => {
+    const cancellations: unknown[] = [];
+    const stream = new ReadableStream<Uint8Array>({
+      cancel(reason) {
+        cancellations.push(reason);
+        throw new Error("transport cancellation failed");
+      }
+    });
+    await expect(readBytesWithLimit(jsonRequest(stream, { "content-length": "3" }), 2)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR", status: 400, message: "O corpo da requisição excede o limite permitido."
+    });
+    expect(cancellations).toEqual(["declared request body exceeds configured limit"]);
+  });
+
+  it("keeps the streamed-length validation error when cancellation fails and stops pulling", async () => {
+    let pulled = 0;
+    const cancellations: unknown[] = [];
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulled += 1;
+        controller.enqueue(new Uint8Array([1, 2, 3]));
+      },
+      cancel(reason) {
+        cancellations.push(reason);
+        return Promise.reject(new Error("transport cancellation failed"));
+      }
+    });
+    await expect(readBytesWithLimit(jsonRequest(stream), 2)).rejects.toMatchObject({
+      code: "VALIDATION_ERROR", status: 400, message: "O corpo da requisição excede o limite permitido."
+    });
+    expect(pulled).toBe(1);
+    expect(cancellations).toEqual(["request body exceeds configured limit"]);
+  });
+
+  it("accepts the exact byte limit and joins chunks without corrupting their order", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array([1, 2]));
+        controller.enqueue(new Uint8Array([3, 4]));
+        controller.close();
+      }
+    });
+    await expect(readBytesWithLimit(jsonRequest(stream, { "content-length": "4" }), 4)).resolves.toEqual(new Uint8Array([1, 2, 3, 4]));
+  });
+
   it("stops consuming a stream as soon as the byte limit is exceeded", async () => {
     let pulled = 0;
     const body = new ReadableStream<Uint8Array>({
@@ -59,6 +110,12 @@ describe("bounded request body reader", () => {
 });
 
 describe("bounded JSON request body reader", () => {
+  it.each([0, -1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1])("rejects invalid depth limit %s before reading JSON", async (maxDepth) => {
+    const request = jsonRequest("{}");
+    await expect(readJsonWithLimit(request, { maxBytes: 2, maxDepth })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(request.bodyUsed).toBe(false);
+  });
+
   it("parses valid JSON within the byte and nesting limits", async () => {
     const request = jsonRequest(
       JSON.stringify({ animalId: "animal-1", values: [1, 2, 3] }),

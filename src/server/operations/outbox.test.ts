@@ -1,9 +1,25 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import type { StoreState } from "../domain/models";
+import type { StateStore, StoreState, User } from "../domain/models";
+import { requireActiveUser, requirePermission } from "../application/service-common";
+import { ApiError } from "../http/envelope";
 import { MemoryStore } from "../store/memory-store";
-import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, InProcessEventBus, processOutboxBatch } from "./outbox";
-import type { OutboxSink, OutboxSqlExecutor } from "./outbox";
+import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, discardDeadLetterMessage, InProcessEventBus, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "./outbox";
+import type { DeadLetterCommand, OutboxSink, OutboxSqlExecutor } from "./outbox";
+
+function authorizeAdmin(actor: User) {
+  return (state: StoreState): void => {
+    const current = requireActiveUser(state, actor);
+    requirePermission(current, "outbox.manage", {});
+    if (current.role !== "ADMIN") throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
+  };
+}
+
+function adminFrom(state: StoreState): User {
+  const actor = state.users.find((user) => user.id === "user-admin");
+  if (!actor) throw new Error("Admin fixture absent");
+  return actor;
+}
 
 function stateWithMessage(): StoreState {
   const state = createDemoState();
@@ -24,6 +40,240 @@ function stateWithMessage(): StoreState {
     }]
   };
 }
+
+function deadLetterFixture() {
+  const state = stateWithMessage();
+  const now = new Date().toISOString();
+  const actor = { ...adminFrom(state), sessionId: "session-admin" };
+  state.sessions = [{
+    id: actor.sessionId, userId: actor.id, tokenHash: "test-token-hash", csrfTokenHash: "test-csrf-hash",
+    createdAt: now, expiresAt: new Date(Date.now() + 60_000).toISOString(), version: 1
+  }];
+  state.notifications = [{
+    id: "notification-failed", category: "ACTIONABLE", priority: "HIGH", recipientUserId: "user-vet",
+    entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Ação necessária",
+    body: "Atualização disponível.", dedupeKey: "request-1:failed", state: "FAILED", createdAt: now,
+    attempts: 5, version: 2
+  }];
+  state.outbox[0] = {
+    ...state.outbox[0], status: "FAILED", attempts: 5, deadLetteredAt: now, lastError: "downstream unavailable",
+    payload: { notificationId: "notification-failed" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app"
+  };
+  const authorize = vi.fn(authorizeAdmin(actor));
+  const command: DeadLetterCommand = {
+    authorize, actorId: actor.id, correlationId: "corr-authorization", idempotencyKey: "authorization-command",
+    reason: "  Dependência recuperada  "
+  };
+  return { store: new MemoryStore(state), actor, authorize, command };
+}
+
+function outboxOnlyBoundary(backing: MemoryStore) {
+  const readState = vi.fn(() => { throw new Error("Full-state reads are unavailable at the outbox boundary"); });
+  const transaction = vi.fn(() => { throw new Error("Ordinary transactions are unavailable at the outbox boundary"); });
+  const readOutbox = vi.fn(backing.readOutbox.bind(backing));
+  const outboxTransaction = vi.fn(backing.outboxTransaction.bind(backing));
+  // Bind the scoped APIs to the real store so its internal memory delegation
+  // remains valid; only calls made by the operations consumer are forbidden.
+  const store: StateStore = new Proxy(backing, {
+    get(target, property, receiver) {
+      if (property === "readState") return readState;
+      if (property === "transaction") return transaction;
+      if (property === "readOutbox") return readOutbox;
+      if (property === "outboxTransaction") return outboxTransaction;
+      return Reflect.get(target, property, receiver);
+    }
+  });
+  return { store, readState, transaction, readOutbox, outboxTransaction };
+}
+
+describe("scoped outbox store boundary", () => {
+  it.each([
+    { outcome: "delivered", fail: false, maxAttempts: 2, status: "PROCESSED", notificationState: "DELIVERED", processed: 1, retried: 0, failed: 0 },
+    { outcome: "retry", fail: true, maxAttempts: 2, status: "PENDING", notificationState: "PENDING", processed: 0, retried: 1, failed: 0 },
+    { outcome: "dead letter", fail: true, maxAttempts: 1, status: "FAILED", notificationState: "FAILED", processed: 0, retried: 0, failed: 1 }
+  ])("claims and finishes a notification ($outcome) without full-state APIs", async (scenario) => {
+    const state = deadLetterFixture().store.getState();
+    const domainMessage = stateWithMessage().outbox[0];
+    const notificationMessage = { ...state.outbox[0], id: "outbox-notification", status: "PENDING" as const, attempts: 0, deadLetteredAt: undefined, lastError: undefined };
+    state.outbox = [domainMessage, notificationMessage];
+    state.notifications[0] = { ...state.notifications[0], state: "PENDING" };
+    const backing = new MemoryStore(state);
+    const boundary = outboxOnlyBoundary(backing);
+    const sink: OutboxSink = {
+      supportsRoute(message) {
+        expect(this).toBe(sink);
+        return message.consumerType === "NOTIFICATION_DELIVERY";
+      },
+      publish: vi.fn(async (message) => {
+        if (scenario.fail) throw new Error("delivery unavailable");
+        return { confirmed: true as const, durability: "DURABLE" as const, sink: "notification-test", deliveryId: `delivery:${message.id}` };
+      })
+    };
+
+    const summary = await processOutboxBatch(boundary.store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"), workerId: "scoped-worker", leaseMs: 60_000,
+      batchSize: 1, maxAttempts: scenario.maxAttempts
+    });
+
+    expect(summary).toEqual({ claimed: 1, processed: scenario.processed, retried: scenario.retried, failed: scenario.failed });
+    const after = backing.getState();
+    expect(after.outbox[0]).toEqual(domainMessage);
+    expect(after.outbox[1]).toMatchObject({ id: notificationMessage.id, status: scenario.status, attempts: 1 });
+    expect(after.notifications[0]).toMatchObject({ state: scenario.notificationState, version: scenario.retried ? 2 : 3 });
+    if (!scenario.retried) {
+      expect(after.auditEvents).toContainEqual(expect.objectContaining({
+        eventType: scenario.fail ? "NotificationDeliveryFailed" : "NotificationDelivered",
+        entityId: state.notifications[0].id, metadata: { outboxId: notificationMessage.id, channel: "IN_APP" }
+      }));
+    } else {
+      expect(after.auditEvents).toEqual(state.auditEvents);
+    }
+    expect(boundary.outboxTransaction).toHaveBeenCalledWith({ kind: "message", id: notificationMessage.id }, expect.any(Function));
+    const claimQuery = boundary.outboxTransaction.mock.calls[0]?.[0];
+    expect(claimQuery).toMatchObject({ kind: "claim", now: "2026-08-20T10:01:00.000Z", leaseMs: 60_000 });
+    if (!claimQuery || claimQuery.kind !== "claim") throw new Error("Claim query absent");
+    expect(claimQuery.accepts(domainMessage)).toBe(false);
+    expect(claimQuery.accepts(notificationMessage)).toBe(true);
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it("allows a route-probe exception through the claim query so delivery can decide its outcome", async () => {
+    const backing = new MemoryStore(stateWithMessage());
+    const boundary = outboxOnlyBoundary(backing);
+    const sink: OutboxSink = {
+      supportsRoute: () => { throw new Error("route registry unavailable"); },
+      publish: async () => ({ confirmed: true, durability: "DURABLE", sink: "durable-test", deliveryId: "delivery:outbox-1" })
+    };
+
+    const summary = await processOutboxBatch(boundary.store, sink, {
+      now: () => new Date("2026-08-20T10:01:00.000Z"), batchSize: 1
+    });
+
+    const claimQuery = boundary.outboxTransaction.mock.calls[0]?.[0];
+    if (!claimQuery || claimQuery.kind !== "claim") throw new Error("Claim query absent");
+    expect(claimQuery.accepts(stateWithMessage().outbox[0])).toBe(true);
+    expect(summary).toEqual({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+    expect(backing.getState().outbox[0]).toMatchObject({ status: "PROCESSED", attempts: 1 });
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { action: "reprocess", mutate: reprocessDeadLetterMessage, eventType: "OutboxDeadLetterReprocessed", notificationState: "PENDING" },
+    { action: "discard", mutate: discardDeadLetterMessage, eventType: "OutboxDeadLetterDiscarded", notificationState: "FAILED" }
+  ])("authorizes and replays dead-letter $action without full-state APIs", async ({ mutate, eventType, notificationState }) => {
+    const { store: backing, command, authorize } = deadLetterFixture();
+    const boundary = outboxOnlyBoundary(backing);
+    const first = await mutate(boundary.store, "outbox-1", command);
+    const after = backing.getState();
+
+    await expect(mutate(boundary.store, "outbox-1", command)).resolves.toEqual(first);
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(backing.getState()).toEqual(after);
+    expect(after.notifications[0]).toMatchObject({ state: notificationState });
+    expect(after.auditEvents).toContainEqual(expect.objectContaining({ eventType, actorId: command.actorId, entityId: "outbox-1" }));
+    expect(after.idempotency).toContainEqual(expect.objectContaining({ key: command.idempotencyKey, response: first }));
+
+    await expect(mutate(boundary.store, "outbox-1", {
+      ...command, authorize: () => { throw new ApiError("UNAUTHENTICATED", "Session revoked", 401); }
+    })).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+    expect(backing.getState()).toEqual(after);
+    expect(boundary.outboxTransaction).toHaveBeenCalledWith({ kind: "message", id: "outbox-1" }, expect.any(Function));
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { limit: undefined, bounded: 100 },
+    { limit: 2.9, bounded: 2 },
+    { limit: 0, bounded: 1 },
+    { limit: 1_000, bounded: 100 }
+  ])("reads a bounded dead-letter projection (limit $limit) without full-state APIs", async ({ limit, bounded }) => {
+    const state = deadLetterFixture().store.getState();
+    state.outbox = [
+      { ...state.outbox[0], id: "failed-older", deadLetteredAt: "2026-08-20T10:00:00.000Z" },
+      stateWithMessage().outbox[0],
+      { ...state.outbox[0], id: "discarded-newer", status: "DISCARDED", deadLetteredAt: "2026-08-20T10:01:00.000Z", discardedBy: "user-admin", discardReason: "Poison message" }
+    ];
+    const boundary = outboxOnlyBoundary(new MemoryStore(state));
+
+    const messages = await listDeadLetterMessages(boundary.store, limit);
+
+    expect(messages.map((message) => message.id)).toEqual(["discarded-newer", "failed-older"].slice(0, bounded));
+    expect(messages[0]).toMatchObject({ status: "DISCARDED", discardedBy: "user-admin", discardReason: "Poison message" });
+    expect(messages[0]).not.toHaveProperty("payload");
+    expect(boundary.readOutbox).toHaveBeenCalledExactlyOnceWith({ kind: "dead-letter", limit: bounded });
+    expect(boundary.outboxTransaction).not.toHaveBeenCalled();
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+
+  it("preserves an empty dead-letter list for a NaN limit without an invalid scoped read", async () => {
+    const boundary = outboxOnlyBoundary(deadLetterFixture().store);
+
+    await expect(listDeadLetterMessages(boundary.store, Number.NaN)).resolves.toEqual([]);
+
+    expect(boundary.readOutbox).not.toHaveBeenCalled();
+    expect(boundary.readState).not.toHaveBeenCalled();
+    expect(boundary.transaction).not.toHaveBeenCalled();
+  });
+});
+
+describe.each([
+  { action: "reprocess", mutate: reprocessDeadLetterMessage },
+  { action: "discard", mutate: discardDeadLetterMessage }
+])("dead-letter $action transaction authorization", ({ mutate }) => {
+  it.each([false, true])("fails closed without an authorization callback (replay: %s)", async (replay) => {
+    const { store, command } = deadLetterFixture();
+    if (replay) await mutate(store, "outbox-1", command);
+    const before = store.getState();
+    const malformedCommand: Partial<DeadLetterCommand> = { ...command };
+    delete malformedCommand.authorize;
+
+    await expect(mutate(store, "outbox-1", malformedCommand as DeadLetterCommand)).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+    expect(store.getState()).toEqual(before);
+  });
+
+  describe.each([false, true])("fresh authorization on replay=%s", (replay) => {
+    it.each(["revocation", "deactivation", "demotion"] as const)("rejects %s without changing state or audit", async (change) => {
+      const { store, actor, authorize, command } = deadLetterFixture();
+      if (replay) await mutate(store, "outbox-1", command);
+      await store.transaction((state) => ({
+        state: {
+          ...state,
+          sessions: state.sessions.map((session) => change === "revocation" && session.id === actor.sessionId
+            ? { ...session, revokedAt: new Date().toISOString(), version: session.version + 1 } : session),
+          users: state.users.map((user) => user.id !== actor.id ? user
+            : change === "deactivation" ? { ...user, active: false, version: user.version + 1 }
+              : change === "demotion" ? { ...user, role: "MANAGER", version: user.version + 1 } : user)
+        },
+        result: undefined
+      }));
+      const before = store.getState();
+      authorize.mockClear();
+
+      await expect(mutate(store, "outbox-1", command)).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+      expect(authorize).toHaveBeenCalledExactlyOnceWith(before);
+      expect(store.getState()).toEqual(before);
+    });
+  });
+
+  it("preserves reason validation, normalization and idempotency conflicts", async () => {
+    const { store, command, authorize } = deadLetterFixture();
+    const before = store.getState();
+    await expect(mutate(store, "outbox-1", { ...command, reason: " " })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    await expect(mutate(store, "outbox-1", { ...command, reason: "x".repeat(501) })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
+    expect(store.getState()).toEqual(before);
+    const first = await mutate(store, "outbox-1", command);
+    const after = store.getState();
+    expect(after.auditEvents).toContainEqual(expect.objectContaining({ entityId: "outbox-1", metadata: expect.objectContaining({ reason: "Dependência recuperada" }) }));
+    expect(await mutate(store, "outbox-1", { ...command, reason: "Dependência recuperada" })).toEqual(first);
+    await expect(mutate(store, "outbox-1", { ...command, reason: "Outro motivo" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED", status: 409 });
+    expect(authorize).toHaveBeenCalledTimes(3);
+    expect(store.getState()).toEqual(after);
+  });
+});
 
 describe("durable outbox processing", () => {
   it("claims, publishes and marks a message as processed", async () => {
@@ -104,6 +354,46 @@ describe("durable outbox processing", () => {
 
     expect(store.getState().notifications[0]).toMatchObject({ state: "FAILED", version: 2 });
     expect(store.getState().auditEvents).toContainEqual(expect.objectContaining({ eventType: "NotificationDeliveryFailed", entityId: "notification-dead", newState: "FAILED" }));
+  });
+
+  it("reprocesses a dead-lettered notification through an audited idempotent command", async () => {
+    const state = stateWithMessage();
+    state.notifications = [{ id: "notification-reprocess", category: "CRITICAL", priority: "URGENT", recipientUserId: "user-vet", entityType: "REQUEST", entityId: "request-1", deepLink: "/requests/request-1", title: "Resultado crítico", body: "Confirmação necessária.", dedupeKey: "request-1:reprocess", state: "PENDING", createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1 }];
+    state.outbox[0] = { ...state.outbox[0], payload: { notificationId: "notification-reprocess" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app" };
+    const store = new MemoryStore(state);
+    await processOutboxBatch(store, { publish: async () => { throw new Error("downstream unavailable"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 1, batchSize: 1 });
+
+    const authorize = vi.fn(authorizeAdmin(adminFrom(state)));
+    const command = { authorize, actorId: "user-admin", correlationId: "corr-reprocess", idempotencyKey: "reprocess-1", reason: "Dependência recuperada", now: () => new Date("2026-08-20T10:02:00.000Z") };
+    const first = await reprocessDeadLetterMessage(store, "outbox-1", command);
+    const auditCount = store.getState().auditEvents.length;
+    const replay = await reprocessDeadLetterMessage(store, "outbox-1", command);
+
+    expect(first).toEqual(replay);
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(authorize.mock.calls[1][0].outbox[0].status).toBe("PENDING");
+    expect(first).toMatchObject({ action: "REPROCESSED", message: { id: "outbox-1", status: "PENDING", attempts: 0 } });
+    expect(store.getState().notifications[0]).toMatchObject({ state: "PENDING", version: 3 });
+    expect(store.getState().auditEvents.length).toBe(auditCount);
+    expect(store.getState().auditEvents).toContainEqual(expect.objectContaining({ eventType: "OutboxDeadLetterReprocessed", actorId: "user-admin", entityId: "outbox-1" }));
+  });
+
+  it("lists and explicitly discards dead letters without allowing the worker to reclaim them", async () => {
+    const store = new MemoryStore(stateWithMessage());
+    await processOutboxBatch(store, { publish: async () => { throw new Error("poison route"); } }, { now: () => new Date("2026-08-20T10:01:00.000Z"), maxAttempts: 1, batchSize: 1 });
+
+    expect(await listDeadLetterMessages(store)).toMatchObject([{ id: "outbox-1", status: "FAILED", attempts: 1 }]);
+    const authorize = vi.fn(authorizeAdmin(adminFrom(store.getState())));
+    const command = { authorize, actorId: "user-admin", correlationId: "corr-discard", idempotencyKey: "discard-1", reason: "Evento inválido e sem destinatário", now: () => new Date("2026-08-20T10:02:00.000Z") };
+    const discarded = await discardDeadLetterMessage(store, "outbox-1", command);
+    const afterDiscard = store.getState();
+    expect(await discardDeadLetterMessage(store, "outbox-1", command)).toEqual(discarded);
+    expect(authorize).toHaveBeenCalledTimes(2);
+    expect(authorize.mock.calls[1][0].outbox[0].status).toBe("DISCARDED");
+    expect(store.getState()).toEqual(afterDiscard);
+
+    expect(discarded).toMatchObject({ action: "DISCARDED", message: { status: "DISCARDED", discardedBy: "user-admin", discardReason: "Evento inválido e sem destinatário" } });
+    expect((await processOutboxBatch(store, { publish: async () => ({ confirmed: true, durability: "DURABLE", sink: "test", deliveryId: "delivery" }) }, { now: () => new Date("2026-08-20T10:03:00.000Z"), batchSize: 1 })).claimed).toBe(0);
   });
 
   it("reclaims an expired processing lease but not an active lease", async () => {

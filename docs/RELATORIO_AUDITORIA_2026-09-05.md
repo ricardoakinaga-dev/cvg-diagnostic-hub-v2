@@ -159,17 +159,17 @@ Financeiro, ERP completo, PACS/DICOM avançado, comunicação externa, portal do
 
 **A-01 — Fila revela paciente fora do escopo.** Em uma fixture isolada, `VIEWER` do laboratório autorizado apenas para `patient-thor` recebe `patient-mel` por `GET /queues/LABORATORY/items`, com HTTP 200. A consulta direta de Mel retorna 404 `SCOPE_DENIED`. `listQueue` valida departamento, mas não filtra cada item pelo escopo do paciente antes de retornar o conteúdo. Impacto: identificação do paciente, exame, estado e contexto ficam acessíveis por uma leitura alternativa.
 
-Evidência: [read-service.ts](../src/server/application/read-service.ts), método `listQueue`, linha 271; [public-probes.log](../audit-reports/2026-09-05/public-probes.log). Corrigir a autorização antes de ordenar/contar/paginar e adicionar casos negativos por papel, paciente e serviço na fronteira HTTP.
+Evidência: [read-service.ts](../src/server/application/read-service.ts), método `listQueue`, linha 271; public-probes.log: `audit-reports/2026-09-05/public-probes.log` (log local não versionado). Corrigir a autorização antes de ordenar/contar/paginar e adicionar casos negativos por papel, paciente e serviço na fronteira HTTP.
 
 **A-02 — Cancelamento após início não exige elevação.** A reprodução cria solicitação, recebe amostra e inicia processamento como técnico. O veterinário então envia o comando de cancelamento com sessão, CSRF, motivo e versão válidos: HTTP 200, `IN_PROGRESS → CANCELLED`. A permissão genérica `item.cancel` não aplica a exigência adicional por fase definida em `AC-FR-CORE-006-01`. O cancelamento de solicitação também merece a mesma revisão de policy.
 
-Evidência: [workflow-service.ts](../src/server/application/workflow-service.ts), `cancelItem`, linha 319; [public-probes.log](../audit-reports/2026-09-05/public-probes.log). Implementar a matriz de autorização por estado para ambos os comandos e testar o caso negado.
+Evidência: [workflow-service.ts](../src/server/application/workflow-service.ts), `cancelItem`, linha 319; public-probes.log: `audit-reports/2026-09-05/public-probes.log` (log local não versionado). Implementar a matriz de autorização por estado para ambos os comandos e testar o caso negado.
 
 ### P1 — bloqueios de build, comportamento e contrato
 
 **A-03 — Realtime quebra o typecheck/build e duas respostas de erro.** `realtime-stream.ts` usa `ApiError` sem importação. Exceder o limite de conexões retorna 500 em vez de 429; selecionar adaptador não suportado produz `INTERNAL_ERROR` em vez do código esperado. Confirmado por TypeScript, build e dois testes de rota.
 
-Evidência: [realtime-stream.ts](../src/server/observability/realtime-stream.ts), linhas 58/63; [build.log](../audit-reports/2026-09-05/build.log); [coverage.log](../audit-reports/2026-09-05/coverage.log).
+Evidência: [realtime-stream.ts](../src/server/observability/realtime-stream.ts), linhas 58/63; build.log: `audit-reports/2026-09-05/build.log` (log local não versionado); coverage.log: `audit-reports/2026-09-05/coverage.log` (log local não versionado).
 
 **A-04 — Evento SSE não está conectado corretamente à UI.** Inspeção estática: o servidor emite `event: diagnostic.updated`; o shell atribui `onmessage` e registra apenas o evento nomeado `resync_required`. Não há listener para `diagnostic.updated`. Eventos SSE nomeados precisam do listener correspondente. Também não foi localizado polling periódico de fallback nas telas principais inspecionadas; `ResultView` não assina os eventos globais de atualização. Assim, o banner conectado não demonstra que a tela está atualizando.
 
@@ -185,11 +185,11 @@ Evidência: [outbox.ts](../src/server/operations/outbox.ts), `notificationIdFrom
 
 **A-07 — Gestor delegado recebe 404 ao abrir item visível.** O gestor da fixture administra laboratório, RX e US. A fila de laboratório retorna 200 e um item; o detalhe retorna 404. `getItem` compara o departamento executor apenas ao departamento próprio do gestor, ignorando a lista delegada naquele trecho.
 
-Evidência: [request-service.ts](../src/server/application/request-service.ts), `getItem`, linha 223; [public-probes.log](../audit-reports/2026-09-05/public-probes.log).
+Evidência: [request-service.ts](../src/server/application/request-service.ts), `getItem`, linha 223; public-probes.log: `audit-reports/2026-09-05/public-probes.log` (log local não versionado).
 
 **A-08 — Estados reais e normativos divergem.** `aggregateRequestStatus` retorna `REQUESTED` para um item solicitado e outro cancelado; a SPEC exige `IN_PROGRESS`. A emenda cria draft/`RESULT_VOIDED`, e a revisão não conclui automaticamente, embora a especificação descreva outra política padrão. A emenda preserva versões; o problema aqui é de contrato e semântica operacional, não perda de conteúdo demonstrada.
 
-Evidência: [state-machine.ts](../src/server/domain/state-machine.ts), [result-service.ts](../src/server/application/result-service.ts), [SYSTEM_SPEC.md](spec/SYSTEM_SPEC.md), [STATE_MACHINES.md](spec/STATE_MACHINES.md), [public-probes.log](../audit-reports/2026-09-05/public-probes.log). Reconciliar as políticas aprovadas, o código, as telas e os testes.
+Evidência: [state-machine.ts](../src/server/domain/state-machine.ts), [result-service.ts](../src/server/application/result-service.ts), [SYSTEM_SPEC.md](spec/SYSTEM_SPEC.md), [STATE_MACHINES.md](spec/STATE_MACHINES.md), public-probes.log: `audit-reports/2026-09-05/public-probes.log` (log local não versionado). Reconciliar as políticas aprovadas, o código, as telas e os testes.
 
 ### P2 — capacidade operacional e documentação
 
@@ -217,11 +217,13 @@ Não há base para declarar `AAA-READY`, 95/100 ou aprovação hospitalar neste 
 
 ## Pacote de evidências
 
+Os links abaixo apontam somente para artefatos versionados. Os caminhos `.log` são registros locais históricos; não estão disponíveis em um checkout limpo e não constituem evidência reproduzida pelo CI atual.
+
 - [Manifesto do artefato, com hashes por arquivo](../audit-reports/2026-09-05/artifact-manifest.json).
 - [Estado do working tree observado](../audit-reports/2026-09-05/working-tree.txt).
-- [Typecheck](../audit-reports/2026-09-05/typecheck.log), [build](../audit-reports/2026-09-05/build.log), [lint](../audit-reports/2026-09-05/lint.log), [Vitest](../audit-reports/2026-09-05/coverage.log) e [Playwright](../audit-reports/2026-09-05/e2e.log).
-- [PostgreSQL/harness](../audit-reports/2026-09-05/postgres.log), [OpenAPI](../audit-reports/2026-09-05/openapi.log), [docs](../audit-reports/2026-09-05/docs.log), [rastreabilidade](../audit-reports/2026-09-05/trace.log) e [testes do validador](../audit-reports/2026-09-05/trace-tests.log).
-- [Audit de dependências](../audit-reports/2026-09-05/deps.json), [scan de segredos](../audit-reports/2026-09-05/secrets.log) e [reprodução dos achados](../audit-reports/2026-09-05/public-probes.log).
+- Typecheck: `audit-reports/2026-09-05/typecheck.log` (log local não versionado), build: `audit-reports/2026-09-05/build.log` (log local não versionado), lint: `audit-reports/2026-09-05/lint.log` (log local não versionado), Vitest: `audit-reports/2026-09-05/coverage.log` (log local não versionado) e Playwright: `audit-reports/2026-09-05/e2e.log` (log local não versionado).
+- PostgreSQL/harness: `audit-reports/2026-09-05/postgres.log` (log local não versionado), OpenAPI: `audit-reports/2026-09-05/openapi.log` (log local não versionado), docs: `audit-reports/2026-09-05/docs.log` (log local não versionado), rastreabilidade: `audit-reports/2026-09-05/trace.log` (log local não versionado) e testes do validador: `audit-reports/2026-09-05/trace-tests.log` (log local não versionado).
+- [Audit de dependências](../audit-reports/2026-09-05/deps.json), scan de segredos: `audit-reports/2026-09-05/secrets.log` (log local não versionado) e reprodução dos achados: `audit-reports/2026-09-05/public-probes.log` (log local não versionado).
 - Comando reproduzível: `NODE_ENV=test APP_DATA_MODE=memory RATE_LIMIT_MODE=memory STORAGE_SCAN_MODE=local npx tsx audit-reports/2026-09-05/probes.mjs`.
 
 O manifesto identifica os arquivos efetivamente presentes; um SHA de commit sozinho não identifica as alterações locais avaliadas. Os logs foram preservados no workspace; arquivos `.log` seguem a regra global de ignore do repositório e não foram adicionados ao Git. Esta auditoria não fez commit, alteração em infraestrutura externa ou uso de dados reais.

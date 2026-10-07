@@ -7,6 +7,7 @@ import { withDisposablePostgresDatabase, type DisposablePostgresDatabase } from 
 import {
   buildNextHttpTestBundle,
   findAvailableHttpPort,
+  NEXT_HTTP_TEST_PROXY_HEADERS,
   startNextHttpTestServer,
   type NextHttpTestBuild,
   type NextHttpTestServer
@@ -112,7 +113,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         ]);
         await Promise.all([waitForReadiness(instanceA), waitForReadiness(instanceB)]);
 
-        const loginResponse = await fetch(`${instanceA.baseUrl}/api/v1/session/login`, {
+        const loginResponse = await fetchWithProxy(`${instanceA.baseUrl}/api/v1/session/login`, {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify({ email: "vet@cvg.local", password: TEST_PASSWORD })
@@ -128,7 +129,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         expect(crossInstanceSession.data.user.email).toBe("vet@cvg.local");
 
         sseController = new AbortController();
-        const realtimeResponse = await fetch(`${instanceB.baseUrl}/api/v1/realtime/events`, {
+        const realtimeResponse = await fetchWithProxy(`${instanceB.baseUrl}/api/v1/realtime/events`, {
           headers: { accept: "text/event-stream", cookie: cookies.cookie },
           signal: sseController.signal
         });
@@ -222,7 +223,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         ]);
         await Promise.all([waitForReadiness(instanceA), waitForReadiness(instanceB)]);
 
-        const loginResponse = await fetch(`${instanceA.baseUrl}/api/v1/session/login`, {
+        const loginResponse = await fetchWithProxy(`${instanceA.baseUrl}/api/v1/session/login`, {
           method: "POST",
           headers: { accept: "application/json", "content-type": "application/json" },
           body: JSON.stringify({ email: "vet@cvg.local", password: TEST_PASSWORD })
@@ -238,7 +239,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         expect(crossInstanceSession.data.user.email).toBe("vet@cvg.local");
 
         firstController = new AbortController();
-        const firstResponse = await fetch(`${instanceB.baseUrl}/api/v1/realtime/events`, {
+        const firstResponse = await fetchWithProxy(`${instanceB.baseUrl}/api/v1/realtime/events`, {
           headers: { accept: "text/event-stream", cookie: cookies.cookie },
           signal: firstController.signal
         });
@@ -293,7 +294,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         });
 
         secondController = new AbortController();
-        const secondResponse = await fetch(`${instanceB.baseUrl}/api/v1/realtime/events`, {
+        const secondResponse = await fetchWithProxy(`${instanceB.baseUrl}/api/v1/realtime/events`, {
           headers: {
             accept: "text/event-stream",
             cookie: cookies.cookie,
@@ -315,7 +316,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         expect(durableReadOnB.data).toMatchObject({ id: secondCreated.data.id, requestCode: secondCreated.data.requestCode });
 
         revokedController = new AbortController();
-        const revokedResponse = await fetch(`${instanceB.baseUrl}/api/v1/realtime/events`, {
+        const revokedResponse = await fetchWithProxy(`${instanceB.baseUrl}/api/v1/realtime/events`, {
           headers: { accept: "text/event-stream", cookie: cookies.cookie, "last-event-id": replayedEvent.eventId },
           signal: revokedController.signal
         });
@@ -324,7 +325,7 @@ describe("HTTP multi-instance PostgreSQL integration", () => {
         await readUntil(revokedReader, (frame) => frame.includes(": heartbeat"), REALTIME_WAKEUP_TIMEOUT_MS);
         await waitForPostgresListener(database, applicationNameB, realtimeChannel);
 
-        const logoutResponse = await fetch(`${instanceA.baseUrl}/api/v1/session/logout`, {
+        const logoutResponse = await fetchWithProxy(`${instanceA.baseUrl}/api/v1/session/logout`, {
           method: "POST",
           headers: { accept: "application/json", cookie: cookies.cookie, "x-csrf-token": cookies.csrfToken }
         });
@@ -351,7 +352,7 @@ async function waitForReadiness(server: NextHttpTestServer): Promise<void> {
   let lastStatus = "unknown";
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(`${server.baseUrl}/api/v1/readyz`, { signal: AbortSignal.timeout(2_000) });
+      const response = await fetchWithProxy(`${server.baseUrl}/api/v1/readyz`, { signal: AbortSignal.timeout(2_000) });
       lastStatus = String(response.status);
       if (response.status === 200) {
         const body = await readJson<{ status: string; dataMode: string }>(response);
@@ -408,10 +409,16 @@ async function readJson<T>(response: Response): Promise<ApiEnvelope<T>> {
 }
 
 async function requestJson<T>(server: NextHttpTestServer, path: string, init: RequestInit): Promise<ApiEnvelope<T>> {
-  const response = await fetch(`${server.baseUrl}${path}`, init);
+  const response = await fetchWithProxy(`${server.baseUrl}${path}`, init);
   const body = await readJson<T>(response);
   if (!response.ok) throw new Error(`${init.method ?? "GET"} ${path} returned HTTP ${response.status}: ${JSON.stringify(body.error ?? body)}`);
   return body;
+}
+
+function fetchWithProxy(input: string, init: RequestInit = {}): Promise<Response> {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(NEXT_HTTP_TEST_PROXY_HEADERS)) headers.set(name, value);
+  return fetch(input, { ...init, headers });
 }
 
 function sessionCookiesFrom(response: Response): SessionCookies {

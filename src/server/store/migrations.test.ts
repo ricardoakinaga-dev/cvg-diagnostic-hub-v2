@@ -25,13 +25,14 @@ interface AppliedMigrationRow {
   readonly checksum: string | null;
 }
 
-function fakeClient(applied: readonly AppliedMigrationRow[] = []) {
+function fakeClient(applied: readonly AppliedMigrationRow[] = [], otherSessions = 0) {
   const queries: RecordedQuery[] = [];
   const query = vi.fn(async (text: string, values: readonly unknown[] = []) => {
     queries.push({ text, values });
     if (text.includes("SELECT version, checksum FROM schema_migrations")) {
       return { rows: [...applied], rowCount: applied.length };
     }
+    if (text.includes("FROM pg_stat_activity")) return { rows: [{ other_sessions: otherSessions }], rowCount: 1 };
     return { rows: [], rowCount: 1 };
   });
   return { client: { query }, queries, query };
@@ -70,7 +71,7 @@ describe("database migration runner", () => {
     );
 
     expect(migrations.map((migration) => migration.version)).toEqual([...RUNTIME_MIGRATION_VERSIONS]);
-    expect(migrations).toHaveLength(10);
+    expect(migrations).toHaveLength(RUNTIME_MIGRATION_VERSIONS.length);
     expect(Object.fromEntries(migrations.map((migration) => [migration.version, migration.checksum]))).toEqual(RUNTIME_MIGRATION_CHECKSUMS);
   });
 
@@ -107,7 +108,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("010_relational_backfill_control");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("014_outbox_read_authority");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -160,7 +161,7 @@ describe("database migration runner", () => {
     );
   });
 
-  it("upgrades a populated 001–009 baseline by applying only 010", async () => {
+  it("upgrades a populated baseline by applying only the newest migration", async () => {
     const migrationDirectory = path.resolve(process.cwd(), "db/migrations");
     const migrations = await readMigrationSet(migrationDirectory, RUNTIME_MIGRATION_VERSIONS);
     const baseline = migrations.slice(0, -1).map(({ version, checksum }) => ({ version, checksum }));
@@ -169,7 +170,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["010_relational_backfill_control"],
+      applied: ["014_outbox_read_authority"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -177,6 +178,27 @@ describe("database migration runner", () => {
       text: migrations.at(-1)?.sql,
       values: []
     });
+  });
+
+  it("advances the relational readiness marker with the dead-letter migration", async () => {
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations", "011_outbox_dead_letter.sql"), "utf8");
+
+    expect(sql).toMatch(/UPDATE relational_schema_markers[\s\S]*011_outbox_dead_letter/i);
+  });
+
+  it("keeps session liveness in its own indexed table outside the snapshot", async () => {
+    const filename = "012_session_activity.sql";
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
+
+    expect(migrationVersion(filename)).toBe("012_session_activity");
+    expect(sql).toMatch(/CREATE TABLE IF NOT EXISTS session_activity\s*\(/i);
+    expect(sql).toMatch(/session_id text PRIMARY KEY/i);
+    expect(sql).toMatch(/last_seen_at timestamptz NOT NULL/i);
+    expect(sql).toMatch(/UPDATE relational_schema_markers[\s\S]*012_session_activity/i);
+    // Sessions created before the migration get one idle window at deploy
+    // instead of expiring on their first request (review A-05).
+    expect(sql).toMatch(/INSERT INTO session_activity[\s\S]*jsonb_array_elements\(state->'sessions'\)/i);
+    expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE|DELETE FROM)\b/i);
   });
 
   it("registers durable, shadow-only relational backfill control metadata as migration 010", async () => {
@@ -292,6 +314,57 @@ describe("database migration runner", () => {
       expect(queries.at(-1)?.text).toBe("SELECT pg_advisory_unlock(hashtext($1))");
     });
   });
+
+  describe("coordinated cutover guard", () => {
+    const cutoverSql = "-- Coordinated cutover: stop old app/worker.\nSELECT 1;";
+
+    it("refuses a cutover migration while another session is connected, before running any SQL", async () => {
+      await withMigrationDirectory({ "001_first.sql": "SELECT 0;", "002_cutover.sql": cutoverSql }, async (directory) => {
+        const { client, queries } = fakeClient([], 2);
+
+        await expect(applyMigrations(client, { migrationDirectory: directory, logger: { info: vi.fn() } }))
+          .rejects.toThrow("MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:002_cutover:2");
+
+        expect(queries.some(({ text }) => text === "SELECT 0;" || text === cutoverSql)).toBe(false);
+        expect(queries.at(-1)?.text).toBe("SELECT pg_advisory_unlock(hashtext($1))");
+        // Only an identified autovacuum worker is ignored; a hidden (NULL) type still blocks.
+        const guard = queries.find(({ text }) => text.includes("FROM pg_stat_activity"))?.text;
+        expect(guard).toContain("backend_type IS DISTINCT FROM 'autovacuum worker'");
+        expect(guard).not.toContain("backend_type = 'client backend'");
+      });
+    });
+
+    it("runs the cutover when no other session is connected or the operator acknowledged it", async () => {
+      await withMigrationDirectory({ "001_cutover.sql": cutoverSql }, async (directory) => {
+        const quiet = fakeClient([], 0);
+        await expect(applyMigrations(quiet.client, { migrationDirectory: directory, logger: { info: vi.fn() } })).resolves.toMatchObject({ applied: ["001_cutover"] });
+
+        const busy = fakeClient([], 3);
+        await expect(applyMigrations(busy.client, { migrationDirectory: directory, logger: { info: vi.fn() }, cutoverAcknowledged: true })).resolves.toMatchObject({ applied: ["001_cutover"] });
+        expect(busy.queries.some(({ text }) => text.includes("pg_stat_activity"))).toBe(false);
+      });
+    });
+
+    it("does not look at sessions for ordinary migrations or for cutovers that were already applied", async () => {
+      await withMigrationDirectory({ "001_plain.sql": "SELECT 1;", "002_cutover.sql": cutoverSql }, async (directory) => {
+        const plain = fakeClient([{ version: "002_cutover", checksum: migrationChecksum(cutoverSql) }, { version: "001_plain", checksum: migrationChecksum("SELECT 1;") }], 5);
+        await expect(applyMigrations(plain.client, { migrationDirectory: directory, logger: { info: vi.fn() } })).resolves.toMatchObject({ applied: [] });
+        expect(plain.queries.some(({ text }) => text.includes("pg_stat_activity"))).toBe(false);
+      });
+    });
+
+    it("fails closed when the session count cannot be read", async () => {
+      await withMigrationDirectory({ "001_cutover.sql": cutoverSql }, async (directory) => {
+        const { client, query } = fakeClient();
+        query.mockImplementation(async (text: string) => {
+          if (text.includes("SELECT version, checksum FROM schema_migrations")) return { rows: [], rowCount: 0 };
+          if (text.includes("FROM pg_stat_activity")) return { rows: [], rowCount: 0 };
+          return { rows: [], rowCount: 1 };
+        });
+        await expect(applyMigrations(client, { migrationDirectory: directory, logger: { info: vi.fn() } })).rejects.toThrow("MIGRATION_CUTOVER_CHECK_FAILED:001_cutover");
+      });
+    });
+  });
 });
 
 describe("runtime schema readiness", () => {
@@ -306,7 +379,9 @@ describe("runtime schema readiness", () => {
     event_projection_ready: true,
     outbox_claim_ownership_ready: true,
     outbox_routing_ready: true,
+    outbox_dead_letter_ready: true,
     rate_limit_schema_ready: true,
+    session_activity_schema_ready: true,
     relational_clinical_core_ready: true,
     transitional_storage_boundary_ready: true,
     invalidation_trigger_ready: true
@@ -334,6 +409,8 @@ describe("runtime schema readiness", () => {
     expect(readinessSql).toMatch(/runtime_storage_boundaries/);
     expect(readinessSql).toMatch(/authoritative_store = 'cvg_runtime_state'/);
     expect(readinessSql).toMatch(/status = 'TRANSITIONAL'/);
+    expect(readinessSql).toMatch(/session_activity_schema_ready/);
+    expect(readinessSql).toMatch(/table_name = 'session_activity'/);
   });
 
   it.each(Object.keys(readyRow) as Array<keyof typeof readyRow>)("fails closed when %s is absent", async (missingFlag) => {

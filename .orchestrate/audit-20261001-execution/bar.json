@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "run_id": "audit-20261001-execution",
+  "mode": "execute",
+  "frozen_at": "2026-10-01T00:00:00Z",
+  "frozen_by": "Lead",
+  "goal": "Implementar os itens READY do backlog AUDIT-2026-10 (AUD-001..AUD-040) preservando os gates do repositorio, com evidencia por item; itens BLOCKED permanecem BLOCKED com motivo registrado.",
+  "change_control": "Revisao da barra apenas com mudanca do Goal do usuario, requisito externo autoritativo, medicao provada defeituosa ou restricao obrigatoria desconhecida na discovery. Registro de old/new, motivo, evidencia, autor e data. Nunca rebaixar alvo porque o candidato perde.",
+  "deviation": "State manager do gauntlet-loop nao foi inicializado em .gauntlet/ porque o run historico AAA-3 la armazenado contem state.json/bar.json/history.jsonl e os arquivos .gauntlet/state.md e .gauntlet/progress.md exigidos por scripts/validate-docs.sh; init sobrescreveria evidencia obrigatoria. Estado duravel desta execucao vive em .orchestrate/audit-20261001-execution/, com o Lead como unico escritor.",
+  "criteria": [
+    {"id": "BAR-01", "source": "REPO", "dimension": "build", "target": "npm run typecheck exit 0", "evidence": "command run by Lead/Verifier", "required": true, "priority": "P0"},
+    {"id": "BAR-02", "source": "REPO", "dimension": "build", "target": "npm run lint exit 0", "evidence": "command run by Lead/Verifier", "required": true, "priority": "P0"},
+    {"id": "BAR-03", "source": "REPO", "dimension": "tests", "target": "test:coverage >=725 tests pass, lines >=90, functions >=90, branches >=85", "evidence": "vitest coverage summary", "required": true, "priority": "P0", "baseline": {"tests": 725, "lines": 92.72, "functions": 94.37, "branches": 85.79}},
+    {"id": "BAR-04", "source": "REPO", "dimension": "contracts", "target": "validate:traceability PASS 43/43", "evidence": "node scripts/validate-traceability.mjs", "required": true, "priority": "P0"},
+    {"id": "BAR-05", "source": "REPO", "dimension": "contracts", "target": "validate:openapi PASS 65 ops / 60 paths", "evidence": "node scripts/validate-openapi.mjs + redocly lint", "required": true, "priority": "P0"},
+    {"id": "BAR-06", "source": "PLAN", "ref": "G-1", "dimension": "security", "target": "npm audit --omit=dev --audit-level=high exit 0 (zero critical/high)", "evidence": "command run", "required": true, "priority": "P0"},
+    {"id": "BAR-07", "source": "PLAN", "ref": "G-2", "dimension": "guarantee-honesty", "target": "secret-scan e validate-docs falham (exit != 0) sob injecao proposital de falha e quando a ferramenta de busca falta; nenhuma classe de checagem e pulada silenciosamente", "evidence": "injection test executed and captured", "required": true, "priority": "P0"},
+    {"id": "BAR-08", "source": "BACKLOG", "ref": "AUD-018", "dimension": "observability", "target": "falha 500 gera log correlacionado no servidor sem vazar stack ao cliente", "evidence": "automated test", "required": true, "priority": "P0"},
+    {"id": "BAR-09", "source": "BACKLOG", "ref": "AUD-008", "dimension": "security", "target": "chave de rate limit isola clientes distintos (sem lockout global)", "evidence": "automated test", "required": true, "priority": "P0"},
+    {"id": "BAR-10", "source": "BACKLOG", "ref": "AUD-016", "dimension": "coverage", "target": "suite postgres integrada ao denominador de cobertura; postgres-store.ts >=80% lines", "evidence": "coverage summary apos unificacao", "required": true, "priority": "P0", "validity": "exige cluster PostgreSQL descartavel (Docker); se indisponivel, BLOCKED com motivo, nao PASS"},
+    {"id": "BAR-11", "source": "BACKLOG", "ref": "AUD-017", "dimension": "coverage", "target": "gate por arquivo de cobertura ativo: script exit != 0 para arquivo abaixo do limiar sem excecao declarada", "evidence": "command run com injecao", "required": true, "priority": "P1"},
+    {"id": "BAR-12", "source": "BACKLOG", "ref": "AUD-026", "dimension": "a11y", "target": "alvos de interacao >=44px no escopo do teste", "evidence": "playwright test", "required": true, "priority": "P1"},
+    {"id": "BAR-13", "source": "PROCESS", "dimension": "independence", "target": "Final Critic fresco (sem contexto herdado, somente leitura) emite veredito contra esta barra", "evidence": "task sem task_id + fingerprint de mutacao", "required": true, "priority": "P0", "validity": "I1 (mesma familia de modelo); revisor humano externo permanece aberto em AUD-038"},
+    {"id": "BAR-14", "source": "PROCESS", "dimension": "traceability", "target": "backlog AUDIT-2026-10 com status reais; cada DONE com evidencia nova; BLOCKED com motivo e dono", "evidence": "docs/build/AUDIT_2026_10_BACKLOG.md revisto", "required": true, "priority": "P0"},
+    {"id": "BAR-15", "source": "BACKLOG", "ref": "AUD-022", "dimension": "docs", "target": "numeros reconciliados nos documentos apontados (nenhuma contradicao interna de 51/57/60, 614/619/725, branches)", "evidence": "grep de contradicoes + revisao", "required": true, "priority": "P0"},
+    {"id": "BAR-16", "source": "REPO", "dimension": "docs", "target": "zero placeholders proibidos e zero links locais quebrados em README.md/QUESTIONS.md/docs/**", "evidence": "checker do validate-docs (bloco python) + grep", "required": true, "priority": "P1"},
+    {"id": "BAR-17", "source": "REPO", "dimension": "build", "target": "npm run build (next build) exit 0", "evidence": "command run", "required": true, "priority": "P0"},
+    {"id": "BAR-18", "source": "BACKLOG", "ref": "AUD-019", "dimension": "reliability", "target": "/readyz reflete incompatibilidade de migration", "evidence": "automated test", "required": true, "priority": "P1"},
+    {"id": "BAR-19", "source": "BACKLOG", "ref": "AUD-010", "dimension": "security", "target": "login/step-up sem caminho de timing que distinga usuario inexistente", "evidence": "automated test do caminho unico de verificacao", "required": true, "priority": "P1"},
+    {"id": "BAR-20", "source": "REPO", "dimension": "integrity", "target": "nenhum teste removido, .skip/.only introduzido, threshold rebaixado ou controle enfraquecido", "evidence": "grep de .skip/.only/.todo + diff de configs de threshold", "required": true, "priority": "P0"},
+    {"id": "BAR-21", "source": "BACKLOG", "ref": "AUD-039", "dimension": "docs", "target": "indice docs/README alcanca v2/*, GLOSSARY, DECISION_LOG; glossario e decision log ampliados", "evidence": "revisao do indice + link check", "required": false, "priority": "P1"},
+    {"id": "BAR-22", "source": "PLAN", "ref": "G-4", "dimension": "ops", "target": "Dockerfile da app + dependabot/dependency-review no CI + compose sem credencial fixa/publicacao ampla", "evidence": "arquivos + build de imagem quando o daemon permitir", "required": true, "priority": "P1"}
+  ],
+  "blind_spots": [
+    "Auditoria roda em Node 24 (maquina) contra engines Node 22 — CI e a autoridade de versao.",
+    "Cobertura de integracao so e medida quando ha cluster descartavel disponivel.",
+    "Critico final e I1 (mesma familia), nao revisor humano externo.",
+    "Nenhum item exige deploy real, contato com hospital ou alteracao de segredos externos."
+  ]
+}

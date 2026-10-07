@@ -1,10 +1,5 @@
+import { LoadingState } from "@/components/feedback-states";
+
 export default function Loading() {
-  return (
-    <main className="loading-state" aria-busy="true" aria-live="polite">
-      <div role="status" aria-label="Carregando o conteúdo da página." aria-busy="true">
-        <div className="loading-mark" aria-hidden="true" />
-        <span className="sr-only">Carregando o conteúdo da página.</span>
-      </div>
-    </main>
-  );
+  return <main aria-busy="true"><LoadingState className="loading-state" progressClassName="loading-mark" label="Carregando o conteúdo da página." /></main>;
 }

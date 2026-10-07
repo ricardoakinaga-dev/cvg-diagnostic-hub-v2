@@ -18,6 +18,20 @@ export default defineConfig({
     include: ["tests/postgres/**/*.test.ts"],
     fileParallelism: false,
     hookTimeout: 60_000,
-    testTimeout: 60_000
+    testTimeout: 60_000,
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html", "json", "json-summary"],
+      include: ["src/**/*.ts", "src/**/*.tsx", "packages/**/*.ts", "packages/**/*.tsx"],
+      exclude: [
+        "src/**/*.d.ts",
+        "src/test/**",
+        "**/*.test.*",
+        "src/server/application/service-context.ts",
+        "src/server/application/service-types.ts",
+        "src/server/storage/file-store-contract.ts",
+        "src/server/store/relational/clinical-core-contracts.ts"
+      ]
+    }
   }
 });
