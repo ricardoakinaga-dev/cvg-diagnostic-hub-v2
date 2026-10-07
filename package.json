@@ -60,7 +60,7 @@
     "validate": "npm run typecheck && npm run lint && npm run test:config && npm run test:coverage && npm run validate:docs && npm run validate:openapi && npm run validate:traceability && npm run validate:migrations"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1114.0",
+    "@aws-sdk/client-s3": "^3.1146.0",
     "next": "16.3.8",
     "pg": "^8.16.3",
     "react": "19.2.0",
