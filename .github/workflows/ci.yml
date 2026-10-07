@@ -35,7 +35,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
@@ -131,7 +131,7 @@ jobs:
       PERF_POSTGRES_REPORT: logs/perf-postgres.json
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: "22.x"
@@ -174,7 +174,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
@@ -193,7 +193,7 @@ jobs:
       matrix:
         node-version: ["22.x"]
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: ${{ matrix.node-version }}
@@ -291,7 +291,7 @@ jobs:
       CRITICAL_POLICY_APPROVED_AT: 2026-09-06T00:00:00.000Z
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Prepare browser gate artifacts
         run: mkdir -p logs
       - uses: actions/setup-node@v5
@@ -514,7 +514,7 @@ jobs:
       MINIO_API_PORT: "9000"
       MINIO_CONSOLE_PORT: "9001"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v5
         with:
           node-version: "22.x"
