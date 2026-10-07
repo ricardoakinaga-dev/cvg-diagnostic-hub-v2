@@ -61,25 +61,37 @@ humanos de [PRODUCTION_READINESS.md](operations/PRODUCTION_READINESS.md).
 
 ## Validação final
 
+Referência: CI remoto [37543981690](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37543981690),
+commit `c493db7`, com todos os jobs verdes. A revisão de dependências só roda em
+pull request e foi pulada neste push.
+
 | Verificação | Resultado |
 | --- | --- |
 | Typecheck, lint e `test:config` | PASS; 160/160 e 4/4 |
-| Unitários | 1.588/1.588 em 134 arquivos |
-| PostgreSQL 16 descartável | 96/96 em 17 arquivos |
-| Cobertura agregada e gate | 1.684 testes em 151 arquivos; 97,05% lines, 95,76% functions, 90,07% branches; gate PASS com as mesmas 22 exceções, `uncovered` e `stale` vazios |
-| Navegador na imagem do CI (`--retries=0`) | 90/90 na matriz e 12/12 de acessibilidade, no código final |
-| Lane PostgreSQL do CI reproduzido localmente (`next start`, S3/scanner sintéticos, worker) | 48/48 no código final; 144/144 em 3 repetições antes de PR-17 |
+| Unitários | 1.592/1.592 em 134 arquivos |
+| PostgreSQL 16 descartável | 98/98 em 17 arquivos |
+| Cobertura agregada e gate | 1.690 testes em 151 arquivos; 97,06% lines, 95,78% functions, 90,04% branches, 94,35% statements; gate PASS com as mesmas 22 exceções, `uncovered` e `stale` vazios |
+| Navegador na imagem fixada (`--retries=0`) | 90/90 na matriz e 12/12 de acessibilidade |
+| Navegador com PostgreSQL, S3/scanner sintéticos e worker durável | 48/48 |
 | Mutação, performance, recuperação | 7/7 mutantes detectados; 52/52; 5/5; `perf:synthetic`, `perf:snapshot:gate` e `perf:realtime-budget` PASS |
-| Imagens finais (Trivy HIGH/CRITICAL, `ignore-unfixed`) | 0 em `runner` e `ops`; vulnerabilidades sem correção publicada não são reprovadas por esse critério |
-| Compose de produção com imagens finais | 27/27; restore ensaiado; variáveis repassadas confirmadas nos containers |
+| Imagens (Trivy HIGH/CRITICAL, `ignore-unfixed`) | PASS em `runner`, `ops` e MinIO; boot com `livez`/`readyz` PASS. Vulnerabilidades sem correção publicada não são reprovadas por esse critério |
 | Docs, OpenAPI, rastreabilidade, migrations, segredos, `npm audit` | PASS; 73 operações/68 paths; 43/43; 001–014; 0 vulnerabilidades |
 
-Uma execução intermediária da cobertura falhou 1 de 1.587 testes: o teste de
-atalho ⌘K do `AppShell` apertava a tecla antes do efeito que registra o
-atalho, só sob carga de CPU (0 falhas em 20 execuções isoladas do arquivo).
-O teste agora espera o efeito do mesmo commit, como o teste
-vizinho já fazia. Nenhum limite, retry ou exceção de cobertura foi relaxado.
-A primeira execução do CI remoto após o envio revelou PR-15 e PR-16, corrigidos na sequência.
+Evidência local complementar, com Node 22.23.2 e PostgreSQL 16.15 descartável:
+
+| Verificação | Resultado |
+| --- | --- |
+| Compose de produção com imagens de `c493db7` | 27/27 pela borda TLS; migrador com `pg_read_all_stats` e runtime sem; a trava vê as conexões do runtime |
+| Restore de dump do Compose e variáveis repassadas | Ensaiados com as imagens anteriores a PR-15 (antes da concessão de `pg_read_all_stats`); não repetidos depois |
+| Lane PostgreSQL de navegador reproduzido localmente | 48/48 em `c493db7`; 144/144 em 3 repetições antes de PR-17 |
+| Chamadas de API por navegação (PR-03) | Medidas antes de PR-08 e PR-15, que não alteram a interface |
+
+Durante a auditoria, três execuções intermediárias falharam e foram tratadas
+na causa, não com retry: o teste de atalho ⌘K do `AppShell` (só sob carga de
+CPU; agora espera o efeito do mesmo commit), a primeira execução remota
+(PR-15 e PR-16) e a segunda (PR-17). As primeiras correções de PR-08 e PR-15
+estavam incompletas e foram refeitas após revisão. Nenhum limite, retry ou
+exceção de cobertura foi relaxado.
 
 ## Recomendações não aplicadas
 
