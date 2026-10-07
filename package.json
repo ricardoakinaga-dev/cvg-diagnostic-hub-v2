@@ -68,7 +68,7 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
-    "@axe-core/playwright": "^4.10.2",
+    "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "1.55.1",
     "@redocly/cli": "2.47.0",
     "@testing-library/jest-dom": "^6.8.0",
