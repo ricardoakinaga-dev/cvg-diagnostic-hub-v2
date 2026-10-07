@@ -24,6 +24,10 @@ updates:
       # Must move with the CI browser image digest and the visual baselines
       # (scripts/update-visual-baselines.sh); bump the three together by hand.
       - dependency-name: "@playwright/test"
+      # The vendored fast-glob is verified against the source hashes of the Next
+      # ESLint plugin 16.3.0 (scripts/eslint-glob.test.mjs). A bump needs the
+      # oracle re-captured first.
+      - dependency-name: "eslint-config-next"
       # Majors that need a planned migration; evidence from 2026-10-07.
       # typescript 7 is outside typescript-eslint's peer range (<6.1.0).
       - dependency-name: "typescript"
@@ -35,6 +39,14 @@ updates:
         update-types: ["version-update:semver-major"]
       # jsdom 30 changes the accessible names four UI tests rely on.
       - dependency-name: "jsdom"
+        update-types: ["version-update:semver-major"]
+      # @vitejs/plugin-react 6 requires vite 8; vitest 4 runs on vite 7.
+      # Upgrade together with vitest 5.
+      - dependency-name: "@vitejs/plugin-react"
+        update-types: ["version-update:semver-major"]
+      # eslint 10 aborts with "scopeManager.addGlobals is not a function" in
+      # the current plugin stack, and 45 eslint-glob parity tests fail.
+      - dependency-name: "eslint"
         update-types: ["version-update:semver-major"]
 
   - package-ecosystem: github-actions
