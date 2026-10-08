@@ -96,5 +96,54 @@ describe("AccountView", () => {
     expect(screen.getByLabelText("Senha atual")).toHaveValue("");
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
+  describe("critical-alert contact (PROD-402)", () => {
+    const digits = ["11", "9", "8765", "4321"];
+    const base = { id: "user-vet", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "INPATIENT", timezone: "America/Sao_Paulo" };
+
+    it("registers a number only after consent and shows it masked", async () => {
+      const mock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
+        if (path === "/session/me") return Promise.resolve({ user: { ...base, onCall: true } }) as never;
+        if (path === "/session/alert-contact") return Promise.resolve({ user: { ...base, onCall: true, alertContact: { maskedPhone: "+55•••••••4321", consentAt: "2026-10-08T12:00:00.000Z" } } }) as never;
+        return Promise.resolve({}) as never;
+      });
+      render(<AccountView />);
+      const form = await screen.findByRole("form", { name: "Cadastrar número para alertas" });
+      expect(screen.getByRole("note")).toHaveTextContent("sem número cadastrado");
+      fireEvent.change(screen.getByLabelText("Celular com DDD"), { target: { value: digits.join(" ") } });
+      const save = screen.getByRole("button", { name: "Salvar número" });
+      expect(save).toBeDisabled();
+      fireEvent.click(screen.getByRole("checkbox", { name: /Autorizo o Hub/ }));
+      fireEvent.submit(form);
+      await screen.findByText("+55•••••••4321");
+      expect(mock).toHaveBeenCalledWith("/session/alert-contact", { method: "PUT", body: JSON.stringify({ whatsappPhone: digits.join(" "), consent: true }) });
+      expect(screen.getByRole("status")).toHaveTextContent("Número cadastrado");
+      expect(screen.getByRole("note")).toHaveTextContent("Você está no plantão de alertas do seu setor.");
+      expect(screen.queryByRole("form", { name: "Cadastrar número para alertas" })).not.toBeInTheDocument();
+    });
+
+    it("replaces or removes a registered number and keeps errors next to the action", async () => {
+      const registered = { ...base, alertContact: { maskedPhone: "+55•••••••4321", consentAt: "2026-10-08T12:00:00.000Z" } };
+      let removals = 0;
+      const mock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+        if (path === "/session/me") return Promise.resolve({ user: registered }) as never;
+        if (path === "/session/alert-contact" && JSON.parse(String(init?.body)).whatsappPhone === null) {
+          removals += 1;
+          return (removals === 1 ? Promise.reject(new Error("offline")) : Promise.resolve({ user: base })) as never;
+        }
+        return Promise.resolve({}) as never;
+      });
+      render(<AccountView />);
+      fireEvent.click(await screen.findByRole("button", { name: "Trocar número" }));
+      expect(screen.getByRole("form", { name: "Cadastrar número para alertas" })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+      fireEvent.click(screen.getByRole("button", { name: "Remover número" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Não foi possível salvar o número.");
+      fireEvent.click(screen.getByRole("button", { name: "Remover número" }));
+      expect(await screen.findByRole("status")).toHaveTextContent("Número removido");
+      expect(mock).toHaveBeenCalledWith("/session/alert-contact", { method: "PUT", body: JSON.stringify({ whatsappPhone: null }) });
+      expect(screen.getByRole("form", { name: "Cadastrar número para alertas" })).toBeInTheDocument();
+      expect(screen.queryByText("+55•••••••4321")).not.toBeInTheDocument();
+    });
+  });
 });
 

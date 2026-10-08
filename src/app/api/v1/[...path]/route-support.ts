@@ -13,6 +13,7 @@ import { createStructuredLogger } from "../../../../server/observability/structu
 import { RealtimeUnavailableError } from "../../../../server/observability/realtime-stream";
 import { ITEM_STATES, PRIORITIES } from "@cvg/contracts";
 import { readJsonWithLimit } from "../../../../server/http/request-body";
+import { maskAlertPhone } from "../../../../server/application/alert-contact";
 import { type ApiOperation } from "../../../../server/http/api-operation-manifest";
 export interface PublicHandlerContext {
   request: Request;
@@ -237,8 +238,12 @@ export function publicUser(user: {
   timezone: string;
   managedDepartmentCodes?: ReadonlyArray<string>;
   mustChangePassword?: boolean;
+  whatsappPhone?: string;
+  whatsappConsentAt?: string;
+  onCall?: boolean;
 }) {
-  return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, departmentCode: user.departmentCode, managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined, timezone: user.timezone, mustChangePassword: user.mustChangePassword };
+  const alertContact = user.whatsappPhone && user.whatsappConsentAt ? { maskedPhone: maskAlertPhone(user.whatsappPhone), consentAt: user.whatsappConsentAt } : undefined;
+  return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, departmentCode: user.departmentCode, managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined, timezone: user.timezone, mustChangePassword: user.mustChangePassword, alertContact, onCall: user.onCall === true ? true : undefined };
 }
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));

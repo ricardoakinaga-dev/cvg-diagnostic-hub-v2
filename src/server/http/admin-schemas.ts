@@ -17,6 +17,9 @@ export const userRoleSchema = z.object({ role: z.enum(ROLES), departmentCode: de
 export const userCreateSchema = z.object({ email: z.string().email().refine((value) => codePointLength(value) <= 320), displayName: normalizedText(2, 160), password: boundedString(12, 200).optional(), role: z.enum(ROLES), departmentCode: departmentCodeSchema.optional(), managedDepartmentCodes: managedDepartmentCodesSchema, serviceCodes: serviceCodesSchema, timezone: normalizedText(1, 80).optional(), reason: normalizedText(1, 500).optional(), confirm: z.literal(true).optional() }).strict();
 export const userDeactivateSchema = z.object({ expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500).optional(), confirm: z.literal(true).optional() }).strict();
 export const userPasswordSchema = z.object({ expectedVersion: expectedVersionSchema.optional() }).strict();
+export const userOnCallSchema = z.object({ onCall: z.boolean(), expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500).optional() }).strict();
+/** PROD-402: null removes the number; registering one requires the consent flag. */
+export const alertContactSchema = z.object({ whatsappPhone: z.union([boundedString(1, 40), z.null()]), consent: z.literal(true).optional() }).strict();
 export const sessionRevokeSchema = z.object({ reason: normalizedText(1, 500).optional(), confirm: z.literal(true).optional() }).strict();
 export const deadLetterCommandSchema = z.object({ reason: normalizedText(1, 500).optional(), confirm: z.literal(true).optional() }).strict();
 
