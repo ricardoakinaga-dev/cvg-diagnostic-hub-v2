@@ -16,8 +16,14 @@ export function passwordResetTtlMs(environment: Readonly<Record<string, string |
   return Math.min(MAX_TTL_MS, Math.max(MIN_TTL_MS, Math.trunc(parsed)));
 }
 
+/**
+ * Fingerprint of the reset token. The input is 32 random bytes, not a human
+ * password, so a plain SHA-256 is the right primitive (no stretching needed:
+ * the secret cannot be guessed). CodeQL's password-hash heuristic flags it by
+ * name only.
+ */
 export function hashResetToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
+  return createHash("sha256").update(Buffer.from(token, "utf8")).digest("hex"); // lgtm[js/insufficient-password-hash] codeql[js/insufficient-password-hash]
 }
 
 /** Builds a fresh grant; the plaintext token is returned once and never stored. */

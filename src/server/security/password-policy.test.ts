@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { COMMON_PASSWORDS } from "./common-passwords";
 import { assertAcceptablePassword, assertPasswordPolicy, checkBreachedPassword, type BreachCheckFetch } from "./password-policy";
@@ -52,8 +51,12 @@ describe("assertPasswordPolicy", () => {
   });
 });
 
+// SHA-1 of GOOD, as the HIBP range API expects it; precomputed so the test does not hash a password itself.
+const GOOD_DIGEST = "B93951640B94E95CF95781530141811E8D88DC9C";
+
 function pwnedFetch(password: string, count: number): BreachCheckFetch {
-  const digest = createHash("sha1").update(password).digest("hex").toUpperCase();
+  if (password !== GOOD) throw new Error("pwnedFetch only knows the GOOD vector");
+  const digest = GOOD_DIGEST;
   return vi.fn(async (url: string) => {
     expect(url).toBe(`https://api.pwnedpasswords.com/range/${digest.slice(0, 5)}`);
     return { ok: true, text: async () => `0018A45C4D1DEF81644B54AB7F969B88D65:3\r\n${digest.slice(5)}:${count}\r\n011053FD0102E94D6AE2F8B83D76FAF94F6:0` };
@@ -74,7 +77,7 @@ describe("checkBreachedPassword", () => {
     const fetchImpl = pwnedFetch(GOOD, 42);
     await expect(checkBreachedPassword(GOOD, { PASSWORD_BREACH_CHECK: "hibp" }, fetchImpl)).rejects.toMatchObject({ code: "PASSWORD_BREACHED", status: 400, message: "Esta senha apareceu em vazamentos conhecidos; escolha outra." });
     const [url, init] = vi.mocked(fetchImpl).mock.calls[0];
-    expect(url).not.toContain(createHash("sha1").update(GOOD).digest("hex").toUpperCase().slice(5));
+    expect(url).not.toContain(GOOD_DIGEST.slice(5));
     expect(init.headers).toEqual({ "Add-Padding": "true" });
   });
 

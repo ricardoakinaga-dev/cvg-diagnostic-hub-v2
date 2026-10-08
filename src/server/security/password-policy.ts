@@ -89,13 +89,20 @@ function breachTimeoutMs(value: string | undefined): number {
  * hospital server may have restricted egress; when the service is unreachable
  * the outcome follows PASSWORD_BREACH_CHECK_FAIL (open by default).
  */
+function hibpRangeDigest(candidate: string): string {
+  return createHash("sha1").update(candidate, "utf8").digest("hex").toUpperCase(); // lgtm[js/insufficient-password-hash] codeql[js/insufficient-password-hash]
+}
+
 export async function checkBreachedPassword(
   password: string,
   environment: BreachCheckEnvironment = process.env,
   fetchImpl: BreachCheckFetch = fetch as unknown as BreachCheckFetch
 ): Promise<void> {
   if (environment.PASSWORD_BREACH_CHECK?.trim().toLowerCase() !== "hibp") return;
-  const digest = createHash("sha1").update(password).digest("hex").toUpperCase();
+  // The Have I Been Pwned range API is defined over SHA-1 (k-anonymity: only the
+  // first five hex characters leave the server); nothing is stored. CodeQL's
+  // password-hash heuristic cannot know the protocol.
+  const digest = hibpRangeDigest(password);
   const prefix = digest.slice(0, 5);
   const suffix = digest.slice(5);
   const controller = new AbortController();
