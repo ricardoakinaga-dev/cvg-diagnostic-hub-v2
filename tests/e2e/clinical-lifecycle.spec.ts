@@ -72,7 +72,8 @@ async function createAndReleaseDraft(page: Page, requestId: string, serviceName:
   if (serviceName === "Hemograma") {
     await row.getByRole("button", { name: "Receber amostra", exact: true }).click();
     const peek = page.getByRole("dialog", { name: serviceName, exact: true });
-    await peek.getByLabel("Accession").fill(`ACC-E2E-${Date.now()}`);
+    // D8: the tube was pre-assigned at request time; an empty accession receives it (the scanner path).
+    await expect(peek.getByText(/Amostra esperada:/)).toBeVisible();
     await peek.getByLabel("Tipo de amostra").fill("EDTA");
     await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
     // The Plane peek stays open on the exam and offers the next step itself.
