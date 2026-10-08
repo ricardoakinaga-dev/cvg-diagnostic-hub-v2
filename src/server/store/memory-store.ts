@@ -4,6 +4,7 @@ import { auditMetrics } from "../domain/audit-metrics";
 import { outboxMetrics, outboxPage } from "../domain/outbox-read";
 import type { OutboxTransactionQuery } from "../domain/models";
 import { activityRowsAfterPrune, compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
+import { freezeState } from "./immutable-state";
 
 function cloneState(state: StoreState): StoreState {
   return structuredClone(state);
@@ -24,15 +25,16 @@ export class MemoryStore implements StateStore {
   private version = 1;
 
   constructor(initialState: StoreState) {
-    this.state = cloneState(initialState);
+    this.state = freezeState(cloneState(initialState));
   }
 
+  /** A mutable copy for tests and diagnostics; runtime reads share the frozen aggregate. */
   getState(): StoreState {
     return cloneState(this.state);
   }
 
   async readState(): Promise<StoreState> {
-    const run = this.queue.then(() => this.getState());
+    const run = this.queue.then(() => this.state);
     this.queue = run.then(() => undefined, () => undefined);
     return run;
   }
@@ -109,9 +111,9 @@ export class MemoryStore implements StateStore {
       this.activity.clear();
       for (const record of prunedActivity) this.activity.set(record.sessionId, record);
       const summary: RuntimeRetentionSummary = { ...compaction.summary, sessionActivityRowsRemoved };
-      this.state = retentionRemovedAnything(summary)
+      this.state = freezeState(retentionRemovedAnything(summary)
         ? { ...compaction.state, auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)] }
-        : compaction.state;
+        : compaction.state);
       this.version += 1;
       return summary;
     });
@@ -123,8 +125,8 @@ export class MemoryStore implements StateStore {
     operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }
   ): Promise<T> {
     const run = this.queue.then(async () => {
-      const outcome = await operation(this.getState(), { hasAuditEvent: async (query) => this.state.auditEvents.some((event) => event.eventType === query.eventType && event.entityType === query.entityType && event.entityId === query.entityId && event.actorId === query.actorId) });
-      const nextState = cloneState(outcome.state);
+      const outcome = await operation(this.state, { hasAuditEvent: async (query) => this.state.auditEvents.some((event) => event.eventType === query.eventType && event.entityType === query.entityType && event.entityId === query.entityId && event.actorId === query.actorId) });
+      const nextState = freezeState(outcome.state);
       const nextActivity = new Map(this.activity);
       const previousSessionIds = new Set(this.state.sessions.map((session) => session.id));
       for (const session of nextState.sessions) {

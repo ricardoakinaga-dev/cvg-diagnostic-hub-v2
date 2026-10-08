@@ -1,6 +1,7 @@
 import type { Pool } from "pg";
 import type { StoreState } from "../domain/models";
 import { cloneState, CURRENT_STATE_SQL, CURRENT_VERSION_SQL, runtimeStateFromRow, versionFromRow } from "./postgres-state-codec";
+import { freezeState } from "./immutable-state";
 import { PostgresStateInvalidation } from "./postgres-state-invalidation";
 
 type Snapshot = { state: StoreState; version: number };
@@ -14,18 +15,24 @@ export class PostgresStateCache {
   private readonly listener: PostgresStateInvalidation;
 
   constructor(private readonly pool: Pool, initial: Snapshot, connectionString: string) {
-    this.snapshot = { state: cloneState(initial.state), version: initial.version };
+    this.snapshot = { state: freezeState(initial.state), version: initial.version };
     this.listener = new PostgresStateInvalidation(connectionString, () => { this.invalidation += 1; });
   }
 
+  /** A mutable copy for tests and diagnostics; runtime reads use read() or current(). */
   getState(): StoreState {
     return cloneState(this.snapshot.state);
+  }
+
+  /** The shared frozen aggregate and its version, without touching PostgreSQL. */
+  current(): Snapshot {
+    return this.snapshot;
   }
 
   observe(state: StoreState, version: number): void {
     // A slow read begun before COMMIT must never replace a newer cache entry.
     if (version < this.snapshot.version) return;
-    this.snapshot = { state: cloneState(state), version };
+    this.snapshot = { state: freezeState(state), version };
   }
 
   async read(): Promise<Snapshot> {
@@ -33,7 +40,7 @@ export class PostgresStateCache {
     if (result.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
     const version = versionFromRow(result.rows[0].version);
     if (this.snapshot.version === version && this.validatedInvalidation === this.invalidation) {
-      return { state: this.getState(), version };
+      return this.snapshot;
     }
     let load = this.loads.get(version);
     if (!load) {
@@ -44,7 +51,7 @@ export class PostgresStateCache {
       void load.then(remove, remove);
     }
     const snapshot = await load;
-    return { state: cloneState(snapshot.state), version: snapshot.version };
+    return snapshot;
   }
 
   close(): Promise<void> {
@@ -55,7 +62,7 @@ export class PostgresStateCache {
     const invalidation = this.invalidation;
     const result = await this.pool.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
     if (result.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
-    const state = runtimeStateFromRow(result.rows[0]);
+    const state = freezeState(runtimeStateFromRow(result.rows[0]));
     const version = versionFromRow(result.rows[0].version);
     if (version < minimumVersion) throw new Error("PostgreSQL runtime state version regressed during read.");
     this.observe(state, version);

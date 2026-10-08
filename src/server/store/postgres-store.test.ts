@@ -91,7 +91,8 @@ describe("PostgresStore fresh reads", () => {
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_read");
 
     const fresh = await store.readState();
-    fresh.protocolSequence = 999;
+    // Reads share the frozen cache entry; a caller cannot change it in place.
+    expect(() => { fresh.protocolSequence = 999; }).toThrow(TypeError);
 
     expect(pool.query).toHaveBeenNthCalledWith(3, "SELECT version FROM cvg_runtime_state WHERE id = 1");
     expect(pool.query).toHaveBeenNthCalledWith(4, "SELECT state, version FROM cvg_runtime_state WHERE id = 1");
@@ -440,7 +441,7 @@ describe("PostgresStore relational clinical core seam (static/mocked)", () => {
 
     expect(client.query.mock.calls.map(([text]) => String(text))).toEqual([
       "BEGIN",
-      expect.stringContaining("SELECT state, version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
+      expect.stringContaining("SELECT version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
       "SET CONSTRAINTS ALL DEFERRED",
       expect.stringContaining("INSERT INTO diagnostic_requests"),
       expect.stringContaining("INSERT INTO diagnostic_request_items"),

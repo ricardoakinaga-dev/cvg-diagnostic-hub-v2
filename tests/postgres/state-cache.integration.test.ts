@@ -66,11 +66,12 @@ describe("PostgreSQL state cache freshness and concurrent read lifecycle", () =>
       const release = deferred<void>();
       let writeFinished = false;
       const write = store.transaction(async (state) => {
-        state.protocolSequence += 1;
-        state.users.find((user) => user.id === "user-vet")!.active = false;
         entered.resolve();
         await release.promise;
-        return { state, result: undefined };
+        return {
+          state: { ...state, protocolSequence: state.protocolSequence + 1, users: state.users.map((user) => user.id === "user-vet" ? { ...user, active: false } : user) },
+          result: undefined
+        };
       }).then(() => { writeFinished = true; });
       let reads: Promise<unknown> | undefined;
       try {
@@ -113,7 +114,7 @@ describe("PostgreSQL state cache freshness and concurrent read lifecycle", () =>
     });
   });
 
-  it("returns immutable clones and immediately observes cross-instance role and session revocation", async () => {
+  it("returns frozen shared snapshots and immediately observes cross-instance role and session revocation", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       const writer = await database.createStore(createDemoState(PASSWORD));
       const reader = await database.createStore();
@@ -121,10 +122,10 @@ describe("PostgreSQL state cache freshness and concurrent read lifecycle", () =>
       const request = new Request("http://localhost/api/v1/me", { headers: { cookie: `cvg_session=${login.sessionToken}` } });
       const actor = await authenticateRequest(reader, request);
       const before = await reader.readStateSnapshot();
-      const clone = await reader.readState();
-      clone.users[0].displayName = "caller mutation";
-      clone.sessions.length = 0;
-      before.state.users[0].displayName = "snapshot mutation";
+      const shared = await reader.readState();
+      expect(shared).toBe(before.state);
+      expect(() => { shared.users[0].displayName = "caller mutation"; }).toThrow(TypeError);
+      expect(() => { shared.sessions.length = 0; }).toThrow(TypeError);
       const inspected = reader.getState();
       inspected.users.length = 0;
       const intact = await reader.readStateSnapshot();

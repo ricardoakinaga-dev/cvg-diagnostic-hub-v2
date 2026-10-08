@@ -238,7 +238,8 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
 
     expect(client.query.mock.calls.map(([text]) => String(text))).toEqual([
       "BEGIN",
-      expect.stringContaining("SELECT state, version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
+      // The cache already holds version 7: the lock reads only the version column.
+      expect.stringContaining("SELECT version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
       expect.stringContaining("UPDATE cvg_runtime_state"),
       expect.stringContaining("INSERT INTO audit_events"),
       expect.stringContaining("INSERT INTO outbox_messages"),
@@ -314,11 +315,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     pool.connect.mockResolvedValueOnce(client);
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_activity_commit");
     try {
-      // Also exercise callbacks that mutate their private snapshot in place.
-      const transaction = store.transaction((state) => {
-        state.sessions.push(session);
-        return { state, result: "committed" };
-      });
+      const transaction = store.transaction((state) => ({ state: { ...state, sessions: [...state.sessions, session] }, result: "committed" }));
       if (outcome === "success") {
         await expect(transaction).resolves.toBe("committed");
         expect(store.getState()).toEqual(nextState);
@@ -559,16 +556,39 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     }
   });
 
-  it("returns an isolated state snapshot with its durable version", async () => {
+  it("rejects a transaction callback that mutates the shared state in place, before anything is written", async () => {
+    const initial = createDemoState("postgres-frozen-transaction-password");
+    queueReadyOpen(initial, "1");
+    const client = createClient(initial);
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_frozen_transaction");
+    try {
+      await expect(store.transaction((state) => {
+        state.sessions.push({ ...state.sessions[0]!, id: "session-in-place" });
+        return { state, result: undefined };
+      })).rejects.toThrow(TypeError);
+      const statements = client.query.mock.calls.map(([text]) => String(text));
+      expect(statements).toContain("ROLLBACK");
+      expect(statements.some((text) => text.startsWith("UPDATE cvg_runtime_state"))).toBe(false);
+      expect(store.getState().sessions.some((session) => session.id === "session-in-place")).toBe(false);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("returns the shared frozen snapshot with its durable version and keeps getState an independent copy", async () => {
     const initial = createDemoState("postgres-snapshot-isolation-password");
+    const original = structuredClone(initial);
     queueReadyOpen(initial, "7");
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_snapshot_isolation");
     try {
       pool.query.mockResolvedValueOnce(result(1, [{ version: "7" }])).mockResolvedValueOnce(stateRow(initial, "7"));
       const snapshot = await store.readStateSnapshot();
-      expect(snapshot).toEqual({ state: initial, version: 7 });
-      snapshot.state.users[0].active = false;
-      expect(store.getState()).toEqual(initial);
+      expect(snapshot).toEqual({ state: original, version: 7 });
+      expect(() => { snapshot.state.users[0].active = false; }).toThrow(TypeError);
+      const copy = store.getState();
+      copy.users[0].active = false;
+      expect(store.getState()).toEqual(original);
       pool.query.mockResolvedValueOnce(result(0));
       await expect(store.readStateSnapshot()).rejects.toThrow("PostgreSQL runtime state row is missing.");
       expect(store.getState()).toEqual(initial);

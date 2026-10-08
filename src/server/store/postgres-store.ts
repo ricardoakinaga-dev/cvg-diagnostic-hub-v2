@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PostgresStateCache } from "./postgres-state-cache";
+import { freezeState } from "./immutable-state";
 import { Pool, type PoolClient } from "pg";
 import { outboxEnvelopeFor, type AuditEntity, type AuditMetrics, type AuditMetricsQuery, type AuditReadPage, type AuditReadQuery, type AuditTransactionReader, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User } from "../domain/models";
 import { auditEventsForReset, postgresAuditTransactionReader, readPostgresAuditActors, readPostgresAuditEvents, readPostgresAuditMetrics } from "./postgres-audit-read";
@@ -11,7 +12,7 @@ import {
   assertAuditEventsAppendOnly,
   CURRENT_STATE_SQL,
   CURRENT_VERSION_SQL,
-  LOCKED_STATE_SQL,
+  LOCKED_VERSION_SQL,
   runtimeStateFromRow,
   stateFromRow,
   versionFromRow
@@ -378,10 +379,22 @@ export class PostgresStore implements StateStore {
       const client = await this.pool.connect();
       try {
         await client.query("BEGIN");
-        const locked = await client.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
+        // Lock by version only; the aggregate comes from the shared cache when it is
+        // current, so a write no longer re-reads and re-parses the whole JSONB row.
+        const locked = await client.query<{ version: unknown }>(LOCKED_VERSION_SQL);
         if (locked.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
-        const currentState = runtimeStateFromRow(locked.rows[0]);
-        if (options.outboxScope) currentState.outbox = await lockPostgresOutbox(client, options.outboxScope);
+        const lockedVersion = versionFromRow(locked.rows[0].version);
+        const cached = this.cache.current();
+        let baseState: StoreState;
+        if (cached.version === lockedVersion) {
+          baseState = cached.state;
+        } else {
+          const fresh = await client.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
+          baseState = freezeState(runtimeStateFromRow(fresh.rows[0]));
+        }
+        const currentState = freezeState(options.outboxScope
+          ? { ...baseState, outbox: await lockPostgresOutbox(client, options.outboxScope) }
+          : baseState);
         const previousSessionIds = new Set(currentState.sessions.map((session) => session.id));
         const outcome = await operation(client, currentState);
         const nextState = stateFromRow(outcome.state);

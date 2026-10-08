@@ -9,6 +9,8 @@ import type { StoreState } from "../domain/models";
 export const CURRENT_STATE_SQL = "SELECT state, version FROM cvg_runtime_state WHERE id = 1";
 export const CURRENT_VERSION_SQL = "SELECT version FROM cvg_runtime_state WHERE id = 1";
 export const LOCKED_STATE_SQL = `${CURRENT_STATE_SQL} FOR UPDATE`;
+/** The global write lock without expanding the JSONB aggregate. */
+export const LOCKED_VERSION_SQL = `${CURRENT_VERSION_SQL} FOR UPDATE`;
 
 const STATE_COLLECTIONS = [
   "users",
@@ -47,7 +49,8 @@ export function stateFromRow(value: unknown): StoreState {
   if (STATE_COLLECTIONS.some((key) => !Array.isArray(candidate[key]))) {
     throw new Error("PostgreSQL runtime state collections are invalid.");
   }
-  return cloneState(candidate as unknown as StoreState);
+  // Validation only: callers share the result (frozen by the cache) or copy it explicitly.
+  return candidate as unknown as StoreState;
 }
 
 export function versionFromRow(value: unknown): number {

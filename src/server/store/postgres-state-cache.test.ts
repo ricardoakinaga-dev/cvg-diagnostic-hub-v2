@@ -76,22 +76,26 @@ describe("PostgresStateCache authoritative version and immutable snapshots", () 
     vi.useRealTimers();
   });
 
-  it("clones initial and inspected state, including nested records", () => {
+  it("takes ownership of the initial state by freezing it, while getState returns an independent copy", () => {
     const { cache, state } = makeCache();
     const original = structuredClone(state);
-    state.users[0].displayName = "caller mutation";
-    state.patients.length = 0;
+    expect(Object.isFrozen(state) && Object.isFrozen(state.users) && Object.isFrozen(state.users[0])).toBe(true);
+    expect(() => { state.users[0].displayName = "caller mutation"; }).toThrow(TypeError);
+    expect(() => { state.patients.length = 0; }).toThrow(TypeError);
     const inspected = cache.getState();
+    expect(Object.isFrozen(inspected.users[0])).toBe(false);
     inspected.users[0].displayName = "inspection mutation";
     inspected.services.length = 0;
     expect(cache.getState()).toEqual(original);
   });
 
-  it("probes the durable scalar version on every hit and returns independent clones", async () => {
+  it("probes the durable scalar version on every hit and shares one frozen snapshot", async () => {
     const { cache, query, state } = await readyCache();
     const [first, second] = await Promise.all([cache.read(), cache.read()]);
-    first.state.users[0].displayName = "changed";
-    first.state.users.pop();
+    // No per-read copy: callers share the same frozen aggregate and cannot change it.
+    expect(first.state).toBe(second.state);
+    expect(() => { first.state.users[0].displayName = "changed"; }).toThrow(TypeError);
+    expect(() => first.state.users.pop()).toThrow(TypeError);
     expect(second).toEqual({ state, version: 1 });
     expect(cache.getState()).toEqual(state);
     await cache.read();
@@ -109,7 +113,8 @@ describe("PostgresStateCache authoritative version and immutable snapshots", () 
     full.resolve(stateRow(next, "2"));
     const snapshots = await Promise.all(reads);
     expect(snapshots).toEqual(Array(4).fill({ state: next, version: 2 }));
-    snapshots[0].state.users[0].displayName = "private clone";
+    expect(snapshots.every((snapshot) => snapshot.state === snapshots[0].state)).toBe(true);
+    expect(() => { snapshots[0].state.users[0].displayName = "shared"; }).toThrow(TypeError);
     expect(snapshots[1].state).toEqual(next);
     expect(cache.getState()).toEqual(next);
     query.mockClear();
@@ -144,11 +149,11 @@ describe("PostgresStateCache authoritative version and immutable snapshots", () 
     await expect(cache.read()).resolves.toEqual(hit);
   });
 
-  it("clones observations and ignores versions older than the inspection cache", async () => {
+  it("freezes observations and ignores versions older than the inspection cache", async () => {
     const { cache, state } = await readyCache();
     const newest = { ...structuredClone(state), protocolSequence: 8 };
     cache.observe(newest, 8);
-    newest.users[0].displayName = "mutated observation";
+    expect(() => { newest.users[0].displayName = "mutated observation"; }).toThrow(TypeError);
     cache.observe({ ...state, protocolSequence: 2 }, 2);
     expect(cache.getState().protocolSequence).toBe(8);
     expect(cache.getState().users[0].displayName).toBe(state.users[0].displayName);
