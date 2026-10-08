@@ -24,6 +24,9 @@ const GENERIC_API_ERROR = "Não foi possível concluir a operação. Informe o c
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
   CSRF_INVALID: "A sessão de segurança expirou. Atualize a página e tente novamente.",
   CURRENT_PASSWORD_INVALID: "A senha atual não confere.",
+  PASSWORD_BREACHED: "Esta senha apareceu em vazamentos conhecidos; escolha outra.",
+  PASSWORD_POLICY: "Esta senha é fraca. Evite repetições, sequências, seu nome ou e-mail e senhas comuns.",
+  PASSWORD_RESET_INVALID: "Link de redefinição inválido ou expirado.",
   IDEMPOTENCY_KEY_REUSED: "Esta operação já foi recebida. Atualize os dados antes de tentar novamente.",
   NOT_FOUND: "O recurso solicitado não está disponível.",
   CONFLICT: "Este registro já existe ou mudou. Atualize os dados e tente novamente.",

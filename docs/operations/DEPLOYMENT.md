@@ -48,9 +48,11 @@ docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 
 O `migrate` (`scripts/db-roles.ts`) faz tudo o que o banco precisa, sem passo manual: cria os papéis `cvg_migrator` e `cvg_runtime` (e troca suas senhas se você as girar), entrega o banco, o schema e todos os objetos ao `cvg_migrator`, aplica as migrations e dá ao `cvg_runtime` só DML (sem DDL, e só `INSERT`/`SELECT` em `audit_events`). O `app`, o `worker` e o `backup` conectam como `cvg_runtime` e **não recebem** as credenciais de DDL nem a administrativa; só o `migrate` as tem. Funciona igual num banco novo e num banco que foi criado antes com um único superusuário.
 
+**Primeiro acesso do ADMIN (PROD-202).** O caminho recomendado é deixar `BOOTSTRAP_ADMIN_PASSWORD` **vazio**. O `bootstrap` cria o ADMIN sem senha utilizável (hash aleatório) e imprime, uma única vez, uma linha como `{"event":"bootstrap.completed","adminId":"...","resetUrl":"https://<APP_DOMAIN>/reset-password?token=...","expiresAt":"..."}`. Abra o `resetUrl` no navegador antes de `expiresAt` (`PASSWORD_RESET_TTL_MS`, padrão 60 min) e defina a senha: o link vale uma única vez, só o seu hash fica no banco e o primeiro login é feito com a senha nova. Se o link expirar, emita outro pelo comando de emergência (somente operador, exige a credencial do banco, é auditado como `PasswordResetLinkIssued` com `source: CLI`; qualquer usuário ativo, de qualquer perfil, substitui o link anterior e tem as sessões encerradas): `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm --no-deps worker node_modules/.bin/tsx scripts/password-reset-link.ts --email <email>`. Ele imprime `{"event":"password_reset_link.issued","userId":"...","resetUrl":"...","expiresAt":"..."}` e sai com código 1 para usuário inexistente ou inativo. Quem prefere definir a senha no ambiente ainda pode: com `BOOTSTRAP_ADMIN_PASSWORD` preenchida (16+ caracteres, política de senhas do §6.5), a conta nasce com troca de senha obrigatória no primeiro login.
+
 Depois do primeiro login do ADMIN:
 
-1. remova `BOOTSTRAP_ADMIN_PASSWORD` do `.env.production` e do secret manager;
+1. se usou `BOOTSTRAP_ADMIN_PASSWORD`, remova-a do `.env.production` e do secret manager;
 2. pela tela **Administração**, cadastre serviços diagnósticos, códigos de motivo e colaboradores (tudo é auditado; só criar, promover, rebaixar, desativar ou redefinir um ADMIN pede a sua senha). Cadastre os **exames antes dos colaboradores**: um técnico novo recebe todos os exames ativos do setor, e um exame novo chega sozinho a quem já tinha todos os do setor (quem foi restrito a um subconjunto mantém o subconjunto);
 3. confirme a trilha em `audit_events` (evento `ProductionBootstrap`).
 
@@ -240,6 +242,19 @@ processo.
 | `DB_CONNECT_TIMEOUT_MS` | `5000` | Espera máxima por uma conexão do pool. |
 | `DB_STATEMENT_TIMEOUT_MS` | `30000` | `statement_timeout` no servidor; o cliente desiste 5 s depois, mesmo com o servidor congelado. |
 | `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | `60000` | Encerra uma transação parada que segure a trava global de escrita. |
+
+Redefinição de senha e política de senhas (PROD-202 e PROD-203):
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `PASSWORD_RESET_TTL_MS` | `3600000` (60 min) | Validade do link de redefinição emitido pelo ADMIN; limitada a 5 min–24 h. Também vale para o link do bootstrap. |
+| `PASSWORD_BREACH_CHECK` | `off` | `hibp` consulta o Have I Been Pwned (só os 5 primeiros caracteres do SHA-1 saem do servidor) ao definir ou trocar senha. O servidor do hospital pode ter saída restrita; por isso é opcional. |
+| `PASSWORD_BREACH_CHECK_FAIL` | `open` | Com o serviço inacessível: `open` aceita a senha e registra o aviso `security.password_breach_check_unavailable`; `closed` recusa com 503. |
+| `PASSWORD_BREACH_CHECK_TIMEOUT_MS` | `3000` | Tempo máximo da consulta (100–30000). |
+| `LOGIN_ACCOUNT_SIGNAL_WINDOW_MS` | `900000` (15 min) | Janela do sinal agregado por conta (máx. 60 min). |
+| `LOGIN_ACCOUNT_SIGNAL_THRESHOLD` | `20` | Senhas erradas somadas de todos os clientes, na janela, para uma conta; ao atingir, o Hub registra `security.login_distributed_attempts`, incrementa `cvg_login_distributed_attempt_signals_total` (alerta `CvgLoginDistributedAttempts`) e audita `LoginDistributedAttemptsDetected`. **Não bloqueia ninguém** (D-021). |
+
+A lista local de senhas comuns funciona sem internet. Se o hospital liberar a saída para `api.pwnedpasswords.com:443`, ative `PASSWORD_BREACH_CHECK=hibp`.
 
 Com o banco indisponível, toda rota responde `503 DEPENDENCY_UNAVAILABLE` com `retryable: true`, em vez de 500 ou de uma requisição pendurada; `/readyz` também responde 503.
 

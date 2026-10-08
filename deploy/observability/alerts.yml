@@ -66,6 +66,16 @@ groups:
           summary: "Conexões de tempo real recusadas por limite de capacidade nos últimos 10 minutos."
           runbook: "docs/operations/INCIDENT_RUNBOOKS.md#realtime-degradado"
 
+  - name: cvg-hub-security
+    rules:
+      - alert: CvgLoginDistributedAttempts
+        expr: increase(cvg_login_distributed_attempt_signals_total[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Uma conta recebeu muitas senhas erradas somadas de vários clientes (sinal agregado, sem bloqueio)."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#tentativas-de-login-distribuídas"
+
   - name: cvg-hub-capacity
     rules:
       - alert: CvgHeapNearLimit

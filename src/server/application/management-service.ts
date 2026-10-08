@@ -6,6 +6,8 @@ import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, Rec
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
+import { assertPasswordPolicy } from "../security/password-policy";
+import { createPasswordResetGrant, passwordResetUrl } from "../security/password-reset";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { findById } from "../domain/state-index";
@@ -251,6 +253,8 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const email = normalizedEmail(input.email);
         if (originalState.users.some((user) => user.email.toLowerCase() === email)) throw new ApiError("CONFLICT", "Já existe um colaborador com este e-mail.", 409);
         const displayName = requireText(input.displayName, "displayName", 160);
+        // An explicit password is never stored (credentials are server generated), but it must still meet the policy.
+        if (input.password !== undefined) assertPasswordPolicy(input.password, { email, displayName });
         // Retain confidential fingerprints for legacy callers, but every new credential is server generated.
         const password = `Cvg1-${randomBytes(24).toString("base64url")}`;
         const timezone = validatedTimezone(input.timezone ?? process.env.APP_TIMEZONE ?? "America/Sao_Paulo");
@@ -337,6 +341,41 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         };
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result: { ...result, initialPassword: password } };
+      });
+    },
+
+    /**
+     * PROD-202: the ADMIN issues a one-time link and hands it over out of band.
+     * Only the SHA-256 of the token is stored; a new link replaces any previous
+     * one and the target's sessions are revoked. The URL is returned once: an
+     * idempotent replay returns the stored response without it.
+     */
+    async issuePasswordResetLink(actor: User, userId: string, input: CommandMeta): Promise<{ user: ManagedUser; resetUrl?: string; expiresAt: string }> {
+      const scope = "POST:/users/password-reset-link";
+      return store.transaction(async (originalState) => {
+        const currentActor = requireActiveUser(originalState, actor);
+        requireIdempotencyKey(input.idempotencyKey);
+        requirePermission(currentActor, "user_role.manage", {});
+        if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A redefinição da própria conta deve ser feita por outro administrador.", 400);
+        const target = findOrThrow(findById(originalState.users, userId));
+        if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
+        // A reset link takes over the account exactly like a regenerated password does.
+        if (target.role === "ADMIN") requireRecentReauthentication(currentActor);
+        const idempotent = withIdempotency<{ user: ManagedUser; expiresAt: string }>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para gerar o link de redefinição.", 400);
+        ensureExpectedVersion(target.version, input.expectedVersion);
+        if (!target.active) throw new ApiError("CONFLICT", "Ative o acesso antes de gerar o link de redefinição.", 409);
+        const { token, grant } = createPasswordResetGrant(currentActor.id);
+        const updated: User = { ...target, passwordReset: grant, version: target.version + 1 };
+        const nextState = {
+          ...originalState,
+          users: originalState.users.map((user) => user.id === target.id ? updated : user),
+          sessions: revokeUserSessions(originalState, target.id),
+          auditEvents: [...originalState.auditEvents, createAudit("PasswordResetLinkIssued", currentActor.id, "User", target.id, input.correlationId ?? id("corr"), undefined, "PASSWORD_RESET_PENDING", { action: "ISSUE_PASSWORD_RESET_LINK", role: target.role, departmentCode: target.departmentCode, expiresAt: grant.expiresAt, replacedPrevious: Boolean(target.passwordReset) })]
+        };
+        const stored = { user: managedUser(updated), expiresAt: grant.expiresAt };
+        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, stored, { userId, input }), result: { ...stored, resetUrl: passwordResetUrl(token) } };
       });
     },
 

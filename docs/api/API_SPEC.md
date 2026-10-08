@@ -50,12 +50,13 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | `POST /users` | required | recent password reauthentication, operational role/scope validation, non-empty reason and explicit confirmation |
 | `POST /users/{id}/roles` | required | recent password reauthentication, target `expectedVersion`, non-empty reason and explicit confirmation |
 | `DELETE /users/{id}` | required | recent password reauthentication, target `expectedVersion`, non-empty reason and explicit confirmation; soft deactivation |
+| `POST /users/{id}/password-reset-link` | required | target `expectedVersion` (body or `If-Match`); recent password reauthentication when the target is ADMIN; replay returns the stored response without the URL |
 
 ## 2. Resources
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change` | authenticated session boundary |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `POST /session/password/reset` (public) | authenticated session boundary, except the administrator-issued reset token |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
@@ -87,6 +88,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /session/logout` | authenticated active session | revokes the current session and clears cookies |
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
+| `POST /session/password/reset` | none (public, administrator-issued one-time token) | PROD-202: body `{ token, password }` (token 1–200, password 12–200 characters); no CSRF and no session, like login; 10 attempts per client per 15 minutes (`429 RATE_LIMITED`); password policy of PROD-203 (`400 VALIDATION_ERROR`, `PASSWORD_POLICY`, `PASSWORD_BREACHED`); unknown, expired, used or deactivated-account token all answer `400 PASSWORD_RESET_INVALID` "Link de redefinição inválido ou expirado."; success `200 { email }` sets the password, consumes the token, clears `mustChangePassword`, revokes every session and creates none |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
@@ -146,6 +148,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /users` | `user_role.manage` | ADMIN or delegated MANAGER; operational roles only for delegated managers; recent reauthentication, reason, confirmation and audit; ADMIN may define `managedDepartmentCodes` for a new MANAGER |
 | `POST /users/{id}/roles` | `user_role.manage` | ADMIN or delegated MANAGER target scope; recent password reauthentication, target `expectedVersion`, reason, confirmation and audit; ADMIN may revise a MANAGER's `managedDepartmentCodes` |
 | `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit |
+| `POST /users/{id}/password-reset-link` | `user_role.manage` | PROD-202: same target scope as `POST /users/{id}/password` (not self, target active, step-up for ADMIN targets); `Idempotency-Key` and `expectedVersion` required; `201 { user, resetUrl, expiresAt }` where `resetUrl` (`APP_ORIGIN/reset-password?token=…`) is shown once and only its SHA-256 is stored; replaces any previous link, revokes the target's sessions and audits `PasswordResetLinkIssued` without the token |
 | `GET /management/overview` | `dashboard.view`, `user_role.manage` | active MANAGER only; data is filtered to own department plus explicitly managed diagnostic departments |
 | `GET /dashboard` | `dashboard.view` | department and patient scope; bounded operational indicators only |
 | `GET /audit-events` | `audit.view` | manager/admin or scoped audit policy |

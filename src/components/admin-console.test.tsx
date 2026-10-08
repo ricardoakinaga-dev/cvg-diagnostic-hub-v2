@@ -140,6 +140,73 @@ describe("AdminConsole", () => {
     expect(attempts).toBe(2);
   });
 
+  it("issues a one-time reset link, shows it once with its expiry and copies it (PROD-202)", async () => {
+    const clipboard = { writeText: vi.fn().mockResolvedValue(undefined) };
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: clipboard });
+    const url = "https://hub.hospital.example/reset-password?token=abc123";
+    const mock = mockApi((path) => path === "/users/user-vet/password-reset-link" ? { user: { ...user, version: 2 }, resetUrl: url, expiresAt: "2026-10-08T15:00:00.000Z" } : undefined);
+    await openAdmin();
+    fireEvent.click(within(row()).getByRole("button", { name: "Gerar link de redefinição" }));
+    await answerConfirm("Gerar link");
+    const dialog = await screen.findByRole("dialog", { name: "Link de redefinição" });
+    expect(payloadFor(mock, "/users/user-vet/password-reset-link", "POST")).toEqual({ expectedVersion: 1 });
+    expect(mock.mock.calls.some(([path]) => path === "/session/reauth")).toBe(false);
+    expect(within(dialog).getByLabelText("Link de redefinição gerado")).toHaveTextContent(url);
+    expect(dialog).toHaveTextContent("uma única vez");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copiar link" }));
+    await waitFor(() => expect(clipboard.writeText).toHaveBeenCalledWith(url));
+    expect(await within(dialog).findByText("Link copiado.")).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Fechar" }));
+    expect(screen.queryByText(url)).not.toBeInTheDocument();
+    await waitFor(() => expect(within(row()).getByRole("button", { name: "Gerar link de redefinição" })).toHaveFocus());
+  });
+
+  it("reports a clipboard failure, a replayed response without URL and a failed issuance", async () => {
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: vi.fn().mockRejectedValue(new Error("denied")) } });
+    let attempt = 0;
+    const mock = mockApi((path) => {
+      if (path !== "/users/user-vet/password-reset-link") return undefined;
+      attempt += 1;
+      if (attempt === 1) return Promise.reject(new Error("link failure"));
+      if (attempt === 2) return { user: { ...user, version: 2 }, expiresAt: "2026-10-08T15:00:00.000Z" };
+      return { user: { ...user, version: 3 }, resetUrl: "/reset-password?token=relative", expiresAt: "2026-10-08T15:00:00.000Z" };
+    });
+    await openAdmin();
+    const issue = async () => { fireEvent.click(within(row()).getByRole("button", { name: "Gerar link de redefinição" })); await answerConfirm("Gerar link"); };
+    await issue();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await issue();
+    await waitFor(() => expect(within(row()).getByRole("alert")).toHaveTextContent("não pode ser exibido novamente"));
+    await issue();
+    const dialog = await screen.findByRole("dialog", { name: "Link de redefinição" });
+    expect(within(dialog).getByLabelText("Link de redefinição gerado")).toHaveTextContent(`${window.location.origin}/reset-password?token=relative`);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Copiar link" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Não foi possível copiar");
+    expect(mock.mock.calls.filter(([path]) => path.endsWith("/password-reset-link"))).toHaveLength(3);
+  });
+
+  it("cancels the link confirmation, requires reauthentication for ADMIN and hides the action for self or inactive access", async () => {
+    const target = { ...user, role: "ADMIN" as const };
+    const mock = mockApi((path, init) => path === "/users" && !init?.method ? [target] : path === "/users/user-vet/password-reset-link" ? { user: { ...target, version: 2 }, resetUrl: "https://hub.example/reset-password?token=admin", expiresAt: "2026-10-08T15:00:00.000Z" } : undefined);
+    await openAdmin();
+    fireEvent.click(within(row()).getByRole("button", { name: "Gerar link de redefinição" }));
+    await answerConfirm("Cancelar");
+    expect(mock.mock.calls.some(([path]) => path.endsWith("/password-reset-link"))).toBe(false);
+    fireEvent.click(within(row()).getByRole("button", { name: "Gerar link de redefinição" }));
+    await answerConfirm("Gerar link");
+    const stepUp = await screen.findByRole("dialog", { name: "Confirmar recuperação de ADMIN" });
+    fireEvent.change(within(stepUp).getByLabelText("Senha para reautenticar"), { target: { value: "admin-password-1234" } });
+    fireEvent.click(within(stepUp).getByRole("button", { name: "Confirmar" }));
+    await screen.findByRole("dialog", { name: "Link de redefinição" });
+    expect(mock.mock.calls.findIndex(([path]) => path === "/session/reauth")).toBeLessThan(mock.mock.calls.findIndex(([path]) => path.endsWith("/password-reset-link")));
+    cleanup();
+    render(<UserRow user={{ ...user, id: identity.id }} technical viewerId={identity.id} onChanged={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Gerar link de redefinição" })).not.toBeInTheDocument();
+    cleanup();
+    render(<UserRow user={{ ...user, active: false }} technical viewerId={identity.id} onChanged={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Gerar link de redefinição" })).not.toBeInTheDocument();
+  });
+
   it("requires reauthentication to recover ADMIN and does not offer recovery for self or inactive access", async () => {
     const target = { ...user, role: "ADMIN" as const };
     const mock = mockApi((path, init) => path === "/users" && !init?.method ? [target] : path === "/users/user-vet/password" ? { ...target, version: 2, initialPassword: "Cvg1-admin-recovery-password" } : undefined);

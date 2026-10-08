@@ -90,6 +90,8 @@ const requestSchemas = {
   },
   ManagedUserDeactivate: strictObject({ expectedVersion, reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
   ManagedUserPasswordReset: strictObject({ expectedVersion }),
+  PasswordResetLinkRequest: strictObject({ expectedVersion }),
+  PasswordResetCompletion: strictObject({ token: stringSchema(1, 200), password: { ...stringSchema(12, 200), pattern: passwordPattern } }, ["token", "password"]),
   UserRoleUpdate: {
     ...strictObject({
       role: { type: "string", enum: roleCodes }, departmentCode: normalizedDepartmentCodeSchema,
@@ -387,6 +389,10 @@ const responseDataSchemas = {
   PublicUser: publicUserSchema,
   ManagedUser: managedUserSchema,
   ManagedUserCreation: strictObject({ ...managedUserSchema.properties, initialPassword: stringSchema(12, 200) }, managedUserSchema.required),
+  PasswordResetLinkIssued: strictObject({
+    user: schemaReference("ManagedUser"), resetUrl: { type: "string", maxLength: 2048, description: "Shown once; absent on an idempotent replay." }, expiresAt: timestamp
+  }, ["user", "expiresAt"]),
+  PasswordResetCompleted: strictObject({ email: { type: "string", format: "email", maxLength: 320 } }, ["email"]),
   ManagedSession: strictObject({
     id: identifier, userId: identifier, userDisplayName: stringSchema(1, 160), userEmail: { type: "string", format: "email", maxLength: 320 },
     userRole: { type: "string", enum: roleCodes }, departmentCode: stringSchema(1, 60), createdAt: timestamp, expiresAt: timestamp,
@@ -677,8 +683,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 74/69 since PROD-201 added POST /session/password/change (2026-10-08).
-  if (API_OPERATIONS.length !== 74 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 69) throw new Error("The audited API surface must remain exactly 74 operations across 69 paths.");
+  // 76/71 since PROD-202 added the password reset link operations (2026-10-08).
+  if (API_OPERATIONS.length !== 76 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 71) throw new Error("The audited API surface must remain exactly 76 operations across 71 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

@@ -109,3 +109,23 @@ tests:
       - eval_time: 9m
         alertname: CvgProcessRestarted
         exp_alerts: []
+
+  - name: a distributed login attempt signal is reported once and then clears
+    interval: 30s
+    input_series:
+      - series: 'cvg_login_distributed_attempt_signals_total{job="cvg-hub"}'
+        values: "0x10 1x80"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: CvgLoginDistributedAttempts
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: CvgLoginDistributedAttempts
+        exp_alerts:
+          - exp_labels: { severity: warning, job: cvg-hub }
+            exp_annotations:
+              summary: "Uma conta recebeu muitas senhas erradas somadas de vários clientes (sinal agregado, sem bloqueio)."
+              runbook: "docs/operations/INCIDENT_RUNBOOKS.md#tentativas-de-login-distribuídas"
+      - eval_time: 30m
+        alertname: CvgLoginDistributedAttempts
+        exp_alerts: []

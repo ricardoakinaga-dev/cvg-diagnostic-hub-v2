@@ -41,7 +41,13 @@ const ALLOWED_FIELD_NAMES = new Set([
   "requestId",
   "errorCode",
   "retryable",
-  "component"
+  "component",
+  "reason",
+  "accountId",
+  "attempts",
+  "distinctClients",
+  "windowMs",
+  "threshold"
 ]);
 const SENSITIVE_FIELD_PATTERN = /password|secret|token|authorization|cookie|credential|api[_-]?key|connection|string|payload|body|content/i;
 

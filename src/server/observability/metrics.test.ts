@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import { incrementGauge, recordHttpRequest, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
+import { incrementGauge, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
 
 describe("bounded metrics", () => {
   it("renders stable labels without identifiers or request payloads", () => {
@@ -203,5 +203,17 @@ describe("bounded metrics", () => {
     expect(output).toContain('cvg_realtime_connection_rejections_total{reason="connection_limit"} 1');
     expect(output).toContain("cvg_sse_connections 0");
     expect(output).not.toContain("patient-secret");
+  });
+
+  it("exposes the distributed login attempt signal counter from zero and resets it", () => {
+    resetMetrics();
+    expect(renderPrometheus()).toContain("cvg_login_distributed_attempt_signals_total 0");
+    recordLoginDistributedAttemptSignal();
+    recordLoginDistributedAttemptSignal();
+    const output = renderPrometheus();
+    expect(output).toContain("# TYPE cvg_login_distributed_attempt_signals_total counter");
+    expect(output).toContain("cvg_login_distributed_attempt_signals_total 2");
+    resetMetrics();
+    expect(renderPrometheus()).toContain("cvg_login_distributed_attempt_signals_total 0");
   });
 });

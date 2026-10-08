@@ -1,12 +1,15 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import type { AuditEvent, StoreState, User } from "../domain/models";
 import { hashPassword } from "../security/password";
+import { assertPasswordPolicy, checkBreachedPassword } from "../security/password-policy";
+import { createPasswordResetGrant, passwordResetUrl } from "../security/password-reset";
 import { assertRuntimeSchemaReady } from "./migrations";
 
 export interface ProductionBootstrapInput {
   readonly email: string;
   readonly displayName: string;
+  /** Empty means "no usable password": the first login happens through a one-time reset link (PROD-202). */
   readonly password: string;
   readonly departmentCode?: string;
   readonly timezone?: string;
@@ -22,10 +25,17 @@ function validatedInput(input: ProductionBootstrapInput): Required<ProductionBoo
   const displayName = input.displayName?.trim() ?? "";
   if (displayName.length < 1 || displayName.length > 160) throw new Error("BOOTSTRAP_ADMIN_NAME deve ter entre 1 e 160 caracteres.");
   const password = input.password ?? "";
-  const length = Array.from(password).length;
-  // Stricter than the managed-user rule: this account is the root of trust.
-  if (length < 16 || length > 200 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password) || PLACEHOLDER_PATTERN.test(password)) {
-    throw new Error("BOOTSTRAP_ADMIN_PASSWORD deve ter pelo menos 16 caracteres, letras e números, e não pode ser um placeholder.");
+  if (password !== "") {
+    const length = Array.from(password).length;
+    // Stricter than the managed-user rule: this account is the root of trust.
+    if (length < 16 || length > 200 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password) || PLACEHOLDER_PATTERN.test(password)) {
+      throw new Error("BOOTSTRAP_ADMIN_PASSWORD deve ter pelo menos 16 caracteres, letras e números, e não pode ser um placeholder.");
+    }
+    try {
+      assertPasswordPolicy(password, { email, displayName });
+    } catch (error) {
+      throw new Error(`BOOTSTRAP_ADMIN_PASSWORD recusada pela política de senhas: ${error instanceof Error ? error.message : "inválida"}`);
+    }
   }
   const departmentCode = (input.departmentCode?.trim() || "IT").toUpperCase();
   if (!DEPARTMENT_PATTERN.test(departmentCode)) throw new Error("BOOTSTRAP_ADMIN_DEPARTMENT inválido.");
@@ -43,15 +53,33 @@ function validatedInput(input: ProductionBootstrapInput): Required<ProductionBoo
  * and a single ADMIN who provisions everything else through the audited API.
  */
 export function createProductionBootstrapState(input: ProductionBootstrapInput, now = new Date()): StoreState {
+  return createProductionBootstrap(input, now).state;
+}
+
+export interface ProductionBootstrapReset {
+  readonly resetUrl: string;
+  readonly expiresAt: string;
+}
+
+/**
+ * Same state as above plus, when no password was given, the one-time reset link
+ * that replaces it. The admin gets an unguessable random hash, so the link is
+ * the only way in; the plaintext token is returned once and never stored.
+ */
+export function createProductionBootstrap(input: ProductionBootstrapInput, now = new Date()): { state: StoreState; reset?: ProductionBootstrapReset } {
   const validated = validatedInput(input);
   const occurredAt = now.toISOString();
+  const withLink = validated.password === "";
+  const issued = withLink ? createPasswordResetGrant("bootstrap", process.env, now.getTime()) : undefined;
   const admin: User = {
     id: `user-${randomUUID()}`,
     email: validated.email,
     displayName: validated.displayName,
     role: "ADMIN",
     departmentCode: validated.departmentCode,
-    passwordHash: hashPassword(validated.password),
+    passwordHash: hashPassword(withLink ? randomBytes(32).toString("hex") : validated.password),
+    mustChangePassword: true,
+    ...(issued ? { passwordReset: issued.grant } : {}),
     timezone: validated.timezone,
     patientIds: [],
     serviceCodes: [],
@@ -69,7 +97,17 @@ export function createProductionBootstrapState(input: ProductionBootstrapInput, 
     metadata: { role: admin.role, departmentCode: admin.departmentCode },
     occurredAt
   };
-  return {
+  const linkAudit: AuditEvent[] = issued ? [{
+    id: `audit-${randomUUID()}`,
+    eventType: "PasswordResetLinkIssued",
+    entityType: "User",
+    entityId: admin.id,
+    newState: "PASSWORD_RESET_PENDING",
+    correlationId: audit.correlationId,
+    metadata: { action: "BOOTSTRAP_PASSWORD_RESET_LINK", expiresAt: issued.grant.expiresAt },
+    occurredAt
+  }] : [];
+  const state: StoreState = {
     users: [admin],
     sessions: [],
     patients: [],
@@ -85,12 +123,13 @@ export function createProductionBootstrapState(input: ProductionBootstrapInput, 
     results: [],
     resultVersions: [],
     notifications: [],
-    auditEvents: [audit],
+    auditEvents: [audit, ...linkAudit],
     outbox: [],
     idempotency: [],
     attachments: [],
     protocolSequence: 1
   };
+  return { state, ...(issued ? { reset: { resetUrl: passwordResetUrl(issued.token), expiresAt: issued.grant.expiresAt } } : {}) };
 }
 
 export class ProductionBootstrapAlreadyInitializedError extends Error {
@@ -103,8 +142,10 @@ export class ProductionBootstrapAlreadyInitializedError extends Error {
  * Inserts the first runtime state row. It never overwrites: an existing row
  * aborts the transaction, so re-running the command is always safe.
  */
-export async function bootstrapProductionDatabase(connectionString: string, input: ProductionBootstrapInput): Promise<{ adminId: string }> {
-  const state = createProductionBootstrapState(input);
+export async function bootstrapProductionDatabase(connectionString: string, input: ProductionBootstrapInput): Promise<{ adminId: string } & Partial<ProductionBootstrapReset>> {
+  // Optional HIBP lookup (off by default); a provided password is the only thing it can reject here.
+  if (input.password) await checkBreachedPassword(input.password);
+  const { state, reset } = createProductionBootstrap(input);
   const pool = new Pool({ connectionString, max: 1 });
   try {
     const client = await pool.connect();
@@ -141,5 +182,5 @@ export async function bootstrapProductionDatabase(connectionString: string, inpu
   } finally {
     await pool.end();
   }
-  return { adminId: state.users[0].id };
+  return { adminId: state.users[0].id, ...reset };
 }

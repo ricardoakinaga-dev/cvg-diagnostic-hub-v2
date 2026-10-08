@@ -19,6 +19,13 @@ export interface ScopedResource {
   ownerId?: string;
 }
 
+export interface PasswordResetGrant {
+  tokenHash: string;
+  expiresAt: Timestamp;
+  issuedAt: Timestamp;
+  issuedBy: string;
+}
+
 export interface User extends Actor {
   email: string;
   displayName: string;
@@ -28,6 +35,8 @@ export interface User extends Actor {
   version: number;
   /** Temporary credentials can only establish a session for password replacement. */
   mustChangePassword?: boolean;
+  /** Pending administrator-issued reset (PROD-202). Only the SHA-256 of the token is stored; never returned by the API. */
+  passwordReset?: PasswordResetGrant;
   /** Ephemeral authentication context; never persisted or returned as a user field. */
   sessionId?: string;
   reauthenticatedAt?: Timestamp;

@@ -77,6 +77,23 @@ function InitialPasswordDialog({ password, onClose, regenerated = false, returnF
   return <div className="dialog-backdrop"><section ref={dialogRef} className="dialog" role="dialog" aria-modal="true" aria-labelledby={id}><h2 id={id}>{regenerated ? "Nova senha temporária" : "Senha inicial"}</h2><p>Copie e entregue ao colaborador. Esta senha será exibida uma vez; a troca é obrigatória no primeiro login.</p><output className="admin-initial-password" aria-label="Senha inicial gerada">{password}</output>{notice && <p role="status">{notice}</p>}{error && <p role="alert">{error}</p>}<div className="dialog-actions"><button type="button" className="button button-primary" onClick={() => void copy()}>Copiar senha</button><button ref={closeRef} type="button" className="button button-ghost" onClick={onClose}>Fechar</button></div></section></div>;
 }
 
+interface ResetLink { url: string; expiresAt: string }
+
+function ResetLinkDialog({ link, onClose, returnFocusRef }: { link: ResetLink; onClose: () => void; returnFocusRef?: RefObject<HTMLElement | null> }) {
+  const id = useId();
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const [notice, setNotice] = useState("");
+  const [error, setError] = useState("");
+  useDialogFocus(dialogRef, onClose, closeRef, returnFocusRef);
+  async function copy() {
+    try { await navigator.clipboard.writeText(link.url); setNotice("Link copiado."); setError(""); }
+    catch { setError("Não foi possível copiar. Selecione e copie o link exibido."); }
+  }
+  const absolute = link.url.startsWith("/") && typeof window !== "undefined" ? `${window.location.origin}${link.url}` : link.url;
+  return <div className="dialog-backdrop"><section ref={dialogRef} className="dialog" role="dialog" aria-modal="true" aria-labelledby={id}><h2 id={id}>Link de redefinição</h2><p>Entregue ao colaborador pelo canal que o hospital usa. O link será exibido uma vez, vale até {new Date(link.expiresAt).toLocaleString("pt-BR")} e funciona uma única vez.</p><output className="admin-initial-password" aria-label="Link de redefinição gerado">{absolute}</output>{notice && <p role="status">{notice}</p>}{error && <p role="alert">{error}</p>}<div className="dialog-actions"><button type="button" className="button button-primary" onClick={() => void copy()}>Copiar link</button><button ref={closeRef} type="button" className="button button-ghost" onClick={onClose}>Fechar</button></div></section></div>;
+}
+
 export function UserCreateForm({ creator, onCreated, services = [] }: { creator: SessionUser; onCreated: (user: ManagedUser) => void; services?: DiagnosticService[] }) {
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
@@ -123,10 +140,12 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
   const { confirm, dialog: confirmDialog } = useConfirm();
   const confirming = useRef(false);
   const [initialPassword, setInitialPassword] = useState<string | null>(null);
+  const [resetLink, setResetLink] = useState<ResetLink | null>(null);
   const [authorize, setAuthorize] = useState<(() => Promise<void>) | null>(null);
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
+  const locked = !!authorize || !!initialPassword || !!resetLink;
   const set = <K extends keyof AccessDraft>(key: K, value: AccessDraft[K]) => setDraft({ ...fields, [key]: value });
   async function mutate(deactivate: boolean, values: AccessDraft, propagateFailure = false) {
     if (submitting.current) return;
@@ -154,6 +173,37 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível gerar uma nova senha.")); if (propagateFailure) throw cause; }
     finally { submitting.current = false; setBusy(false); }
   }
+  async function issueLink(propagateFailure = false) {
+    if (submitting.current) return;
+    submitting.current = true; setBusy(true); setError("");
+    try {
+      const response = await apiFetch<{ user: ManagedUser; resetUrl?: string; expiresAt: string }>(`/users/${user.id}/password-reset-link`, {
+        method: "POST", body: JSON.stringify({ expectedVersion: user.version })
+      });
+      onChanged(response.user);
+      if (response.resetUrl) setResetLink({ url: response.resetUrl, expiresAt: response.expiresAt });
+      else setError("O link já foi gerado e não pode ser exibido novamente. Gere outro link.");
+    } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível gerar o link de redefinição.")); if (propagateFailure) throw cause; }
+    finally { submitting.current = false; setBusy(false); }
+  }
+  async function requestLink(event: MouseEvent<HTMLButtonElement>) {
+    if (busy || locked || confirming.current) return;
+    passwordOpenerRef.current = event.currentTarget;
+    confirming.current = true;
+    let confirmed = false;
+    try {
+      confirmed = await confirm({
+        title: "Gerar link de redefinição",
+        message: `Gerar um link de uso único para ${user.displayName} definir uma nova senha? As sessões atuais serão encerradas e qualquer link anterior deixará de funcionar.`,
+        confirmLabel: "Gerar link",
+        tone: "danger"
+      });
+    } finally { confirming.current = false; }
+    if (!confirmed) return;
+    setRecovering(true);
+    if (user.role === "ADMIN") setAuthorize(() => () => issueLink(true));
+    else void issueLink();
+  }
   async function requestPassword(event: MouseEvent<HTMLButtonElement>) {
     if (busy || authorize || initialPassword || confirming.current) return;
     passwordOpenerRef.current = event.currentTarget;
@@ -173,11 +223,11 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     else void regenerate();
   }
   function request(deactivate: boolean, values: AccessDraft) {
-    if (busy || authorize || initialPassword) return;
+    if (busy || locked) return;
     setRecovering(false);
     const adminChange = deactivate ? user.active && user.role === "ADMIN" : (user.role === "ADMIN") !== (values.role === "ADMIN") || (user.role === "ADMIN" && user.active !== values.active);
     if (adminChange) setAuthorize(() => () => mutate(deactivate, values, true));
     else void mutate(deactivate, values);
   }
-  return <><form className="admin-row" aria-label={`Acesso de ${user.email}`} onSubmit={(event) => { event.preventDefault(); request(false, fields); }}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={user.active ? "text-success" : "text-danger"}>{user.active ? "Ativo" : "Desativado"}</span></div><small>{user.email}</small><div className="admin-role-grid"><ProfileField value={fields.role} technical={technical} onChange={(value) => set("role", value)} /><label>Setor<select value={fields.departmentCode} onChange={(event) => set("departmentCode", event.target.value)} required>{departments.map((code) => <option key={code} value={code}>{departmentLabels[code] ?? code}</option>)}</select></label></div>{technical && fields.role === "MANAGER" && <ManagedDepartments value={fields.managed} onChange={(value) => set("managed", value)} />}{executor(fields.role) && <ServiceAssignments services={services} departmentCode={fields.departmentCode} selected={fields.serviceCodes} onChange={(value) => set("serviceCodes", value)} />}<label className="admin-check"><input type="checkbox" checked={fields.active} onChange={(event) => set("active", event.target.checked)} /> Acesso operacional ativo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} aria-label={`Salvar ${user.email}`}>Salvar</ActionButton>{user.active && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} onClick={() => request(true, fields)} aria-label="Desativar acesso">Desativar</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={!!authorize || !!initialPassword} onClick={requestPassword}>Gerar nova senha</ActionButton>}</div>{undo && !user.active && <p role="status">Acesso desativado. <button type="button" className="button button-ghost" disabled={busy || !!authorize} onClick={() => request(false, { role: user.role, departmentCode: user.departmentCode, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [], active: true })}>Desfazer</button></p>}</form>{authorize && <ReauthDialog recovering={recovering} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} regenerated returnFocusRef={passwordOpenerRef} onClose={() => setInitialPassword(null)} />}{confirmDialog}</>;
+  return <><form className="admin-row" aria-label={`Acesso de ${user.email}`} onSubmit={(event) => { event.preventDefault(); request(false, fields); }}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={user.active ? "text-success" : "text-danger"}>{user.active ? "Ativo" : "Desativado"}</span></div><small>{user.email}</small><div className="admin-role-grid"><ProfileField value={fields.role} technical={technical} onChange={(value) => set("role", value)} /><label>Setor<select value={fields.departmentCode} onChange={(event) => set("departmentCode", event.target.value)} required>{departments.map((code) => <option key={code} value={code}>{departmentLabels[code] ?? code}</option>)}</select></label></div>{technical && fields.role === "MANAGER" && <ManagedDepartments value={fields.managed} onChange={(value) => set("managed", value)} />}{executor(fields.role) && <ServiceAssignments services={services} departmentCode={fields.departmentCode} selected={fields.serviceCodes} onChange={(value) => set("serviceCodes", value)} />}<label className="admin-check"><input type="checkbox" checked={fields.active} onChange={(event) => set("active", event.target.checked)} /> Acesso operacional ativo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={locked} aria-label={`Salvar ${user.email}`}>Salvar</ActionButton>{user.active && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={() => request(true, fields)} aria-label="Desativar acesso">Desativar</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={requestPassword}>Gerar nova senha</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={requestLink}>Gerar link de redefinição</ActionButton>}</div>{undo && !user.active && <p role="status">Acesso desativado. <button type="button" className="button button-ghost" disabled={busy || !!authorize} onClick={() => request(false, { role: user.role, departmentCode: user.departmentCode, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [], active: true })}>Desfazer</button></p>}</form>{authorize && <ReauthDialog recovering={recovering} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} regenerated returnFocusRef={passwordOpenerRef} onClose={() => setInitialPassword(null)} />}{resetLink && <ResetLinkDialog link={resetLink} returnFocusRef={passwordOpenerRef} onClose={() => setResetLink(null)} />}{confirmDialog}</>;
 }

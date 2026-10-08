@@ -68,4 +68,12 @@ describe("structured observability logger", () => {
     const logger = createStructuredLogger({ enabled: true, write: () => { throw new Error("sink unavailable"); } });
     expect(() => logger.warn("http.degraded", { route: "/api/v1/readyz" })).not.toThrow();
   });
+
+  it("keeps the pseudonymous account signal fields and drops anything identifying", () => {
+    const lines: string[] = [];
+    const logger = createStructuredLogger({ enabled: true, write: (line) => lines.push(line) });
+    logger.warn("security.login_distributed_attempts", { component: "security", accountId: "0123456789abcdef", attempts: 20, distinctClients: 7, windowMs: 900000, threshold: 20, reason: "x", email: "vet@cvg.local" });
+    expect(JSON.parse(lines[0]!)).toMatchObject({ level: "warn", accountId: "0123456789abcdef", attempts: 20, distinctClients: 7, windowMs: 900000, threshold: 20 });
+    expect(lines[0]).not.toContain("vet@cvg.local");
+  });
 });

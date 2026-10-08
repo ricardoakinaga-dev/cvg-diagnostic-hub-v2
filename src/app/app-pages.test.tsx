@@ -10,6 +10,7 @@ import NotificationsPage from "./notifications/page";
 import PatientsPage from "./patients/page";
 import PatientDiagnosticsPage from "./patients/[id]/diagnostics/page";
 import QueuesPage from "./queues/page";
+import ResetPasswordPage from "./reset-password/page";
 import RequestPage from "./requests/[id]/page";
 import ResultPage from "./results/[id]/page";
 
@@ -37,7 +38,8 @@ describe("Next route composition", () => {
       ManagementPage,
       NotificationsPage,
       PatientsPage,
-      QueuesPage
+      QueuesPage,
+      ResetPasswordPage
     ]) {
       expect(page()).toBeTruthy();
     }
