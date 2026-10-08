@@ -235,7 +235,7 @@ Node 22.23.2, `npm run validate` com PostgreSQL:
 - **1.679 unitários + 101 PostgreSQL = 1.780/1.780**;
 - cobertura de 97,21% em linhas, 95,75% em funções e 90,35% em branches, com `coverage:gate` PASS e as mesmas 22 exceções;
 - documentação, OpenAPI 74/69, rastreabilidade 43/43 e migrations 001–015 PASS;
-- `privacy:scan` sem achados em 587 arquivos;
+- `privacy:scan` sem achados nos 598 arquivos versionados;
 - `observability:check` PASS.
 
 O teste `gates a password-required session on /queues without a redirect loop` (`app-shell.test.tsx`) falhou uma vez sob a carga da suíte com cobertura e passou nas quatro repetições isoladas e na execução completa seguinte; ele não toca o código alterado.
