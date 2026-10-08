@@ -107,6 +107,10 @@ const requestSchemas = {
     "x-role-constraints": { managedDepartmentCodes: "allowed only when role is MANAGER" }
   },
   SessionRevoke: strictObject({ reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
+  WhatsAppWebhookEvent: {
+    ...strictObject({ object: { type: "string", maxLength: 100 }, entry: { type: "array", maxItems: 1000, items: { type: "object", additionalProperties: true } } }, ["object", "entry"]),
+    "x-runtime-validation": "Meta webhook envelope; only entry[].changes[field=messages].value.statuses[] are read, recipient and pricing data are discarded"
+  },
   DeadLetterCommand: strictObject({ reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
   DiagnosticServiceCreate: {
     ...strictObject({
@@ -382,7 +386,11 @@ const notificationSchema = strictObject({
   entityType: { type: "string", enum: ["REQUEST", "ITEM", "RESULT_VERSION", "SAMPLE"] }, entityId: identifier,
   deepLink: stringSchema(1, 500), title: stringSchema(1, 500), body: stringSchema(1, 2000), dedupeKey: stringSchema(1, 500),
   state: { type: "string", enum: ["PENDING", "DELIVERED", "SEEN", "ACKNOWLEDGED", "FAILED", "SUPERSEDED", "ESCALATED"] },
-  createdAt: timestamp, acknowledgedAt: timestamp, acknowledgedBy: identifier, attempts: nonNegativeInteger, version: positiveVersion
+  createdAt: timestamp, acknowledgedAt: timestamp, acknowledgedBy: identifier, attempts: nonNegativeInteger, version: positiveVersion,
+  whatsapp: strictObject({
+    status: { type: "string", enum: ["QUEUED", "SENT", "DELIVERED", "READ", "FAILED", "SKIPPED"] }, updatedAt: timestamp,
+    messageId: stringSchema(1, 200), errorCode: stringSchema(1, 100)
+  }, ["status", "updatedAt"])
 }, ["id", "category", "priority", "recipientUserId", "entityType", "entityId", "deepLink", "title", "body", "dedupeKey", "state", "createdAt", "attempts", "version"]);
 const auditEventSchema = strictObject({
   id: identifier, eventType: stringSchema(1, 200), actorId: identifier, entityType: stringSchema(1, 200), entityId: identifier,
@@ -449,6 +457,7 @@ const responseDataSchemas = {
   LoginData: strictObject({ user: schemaReference("PublicUser"), expiresAt: timestamp }, ["user", "expiresAt"]),
   CurrentSessionData: strictObject({ user: schemaReference("PublicUser") }, ["user"]),
   LogoutData: strictObject({ loggedOut: { type: "boolean", const: true } }, ["loggedOut"]),
+  WhatsAppWebhookReceipt: strictObject({ received: nonNegativeInteger, applied: nonNegativeInteger }, ["received", "applied"]),
   ReauthenticationData: strictObject({ user: schemaReference("PublicUser"), reauthenticatedAt: timestamp }, ["user", "reauthenticatedAt"]),
   ManagedUserList: arrayOf(schemaReference("ManagedUser")),
   ManagedSessionList: arrayOf(schemaReference("ManagedSession"), { maxItems: 100 }),
@@ -530,6 +539,9 @@ const supportSchemas = {
   SearchQuery: { ...stringSchema(2, 200), pattern: "^\\s*\\S(?:[\\s\\S]*\\S|\\S)\\s*$" },
   SearchTypes: { type: "string", pattern: "^(REQUEST|ITEM)(\\s*,\\s*(REQUEST|ITEM))*$" },
   NotificationFilter: { type: "string", enum: ["ALL", "UNREAD", "ACTIONABLE", "CRITICAL"] },
+  WebhookMode: { type: "string", enum: ["subscribe"] },
+  WebhookVerifyToken: stringSchema(1, 200),
+  WebhookChallenge: { type: "string", maxLength: 200, pattern: "^[A-Za-z0-9_-]+$" },
   ResponseMeta: metaSchema,
   ErrorEnvelope: strictObject({
     error: strictObject({ code: stringSchema(1, 100), message: stringSchema(1, 1000), details: { type: "object", additionalProperties: true }, correlationId: stringSchema(1, 100) }, ["code", "message", "correlationId"])
@@ -557,11 +569,12 @@ function headerParameter(header) {
     "x-correlation-id": { type: "string", minLength: 1, maxLength: 100, pattern: "^[A-Za-z0-9._:-]+$" },
     "x-csrf-token": stringSchema(1, 500), "idempotency-key": nonBlankStringSchema(1, 200),
     "if-match": { type: "string", pattern: "^(?:[1-9][0-9]{0,14}|\\\"[1-9][0-9]{0,14}\\\"|W/\\\"[1-9][0-9]{0,14}\\\")$" }, "last-event-id": stringSchema(1, 200),
-    "x-duplicate-override": { type: "string", enum: ["true"] }
+    "x-duplicate-override": { type: "string", enum: ["true"] }, "x-hub-signature-256": { type: "string", pattern: "^sha256=[0-9a-fA-F]{64}$" }
   };
   const names = {
     "x-correlation-id": "X-Correlation-Id", "x-csrf-token": "X-CSRF-Token", "idempotency-key": "Idempotency-Key",
-    "if-match": "If-Match", "last-event-id": "Last-Event-ID", "x-duplicate-override": "X-Duplicate-Override"
+    "if-match": "If-Match", "last-event-id": "Last-Event-ID", "x-duplicate-override": "X-Duplicate-Override",
+    "x-hub-signature-256": "X-Hub-Signature-256"
   };
   return { name: names[header.name], in: "header", required: header.required, schema: schemas[header.name] };
 }
@@ -690,8 +703,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
-  if (API_OPERATIONS.length !== 76 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 71) throw new Error("The audited API surface must remain exactly 76 operations across 71 paths.");
+  // 78/72 since PROD-402 added PUT /session/alert-contact, PUT /users/{userId}/on-call and GET/POST /webhooks/whatsapp (2026-10-08).
+  if (API_OPERATIONS.length !== 78 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 72) throw new Error("The audited API surface must remain exactly 78 operations across 72 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

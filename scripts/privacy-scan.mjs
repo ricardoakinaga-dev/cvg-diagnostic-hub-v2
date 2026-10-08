@@ -18,7 +18,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const SYNTHETIC_EMAIL_DOMAIN = /(?:^|\.)(?:local|localhost|example|invalid|test)$|^example\.(?:org|com|net)$|\.example\.(?:org|com|net)$/i;
 // `host` is the placeholder the redaction tests use; `${...}` is a Compose variable.
 const LOOPBACK_OR_SYNTHETIC_HOST = /^(?:localhost|host|127\.0\.0\.1|\[::1\]|postgres|db|\$\{[^}]+\}|[a-z0-9.-]+\.(?:local|localhost|example|invalid|test))$|^(?:[a-z0-9-]+\.)*example\.(?:org|com|net)$/i;
-const SERVER_ONLY_SETTINGS = ["SESSION_SECRET", "TRUST_PROXY_SHARED_SECRET", "DATABASE_URL", "MIGRATION_DATABASE_URL", "DATABASE_ADMIN_URL", "STORAGE_SECRET_KEY", "STORAGE_ACCESS_KEY", "MALWARE_SCANNER_API_KEY", "METRICS_SCRAPE_TOKEN", "DEMO_PASSWORD", "BOOTSTRAP_ADMIN_PASSWORD", "POSTGRES_PASSWORD"];
+const SERVER_ONLY_SETTINGS = ["SESSION_SECRET", "TRUST_PROXY_SHARED_SECRET", "DATABASE_URL", "MIGRATION_DATABASE_URL", "DATABASE_ADMIN_URL", "STORAGE_SECRET_KEY", "STORAGE_ACCESS_KEY", "MALWARE_SCANNER_API_KEY", "METRICS_SCRAPE_TOKEN", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_APP_SECRET", "WHATSAPP_VERIFY_TOKEN", "DEMO_PASSWORD", "BOOTSTRAP_ADMIN_PASSWORD", "POSTGRES_PASSWORD"];
 
 const EMAIL = /[A-Za-z0-9._%+-]+@((?:[A-Za-z0-9-]+\.)+[A-Za-z]{2,})/g;
 const CPF = /\b\d{3}\.\d{3}\.\d{3}-\d{2}\b/g;
