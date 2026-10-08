@@ -1,0 +1,24 @@
+# Prometheus scrape configuration for the CVG Diagnostics Hub (PROD-511).
+#
+# The application only answers behind the edge proxy in production (the proxy
+# injects the client identity the rate limiter requires), so Prometheus scrapes
+# the public HTTPS endpoint with the static METRICS_SCRAPE_TOKEN as a bearer.
+# Replace hub.example.org with APP_DOMAIN and mount the token file read-only.
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: cvg-hub
+    scheme: https
+    metrics_path: /api/v1/metrics
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/metrics-scrape-token
+    static_configs:
+      - targets: ["hub.example.org:443"]
+        labels:
+          environment: production
