@@ -102,6 +102,14 @@ const requestSchemas = {
   },
   ManagedUserDeactivate: strictObject({ expectedVersion, reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
   ManagedUserPasswordReset: strictObject({ expectedVersion }),
+  UserOnCallUpdate: strictObject({ onCall: { type: "boolean" }, expectedVersion, reason: normalizedTextSchema(1, 500) }, ["onCall"]),
+  AlertContactUpdate: {
+    ...strictObject({
+      whatsappPhone: { oneOf: [{ ...stringSchema(1, 40), pattern: "^[0-9+()\\s.-]+$", "x-runtime-validation": "normalized to E.164; 10 or 11 digits without a country code are a Brazilian number with area code" }, { type: "null" }] },
+      consent: { type: "boolean", const: true }
+    }, ["whatsappPhone"]),
+    "x-cross-field-constraints": ["a non-null whatsappPhone requires consent=true", "whatsappPhone=null removes the number and its consent"]
+  },
   UserRoleUpdate: {
     ...strictObject({
       role: { type: "string", enum: roleCodes }, departmentCode: normalizedDepartmentCodeSchema,
@@ -116,7 +124,7 @@ const requestSchemas = {
     ...strictObject({
     code: normalizedCatalogCodeSchema, name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
     departmentCode: normalizedDepartmentCodeSchema, workflowType: { type: "string", enum: ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] },
-    requiresSample: { type: "boolean" }, requiresSchedule: { type: "boolean" }, allowsAttachment: { type: "boolean" },
+    requiresSample: { type: "boolean" }, sampleType: normalizedTextSchema(1, 60), requiresSchedule: { type: "boolean" }, allowsAttachment: { type: "boolean" },
     resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] }, duplicateOfServiceId: identifier, slaHours: schemaReference("SlaHours")
     }, ["code", "name", "category", "departmentCode", "workflowType", "requiresSample", "requiresSchedule", "allowsAttachment", "resultSchema", "slaHours"]),
     oneOf: [
@@ -128,10 +136,14 @@ const requestSchemas = {
       "category=IMAGING requires workflowType=RADIOLOGY or ULTRASOUND"
     ]
   },
+  CatalogImportRequest: strictObject({
+    services: stringSchema(1, 1000000), analytes: stringSchema(1, 1000000), dryRun: { type: "boolean" }
+  }, ["services"]),
   DiagnosticServicePatch: {
     ...strictObject({
     name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] }, departmentCode: normalizedDepartmentCodeSchema,
     workflowType: { type: "string", enum: ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] }, requiresSample: { type: "boolean" },
+    sampleType: { oneOf: [normalizedTextSchema(1, 60), { type: "null" }] },
     requiresSchedule: { type: "boolean" }, active: { type: "boolean" }, allowsAttachment: { type: "boolean" },
     resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] }, slaHours: schemaReference("SlaHours"), expectedVersion
     }),
@@ -229,13 +241,18 @@ const aggregateStatusSchema = { type: "string", enum: ["REQUESTED", "IN_PROGRESS
 const resultVersionStateSchema = { type: "string", enum: ["DRAFT", "RELEASED", "SUPERSEDED", "VOIDED"] };
 const arrayOf = (schema, options = {}) => ({ type: "array", items: schema, ...options });
 
-const publicUserSchema = strictObject({
+const userIdentityProperties = {
   id: identifier, email: { type: "string", format: "email", maxLength: 320 }, displayName: stringSchema(1, 160),
   role: { type: "string", enum: roleCodes }, departmentCode: stringSchema(1, 60),
   managedDepartmentCodes: arrayOf(stringSchema(1, 60), { maxItems: 20 }), timezone: stringSchema(1, 80), mustChangePassword: { type: "boolean" }
+};
+const publicUserSchema = strictObject({
+  ...userIdentityProperties, onCall: { type: "boolean" },
+  alertContact: strictObject({ maskedPhone: stringSchema(8, 20), consentAt: timestamp }, ["maskedPhone", "consentAt"])
 }, ["id", "email", "displayName", "role", "departmentCode", "timezone"]);
 const managedUserSchema = strictObject({
-  ...publicUserSchema.properties, serviceCodes: arrayOf(normalizedCatalogCodeSchema, { maxItems: 200 }), active: { type: "boolean" }, createdAt: timestamp, version: positiveVersion
+  ...userIdentityProperties, serviceCodes: arrayOf(normalizedCatalogCodeSchema, { maxItems: 200 }), active: { type: "boolean" }, createdAt: timestamp, version: positiveVersion,
+  onCall: { type: "boolean" }, alertContactReady: { type: "boolean" }
 }, ["id", "email", "displayName", "role", "departmentCode", "timezone", "active", "createdAt", "version"]);
 const patientSchema = strictObject({
   id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), breed: stringSchema(1, 100),
@@ -283,7 +300,7 @@ const structuredLaboratoryResultCommandSchema = strictObject({
 }, ["kind", "panelCode", "panelVersion", "observations"]);
 const diagnosticServiceSchema = strictObject({
   id: identifier, code: stringSchema(2, 60), name: stringSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
-  departmentCode: stringSchema(1, 60), workflowType: workflowSchema, requiresSample: { type: "boolean" }, requiresSchedule: { type: "boolean" },
+  departmentCode: stringSchema(1, 60), workflowType: workflowSchema, requiresSample: { type: "boolean" }, sampleType: stringSchema(1, 60), requiresSchedule: { type: "boolean" },
   allowsAttachment: { type: "boolean" }, active: { type: "boolean" }, resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] },
   resultTemplate: schemaReference("LaboratoryPanelTemplate"),
   slaHours: schemaReference("SlaHours"), version: positiveVersion
@@ -398,6 +415,14 @@ const responseDataSchemas = {
   JsonObject: { type: "object", additionalProperties: schemaReference("JsonValue"), maxProperties: 100 },
   PublicUser: publicUserSchema,
   ManagedUser: managedUserSchema,
+  CatalogImportReport: strictObject({
+    applied: { type: "boolean" }, dryRun: { type: "boolean" },
+    summary: strictObject({ create: nonNegativeInteger, update: nonNegativeInteger, unchanged: nonNegativeInteger, error: nonNegativeInteger }, ["create", "update", "unchanged", "error"]),
+    rows: arrayOf(strictObject({
+      line: { type: "integer", minimum: 1 }, code: stringSchema(0, 100), action: { type: "string", enum: ["CREATE", "UPDATE", "UNCHANGED", "ERROR"] },
+      changes: arrayOf(stringSchema(1, 1000)), errors: arrayOf(stringSchema(1, 1000))
+    }, ["line", "code", "action"]))
+  }, ["applied", "dryRun", "summary", "rows"]),
   ManagedUserCreation: strictObject({ ...managedUserSchema.properties, initialPassword: stringSchema(12, 200) }, managedUserSchema.required),
   ManagedSession: strictObject({
     id: identifier, userId: identifier, userDisplayName: stringSchema(1, 160), userEmail: { type: "string", format: "email", maxLength: 320 },
@@ -691,8 +716,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 76/70 since PROD-406 added open/close encounter; 74/69 since PROD-201 added POST /session/password/change (2026-10-08).
-  if (API_OPERATIONS.length !== 76 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 70) throw new Error("The audited API surface must remain exactly 76 operations across 70 paths.");
+  // 77/72 since PROD-407 added POST /diagnostic-services/import (2026-10-08); 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
+  if (API_OPERATIONS.length !== 77 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 72) throw new Error("The audited API surface must remain exactly 77 operations across 72 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

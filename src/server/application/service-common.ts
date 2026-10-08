@@ -82,7 +82,9 @@ export function managedUser(user: User): ManagedUser {
     timezone: user.timezone,
     active: user.active !== false,
     createdAt: user.createdAt,
-    version: user.version
+    version: user.version,
+    onCall: user.onCall === true,
+    alertContactReady: Boolean(user.whatsappPhone && user.whatsappConsentAt)
   };
 }
 

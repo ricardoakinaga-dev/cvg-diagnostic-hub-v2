@@ -23,6 +23,7 @@ const EXPECTED_PERMISSION_ANCHORS = Object.freeze({
   updateUserRole: ["user_role.manage"],
   deactivateUser: ["user_role.manage"],
   regenerateUserPassword: ["user_role.manage"],
+  updateUserOnCall: ["user_role.manage"],
   reauthenticate: [],
   getPatientDiagnostics: ["patient.view", "diagnostic.timeline.view"],
   updateAdmissionContext: ["admission.context.manage"],
@@ -162,8 +163,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(76);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 70);
+    expect(API_OPERATIONS).toHaveLength(79);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 73);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 

@@ -65,7 +65,7 @@ export function toApiErrorResponse(
   if (isApiErrorLike(error)) {
     const safeDetails = error.details
       ? Object.fromEntries(
-          Object.entries(error.details).filter(([key]) => ["currentVersion", "retryable", "existingRequestCodes", "nextAction"].includes(key))
+          Object.entries(error.details).filter(([key]) => ["currentVersion", "retryable", "existingRequestCodes", "nextAction", "importReport"].includes(key))
         )
       : undefined;
     return {

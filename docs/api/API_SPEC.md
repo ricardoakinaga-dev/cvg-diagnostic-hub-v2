@@ -55,7 +55,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change` | authenticated session boundary |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact` | authenticated session boundary |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
@@ -64,8 +64,8 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | Results | `GET /results/{id}`, `GET /results/{id}/versions` | result scope |
 | Reports/attachments | `GET /reports/{id}`, upload session/content/finalize/download | result + file scope |
 | Notifications | `GET /notifications`, `POST /notifications/{id}/acknowledge` | recipient |
-| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `GET /reason-codes`, admin commands | config permission |
-| Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
+| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `POST /diagnostic-services/import`, `GET /reason-codes`, admin commands | config permission |
+| Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
 | Management control | `GET /management/overview` | `dashboard.view` + `user_role.manage`; one scoped snapshot for requests, pending work, departments and operational indicators |
 | Search | `GET /search` | scoped search |
 | Audit/timeline | `GET /audit-events`, `GET /timeline` | scoped/manager |
@@ -87,6 +87,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /session/logout` | authenticated active session | revokes the current session and clears cookies |
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
+| `PUT /session/alert-contact` | authenticated active session (not a temporary password) | PROD-402: only the user registers their own WhatsApp number for critical-result alerts. `{ whatsappPhone, consent: true }` stores it in E.164 (10 or 11 digits without a country code are read as Brazilian) with the consent time; `{ whatsappPhone: null }` removes both. The response and `GET /session/me` return only `alertContact.maskedPhone` and `consentAt`; the audit event `AlertContactUpdated` never carries the number |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
@@ -136,6 +137,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /diagnostic-services/{serviceId}/result-template` | `service.catalog.view` | executor service scope; returns the configured versioned template only |
 | `GET /diagnostic-services?includeInactive=true` | `service.catalog.manage` | admin/delegated manager scope; inactive values remain visible only for configuration |
 | `POST /diagnostic-services` | `service.catalog.manage` | admin/delegated manager policy; creates a versioned catalog entry |
+| `POST /diagnostic-services/import` | `service.catalog.manage` | admin/delegated manager policy checked per department of each sheet row; `Idempotency-Key` required; see [Catalog import](#catalog-import-post-diagnostic-servicesimport) |
 | `PATCH /diagnostic-services/{id}` | `service.catalog.manage` | admin/delegated manager policy; all editable fields are versioned, while referenced structural changes fail safely with `CATALOG_IN_USE` |
 | `POST /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
 | `PATCH /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
@@ -147,7 +149,8 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /users` | `user_role.manage` | ADMIN or delegated MANAGER; only manageable users in the actor's scope; safe fields only |
 | `POST /users` | `user_role.manage` | ADMIN or delegated MANAGER; operational roles only for delegated managers; recent reauthentication, reason, confirmation and audit; ADMIN may define `managedDepartmentCodes` for a new MANAGER |
 | `POST /users/{id}/roles` | `user_role.manage` | ADMIN or delegated MANAGER target scope; recent password reauthentication, target `expectedVersion`, reason, confirmation and audit; ADMIN may revise a MANAGER's `managedDepartmentCodes` |
-| `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit |
+| `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit; also takes the user off call |
+| `PUT /users/{id}/on-call` | `user_role.manage` | PROD-402: ADMIN or delegated MANAGER target scope; `{ onCall, expectedVersion }` with an idempotency key; an inactive user cannot go on call; audits `UserOnCallUpdated`. The user list shows `onCall` and `alertContactReady`, never the number |
 | `GET /management/overview` | `dashboard.view`, `user_role.manage` | active MANAGER only; data is filtered to own department plus explicitly managed diagnostic departments |
 | `GET /dashboard` | `dashboard.view` | department and patient scope; bounded operational indicators only |
 | `GET /audit-events` | `audit.view` | manager/admin or scoped audit policy |
@@ -266,11 +269,11 @@ Result release cannot reference attachment with `PENDING`, `FAILED` or `QUARANTI
 
 Administrative commands are explicit, audited and protected:
 
-- `POST /diagnostic-services` and `PATCH /diagnostic-services/{id}`;
+- `POST /diagnostic-services`, `PATCH /diagnostic-services/{id}` and `POST /diagnostic-services/import`;
 - `POST/PATCH /sla-policies/{id}`;
 - `POST/PATCH /critical-result-policies/{id}`;
 - `POST /reason-codes` and `PATCH /reason-codes/{id}`;
-- `GET/POST /users`, `POST /users/{id}/roles` and `DELETE /users/{id}`.
+- `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call` and `DELETE /users/{id}`.
 
 No endpoint allows deleting a referenced service, policy or reason; deactivate/version instead. User deletion is also intentionally a soft deactivation: active sessions are revoked and the audit trail remains intact.
 
@@ -281,3 +284,12 @@ No endpoint allows deleting a referenced service, policy or reason; deactivate/v
 - Error code list is shared with frontend types.
 - Commands emit the event names in [`../spec/REALTIME.md`](../spec/REALTIME.md) and [`../spec/STATE_MACHINES.md`](../spec/STATE_MACHINES.md).
 - Integration tests exercise API middleware, persistence, authorization and outbox—not only service methods.
+
+### Catalog import (`POST /diagnostic-services/import`)
+
+Operation `importDiagnosticServices` (tag Catalog) validates or applies the catalog CSV templates described in [CATALOG_IMPORT.md](../operations/CATALOG_IMPORT.md) (D-035). Body (`CatalogImportRequest`, JSON, strict): `services` (CSV text, 1 to 1,000,000 characters), `analytes` (optional CSV text) and `dryRun` (optional boolean). The headers must include `Idempotency-Key`; the body is subject to the 1 MiB JSON limit.
+
+- Response `data` (`CatalogImportReport`): `{ applied, dryRun, summary: { create, update, unchanged, error }, rows: [{ line, code, action: CREATE|UPDATE|UNCHANGED|ERROR, changes?, errors? }] }`. `line` is the line of the CSV file.
+- `dryRun: true` only plans and never writes. A real run applies every row in one transaction and only when no row is `ERROR`; otherwise nothing is written and the response is `422 CATALOG_IMPORT_INVALID` whose `error.details.importReport` carries the same report with `applied: false`.
+- Permission `service.catalog.manage` is evaluated per department of each row: a delegated MANAGER gets `ERROR` rows for other departments. Structural changes of an exam referenced by items are `ERROR` rows with the `CATALOG_IN_USE` message.
+- Re-sending the same sheet returns only `UNCHANGED` rows and writes nothing. Each created or changed service emits its usual audit event (`DiagnosticServiceCreated` or `DiagnosticServiceUpdated`, with `source: CATALOG_IMPORT`) and the run emits one `CatalogImported` summary event.

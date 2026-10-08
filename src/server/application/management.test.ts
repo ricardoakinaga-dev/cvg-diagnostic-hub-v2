@@ -428,3 +428,30 @@ describe("management control center", () => {
     expect(overview.pending[0]).toMatchObject({ nextAction: expect.any(String), deepLink: expect.stringContaining(`/requests/${request.id}`) });
   });
 });
+
+describe("catalog sample type (D8/D10)", () => {
+  it("stores, lists, changes and clears the sample type of a laboratory service", async () => {
+    const { store, service, admin } = setup();
+    const created = await service.createDiagnosticService(admin, {
+      code: "URINALYSIS", name: "Urinálise", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY",
+      requiresSample: true, sampleType: "  Urina  ", requiresSchedule: false, allowsAttachment: false, resultSchema: "NARRATIVE",
+      slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, idempotencyKey: "catalog-urinalysis"
+    });
+    expect(created.sampleType).toBe("Urina");
+    expect((await service.listServices(admin)).find((entry) => entry.id === created.id)?.sampleType).toBe("Urina");
+
+    const changed = await service.updateDiagnosticService(admin, created.id, { sampleType: "Urina estéril", expectedVersion: created.version, idempotencyKey: "catalog-urinalysis-type" });
+    expect(changed.sampleType).toBe("Urina estéril");
+    const kept = await service.updateDiagnosticService(admin, created.id, { name: "Urinálise completa", expectedVersion: changed.version, idempotencyKey: "catalog-urinalysis-name" });
+    expect(kept.sampleType).toBe("Urina estéril");
+    const cleared = await service.updateDiagnosticService(admin, created.id, { sampleType: null, expectedVersion: kept.version, idempotencyKey: "catalog-urinalysis-clear" });
+    expect(cleared).not.toHaveProperty("sampleType");
+    expect(store.getState().services.find((entry) => entry.id === created.id)).not.toHaveProperty("sampleType");
+    const withoutType = await service.createDiagnosticService(admin, {
+      code: "GLUCOSE", name: "Glicose", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY",
+      requiresSample: true, requiresSchedule: false, allowsAttachment: false, resultSchema: "NARRATIVE",
+      slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, idempotencyKey: "catalog-glucose"
+    });
+    expect(withoutType).not.toHaveProperty("sampleType");
+  });
+});

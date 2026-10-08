@@ -28,6 +28,12 @@ export interface User extends Actor {
   version: number;
   /** Temporary credentials can only establish a session for password replacement. */
   mustChangePassword?: boolean;
+  /** PROD-402: E.164 number for critical-result alerts over WhatsApp, set only by the user with consent. */
+  whatsappPhone?: string;
+  /** PROD-402: when the user consented to receive the alerts on whatsappPhone. */
+  whatsappConsentAt?: Timestamp;
+  /** PROD-402: set by user administration; the ON_CALL rule of the critical policy picks it within the department. */
+  onCall?: boolean;
   /** Ephemeral authentication context; never persisted or returned as a user field. */
   sessionId?: string;
   reauthenticatedAt?: Timestamp;
@@ -116,6 +122,8 @@ export interface DiagnosticService {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  /** Tube or material the label asks the collector for (D8/D10); free text from the catalog sheet. */
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   active: boolean;
