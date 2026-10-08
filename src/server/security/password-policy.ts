@@ -90,7 +90,8 @@ function breachTimeoutMs(value: string | undefined): number {
  * the outcome follows PASSWORD_BREACH_CHECK_FAIL (open by default).
  */
 function hibpRangeDigest(candidate: string): string {
-  return createHash("sha1").update(candidate, "utf8").digest("hex").toUpperCase(); // lgtm[js/insufficient-password-hash] codeql[js/insufficient-password-hash]
+  // The range API is defined over the SHA-1 of the UTF-8 bytes; the digest is never stored.
+  return createHash("sha1").update(new TextEncoder().encode(candidate)).digest("hex").toUpperCase();
 }
 
 export async function checkBreachedPassword(

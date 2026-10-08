@@ -40,7 +40,7 @@ describe("password reset helpers", () => {
     const a = createPasswordResetGrant("admin-1", {}, Date.parse("2026-10-08T10:00:00.000Z"));
     const b = createPasswordResetGrant("admin-1");
     expect(a.token).not.toBe(b.token);
-    expect(a.grant).toEqual({ tokenHash: hashResetToken(a.token), issuedAt: "2026-10-08T10:00:00.000Z", expiresAt: "2026-10-08T11:00:00.000Z", issuedBy: "admin-1" });
+    expect(a.grant).toEqual({ tokenHash: hashResetToken(a.token, {}), issuedAt: "2026-10-08T10:00:00.000Z", expiresAt: "2026-10-08T11:00:00.000Z", issuedBy: "admin-1" });
     expect(JSON.stringify(a.grant)).not.toContain(a.token);
     expect(passwordResetUrl("tok", { APP_ORIGIN: "https://hub.example///" })).toBe("https://hub.example/reset-password?token=tok");
     expect(passwordResetUrl("tok", {})).toBe("/reset-password?token=tok");

@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from "node:crypto";
 import type { PasswordResetGrant, StateStore, StoreState, User } from "../domain/models";
 import { findById } from "../domain/state-index";
 import { ApiError } from "../http/envelope";
@@ -16,14 +16,17 @@ export function passwordResetTtlMs(environment: Readonly<Record<string, string |
   return Math.min(MAX_TTL_MS, Math.max(MIN_TTL_MS, Math.trunc(parsed)));
 }
 
+const RESET_TOKEN_PEPPER_FALLBACK = "cvg-reset-token-pepper";
+
 /**
- * Fingerprint of the reset token. The input is 32 random bytes, not a human
- * password, so a plain SHA-256 is the right primitive (no stretching needed:
- * the secret cannot be guessed). CodeQL's password-hash heuristic flags it by
- * name only.
+ * Fingerprint of the reset token, keyed by the server secret: scrypt over the
+ * 32 random bytes with SESSION_SECRET as salt. A copy of the users table alone
+ * cannot be turned into a usable link, and rotating SESSION_SECRET voids every
+ * pending link (sessions die with it anyway).
  */
-export function hashResetToken(token: string): string {
-  return createHash("sha256").update(Buffer.from(token, "utf8")).digest("hex"); // lgtm[js/insufficient-password-hash] codeql[js/insufficient-password-hash]
+export function hashResetToken(token: string, environment: Readonly<Record<string, string | undefined>> = process.env): string {
+  const pepper = environment.SESSION_SECRET?.trim() || RESET_TOKEN_PEPPER_FALLBACK;
+  return scryptSync(token, pepper, 32).toString("hex");
 }
 
 /** Builds a fresh grant; the plaintext token is returned once and never stored. */
@@ -31,7 +34,7 @@ export function createPasswordResetGrant(issuedBy: string, environment: Readonly
   const token = randomBytes(32).toString("base64url");
   return {
     token,
-    grant: { tokenHash: hashResetToken(token), issuedAt: new Date(nowMs).toISOString(), expiresAt: new Date(nowMs + passwordResetTtlMs(environment)).toISOString(), issuedBy }
+    grant: { tokenHash: hashResetToken(token, environment), issuedAt: new Date(nowMs).toISOString(), expiresAt: new Date(nowMs + passwordResetTtlMs(environment)).toISOString(), issuedBy }
   };
 }
 
@@ -81,7 +84,7 @@ export async function completePasswordReset(
   correlationId: string,
   environment: BreachCheckEnvironment = process.env
 ): Promise<{ email: string }> {
-  const tokenHash = hashResetToken(token);
+  const tokenHash = hashResetToken(token, environment);
   const state = await store.readState();
   const user = userForToken(state, tokenHash);
   if (!user?.passwordReset) {
