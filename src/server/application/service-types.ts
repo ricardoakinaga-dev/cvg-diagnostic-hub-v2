@@ -78,8 +78,10 @@ export type PatientCreateResult = {
 };
 
 export interface ReceiveSampleInput extends CommandMeta {
-  accessionCode: string;
-  sampleType: string;
+  /** Scanned or typed code; optional when the item has a system-generated sample. */
+  accessionCode?: string;
+  /** Defaults to the expected sample's type (catalog sampleType). */
+  sampleType?: string;
 }
 
 export interface RecollectionInput extends CommandMeta {
@@ -412,6 +414,8 @@ export interface RequestView extends DiagnosticRequest {
   patient: StoreState["patients"][number];
   encounter: StoreState["encounters"][number];
   items: Array<DiagnosticItem & { service: DiagnosticService; procedureVersion?: number }>;
+  /** Samples linked to the visible items, including system-generated EXPECTED ones. */
+  samples: Sample[];
 }
 
 export interface ResultView {
@@ -428,6 +432,16 @@ export interface ItemView {
   request: DiagnosticRequest;
   patient: StoreState["patients"][number];
   service: DiagnosticService;
+}
+
+export interface SampleLabelView {
+  sample: { id: string; accessionCode: string; sampleType: string; status: Sample["status"] };
+  request: { id: string; requestCode: string; priority: DiagnosticRequest["priority"] };
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  services: Array<{ code: string; name: string }>;
+  encounter: { externalId: string };
+  requestedAt: string;
+  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; svg: string } };
 }
 
 export type SampleCommandResult = { sample: Sample; items: DiagnosticItem[]; request: RequestView };
@@ -480,7 +494,7 @@ export interface PatientWorkspaceItemContext {
   attachments: PatientWorkspaceAttachmentSummary[];
 }
 
-export type PatientWorkspaceRequestView = Omit<RequestView, "items"> & {
+export type PatientWorkspaceRequestView = Omit<RequestView, "items" | "samples"> & {
   items: Array<RequestView["items"][number] & { workspaceContext: PatientWorkspaceItemContext }>;
 };
 

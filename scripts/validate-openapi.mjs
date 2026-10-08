@@ -178,7 +178,7 @@ const requestSchemas = {
   VersionCommand: strictObject({ expectedVersion }),
   CancelCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), reason: normalizedTextSchema(1, 500), itemIds: { type: "array", maxItems: 20, uniqueItems: true, items: normalizedTextSchema(1, 100) }, expectedVersion }, ["reasonCode"]),
   RejectCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), note: normalizedTextSchema(1, 2000), expectedVersion }, ["reasonCode"]),
-  SampleCommand: strictObject({ accessionCode: accessionCodeSchema, sampleType: normalizedTextSchema(1, 100), expectedVersion }, ["accessionCode", "sampleType"]),
+  SampleCommand: strictObject({ accessionCode: accessionCodeSchema, sampleType: normalizedTextSchema(1, 100), expectedVersion }),
   RecollectionCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), note: normalizedTextSchema(1, 2000), expectedVersion }, ["reasonCode"]),
   ScheduleCommand: {
     ...strictObject({
@@ -299,8 +299,9 @@ const requestItemSchema = strictObject({ ...diagnosticItemSchema.properties, ser
 ]);
 requestItemSchema.properties.procedureVersion = positiveVersion;
 const requestViewSchema = strictObject({
-  ...diagnosticRequestSchema.properties, patient: schemaReference("Patient"), encounter: schemaReference("Encounter"), items: arrayOf(schemaReference("RequestItem"))
-}, [...diagnosticRequestSchema.required, "patient", "encounter", "items"]);
+  ...diagnosticRequestSchema.properties, patient: schemaReference("Patient"), encounter: schemaReference("Encounter"), items: arrayOf(schemaReference("RequestItem")),
+  samples: arrayOf(schemaReference("Sample"), { maxItems: 20 })
+}, [...diagnosticRequestSchema.required, "patient", "encounter", "items", "samples"]);
 const patientWorkspaceSampleSummarySchema = strictObject({
   id: identifier, requestId: identifier, accessionCode: accessionCodeSchema, sampleType: stringSchema(1, 100),
   status: { type: "string", enum: ["EXPECTED", "RECEIVED", "REJECTED", "REPLACED"] }, collectedAt: timestamp, receivedAt: timestamp
@@ -326,6 +327,18 @@ const patientWorkspaceRequestViewSchema = strictObject({
   ...diagnosticRequestSchema.properties, patient: schemaReference("Patient"), encounter: schemaReference("Encounter"),
   items: arrayOf(schemaReference("PatientWorkspaceRequestItem"))
 }, [...diagnosticRequestSchema.required, "patient", "encounter", "items"]);
+const sampleLabelSchema = strictObject({
+  sample: strictObject({ id: identifier, accessionCode: accessionCodeSchema, sampleType: stringSchema(1, 100), status: { type: "string", enum: ["EXPECTED", "RECEIVED", "REJECTED", "REPLACED"] } }, ["id", "accessionCode", "sampleType", "status"]),
+  request: strictObject({ id: identifier, requestCode: stringSchema(1, 40), priority: { type: "string", enum: ["ROUTINE", "URGENT", "EMERGENCY"] } }, ["id", "requestCode", "priority"]),
+  patient: strictObject({ id: identifier, displayName: stringSchema(1, 120), species: stringSchema(1, 60), externalId: stringSchema(1, 80) }, ["id", "displayName", "species", "externalId"]),
+  services: arrayOf(strictObject({ code: stringSchema(1, 60), name: stringSchema(1, 120) }, ["code", "name"]), { maxItems: 20 }),
+  encounter: strictObject({ externalId: stringSchema(1, 80) }, ["externalId"]),
+  requestedAt: timestamp,
+  label: strictObject({
+    widthMm: { type: "number", minimum: 20, maximum: 150 }, heightMm: { type: "number", minimum: 20, maximum: 150 },
+    barcode: strictObject({ symbology: { type: "string", const: "code128" }, svg: stringSchema(1, 20000) }, ["symbology", "svg"])
+  }, ["widthMm", "heightMm", "barcode"])
+}, ["sample", "request", "patient", "services", "encounter", "requestedAt", "label"]);
 const itemViewSchema = strictObject({
   item: schemaReference("DiagnosticItem"), request: schemaReference("RequestView"), patient: schemaReference("Patient"), service: schemaReference("DiagnosticService")
 }, ["item", "request", "patient", "service"]);
@@ -420,6 +433,7 @@ const responseDataSchemas = {
   PatientWorkspaceRequestView: patientWorkspaceRequestViewSchema,
   ItemView: itemViewSchema,
   Sample: sampleSchema,
+  SampleLabel: sampleLabelSchema,
   PatientWorkspaceSampleSummary: patientWorkspaceSampleSummarySchema,
   Procedure: procedureSchema,
   ProcedureSchedule: procedureScheduleSchema,
@@ -678,8 +692,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 74/69 since PROD-201 added POST /session/password/change (2026-10-08).
-  if (API_OPERATIONS.length !== 74 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 69) throw new Error("The audited API surface must remain exactly 74 operations across 69 paths.");
+  // 74/69 since PROD-201 added POST /session/password/change; 75/70 since PROD-405 added GET /samples/{sampleId}/label (2026-10-08).
+  if (API_OPERATIONS.length !== 75 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 70) throw new Error("The audited API surface must remain exactly 75 operations across 70 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

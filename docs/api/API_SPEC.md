@@ -107,6 +107,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /diagnostic-items/{id}/start-processing` | `sample.process` | service must be Laboratory and state transition valid |
 | `POST /diagnostic-items/{id}/request-recollection` | `sample.recollection.request` | service must be Laboratory and reason required |
 | `POST /samples/{id}/receive-replacement` | `sample.replacement.receive` | active recollection chain and Laboratory scope |
+| `GET /samples/{id}/label` | `item.view` | request patient and service/department scope of a linked item |
 | `POST /diagnostic-items/{id}/schedule` | `procedure.schedule` | service must be RX/US; department/resource scope |
 | `POST /procedures/{id}/reschedule` | `procedure.reschedule` | service, resource and scheduling policy |
 | `POST /diagnostic-items/{id}/start-procedure` | `procedure.start` | executor service and scheduled window |
@@ -204,10 +205,11 @@ Cancellation never deletes. Partial item cancellation returns updated aggregate 
 
 ## 4. Laboratory commands
 
-- `POST /diagnostic-items/{id}/receive-sample` — body `accessionCode` or create sample metadata, sample type, expectedVersion.
+- `POST /diagnostic-items/{id}/receive-sample` — body `accessionCode` (optional), `sampleType` (optional), expectedVersion. When the item has a system-generated `EXPECTED` sample (created with the request, D-034), the code read from the label is optional: if sent it must equal the sample's code (`409 ACCESSION_MISMATCH`), a generated-format code with a wrong check character is `400 ACCESSION_INVALID`, and all items linked to the same sample become `RECEIVED`. `sampleType` defaults to the sample's catalog type and is required only when the catalog has none ("A definir"). For requests created before D-034, the legacy path keeps working: a hand-typed code is checked for duplicates (`409 CONFLICT`) and, when none is sent, the server generates one.
 - `POST /diagnostic-items/{id}/start-processing` — expectedVersion.
 - `POST /diagnostic-items/{id}/request-recollection` — reasonCode, note, affected sample ID, expectedVersion.
-- `POST /samples/{id}/receive-replacement` — accession/sample metadata and item links.
+- `POST /samples/{id}/receive-replacement` — same optional `accessionCode`/`sampleType` rules; the replacement sample already carries a generated accession from the moment the recollection is requested.
+- `GET /samples/{id}/label` (`getSampleLabel`) — printable label data: `sample` (id, accessionCode, sampleType, status), `request` (id, requestCode, priority), `patient` (id, displayName, species, externalId), `services` (code, name) of the items the reader may see, `encounter.externalId`, `requestedAt` and `label` (`widthMm`/`heightMm` from `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM`, `barcode.symbology` `code128` and `barcode.svg`, bars only, no text). Permission `item.view` with the same request/patient scope as `GET /diagnostic-items/{id}`; a sample outside the scope answers `404 SCOPE_DENIED`. The request view (`RequestView`) now lists the request's `samples`, so the UI shows the code before receipt.
 
 Each command verifies service workflow, actor role, patient/request consistency and idempotency. Response returns item, sample chain summary and next actions.
 

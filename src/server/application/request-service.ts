@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
-import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, PatientWorkspaceItemContext, PatientWorkspaceResultSummary, PatientWorkspaceSampleSummary, PatientWorkspaceAttachmentSummary, ReportView } from "./service-types";
+import type { SampleLabelView, CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, PatientWorkspaceItemContext, PatientWorkspaceResultSummary, PatientWorkspaceSampleSummary, PatientWorkspaceAttachmentSummary, ReportView } from "./service-types";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
@@ -10,6 +10,9 @@ import type { ApplicationServiceContext, PatientDiagnosticsAuxiliaryRead } from 
 import * as helpers from "./service-common";
 import { patientAuditScope, readPatientAuditEvents } from "./audit-read";
 import { reprojectRequestForActor } from "./request-projection";
+import { accessionPrefixFromEnv, generateAccessionCodes } from "../domain/accession";
+import { code128Svg } from "../domain/barcode-code128";
+import { labelDimensionsFromEnv } from "../domain/sample-label";
 import { encountersForPatient, findById, itemsForRequest, positionOfId, requestsForPatient } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
@@ -160,7 +163,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           updatedAt: createdAt,
           version: 1
         };
-        const items = input.items.map((entry, index) => {
+        const baseItems = input.items.map((entry, index) => {
           const service = services[index];
           const itemId = id("item");
           const note = entry.note ? requireText(entry.note, "note", MAX_NOTE_LENGTH) : undefined;
@@ -180,19 +183,37 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
             version: 1
           } satisfies DiagnosticItem;
         });
+        // D8: every item whose service needs a sample gets a system-generated
+        // EXPECTED sample so the label can be printed before collection. Items
+        // sharing the same catalog sampleType share one tube.
+        const groups: Array<{ sampleType: string; itemIds: string[] }> = [];
+        baseItems.forEach((item, index) => {
+          const service = services[index];
+          if (!service.requiresSample) return;
+          const catalogType = service.sampleType?.trim();
+          const group = catalogType ? groups.find((entry) => entry.sampleType === catalogType) : undefined;
+          if (group) group.itemIds.push(item.id);
+          else groups.push({ sampleType: catalogType || "A definir", itemIds: [item.id] });
+        });
+        const accessionCodes = groups.length ? generateAccessionCodes(originalState, createdAt, accessionPrefixFromEnv(), groups.length) : [];
+        const samples: Sample[] = groups.map((group, index) => ({ id: id("sample"), requestId, accessionCode: accessionCodes[index], sampleType: group.sampleType, status: "EXPECTED", itemIds: group.itemIds, version: 1 }));
+        const sampleByItem = new Map(samples.flatMap((sample) => sample.itemIds.map((itemId) => [itemId, sample.id] as const)));
+        const items: DiagnosticItem[] = baseItems.map((item) => ({ ...item, ...(sampleByItem.has(item.id) ? { currentSampleId: sampleByItem.get(item.id) } : {}) }));
         const nextRequest = { ...request, itemIds: items.map((item) => item.id) };
         const correlationId = meta.correlationId ?? id("corr");
         const audits = [
           createAudit("DiagnosticRequestCreated", currentActor.id, "DiagnosticRequest", request.id, correlationId, undefined, "REQUESTED", { requestCode, ...(duplicateOverrideReason ? { duplicateOverride: true, overrideReason: duplicateOverrideReason } : {}) }),
-          ...items.map((item) => createAudit("DiagnosticItemRequested", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, undefined, item.status, { serviceCode: serviceFor(originalState, item.serviceId).code }))
+          ...items.map((item) => createAudit("DiagnosticItemRequested", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, undefined, item.status, { serviceCode: serviceFor(originalState, item.serviceId).code })),
+          ...samples.map((sample) => createAudit("SampleExpected", currentActor.id, "Sample", sample.id, correlationId, undefined, "EXPECTED", { accessionCode: sample.accessionCode, itemIds: sample.itemIds.join(",") }))
         ];
         const nextState: StoreState = {
           ...originalState,
           protocolSequence: originalState.protocolSequence + 1,
           requests: [...originalState.requests, nextRequest],
           items: [...originalState.items, ...items],
+          samples: [...originalState.samples, ...samples],
           auditEvents: [...originalState.auditEvents, ...audits],
-          outbox: [...originalState.outbox, createOutbox("DiagnosticRequestCreated", "DiagnosticRequest", request.id, correlationId, { requestCode })]
+          outbox: [...originalState.outbox, createOutbox("DiagnosticRequestCreated", "DiagnosticRequest", request.id, correlationId, { requestCode, ...(samples.length ? { samples: samples.map((sample) => ({ id: sample.id, accessionCode: sample.accessionCode, itemIds: sample.itemIds })) } : {}) })]
         };
         const response = requestView(nextState, nextRequest);
         return { state: saveIdempotency(nextState, currentActor.id, scope, meta.idempotencyKey, response, { input, allowDuplicateOverride: meta.allowDuplicateOverride }), result: response };
@@ -360,7 +381,8 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
       const events = await readPatientAuditEvents(store, patientAuditScope(state, patient.id, visibleRequestIds, visibleItemIds));
       const last = pageRequests.at(-1);
       const nextCursor = last && pageRequests.length < afterCursor.length ? encodeKeysetCursor({ createdAt: last.createdAt, id: last.id }) : undefined;
-      const items = page.map((request) => ({
+      // The workspace carries its own per-item sample context; the request-level samples list is not repeated.
+      const items = page.map(({ samples: _samples, ...request }) => ({
         ...request,
         items: request.items.map((item) => ({
           ...item,
@@ -397,6 +419,29 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         nextCursor,
         limit,
         total: requests.length
+      };
+    },
+
+    async getSampleLabel(actor: User, sampleId: string): Promise<SampleLabelView> {
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const sample = findOrThrowScoped(findById(state.samples, sampleId));
+      const linkedItems = sample.itemIds.map((itemId) => itemFor(state, itemId));
+      // Same scoped read as getDiagnosticItem: an unscoped sample is a 404.
+      const visibleItems = linkedItems.filter((item) => canViewItem(state, currentActor, item));
+      requireItemPermission(state, currentActor, "item.view", visibleItems[0] ?? linkedItems[0]);
+      const request = requestFor(state, sample.requestId);
+      const patient = findOrThrow(findById(state.patients, request.patientId));
+      const encounter = findOrThrow(findById(state.encounters, request.encounterId));
+      const { widthMm, heightMm } = labelDimensionsFromEnv();
+      return {
+        sample: { id: sample.id, accessionCode: sample.accessionCode, sampleType: sample.sampleType, status: sample.status },
+        request: { id: request.id, requestCode: request.requestCode, priority: request.priority },
+        patient: { id: patient.id, displayName: patient.displayName, species: patient.species, externalId: patient.externalId },
+        services: visibleItems.map((item) => serviceFor(state, item.serviceId)).map((entry) => ({ code: entry.code, name: entry.name })),
+        encounter: { externalId: encounter.externalId },
+        requestedAt: request.createdAt,
+        label: { widthMm, heightMm, barcode: { symbology: "code128", svg: code128Svg(sample.accessionCode) } }
       };
     },
 

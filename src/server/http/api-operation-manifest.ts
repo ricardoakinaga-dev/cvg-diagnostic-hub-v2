@@ -53,6 +53,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   requestDiagnosticItemRecollection: "RecollectionCommandResult",
   createDiagnosticItemResult: "ResultCommandResult",
   receiveReplacementSample: "SampleCommandResult",
+  getSampleLabel: "SampleLabel",
   rescheduleProcedure: "ProcedureRescheduleCommandResult",
   createAttachmentUploadSession: "AttachmentSessionResult",
   uploadAttachmentContent: "AttachmentFinalizationResult",
@@ -379,6 +380,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/diagnostic-items/{itemId}/request-recollection", "requestDiagnosticItemRecollection", "Request recollection for a diagnostic item", "Diagnostics", jsonBody("RecollectionCommand"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "diagnosticItem.version" }),
   command("POST", "/diagnostic-items/{itemId}/results", "createDiagnosticItemResult", "Create a result draft for a diagnostic item", "Results", jsonBody("ResultDraftCommand"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "diagnosticItem.version", successStatus: 201, errorStatuses: JSON_COMMAND_WITH_POLICY_ERRORS }),
 
+  read("/samples/{sampleId}/label", "getSampleLabel", "Read the printable label of a sample", "Diagnostics"),
   command("POST", "/samples/{sampleId}/receive-replacement", "receiveReplacementSample", "Receive a replacement sample", "Diagnostics", jsonBody("SampleCommand"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "linkedDiagnosticItem.version" }),
   command("POST", "/procedures/{procedureId}/reschedule", "rescheduleProcedure", "Reschedule a procedure", "Diagnostics", jsonBody("ScheduleCommand"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "procedure.version" }),
 
@@ -505,6 +507,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   requestDiagnosticItemRecollection: authorization(["sample.recollection.request"], DEPARTMENT),
   createDiagnosticItemResult: authorization(["result.draft.create"], SERVICE),
   receiveReplacementSample: authorization(["sample.replacement.receive"], DEPARTMENT),
+  getSampleLabel: authorization(["item.view"], REQUEST),
   rescheduleProcedure: authorization(["procedure.reschedule"], DEPARTMENT),
   createAttachmentUploadSession: authorization(["attachment.upload_session"], SERVICE),
   uploadAttachmentContent: authorization(["attachment.finalize"], SERVICE),
@@ -561,6 +564,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   scheduleDiagnosticItem: [400, 401, 403, 404, 409, 415, 429, 500], startDiagnosticItemProcedure: [400, 401, 403, 404, 409, 415, 429, 500],
   markDiagnosticItemPerformed: [400, 401, 403, 404, 409, 415, 429, 500], requestDiagnosticItemRecollection: [400, 401, 403, 404, 409, 415, 429, 500],
   createDiagnosticItemResult: [400, 401, 403, 404, 409, 415, 422, 429, 500], receiveReplacementSample: [400, 401, 403, 404, 409, 415, 429, 500],
+  getSampleLabel: [401, 404, 429, 500],
   rescheduleProcedure: [400, 401, 403, 404, 409, 415, 429, 500], createAttachmentUploadSession: [400, 401, 403, 404, 409, 415, 429, 500],
   uploadAttachmentContent: [400, 401, 403, 404, 409, 415, 429, 500, 503], finalizeAttachment: [400, 401, 403, 404, 409, 415, 422, 429, 500],
   downloadAttachment: [401, 404, 429, 500, 503], getResult: [401, 404, 429, 500], listResultVersions: [401, 404, 429, 500],

@@ -10,6 +10,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { reprojectCommandRequest, reprojectRequestForActor } from "./request-projection";
 import { findById } from "../domain/state-index";
+import { accessionPrefixFromEnv, generateAccessionCode, isGeneratedAccessionFormat, validateAccessionCheckCharacter } from "../domain/accession";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -124,6 +125,42 @@ function validatedAccessionCode(value: string): string {
   return value;
 }
 
+// A scanned or typed code: shape first (400 VALIDATION_ERROR), then the check
+// character of system-generated codes (400 ACCESSION_INVALID). Legacy
+// hand-typed codes have no check character and are accepted as before.
+function scannedAccessionCode(value: string): string {
+  const code = validatedAccessionCode(value.trim());
+  if (isGeneratedAccessionFormat(code) && !validateAccessionCheckCharacter(code)) {
+    throw new ApiError("ACCESSION_INVALID", "O código lido é inválido. Leia a etiqueta novamente ou digite o código.", 400);
+  }
+  return code;
+}
+
+function canReceive(state: StoreState, actor: User, item: DiagnosticItem): boolean {
+  try {
+    requireItemPermission(state, actor, "sample.receive", item);
+    return true;
+  } catch (cause) {
+    if (cause instanceof ApiError) return false;
+    throw cause;
+  }
+}
+
+function assertMatchesExpected(scanned: string | undefined, expected: Sample): void {
+  if (scanned !== undefined && scannedAccessionCode(scanned) !== expected.accessionCode) {
+    throw new ApiError("ACCESSION_MISMATCH", "O código lido não corresponde à amostra esperada deste exame.", 409);
+  }
+}
+
+function resolvedSampleType(informed: string | undefined, expected?: Sample): string {
+  if (informed !== undefined && informed.trim() !== "") return requireText(informed, "sampleType", 100);
+  if (expected && expected.sampleType !== UNDEFINED_SAMPLE_TYPE) return expected.sampleType;
+  throw new ApiError("VALIDATION_ERROR", "Informe o tipo de amostra.", 400);
+}
+
+const UNDEFINED_SAMPLE_TYPE = "A definir";
+const LEGACY_PLACEHOLDER_PREFIX = "PENDING-";
+
 export function createWorkflowService({ store, storage }: ApplicationServiceContext) {
   const service = {
     async receiveSample(actor: User, itemIds: string[], input: ReceiveSampleInput) {
@@ -142,12 +179,28 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
           throw new ApiError("INVALID_STATE_TRANSITION", "A amostra só pode ser recebida para itens laboratoriais solicitados.", 409);
         }
         items.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
-        const accessionCode = validatedAccessionCode(input.accessionCode);
-        if (originalState.samples.some((sample) => sample.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
         const receivedAt = now();
-        const sample: Sample = { id: id("sample"), requestId: request.id, accessionCode, sampleType: requireText(input.sampleType, "sampleType", 100), status: "RECEIVED", itemIds: items.map((item) => item.id), receivedAt, receivedBy: currentActor.id, version: 1 };
-        const updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), receivedAt, currentSampleId: sample.id, version: item.version + 1 }));
-        let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples, sample] }, request, updatedItems);
+        // D8: items created after the accession labels already have an EXPECTED
+        // sample; one scan receives the whole tube. Older requests keep the
+        // legacy path, generating the code when none is sent.
+        const expectedIds = [...new Set(items.map((item) => item.currentSampleId))];
+        const expected = expectedIds.map((sampleId) => sampleId ? findById(originalState.samples, sampleId) : undefined).filter((entry): entry is Sample => entry?.status === "EXPECTED" && !entry.replacesSampleId);
+        if (expected.length > 1 || (expected.length === 1 && expectedIds.length > 1)) throw new ApiError("INVALID_STATE_TRANSITION", "Os itens selecionados pertencem a amostras diferentes.", 409);
+        let sample: Sample;
+        let updatedItems: DiagnosticItem[];
+        if (expected.length === 1) {
+          assertMatchesExpected(input.accessionCode, expected[0]);
+          sample = { ...expected[0], sampleType: resolvedSampleType(input.sampleType, expected[0]), status: "RECEIVED", receivedAt, receivedBy: currentActor.id, version: expected[0].version + 1 };
+          const tubeItems = sample.itemIds.map((itemId) => itemFor(originalState, itemId)).filter((item) => items.some((entry) => entry.id === item.id) || (item.status === "REQUESTED" && item.workflowType === "LABORATORY" && canReceive(originalState, currentActor, item)));
+          updatedItems = tubeItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), receivedAt, currentSampleId: sample.id, version: item.version + 1 }));
+        } else {
+          const accessionCode = input.accessionCode !== undefined && input.accessionCode.trim() !== "" ? scannedAccessionCode(input.accessionCode) : generateAccessionCode(originalState, receivedAt, accessionPrefixFromEnv());
+          if (originalState.samples.some((entry) => entry.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
+          sample = { id: id("sample"), requestId: request.id, accessionCode, sampleType: resolvedSampleType(input.sampleType), status: "RECEIVED", itemIds: items.map((item) => item.id), receivedAt, receivedBy: currentActor.id, version: 1 };
+          updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), receivedAt, currentSampleId: sample.id, version: item.version + 1 }));
+        }
+        const samples = expected.length === 1 ? originalState.samples.map((entry) => entry.id === sample.id ? sample : entry) : [...originalState.samples, sample];
+        let nextState = nextRequestState({ ...originalState, samples }, request, updatedItems);
         const correlationId = input.correlationId ?? id("corr");
         const audits = updatedItems.map((item) => createAudit("SampleReceived", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, "REQUESTED", "RECEIVED", { accessionCode: sample.accessionCode }));
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, ...audits], outbox: [...nextState.outbox, createOutbox("SampleReceived", "Sample", sample.id, correlationId, { accessionCode: sample.accessionCode, itemIds: sample.itemIds })] };
@@ -187,7 +240,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const reason = findOrThrow(originalState.reasonCodes.find((entry) => entry.type === "RECOLLECTION" && entry.code === input.reasonCode && entry.active), "VALIDATION_ERROR", "Motivo de recoleta inválido.");
         const rejectionNote = input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : undefined;
         const replacedSample: Sample = { ...sample, status: "REPLACED", rejectionCode: reason.code, rejectionNote, version: sample.version + 1 };
-        const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: `PENDING-${randomUUID().slice(0, 8).toUpperCase()}`, sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
+        const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: generateAccessionCode(originalState, now(), accessionPrefixFromEnv()), sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
         const updatedItems = linkedItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECOLLECTION_REQUIRED", item.workflowType), currentSampleId: replacement.id, version: item.version + 1 }));
         let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples.map((entry) => entry.id === sample.id ? replacedSample : entry), replacement] }, request, updatedItems);
         const requester = findOrThrow(findById(originalState.users, request.requesterId));
@@ -213,10 +266,17 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         guardedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
         if (expected.status !== "EXPECTED" || !expected.replacesSampleId) throw new ApiError("INVALID_STATE_TRANSITION", "A recoleta não está aguardando recebimento.", 409);
-        const accessionCode = validatedAccessionCode(input.accessionCode);
-        if (originalState.samples.some((sample) => sample.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
         const receivedAt = now();
-        const replacement: Sample = { ...expected, accessionCode, sampleType: requireText(input.sampleType, "sampleType", 100), status: "RECEIVED", receivedAt, receivedBy: currentActor.id, version: expected.version + 1 };
+        const placeholder = expected.accessionCode.startsWith(LEGACY_PLACEHOLDER_PREFIX);
+        let accessionCode = expected.accessionCode;
+        if (placeholder) {
+          // Recollections requested before PROD-405 carry a PENDING-xxxx placeholder.
+          accessionCode = input.accessionCode !== undefined && input.accessionCode.trim() !== "" ? scannedAccessionCode(input.accessionCode) : generateAccessionCode(originalState, receivedAt, accessionPrefixFromEnv());
+          if (originalState.samples.some((sample) => sample.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
+        } else {
+          assertMatchesExpected(input.accessionCode, expected);
+        }
+        const replacement: Sample = { ...expected, accessionCode, sampleType: resolvedSampleType(input.sampleType, expected), status: "RECEIVED", receivedAt, receivedBy: currentActor.id, version: expected.version + 1 };
         const request = requestFor(originalState, replacement.requestId);
         const items = replacement.itemIds.map((itemId) => itemFor(originalState, itemId));
         const updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), currentSampleId: replacement.id, receivedAt, version: item.version + 1 }));
@@ -440,7 +500,10 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         if (!["REQUESTED", "RECEIVED", "IN_PROGRESS"].includes(item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser rejeitado nesta fase.", 409);
         const updatedItem = { ...item, status: transitionItem(item.status, "REJECTED", item.workflowType), rejectionReason: input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : input.reasonCode, version: item.version + 1 };
         const sample = item.currentSampleId ? findById(originalState.samples, item.currentSampleId) : undefined;
-        const samples = sample ? originalState.samples.map((entry) => entry.id === sample.id ? { ...entry, status: "REJECTED" as const, rejectionCode: input.reasonCode, rejectionNote: input.note, version: entry.version + 1 } : entry) : originalState.samples;
+        // A pre-assigned tube still waiting for collection is shared with other
+        // active items: rejecting one exam only detaches it from the tube.
+        const sharedExpectedTube = sample?.status === "EXPECTED" && sample.itemIds.some((otherId) => otherId !== item.id && !["CANCELLED", "REJECTED", "COMPLETED"].includes(itemFor(originalState, otherId).status));
+        const samples = sample ? originalState.samples.map((entry) => entry.id !== sample.id ? entry : sharedExpectedTube ? { ...entry, itemIds: entry.itemIds.filter((otherId) => otherId !== item.id), version: entry.version + 1 } : { ...entry, status: "REJECTED" as const, rejectionCode: input.reasonCode, rejectionNote: input.note, version: entry.version + 1 }) : originalState.samples;
         const correlationId = input.correlationId ?? id("corr");
         let nextState = nextRequestState({ ...originalState, samples }, request, [updatedItem]);
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("DiagnosticItemRejected", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, item.status, "REJECTED", { reasonCode: input.reasonCode })], outbox: [...nextState.outbox, createOutbox("DiagnosticItemRejected", "DiagnosticRequestItem", item.id, correlationId, { reasonCode: input.reasonCode })] };

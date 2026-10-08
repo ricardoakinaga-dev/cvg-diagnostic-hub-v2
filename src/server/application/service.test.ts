@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createApplicationService } from "./service";
-import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
+import { createDemoState, syntheticHemogramContent, withoutPreassignedSamples } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 
 function setup() {
@@ -87,6 +87,8 @@ describe("diagnostic application service", () => {
       priority: "ROUTINE",
       items: [{ serviceId: "service-hemogram" }, { serviceId: "service-crp" }]
     }, { idempotencyKey: "request-lab" });
+    // Legacy path (request created before the generated accession): one tube for both items.
+    await store.transaction((state) => ({ state: withoutPreassignedSamples(state, request.id), result: undefined }));
 
     const received = await service.receiveSample(labActor, request.items.map((item) => item.id), {
       accessionCode: "ACC-0001",
@@ -117,7 +119,6 @@ describe("diagnostic application service", () => {
       idempotencyKey: "sample-replacement-invalid-accession"
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     const replacement = await service.receiveReplacement(labActor, recollection.replacement.id, {
-      accessionCode: "ACC-0002",
       sampleType: "EDTA",
       expectedVersion: recollection.items[0].version,
       idempotencyKey: "sample-replacement-receive"
@@ -140,12 +141,11 @@ describe("diagnostic application service", () => {
     }, { idempotencyKey: "request-duplicate-sample-items" });
 
     await expect(service.receiveSample(labActor, [request.items[0].id, request.items[0].id], {
-      accessionCode: "ACC-DUPLICATE-ITEM",
       sampleType: "EDTA",
       expectedVersion: request.items[0].version,
       idempotencyKey: "sample-duplicate-item"
     })).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
-    expect(store.getState().samples).toHaveLength(0);
+    expect(store.getState().samples.map((sample) => sample.status)).toEqual(["EXPECTED"]);
   });
 
   it("rejects stale item versions across sample receipt and recollection", async () => {
@@ -159,7 +159,6 @@ describe("diagnostic application service", () => {
     const item = request.items[0];
 
     await expect(service.receiveSample(labActor, [item.id], {
-      accessionCode: "ACC-STALE-1",
       sampleType: "EDTA",
       expectedVersion: item.version + 1,
       idempotencyKey: "sample-stale-receive"
@@ -167,7 +166,6 @@ describe("diagnostic application service", () => {
     expect(store.getState().items.find((entry) => entry.id === item.id)).toMatchObject({ status: "REQUESTED", version: item.version });
 
     const received = await service.receiveSample(labActor, [item.id], {
-      accessionCode: "ACC-FRESH-1",
       sampleType: "EDTA",
       expectedVersion: item.version,
       idempotencyKey: "sample-fresh-receive"
@@ -184,7 +182,6 @@ describe("diagnostic application service", () => {
       idempotencyKey: "sample-fresh-recollection"
     });
     await expect(service.receiveReplacement(labActor, recollection.replacement.id, {
-      accessionCode: "ACC-STALE-2",
       sampleType: "EDTA",
       expectedVersion: received.items[0].version,
       idempotencyKey: "replacement-stale-receive"
@@ -201,7 +198,6 @@ describe("diagnostic application service", () => {
     }, { idempotencyKey: "request-result" });
     const item = request.items[0];
     await service.receiveSample(labActor, [item.id], {
-      accessionCode: "ACC-0002",
       sampleType: "EDTA",
       expectedVersion: 1,
       idempotencyKey: "sample-result"

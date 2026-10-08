@@ -126,6 +126,15 @@ describe("PeekOverview", () => {
     expect(apiFetch).toHaveBeenCalledWith("/diagnostic-items/exam-1/cancel", expect.objectContaining({ body: JSON.stringify({ reasonCode: "CANCEL", expectedVersion: 3 }) }));
   });
 
+  it("links the item's sample to its printable label", () => {
+    const props = callbacks();
+    const view = render(<PeekOverview item={{ ...item, status: "REQUESTED", currentSampleId: "sample-7" }} role="LAB_TECH" {...props} />);
+    expect(screen.getByRole("link", { name: "Etiqueta da amostra" })).toHaveAttribute("href", "/samples/sample-7/label");
+    view.unmount();
+    render(<PeekOverview item={{ ...item, currentSampleId: undefined }} role="LAB_TECH" {...props} />);
+    expect(screen.queryByRole("link", { name: "Etiqueta da amostra" })).not.toBeInTheDocument();
+  });
+
   it("opens rejection and amendment with authorized clinical reasons", async () => {
     const props = callbacks();
     const view = render(<PeekOverview item={{ ...item, status: "RECEIVED", currentSampleId: "sample-1" }} role="LAB_TECH" {...props} />);

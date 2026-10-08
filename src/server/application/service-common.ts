@@ -6,7 +6,7 @@ import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, Rec
 import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { aggregateRequestStatus, transitionItem } from "../domain/state-machine";
-import { findById, idempotencyRecordFor, itemsForRequest, notificationForDedupe, positionOfId, requestsForPatient, resultVersionsForResult } from "../domain/state-index";
+import { findById, idempotencyRecordFor, itemsForRequest, notificationForDedupe, positionOfId, requestsForPatient, resultVersionsForResult, samplesForItem } from "../domain/state-index";
 import { legacyServiceSlaPolicy, startSlaClock } from "./sla-policy";
 import { criticalPolicyFromEnvironment } from "./critical-result-policy";
 export { transitionItem };
@@ -590,7 +590,9 @@ export function requestView(state: StoreState, request: DiagnosticRequest): Requ
     const procedure = findById(state.procedures, item.procedureId);
     return { ...item, service: serviceFor(state, item.serviceId), ...(procedure ? { procedureVersion: procedure.version } : {}) };
   });
-  return { ...request, patient, encounter, items };
+  const samples = new Map<string, Sample>();
+  items.forEach((item) => samplesForItem(state, item.id).forEach((sample) => samples.set(sample.id, sample)));
+  return { ...request, patient, encounter, items, samples: [...samples.values()] };
 }
 
 export function requestViewForActor(state: StoreState, actor: User, request: DiagnosticRequest): RequestView {
@@ -598,8 +600,10 @@ export function requestViewForActor(state: StoreState, actor: User, request: Dia
   const items = view.items.filter((item) => canViewItem(state, actor, item));
   const itemIds = items.map((item) => item.id);
   if (items.length === view.items.length) return { ...view, itemIds, items };
+  const visibleIds = new Set(itemIds);
+  const samples = view.samples.filter((sample) => sample.itemIds.some((itemId) => visibleIds.has(itemId))).map((sample) => ({ ...sample, itemIds: sample.itemIds.filter((itemId) => visibleIds.has(itemId)) }));
   const timestamps = items.flatMap((item) => [item.requestedAt, item.receivedAt, item.startedAt, item.performedAt, item.releasedAt, item.reviewedAt, item.completedAt]).filter((timestamp): timestamp is string => Boolean(timestamp));
-  return { ...view, aggregateStatus: aggregateRequestStatus(items), itemIds, items, updatedAt: timestamps.sort((left, right) => right.localeCompare(left))[0] ?? request.createdAt, version: Math.max(1, ...items.map((item) => item.version)) };
+  return { ...view, aggregateStatus: aggregateRequestStatus(items), itemIds, items, samples, updatedAt: timestamps.sort((left, right) => right.localeCompare(left))[0] ?? request.createdAt, version: Math.max(1, ...items.map((item) => item.version)) };
 }
 
 export function canViewRequest(state: StoreState, actor: User, request: DiagnosticRequest): boolean {

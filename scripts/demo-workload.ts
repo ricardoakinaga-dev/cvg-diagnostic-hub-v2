@@ -98,7 +98,6 @@ async function main() {
   const cancelReason = reasons.find((reason) => reason.type === "CANCEL" && reason.active)?.code;
   const recollectionReason = (await lab.call<Array<{ type: string; code: string; active: boolean }>>("GET", "/clinical-reasons")).find((reason) => reason.type === "RECOLLECTION" && reason.active)?.code;
   let slot = 0;
-  let accession = Date.now() % 100000;
 
   const read = async (session: Session, id: string) => (await session.call<{ item: Item }>("GET", `/diagnostic-items/${id}`)).item;
 
@@ -112,7 +111,7 @@ async function main() {
     if (stage === "requested") return;
     if (stage === "cancelled") { if (cancelReason) await vet.call("POST", `/diagnostic-items/${item.id}/cancel`, { reasonCode: cancelReason, reason: "Conduta clínica alterada", expectedVersion: current.version }); return; }
     if (item.workflowType === "LABORATORY") {
-      await step(`/diagnostic-items/${item.id}/receive-sample`, { accessionCode: `ACC-DEMO-${accession++}`, sampleType: "EDTA" });
+      await step(`/diagnostic-items/${item.id}/receive-sample`, { sampleType: "EDTA" });
       if (stage === "received") return;
       await step(`/diagnostic-items/${item.id}/start-processing`);
       if (stage === "recollection" && recollectionReason) { await step(`/diagnostic-items/${item.id}/request-recollection`, { reasonCode: recollectionReason, note: "Amostra hemolisada" }); }
