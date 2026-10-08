@@ -69,6 +69,8 @@ Nada aqui é engenharia: cada linha precisa de uma ata com responsável, data e 
 
 O [pacote de decisões de 08/10/2026](PACOTE_DECISOES_2026-10-08.md) traz cada decisão em linguagem para os responsáveis, com opções, propostas, o comportamento atual do sistema e um modelo de ata.
 
+**Situação em 08/10/2026:** D1–D12 decididas pelo dono do produto ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026), D-032). Ficam as entradas de conteúdo listadas na ata: valores críticos, prazo legal, planilhas do catálogo, servidor e datas do piloto.
+
 **Critério de saída:** D1–D12 com ata. Se D3 ainda não estiver decidida, o piloto pode seguir com `CRITICAL_POLICY_ENABLED=false` e um fluxo de crítico fora do sistema documentado. Essa exceção precisa ser aceita por escrito pela direção clínica.
 
 **Preparação em 05/10/2026 — propostas para o piloto, ainda sem aceite hospitalar:**

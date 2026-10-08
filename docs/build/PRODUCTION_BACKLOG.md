@@ -21,7 +21,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | PROD-001 | P0 | DONE | S | Trabalho revisado e dividido em commits por tema; candidato `5f83a92` publicado em 05/10 com árvore limpa. Correções dos achados remotos seguem como commits próprios no PROD-002. | — | F-11 |
 | PROD-002 | P0 | DONE | S | Candidato `63945e7` publicado e [CI remoto 37275985295](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/37275985295) completo verde em 05/10: verify, benchmark HTTP/PostgreSQL/SSE, CodeQL, navegador em memória e PostgreSQL, build/scans/smoke de imagens. Dependency review aplica-se ao PR, não ao push. `main` protegida: PR obrigatório, 7 checks vinculados ao GitHub Actions, atualização com a base, administradores incluídos, force push/exclusão proibidos. Nenhum merge ou deploy realizado. | PROD-001 | F-11, P1.1 |
-| PROD-003 | P0 | READY | S | Agendar as decisões D1 (identidade), D2 (volume/RPO/RTO) e D11 (infraestrutura) com os responsáveis. Aceite: atas no [DECISION_LOG](../DECISION_LOG.md). | — | Plano Fase 0 |
+| PROD-003 | P0 | DONE | S | D1–D12 decididas pelo dono do produto em 08/10/2026 ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026), D-032). | — | Plano Fase 0 |
 
 ## 3. W1 — Escala e robustez da persistência (técnico, sem decisão humana)
 
@@ -44,50 +44,50 @@
 
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
-| PROD-200 | P0 | BLOCKED | L | **Se D1 = OIDC/AD:** login OIDC (code + PKCE), grupos → roles e departamentos, desativação ao sair do diretório; conta local só para break-glass, com alerta a cada uso. | D1 | P2.A1–A2 |
+| PROD-200 | P0 | BLOCKED | L | **Login institucional (OIDC/AD):** grupos → perfis e setores, desativação ao sair do diretório; conta local só para emergência, com alerta a cada uso. D1 escolheu contas do Hub no piloto; reavaliar depois dele. | Reavaliação pós-piloto (D1) | P2.A1–A2 |
 | PROD-201 | P0 | DONE | M | Troca de senha self-service (`POST /session/password/change`): exige a senha atual, verificada fora da transação; limite de 5 tentativas por conta a cada 15 min; política de 12–200 caracteres com letras e números; revoga todas as sessões do usuário e emite uma nova; auditoria `PasswordChanged` sem segredo; formulário em "Minha conta". Feita antes de D1 porque contas locais de emergência existem em qualquer desfecho (PROD-200). | — (D1 decide se vale para todas as contas ou só para break-glass) | F-06, AUD-046, D-031 |
-| PROD-202 | P0 | BLOCKED | M | **Se contas locais:** redefinição pelo ADMIN com token de uso único e expiração curta, com troca obrigatória no primeiro login (inclui a conta criada pelo bootstrap). | D1 | F-06, P2.B2 |
-| PROD-203 | P1 | BLOCKED | S | **Se contas locais:** política de senha com lista de senhas vazadas; lockout progressivo por conta, coordenado com o PROD-107. | D1, PROD-107 | P2.B3–B4 |
+| PROD-202 | P0 | READY | M | Redefinição pelo ADMIN com token de uso único e expiração curta, com troca obrigatória no primeiro login (inclui a conta criada pelo bootstrap). D1 = contas do Hub. | — | F-06, P2.B2 |
+| PROD-203 | P1 | READY | S | Política de senha com lista de senhas vazadas; lockout progressivo por conta, coordenado com o PROD-107. D1 = contas do Hub. | PROD-107 | P2.B3–B4 |
 | PROD-205 | P1 | VERIFY | S | Timeout de inatividade de sessão (configurável) e tela "minhas sessões" para o próprio usuário; a revogação administrativa já existe. Aceite: teste de expiração por inatividade. | — | F-05, P2.C1 |
-| PROD-206 | P0 | BLOCKED | M | Matriz RBAC ajustada às decisões de ownership (D4), com testes de matriz. | D4 | P2.C2, OQ-001/002/017 |
+| PROD-206 | P0 | VERIFY | M | Matriz RBAC: D4 manteve o padrão atual, já coberto por testes de matriz; cada setor confirma no UAT. | UAT (PROD-701) | P2.C2, OQ-001/002/017 |
 
 ## 5. W3 — Infraestrutura de produção
 
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
-| PROD-301 | P0 | BLOCKED | M | Ambientes staging e produção separados (banco, bucket, segredos). | D11 | P1.2, AUD-034 |
-| PROD-302 | P0 | BLOCKED | M | Secret manager alimentando o deploy; rotação documentada e ensaiada. | D11 | P1.3, AUD-034 |
+| PROD-301 | P0 | READY | M | Homologação e produção separadas (banco, bucket, segredos) no servidor do hospital (D11), com o Compose ensaiado. | Servidor disponível | P1.2, AUD-034 |
+| PROD-302 | P0 | READY | M | Segredos fora do repositório e do host de build no servidor do hospital; rotação documentada e ensaiada. | PROD-301 | P1.3, AUD-034 |
 | PROD-303 | P0 | READY | M | Registry de imagens e pipeline de deploy: build → Trivy → push com tag do commit → staging automático → produção com aprovação. | PROD-002 | P1.4 |
-| PROD-304 | P0 | BLOCKED | M | PostgreSQL gerenciado ou dedicado com PITR/WAL dimensionado por D2; restore point-in-time demonstrado. | D2, D11 | P1.5, AUD-033 |
+| PROD-304 | P0 | READY | M | PostgreSQL no servidor do hospital com arquivamento contínuo de WAL para fora do prédio (RPO 15 min, D2); restore point-in-time demonstrado. | PROD-301 | P1.5, AUD-033 |
 | PROD-305 | P1 | VERIFY | S | Usuários de banco separados: migration (DDL) e runtime (DML, sem `ALTER`/`DROP` nem `DELETE` em `audit_events`). Aceite: teste negativo de privilégio. | — | P1.6 |
 | PROD-306 | P1 | VERIFY | S | Liveness do worker do outbox (heartbeat + healthcheck no compose) e métrica de idade da mensagem pendente mais antiga. Aceite: worker travado fica `unhealthy`. | — | F-07 |
-| PROD-307 | P0 | BLOCKED | S | Bucket S3 de produção: criptografia, versionamento, sem acesso público, ciclo de vida conforme D5. | D11, D5 | P1.7 |
-| PROD-308 | P0 | BLOCKED | M | Antivírus externo real e responsável pela quarentena; EICAR quarentenado em staging. | D11 | P1.8 |
-| PROD-309 | P1 | BLOCKED | S | DNS, TLS, firewall (só 80/443 públicos), acesso administrativo por VPN ou bastion. | D11 | P1.9 |
+| PROD-307 | P0 | READY | S | Armazenamento S3 (MinIO local, D11) com criptografia, versionamento, sem acesso público e ciclo de vida conforme D5 (24 meses ativo, depois arquivo). | PROD-301 | P1.7 |
+| PROD-308 | P0 | READY | M | Antivírus real (ClamAV local, D11) e responsável pela quarentena; EICAR quarentenado em homologação. | PROD-301 | P1.8 |
+| PROD-309 | P1 | READY | S | DNS, TLS, firewall (só 80/443 públicos), acesso administrativo por VPN ou bastion, no servidor do hospital. | Domínio e rede (D11) | P1.9 |
 
 ## 6. W4 — Regras clínicas, dados e operação
 
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
-| PROD-401 | P0 | BLOCKED | M | Política de resultado crítico ativa (versão, aprovação, data), com escalonamento e fallback de plantão. | D3 | P3.1, OQ-004/005 |
-| PROD-402 | P0 | BLOCKED | L | Canal redundante para crítico (novo sink durável do outbox com confirmação). | D3 (se exigido) | P3.2, OQ-018 |
-| PROD-403 | P0 | BLOCKED | M | Ownership de liberação, emenda, anulação, revisão e cancelamento por serviço. | D4 | P3.3 |
-| PROD-404 | P1 | BLOCKED | M | Calendário e pausas de SLA por setor. | D7 | P3.4, OQ-006 |
-| PROD-405 | P1 | BLOCKED | M–L | Modelo de amostra, accession e etiqueta. | D8 | P3.5, OQ-008 |
-| PROD-406 | P1 | BLOCKED | M | Alta, transferência e encerramento de atendimento. | D9 | P3.6, OQ-007 |
-| PROD-407 | P0 | BLOCKED | M | Catálogo de produção carregado via admin (exames, templates, unidades, faixas aprovadas). | D10 | P3.7, OQ-016 |
-| PROD-408 | P0 | BLOCKED | L–XL | Integração com o sistema mestre de Paciente/Atendimento **ou** procedimento manual aprovado. | D6 | P3.8, OQ-011 |
-| PROD-409 | P2 | BLOCKED | M | Agenda de ultrassom (integração mínima ou procedimento). | D10 | P3.9, OQ-009 |
-| PROD-501 | P0 | BLOCKED | M | Retenção e expurgo clínico (LGPD) conforme D5, cobrindo os anexos no S3. | D5, PROD-111 | P4.3 |
-| PROD-502 | P1 | BLOCKED | M | Exportação e exclusão de dados do titular dentro dos limites legais. | D5 | P4.4 |
+| PROD-401 | P0 | BLOCKED | M | Política de resultado crítico ativa (versão, aprovação, data), com escalonamento ao plantão (D3). | Lista de valores críticos por exame (D3), PROD-402 | P3.1, OQ-004/005 |
+| PROD-402 | P0 | READY | L | Canal redundante para crítico: WhatsApp Business (D3), novo sink durável do outbox com link de confirmação no Hub; sem SMS de reserva. | Fornecedor da API e templates aprovados | P3.2, OQ-018 |
+| PROD-403 | P0 | VERIFY | M | Ownership de liberação, emenda, anulação, revisão e cancelamento: D4 manteve o padrão atual; confirmação por setor no UAT. | UAT (PROD-701) | P3.3 |
+| PROD-404 | P1 | DONE | M | Calendário e pausas de SLA: não necessários, D7 decidiu prazo desde a solicitação em horas corridas (comportamento atual). | — | P3.4, OQ-006 |
+| PROD-405 | P1 | READY | M–L | Accession gerado pelo sistema, etiqueta com código de barras e leitura no recebimento (D8). | Modelo de impressora e leitor | P3.5, OQ-008 |
+| PROD-406 | P1 | READY | M | Abrir novo atendimento para paciente já cadastrado e recusar solicitação em atendimento encerrado (hoje nenhum dos dois existe); pendências seguem com o solicitante (D9, já funciona). | — | P3.6, OQ-007 |
+| PROD-407 | P0 | READY | M | Catálogo de produção por planilha-modelo importada com validação, repetível em homologação e produção (D10). | Planilhas preenchidas pelos setores | P3.7, OQ-016 |
+| PROD-408 | P0 | READY | S | Cadastro de pacientes no Hub durante o piloto (D6): procedimento escrito de conferência com o prontuário. | — | P3.8, OQ-011 |
+| PROD-409 | P2 | VERIFY | M | Agenda de ultrassom: o piloto usa a agenda de procedimentos do Hub (hipótese da ata, a confirmar). | Confirmação do setor de US | P3.9, OQ-009 |
+| PROD-501 | P0 | READY | M | Arquivamento de exames concluídos há mais de 24 meses e expurgo no prazo legal, inclusive anexos no S3 (D5). | Prazo legal de guarda (jurídico) para o expurgo | P4.3 |
+| PROD-502 | P1 | READY | M | Exportação e exclusão de dados do titular dentro dos limites legais (D5). | Prazo legal de guarda (jurídico) | P4.4 |
 | PROD-503 | P1 | VERIFY | S | Ensaio a partir de dump representativo: banco 014 com 12 meses (55 mil exames), `pg_dump`/`pg_restore` e 015 em 6,9 s sem perda (digest igual). Plano por migration em [DEPLOYMENT §8.1](../operations/DEPLOYMENT.md). Falta repetir com o volume real em homologação. | — (homologação: D11) | P4.5 |
 | PROD-504 | P1 | DONE | S | `npm run privacy:scan` varre os arquivos versionados (e-mail fora de domínio reservado, CPF, CNPJ, telefone e string de conexão com senha para host real), o bundle do navegador (`--bundle .next/static`, inclusive nomes de configuração de servidor) e logs reais (`--logs`, sem nenhum e-mail, cookie de sessão ou bearer). A CI roda os três modos. Placeholder do login trocado para domínio reservado. | — | P4.6, D-031 |
 | PROD-511 | P0 | VERIFY | M | Métricas Prometheus com token de coleta (`METRICS_SCRAPE_TOKEN`), memória do processo contra o heap e dead letters; `deploy/observability/` com scrape, 9 regras testadas com `promtool` e dashboard Grafana, todos verificados na CI. Falta coletar em staging e acrescentar `postgres_exporter` (D11). | PROD-303 (staging) | P5.1, D-031 |
 | PROD-512 | P1 | READY | S | Agregação de logs com busca por `correlationId`. | PROD-303 | P5.2 |
-| PROD-513 | P0 | BLOCKED | M | Alertas com dono e roteamento, cada um disparado em staging (inclui dead-letter, worker parado, backup falho, certificado vencendo). As regras técnicas já existem e são testadas (PROD-511); faltam dono, roteamento, backup e certificado. | D2, PROD-511 | P5.3, AUD-020 |
-| PROD-514 | P0 | BLOCKED | M | Backup de PostgreSQL **e** S3, com restore completo cronometrado contra o RPO/RTO. | D2, PROD-304 | P5.4, AUD-033 |
+| PROD-513 | P0 | BLOCKED | M | Alertas com dono e roteamento, cada um disparado em homologação (inclui dead-letter, worker parado, backup falho, certificado vencendo). As regras técnicas já existem e são testadas (PROD-511). | PROD-516, PROD-301 | P5.3, AUD-020 |
+| PROD-514 | P0 | BLOCKED | M | Backup de PostgreSQL **e** S3, com restore completo cronometrado contra RTO 4 h e RPO 15 min (D2). | PROD-304 | P5.4, AUD-033 |
 | PROD-515 | P1 | BLOCKED | M | Runbooks ensaiados (banco, storage, antivírus, crítico não entregue, rede degradada). | PROD-513 | P5.5 |
-| PROD-516 | P1 | BLOCKED | S | Escala de plantão, contatos de incidente e janela de manutenção. | D11 | P5.6 |
+| PROD-516 | P1 | READY | S | Escala de plantão, contatos de incidente e janela de manutenção para o servidor do hospital (D11). | Nomes da operação | P5.6 |
 | PROD-517 | P2 | READY | S | **Monitoramento de tentativas distribuídas por conta:** agregar falhas de login do mesmo e-mail entre clientes distintos, com identificador de conta pseudonimizado, janela e limiar de alerta documentados. O backoff do PROD-107 continua por par; trocar de IP não acumula esse backoff. Aceite: simulação em staging com múltiplas origens gera sinal agregado e alerta, sem bloquear login nem ampliar a janela de outros clientes da conta. | PROD-511, PROD-512 | PROD-107, F-04, D-021 |
 
 ## 7. W5 — Validação, piloto e go-live
@@ -101,7 +101,7 @@
 | PROD-605 | P0 | BLOCKED | M | Revisão independente com nota ≥ 85 e zero achado crítico ou alto. | PROD-604 | P6.5, AUD-038 |
 | PROD-701 | P0 | BLOCKED | M | UAT em staging por jornada, com termo de aceite. | W4 | P7.1 |
 | PROD-702 | P0 | BLOCKED | S | Treinamento e material para os usuários do piloto. | PROD-701 | P7.2 |
-| PROD-703 | P0 | BLOCKED | M | Piloto com o escopo de D12 e contingência manual ativa. | PROD-605, D12 | P7.3 |
+| PROD-703 | P0 | BLOCKED | M | Piloto com todos os setores por 6 a 8 semanas (D12) e contingência manual ativa; métricas: tempo até o resultado, pendências atrasadas, recoletas e satisfação da equipe. | PROD-605, PROD-402, PROD-405, PROD-407 | P7.3 |
 | PROD-704 | P0 | BLOCKED | S | Relatório do piloto contra o baseline; go/no-go assinado. | PROD-703 | P7.4–P7.5 |
 | PROD-801 | P0 | BLOCKED | M | Go-live pelo RELEASE_CHECKLIST completo; expansão por setor; hypercare de 2–4 semanas; PRODUCTION_READINESS → `READY`. | PROD-704 | Fase 8 |
 
@@ -109,15 +109,15 @@
 
 | Onda | Itens | `READY` | `DONE` | `IN_PROGRESS`/`VERIFY` | `BLOCKED` |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| W0 Base | 3 | 1 | 2 | 0 | 0 |
+| W0 Base | 3 | 0 | 3 | 0 | 0 |
 | W1 Escala | 12 | 0 | 7 | 4 | 1 |
-| W2 Identidade | 6 | 0 | 1 | 1 | 4 |
-| W3 Infra | 9 | 1 | 0 | 2 | 6 |
-| W4 Clínico/dados/operação | 20 | 2 | 1 | 2 | 15 |
+| W2 Identidade | 6 | 2 | 1 | 2 | 1 |
+| W3 Infra | 9 | 7 | 0 | 2 | 0 |
+| W4 Clínico/dados/operação | 20 | 10 | 2 | 4 | 4 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **60** | **4** | **11** | **9** | **36** |
+| **Total** | **60** | **19** | **13** | **12** | **16** |
 
-Os 36 itens bloqueados dependem de 12 decisões humanas (D1–D12 do [plano](PRODUCTION_PLAN.md)). Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
+Em 08/10/2026 as 12 decisões (D1–D12) foram tomadas ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026)); os 16 itens ainda bloqueados dependem de entradas de conteúdo (lista de críticos, prazo legal, planilhas), do servidor de homologação ou das validações externas. Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 
 ## 9. Evidência
 
