@@ -663,3 +663,35 @@ describe("AdminConsole", () => {
     expect(within(form).getByLabelText("Nome completo")).toHaveValue("Nova colaboradora");
   });
 });
+
+describe("critical-alert on-call controls (PROD-402)", () => {
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+
+  it("shows whether the user registered a number and toggles the on-call flag with the current version", async () => {
+    const mock = mockApi((path, init) => path === "/users/user-vet/on-call" && init?.method === "PUT" ? { ...user, onCall: true, alertContactReady: true, version: 2 } : undefined);
+    const onChanged = vi.fn();
+    render(<UserRow user={{ ...user, onCall: false, alertContactReady: false }} technical viewerId={identity.id} onChanged={onChanged} />);
+    expect(within(row()).getByText("Sem WhatsApp")).toHaveClass("pill-muted");
+    expect(within(row()).queryByText("No plantão")).not.toBeInTheDocument();
+    fireEvent.click(within(row()).getByRole("button", { name: "Colocar no plantão" }));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ onCall: true, version: 2 })));
+    expect(payloadFor(mock, "/users/user-vet/on-call", "PUT")).toEqual({ onCall: true, expectedVersion: 1 });
+  });
+
+  it("offers to take an on-call user off call and reports a failure in the row", async () => {
+    mockApi((path) => path === "/users/user-vet/on-call" ? Promise.reject(new Error("offline")) : undefined);
+    render(<UserRow user={{ ...user, active: false, onCall: true, alertContactReady: true }} technical viewerId={identity.id} onChanged={vi.fn()} />);
+    expect(within(row()).getByText("No plantão")).toBeInTheDocument();
+    expect(within(row()).getByText("WhatsApp cadastrado")).not.toHaveClass("pill-muted");
+    const toggle = within(row()).getByRole("button", { name: "Tirar do plantão" });
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(toggle);
+    expect(await within(row()).findByRole("alert")).toHaveTextContent("Não foi possível alterar o plantão");
+  });
+
+  it("does not offer on-call to an inactive user who is not on call", () => {
+    mockApi();
+    render(<UserRow user={{ ...user, active: false }} technical viewerId={identity.id} onChanged={vi.fn()} />);
+    expect(within(row()).queryByRole("button", { name: "Colocar no plantão" })).not.toBeInTheDocument();
+  });
+});

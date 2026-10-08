@@ -257,6 +257,14 @@ export interface SessionUser {
   managedDepartmentCodes?: string[];
   timezone: string;
   mustChangePassword?: boolean;
+  /** PROD-402: the user's own alert number, masked; absent until they register one. */
+  alertContact?: AlertContact;
+  onCall?: boolean;
+}
+
+export interface AlertContact {
+  maskedPhone: string;
+  consentAt: string;
 }
 
 export interface SessionResponse {
@@ -347,6 +355,7 @@ export interface DiagnosticService {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   resultSchema: "NUMERIC_PANEL" | "NARRATIVE";
@@ -377,6 +386,9 @@ export interface ManagedUser {
   timezone: string;
   createdAt: string;
   version: number;
+  onCall?: boolean;
+  /** Whether the user registered a WhatsApp number for critical alerts; the number itself is never listed. */
+  alertContactReady?: boolean;
 }
 
 export interface AuditEvent {
@@ -548,6 +560,29 @@ export interface SearchResult {
   deepLink: string;
 }
 
+export type SampleStatus = "EXPECTED" | "RECEIVED" | "REJECTED" | "REPLACED";
+
+export interface RequestSample {
+  id: string;
+  requestId: string;
+  accessionCode: string;
+  sampleType: string;
+  status: SampleStatus;
+  itemIds: string[];
+  replacesSampleId?: string;
+  receivedAt?: string;
+}
+
+export interface SampleLabel {
+  sample: { id: string; accessionCode: string; sampleType: string; status: SampleStatus };
+  request: { id: string; requestCode: string; priority: Priority };
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  services: Array<{ code: string; name: string }>;
+  encounter: { externalId: string };
+  requestedAt: string;
+  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; modules: number; bars: Array<{ x: number; width: number }> } };
+}
+
 export interface DiagnosticRequestDetail {
   id: string;
   requestCode: string;
@@ -566,6 +601,7 @@ export interface DiagnosticRequestDetail {
     currentSampleId?: string;
     service: { name: string; workflowType: WorkflowType };
   }>;
+  samples?: RequestSample[];
 }
 
 export interface TimelineEvent {

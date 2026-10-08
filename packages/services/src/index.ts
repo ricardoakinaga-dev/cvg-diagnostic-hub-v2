@@ -22,6 +22,7 @@ export interface ApiFailure {
 export const ACCESS_DENIED_MESSAGE = "Você não tem acesso a este recurso.";
 const GENERIC_API_ERROR = "Não foi possível concluir a operação. Informe o código de correlação ao suporte.";
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
+  CATALOG_IMPORT_INVALID: "A planilha contém erros e nada foi importado. Valide novamente antes de aplicar.",
   CSRF_INVALID: "A sessão de segurança expirou. Atualize a página e tente novamente.",
   CURRENT_PASSWORD_INVALID: "A senha atual não confere.",
   PASSWORD_BREACHED: "Esta senha apareceu em vazamentos conhecidos; escolha outra.",
@@ -41,6 +42,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   SESSION_ALREADY_REVOKED: "Esta sessão já foi revogada.",
   OUTBOX_DEAD_LETTER_ALREADY_DISCARDED: "Esta mensagem já foi descartada.",
   OUTBOX_NOT_DEAD_LETTERED: "Esta mensagem não está disponível para operação.",
+  ACCESSION_INVALID: "O código lido é inválido. Leia a etiqueta novamente ou digite o código.",
+  ACCESSION_MISMATCH: "O código lido não corresponde à amostra esperada deste exame.",
   DUPLICATE_WARNING: "Já existe um exame ativo compatível. Confirme o motivo para prosseguir.",
   RESULT_RELEASE_BLOCKED: "Finalize ou remova os anexos pendentes antes de liberar o resultado.",
   SCHEDULE_CONFLICT: "O recurso já está reservado neste intervalo.",

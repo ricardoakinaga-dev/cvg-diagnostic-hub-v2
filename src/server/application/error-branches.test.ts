@@ -28,8 +28,8 @@ describe("server-side validation and conflict branches", () => {
     const us = store.getState().users.find((user) => user.email === "us@cvg.local");
     if (!vet || !lab || !us) throw new Error("fixture actors missing");
     const labRequest = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "error-lab-request" });
-    await expect(service.receiveSample(vet, [labRequest.items[0].id], { accessionCode: "ACC-UNAUTHORIZED", sampleType: "EDTA", expectedVersion: labRequest.items[0].version, idempotencyKey: "unauthorized-sample" })).rejects.toMatchObject({ code: "SCOPE_DENIED" });
-    await expect(service.receiveSample(lab, [], { accessionCode: "ACC-ERR", sampleType: "EDTA", expectedVersion: labRequest.items[0].version })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(service.receiveSample(vet, [labRequest.items[0].id], { sampleType: "EDTA", expectedVersion: labRequest.items[0].version, idempotencyKey: "unauthorized-sample" })).rejects.toMatchObject({ code: "SCOPE_DENIED" });
+    await expect(service.receiveSample(lab, [], { sampleType: "EDTA", expectedVersion: labRequest.items[0].version })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(service.requestRecollection(lab, "sample-missing", { reasonCode: "HEMOLYZED", expectedVersion: labRequest.items[0].version, idempotencyKey: "missing-recollect" })).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(service.createResultDraft(lab, labRequest.items[0].id, { narrative: "Ainda não", content: {}, expectedVersion: labRequest.items[0].version })).rejects.toMatchObject({ code: "RESULT_RELEASE_BLOCKED" });
     await expect(service.cancelItem(vet, labRequest.items[0].id, { reasonCode: "MISSING_REASON", expectedVersion: labRequest.items[0].version, idempotencyKey: "missing-cancel" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
@@ -57,15 +57,15 @@ describe("server-side validation and conflict branches", () => {
     expect((await service.getRequest(lab, first.id)).id).toBe(first.id);
     await expect(service.getRequest(rx, first.id)).rejects.toMatchObject({ code: "SCOPE_DENIED" });
     await expect(service.receiveSample(lab, [first.items[0].id], { accessionCode: "bad", sampleType: "EDTA", expectedVersion: first.items[0].version })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
-    const received = await service.receiveSample(lab, [first.items[0].id], { accessionCode: "ACC-RETRY-1", sampleType: "EDTA", expectedVersion: first.items[0].version, idempotencyKey: "retry-sample" });
-    expect((await service.receiveSample(lab, [first.items[0].id], { accessionCode: "ACC-RETRY-1", sampleType: "EDTA", expectedVersion: first.items[0].version, idempotencyKey: "retry-sample" })).sample.id).toBe(received.sample.id);
-    await expect(service.receiveSample(lab, [first.items[0].id], { accessionCode: "ACC-RETRY-2", sampleType: "EDTA", expectedVersion: received.items[0].version, idempotencyKey: "retry-sample-new" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION" });
+    const received = await service.receiveSample(lab, [first.items[0].id], { sampleType: "EDTA", expectedVersion: first.items[0].version, idempotencyKey: "retry-sample" });
+    expect((await service.receiveSample(lab, [first.items[0].id], { sampleType: "EDTA", expectedVersion: first.items[0].version, idempotencyKey: "retry-sample" })).sample.id).toBe(received.sample.id);
+    await expect(service.receiveSample(lab, [first.items[0].id], { sampleType: "EDTA", expectedVersion: received.items[0].version, idempotencyKey: "retry-sample-new" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION" });
     await expect(service.requestRecollection(lab, received.sample.id, { reasonCode: "MISSING_REASON", expectedVersion: received.items[0].version, idempotencyKey: "bad-recollect" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     const recollection = await service.requestRecollection(lab, received.sample.id, { reasonCode: "HEMOLYZED", expectedVersion: received.items[0].version, idempotencyKey: "retry-recollect" });
     expect((await service.requestRecollection(lab, received.sample.id, { reasonCode: "HEMOLYZED", expectedVersion: received.items[0].version, idempotencyKey: "retry-recollect" })).replacement.id).toBe(recollection.replacement.id);
-    const replacement = await service.receiveReplacement(lab, recollection.replacement.id, { accessionCode: "ACC-RETRY-2", sampleType: "EDTA", expectedVersion: recollection.items[0].version, idempotencyKey: "retry-replacement" });
-    expect((await service.receiveReplacement(lab, recollection.replacement.id, { accessionCode: "ACC-RETRY-2", sampleType: "EDTA", expectedVersion: recollection.items[0].version, idempotencyKey: "retry-replacement" })).sample.id).toBe(replacement.sample.id);
-    await expect(service.receiveReplacement(lab, recollection.replacement.id, { accessionCode: "ACC-RETRY-3", sampleType: "EDTA", expectedVersion: replacement.items[0].version, idempotencyKey: "retry-replacement-new" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION" });
+    const replacement = await service.receiveReplacement(lab, recollection.replacement.id, { sampleType: "EDTA", expectedVersion: recollection.items[0].version, idempotencyKey: "retry-replacement" });
+    expect((await service.receiveReplacement(lab, recollection.replacement.id, { sampleType: "EDTA", expectedVersion: recollection.items[0].version, idempotencyKey: "retry-replacement" })).sample.id).toBe(replacement.sample.id);
+    await expect(service.receiveReplacement(lab, recollection.replacement.id, { sampleType: "EDTA", expectedVersion: replacement.items[0].version, idempotencyKey: "retry-replacement-new" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION" });
     const started = await service.startProcessing(lab, first.items[0].id, { expectedVersion: replacement.items[0].version, idempotencyKey: "retry-processing" });
     expect((await service.startProcessing(lab, first.items[0].id, { expectedVersion: replacement.items[0].version, idempotencyKey: "retry-processing" })).item.id).toBe(started.item.id);
     await expect(service.startProcessing(lab, first.items[0].id, { expectedVersion: 1, idempotencyKey: "stale-processing" })).rejects.toMatchObject({ code: "STALE_VERSION" });
@@ -78,7 +78,7 @@ describe("server-side validation and conflict branches", () => {
     const lab = store.getState().users.find((user) => user.email === "lab@cvg.local");
     if (!vet || !lab) throw new Error("fixture actors missing");
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-crp" }] }, { idempotencyKey: "critical-request" });
-    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-CRITICAL-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "critical-receive" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "critical-receive" });
     const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "critical-start" });
     const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Resultado sensível.", content: {}, conclusion: "Necessita avaliação", expectedVersion: started.item.version, idempotencyKey: "critical-draft" });
     await expect(service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "critical-release" })).rejects.toMatchObject({ code: "CRITICAL_POLICY_MISSING" });
@@ -138,7 +138,7 @@ describe("server-side validation and conflict branches", () => {
     process.env.CRITICAL_POLICY_APPROVED_AT = "2026-08-20T10:00:00.000Z";
     try {
       const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "stale-critical-request" });
-      const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-STALE-CRITICAL", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "stale-critical-receive" });
+      const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "stale-critical-receive" });
       const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "stale-critical-start" });
       const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Crítico antes da emenda.", content: syntheticHemogramContent("Crítico antes da emenda."), expectedVersion: started.item.version, idempotencyKey: "stale-critical-draft" });
       const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "stale-critical-release" });

@@ -37,6 +37,12 @@ export interface User extends Actor {
   mustChangePassword?: boolean;
   /** Pending administrator-issued reset (PROD-202). Only the SHA-256 of the token is stored; never returned by the API. */
   passwordReset?: PasswordResetGrant;
+  /** PROD-402: E.164 number for critical-result alerts over WhatsApp, set only by the user with consent. */
+  whatsappPhone?: string;
+  /** PROD-402: when the user consented to receive the alerts on whatsappPhone. */
+  whatsappConsentAt?: Timestamp;
+  /** PROD-402: set by user administration; the ON_CALL rule of the critical policy picks it within the department. */
+  onCall?: boolean;
   /** Ephemeral authentication context; never persisted or returned as a user field. */
   sessionId?: string;
   reauthenticatedAt?: Timestamp;
@@ -125,6 +131,8 @@ export interface DiagnosticService {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  /** Tube or material the label asks the collector for (D8/D10); free text from the catalog sheet. */
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   active: boolean;
@@ -271,6 +279,16 @@ export interface Notification {
   acknowledgedBy?: string;
   attempts: number;
   version: number;
+  /** PROD-402: the redundant WhatsApp alert of a critical notification, updated by the worker and the webhook. */
+  whatsapp?: NotificationChannelDelivery;
+}
+
+export interface NotificationChannelDelivery {
+  status: "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "SKIPPED";
+  updatedAt: Timestamp;
+  /** Provider message id (wamid); never the recipient's number. */
+  messageId?: string;
+  errorCode?: string;
 }
 
 export interface AuditEvent {
@@ -289,6 +307,9 @@ export interface AuditEvent {
 export type OutboxConsumerType = "DOMAIN_EVENT" | "NOTIFICATION_DELIVERY";
 
 export const OUTBOX_NOTIFICATION_ROUTING_KEY = "notification.in_app";
+/** PROD-402: the redundant WhatsApp channel of a critical result (D3). */
+export const OUTBOX_WHATSAPP_ROUTING_KEY = "notification.whatsapp";
+export const CRITICAL_ALERT_WHATSAPP_EVENT = "CriticalResultAlertRequested";
 
 export interface OutboxEnvelope {
   consumerType: OutboxConsumerType;
@@ -325,13 +346,13 @@ export function outboxEnvelopeFor(
   }
 
   const expectedRoutingKey = normalizedConsumerType === "NOTIFICATION_DELIVERY"
-    ? OUTBOX_NOTIFICATION_ROUTING_KEY
+    ? eventType === CRITICAL_ALERT_WHATSAPP_EVENT ? OUTBOX_WHATSAPP_ROUTING_KEY : OUTBOX_NOTIFICATION_ROUTING_KEY
     : `domain.${eventType}`;
   const normalizedRoutingKey = routingKey === undefined ? expectedRoutingKey : routingKey;
   if (typeof normalizedRoutingKey !== "string" || normalizedRoutingKey.trim() !== normalizedRoutingKey || !normalizedRoutingKey) {
     throw new Error("OUTBOX_ROUTING_KEY_INVALID");
   }
-  if (normalizedConsumerType === "NOTIFICATION_DELIVERY" && normalizedRoutingKey !== OUTBOX_NOTIFICATION_ROUTING_KEY) {
+  if (normalizedConsumerType === "NOTIFICATION_DELIVERY" && normalizedRoutingKey !== expectedRoutingKey) {
     throw new Error(`OUTBOX_ROUTE_MISMATCH:${normalizedConsumerType}:${normalizedRoutingKey}`);
   }
   if (normalizedConsumerType === "DOMAIN_EVENT" && normalizedRoutingKey !== expectedRoutingKey) {

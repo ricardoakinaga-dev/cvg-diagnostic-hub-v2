@@ -77,8 +77,8 @@ export const rejectSchema = z.object({
 }).strict();
 
 export const sampleSchema = z.object({
-  accessionCode: z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,39}$/),
-  sampleType: boundedText(100),
+  accessionCode: z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,39}$/).optional(),
+  sampleType: boundedText(100).optional(),
   expectedVersion
 }).strict();
 

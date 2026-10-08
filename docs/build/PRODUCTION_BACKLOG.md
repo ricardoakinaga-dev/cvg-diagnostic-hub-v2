@@ -70,12 +70,12 @@
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
 | PROD-401 | P0 | BLOCKED | M | Política de resultado crítico ativa (versão, aprovação, data), com escalonamento ao plantão (D3). | Lista de valores críticos por exame (D3), PROD-402 | P3.1, OQ-004/005 |
-| PROD-402 | P0 | READY | L | Canal redundante para crítico: WhatsApp Business (D3), novo sink durável do outbox com link de confirmação no Hub; sem SMS de reserva. | Fornecedor da API e templates aprovados | P3.2, OQ-018 |
+| PROD-402 | P0 | IN_PROGRESS | L | Canal redundante para crítico: WhatsApp Business (D3), novo sink durável do outbox com link de confirmação no Hub; sem SMS de reserva. Feito: número próprio com consentimento e plantão (1a); rota `notification.whatsapp`, sink da Cloud API e webhook assinado (1b, D-033). Falta: escalonamento ao plantão no worker (1c). | Fornecedor da API e templates aprovados | P3.2, OQ-018 |
 | PROD-403 | P0 | VERIFY | M | Ownership de liberação, emenda, anulação, revisão e cancelamento: D4 manteve o padrão atual; confirmação por setor no UAT. | UAT (PROD-701) | P3.3 |
 | PROD-404 | P1 | DONE | M | Calendário e pausas de SLA: não necessários, D7 decidiu prazo desde a solicitação em horas corridas (comportamento atual). | — | P3.4, OQ-006 |
-| PROD-405 | P1 | READY | M–L | Accession gerado pelo sistema, etiqueta com código de barras e leitura no recebimento (D8). | Modelo de impressora e leitor | P3.5, OQ-008 |
+| PROD-405 | P1 | VERIFY | M–L | Accession gerado pelo sistema, etiqueta com código de barras e leitura no recebimento (D8). Entregue: accession `<PREFIXO><AAMMDD>-<NNNN><C>` com dígito Mod-10; amostra `EXPECTED` criada com a solicitação (tubo compartilhado por tipo de amostra do catálogo); recebimento por leitura ou campo vazio (409 `ACCESSION_MISMATCH`, 400 `ACCESSION_INVALID`); recoleta com accession real; `GET /samples/{id}/label` com Code 128 em SVG e página imprimível `/samples/{id}/label` (`ACCESSION_PREFIX`, `LABEL_WIDTH_MM`, `LABEL_HEIGHT_MM`). Falta: modelo da impressora e do leitor para ajustar LABEL_* e validar em homologação. | Modelo de impressora e leitor | P3.5, OQ-008 |
 | PROD-406 | P1 | READY | M | Abrir novo atendimento para paciente já cadastrado e recusar solicitação em atendimento encerrado (hoje nenhum dos dois existe); pendências seguem com o solicitante (D9, já funciona). | — | P3.6, OQ-007 |
-| PROD-407 | P0 | READY | M | Catálogo de produção por planilha-modelo importada com validação, repetível em homologação e produção (D10). | Planilhas preenchidas pelos setores | P3.7, OQ-016 |
+| PROD-407 | P0 | VERIFY | M | Catálogo de produção por planilha-modelo importada com validação, repetível em homologação e produção (D10). Entregue: modelo, importação validada e repetível (API, tela e CLI); falta: planilhas preenchidas pelos setores. Runbook em [CATALOG_IMPORT.md](../operations/CATALOG_IMPORT.md). | Planilhas preenchidas pelos setores | P3.7, OQ-016 |
 | PROD-408 | P0 | READY | S | Cadastro de pacientes no Hub durante o piloto (D6): procedimento escrito de conferência com o prontuário. | — | P3.8, OQ-011 |
 | PROD-409 | P2 | VERIFY | M | Agenda de ultrassom: o piloto usa a agenda de procedimentos do Hub (hipótese da ata, a confirmar). | Confirmação do setor de US | P3.9, OQ-009 |
 | PROD-501 | P0 | READY | M | Arquivamento de exames concluídos há mais de 24 meses e expurgo no prazo legal, inclusive anexos no S3 (D5). | Prazo legal de guarda (jurídico) para o expurgo | P4.3 |
@@ -113,9 +113,9 @@
 | W1 Escala | 12 | 0 | 7 | 4 | 1 |
 | W2 Identidade | 6 | 2 | 1 | 2 | 1 |
 | W3 Infra | 9 | 7 | 0 | 2 | 0 |
-| W4 Clínico/dados/operação | 20 | 10 | 2 | 4 | 4 |
+| W4 Clínico/dados/operação | 20 | 7 | 2 | 7 | 4 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **60** | **19** | **13** | **12** | **16** |
+| **Total** | **60** | **16** | **13** | **15** | **16** |
 
 Em 08/10/2026 as 12 decisões (D1–D12) foram tomadas ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026)); os 16 itens ainda bloqueados dependem de entradas de conteúdo (lista de críticos, prazo legal, planilhas), do servidor de homologação ou das validações externas. Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 

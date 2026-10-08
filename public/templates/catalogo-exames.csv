@@ -1,0 +1,4 @@
+﻿codigo;nome;categoria;setor;fluxo;exige_amostra;tipo_amostra;exige_agenda;permite_anexo;esquema_resultado;sla_rotina_h;sla_urgente_h;sla_emergencia_h;ativo
+EXEMPLO_HEMOGRAMA;Exemplo - Hemograma completo (apague esta linha);LABORATORY;LABORATORY;LABORATORY;sim;Sangue total (EDTA);não;não;NUMERIC_PANEL;8;4;2;sim
+EXEMPLO_RX_TORAX;Exemplo - Radiografia de tórax (apague esta linha);IMAGING;RADIOLOGY;RADIOLOGY;não;;não;sim;NARRATIVE;24;8;4;sim
+EXEMPLO_US_ABDOME;Exemplo - Ultrassom abdominal (apague esta linha);IMAGING;ULTRASOUND;ULTRASOUND;não;;sim;sim;NARRATIVE;48;12;6;sim

@@ -56,8 +56,9 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `POST /session/password/reset` (public) | authenticated session boundary, except the administrator-issued reset token |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact`, `POST /session/password/reset` (public) | authenticated session boundary, except the administrator-issued reset token |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
+| Webhooks | `GET /webhooks/whatsapp`, `POST /webhooks/whatsapp` | public, gated by configuration and Meta's signature |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
 | Diagnostic requests | `POST /diagnostic-requests`, `GET /diagnostic-requests`, `GET /diagnostic-requests/{id}` | create/view scope |
@@ -65,8 +66,8 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | Results | `GET /results/{id}`, `GET /results/{id}/versions` | result scope |
 | Reports/attachments | `GET /reports/{id}`, upload session/content/finalize/download | result + file scope |
 | Notifications | `GET /notifications`, `POST /notifications/{id}/acknowledge` | recipient |
-| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `GET /reason-codes`, admin commands | config permission |
-| Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
+| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `POST /diagnostic-services/import`, `GET /reason-codes`, admin commands | config permission |
+| Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
 | Management control | `GET /management/overview` | `dashboard.view` + `user_role.manage`; one scoped snapshot for requests, pending work, departments and operational indicators |
 | Search | `GET /search` | scoped search |
 | Audit/timeline | `GET /audit-events`, `GET /timeline` | scoped/manager |
@@ -88,6 +89,9 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /session/logout` | authenticated active session | revokes the current session and clears cookies |
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
+| `PUT /session/alert-contact` | authenticated active session (not a temporary password) | PROD-402: only the user registers their own WhatsApp number for critical-result alerts. `{ whatsappPhone, consent: true }` stores it in E.164 (10 or 11 digits without a country code are read as Brazilian) with the consent time; `{ whatsappPhone: null }` removes both. The response and `GET /session/me` return only `alertContact.maskedPhone` and `consentAt`; the audit event `AlertContactUpdated` never carries the number |
+| `GET /webhooks/whatsapp` | public | PROD-402: 404 unless `WHATSAPP_ENABLED=true` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET`; answers Meta's `hub.challenge` as `text/plain` only for `hub.mode=subscribe` with the matching verify token (403 otherwise) |
+| `POST /webhooks/whatsapp` | public | PROD-402: same gate; requires `X-Hub-Signature-256` = HMAC-SHA256 of the exact body under the app secret (401 otherwise); reads only delivery statuses, moves the notification's `whatsapp` status forward (`SENT` → `DELIVERED` → `READ`, or `FAILED`) and audits it; unknown message ids are ignored; returns `{ received, applied }` |
 | `POST /session/password/reset` | none (public, administrator-issued one-time token) | PROD-202: body `{ token, password }` (token 1–200, password 12–200 characters); no CSRF and no session, like login; 10 attempts per client per 15 minutes (`429 RATE_LIMITED`); password policy of PROD-203 (`400 VALIDATION_ERROR`, `PASSWORD_POLICY`, `PASSWORD_BREACHED`); unknown, expired, used or deactivated-account token all answer `400 PASSWORD_RESET_INVALID` "Link de redefinição inválido ou expirado."; success `200 { email }` sets the password, consumes the token, clears `mustChangePassword`, revokes every session and creates none |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
@@ -109,6 +113,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /diagnostic-items/{id}/start-processing` | `sample.process` | service must be Laboratory and state transition valid |
 | `POST /diagnostic-items/{id}/request-recollection` | `sample.recollection.request` | service must be Laboratory and reason required |
 | `POST /samples/{id}/receive-replacement` | `sample.replacement.receive` | active recollection chain and Laboratory scope |
+| `GET /samples/{id}/label` | `item.view` | request patient and service/department scope of a linked item |
 | `POST /diagnostic-items/{id}/schedule` | `procedure.schedule` | service must be RX/US; department/resource scope |
 | `POST /procedures/{id}/reschedule` | `procedure.reschedule` | service, resource and scheduling policy |
 | `POST /diagnostic-items/{id}/start-procedure` | `procedure.start` | executor service and scheduled window |
@@ -136,6 +141,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /diagnostic-services/{serviceId}/result-template` | `service.catalog.view` | executor service scope; returns the configured versioned template only |
 | `GET /diagnostic-services?includeInactive=true` | `service.catalog.manage` | admin/delegated manager scope; inactive values remain visible only for configuration |
 | `POST /diagnostic-services` | `service.catalog.manage` | admin/delegated manager policy; creates a versioned catalog entry |
+| `POST /diagnostic-services/import` | `service.catalog.manage` | admin/delegated manager policy checked per department of each sheet row; `Idempotency-Key` required; see [Catalog import](#catalog-import-post-diagnostic-servicesimport) |
 | `PATCH /diagnostic-services/{id}` | `service.catalog.manage` | admin/delegated manager policy; all editable fields are versioned, while referenced structural changes fail safely with `CATALOG_IN_USE` |
 | `POST /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
 | `PATCH /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
@@ -147,7 +153,8 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /users` | `user_role.manage` | ADMIN or delegated MANAGER; only manageable users in the actor's scope; safe fields only |
 | `POST /users` | `user_role.manage` | ADMIN or delegated MANAGER; operational roles only for delegated managers; recent reauthentication, reason, confirmation and audit; ADMIN may define `managedDepartmentCodes` for a new MANAGER |
 | `POST /users/{id}/roles` | `user_role.manage` | ADMIN or delegated MANAGER target scope; recent password reauthentication, target `expectedVersion`, reason, confirmation and audit; ADMIN may revise a MANAGER's `managedDepartmentCodes` |
-| `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit |
+| `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit; also takes the user off call |
+| `PUT /users/{id}/on-call` | `user_role.manage` | PROD-402: ADMIN or delegated MANAGER target scope; `{ onCall, expectedVersion }` with an idempotency key; an inactive user cannot go on call; audits `UserOnCallUpdated`. The user list shows `onCall` and `alertContactReady`, never the number |
 | `POST /users/{id}/password-reset-link` | `user_role.manage` | PROD-202: same target scope as `POST /users/{id}/password` (not self, target active, step-up for ADMIN targets); `Idempotency-Key` and `expectedVersion` required; `201 { user, resetUrl, expiresAt }` where `resetUrl` (`APP_ORIGIN/reset-password?token=…`) is shown once and only its SHA-256 is stored; replaces any previous link, revokes the target's sessions and audits `PasswordResetLinkIssued` without the token |
 | `GET /management/overview` | `dashboard.view`, `user_role.manage` | active MANAGER only; data is filtered to own department plus explicitly managed diagnostic departments |
 | `GET /dashboard` | `dashboard.view` | department and patient scope; bounded operational indicators only |
@@ -207,10 +214,11 @@ Cancellation never deletes. Partial item cancellation returns updated aggregate 
 
 ## 4. Laboratory commands
 
-- `POST /diagnostic-items/{id}/receive-sample` — body `accessionCode` or create sample metadata, sample type, expectedVersion.
+- `POST /diagnostic-items/{id}/receive-sample` — body `accessionCode` (optional), `sampleType` (optional), expectedVersion. When the item has a system-generated `EXPECTED` sample (created with the request, D-034), the code read from the label is optional: if sent it must equal the sample's code (`409 ACCESSION_MISMATCH`), a generated-format code with a wrong check character is `400 ACCESSION_INVALID`, and all items linked to the same sample become `RECEIVED`. `sampleType` defaults to the sample's catalog type and is required only when the catalog has none ("A definir"). For requests created before D-034, the legacy path keeps working: a hand-typed code is checked for duplicates (`409 CONFLICT`) and, when none is sent, the server generates one.
 - `POST /diagnostic-items/{id}/start-processing` — expectedVersion.
 - `POST /diagnostic-items/{id}/request-recollection` — reasonCode, note, affected sample ID, expectedVersion.
-- `POST /samples/{id}/receive-replacement` — accession/sample metadata and item links.
+- `POST /samples/{id}/receive-replacement` — same optional `accessionCode`/`sampleType` rules; the replacement sample already carries a generated accession from the moment the recollection is requested.
+- `GET /samples/{id}/label` (`getSampleLabel`) — printable label data: `sample` (id, accessionCode, sampleType, status), `request` (id, requestCode, priority), `patient` (id, displayName, species, externalId), `services` (code, name) of the items the reader may see, `encounter.externalId`, `requestedAt` and `label` (`widthMm`/`heightMm` from `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM`, `barcode.symbology` `code128`, `barcode.modules` and `barcode.bars` as x/width geometry that the page draws itself, no markup). Permission `item.view` with the same request/patient scope as `GET /diagnostic-items/{id}`; a sample outside the scope answers `404 SCOPE_DENIED`. The request view (`RequestView`) now lists the request's `samples`, so the UI shows the code before receipt.
 
 Each command verifies service workflow, actor role, patient/request consistency and idempotency. Response returns item, sample chain summary and next actions.
 
@@ -261,11 +269,11 @@ Result release cannot reference attachment with `PENDING`, `FAILED` or `QUARANTI
 
 Administrative commands are explicit, audited and protected:
 
-- `POST /diagnostic-services` and `PATCH /diagnostic-services/{id}`;
+- `POST /diagnostic-services`, `PATCH /diagnostic-services/{id}` and `POST /diagnostic-services/import`;
 - `POST/PATCH /sla-policies/{id}`;
 - `POST/PATCH /critical-result-policies/{id}`;
 - `POST /reason-codes` and `PATCH /reason-codes/{id}`;
-- `GET/POST /users`, `POST /users/{id}/roles` and `DELETE /users/{id}`.
+- `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call` and `DELETE /users/{id}`.
 
 No endpoint allows deleting a referenced service, policy or reason; deactivate/version instead. User deletion is also intentionally a soft deactivation: active sessions are revoked and the audit trail remains intact.
 
@@ -276,3 +284,12 @@ No endpoint allows deleting a referenced service, policy or reason; deactivate/v
 - Error code list is shared with frontend types.
 - Commands emit the event names in [`../spec/REALTIME.md`](../spec/REALTIME.md) and [`../spec/STATE_MACHINES.md`](../spec/STATE_MACHINES.md).
 - Integration tests exercise API middleware, persistence, authorization and outbox—not only service methods.
+
+### Catalog import (`POST /diagnostic-services/import`)
+
+Operation `importDiagnosticServices` (tag Catalog) validates or applies the catalog CSV templates described in [CATALOG_IMPORT.md](../operations/CATALOG_IMPORT.md) (D-035). Body (`CatalogImportRequest`, JSON, strict): `services` (CSV text, 1 to 1,000,000 characters), `analytes` (optional CSV text) and `dryRun` (optional boolean). The headers must include `Idempotency-Key`; the body is subject to the 1 MiB JSON limit.
+
+- Response `data` (`CatalogImportReport`): `{ applied, dryRun, summary: { create, update, unchanged, error }, rows: [{ line, code, action: CREATE|UPDATE|UNCHANGED|ERROR, changes?, errors? }] }`. `line` is the line of the CSV file.
+- `dryRun: true` only plans and never writes. A real run applies every row in one transaction and only when no row is `ERROR`; otherwise nothing is written and the response is `422 CATALOG_IMPORT_INVALID` whose `error.details.importReport` carries the same report with `applied: false`.
+- Permission `service.catalog.manage` is evaluated per department of each row: a delegated MANAGER gets `ERROR` rows for other departments. Structural changes of an exam referenced by items are `ERROR` rows with the `CATALOG_IN_USE` message.
+- Re-sending the same sheet returns only `UNCHANGED` rows and writes nothing. Each created or changed service emits its usual audit event (`DiagnosticServiceCreated` or `DiagnosticServiceUpdated`, with `source: CATALOG_IMPORT`) and the run emits one `CatalogImported` summary event.

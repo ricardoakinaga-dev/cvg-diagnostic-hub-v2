@@ -202,7 +202,7 @@ describe("workflow commands", () => {
   it("points the item at the pending replacement sample during recollection", async () => {
     const { service, vet, lab } = setup();
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "recollection-context-request" });
-    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-RECOLLECTION-CONTEXT", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "recollection-context-receive" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "recollection-context-receive" });
     const recollection = await service.requestRecollection(lab, received.sample.id, { reasonCode: "HEMOLYZED", expectedVersion: received.items[0].version, idempotencyKey: "recollection-context-requested" });
 
     expect(recollection.items[0].currentSampleId).toBe(recollection.replacement.id);
@@ -218,7 +218,6 @@ describe("workflow commands", () => {
       items: [{ serviceId: "service-hemogram" }]
     }, { idempotencyKey: "sample-replay-scope-request" });
     const input = {
-      accessionCode: "ACC-SAMPLE-REPLAY-SCOPE",
       sampleType: "EDTA",
       expectedVersion: request.items[0].version,
       idempotencyKey: "sample-replay-scope"
@@ -267,7 +266,7 @@ describe("workflow commands", () => {
     const { service, vet, lab, manager, store } = setup();
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "result-lifecycle-request" });
     const item = request.items[0];
-    const received = await service.receiveSample(lab, [item.id], { accessionCode: "ACC-RESULT-1", sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "result-lifecycle-receive" });
+    const received = await service.receiveSample(lab, [item.id], { sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "result-lifecycle-receive" });
     await service.startProcessing(lab, item.id, { expectedVersion: received.items[0].version, idempotencyKey: "result-lifecycle-start" });
     const draft = await service.createResultDraft(lab, item.id, { narrative: "Resultado inicial.", content: syntheticHemogramContent("Resultado inicial."), expectedVersion: received.items[0].version + 1, idempotencyKey: "result-lifecycle-draft" });
     const released = await service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "result-lifecycle-release" });
@@ -300,7 +299,7 @@ describe("workflow commands", () => {
   it("blocks a legacy laboratory draft at the release gate", async () => {
     const { service, vet, lab, store } = setup();
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "legacy-release-request" });
-    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-LEGACY-RELEASE", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "legacy-release-receive" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "legacy-release-receive" });
     const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "legacy-release-start" });
     const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Draft legado em migração.", content: {}, expectedVersion: started.item.version, idempotencyKey: "legacy-release-draft" });
 
@@ -311,7 +310,7 @@ describe("workflow commands", () => {
   it("validates, snapshots and releases a structured hemogram without inventing clinical thresholds", async () => {
     const { service, vet, lab, store } = setup();
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "structured-lab-request" });
-    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-STRUCTURED-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "structured-lab-receive" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "structured-lab-receive" });
     const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "structured-lab-start" });
     const incomplete = {
       kind: "LABORATORY_STRUCTURED" as const,

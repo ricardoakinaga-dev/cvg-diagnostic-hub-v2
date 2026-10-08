@@ -13,6 +13,7 @@ import QueuesPage from "./queues/page";
 import ResetPasswordPage from "./reset-password/page";
 import RequestPage from "./requests/[id]/page";
 import ResultPage from "./results/[id]/page";
+import SampleLabelPage from "./samples/[id]/label/page";
 
 const connection = vi.hoisted(() => vi.fn(async () => undefined));
 vi.mock("next/server", async (importOriginal) => ({ ...(await importOriginal<typeof import("next/server")>()), connection }));
@@ -49,5 +50,6 @@ describe("Next route composition", () => {
     expect(await PatientDiagnosticsPage({ params: Promise.resolve({ id: "patient-1" }) })).toBeTruthy();
     expect(await RequestPage({ params: Promise.resolve({ id: "request-1" }) })).toBeTruthy();
     expect(await ResultPage({ params: Promise.resolve({ id: "result-1" }) })).toBeTruthy();
+    expect(await SampleLabelPage({ params: Promise.resolve({ id: "sample-1" }) })).toBeTruthy();
   });
 });
