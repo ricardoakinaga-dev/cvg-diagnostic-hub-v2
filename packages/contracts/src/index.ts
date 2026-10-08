@@ -355,6 +355,7 @@ export interface DiagnosticService {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   resultSchema: "NUMERIC_PANEL" | "NARRATIVE";

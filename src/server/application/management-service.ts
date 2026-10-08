@@ -2,7 +2,8 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, ManagedSession, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
-import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, UserOnCallUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, SessionRevokeInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, CatalogImportInput, CatalogImportResult, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, UserOnCallUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, SessionRevokeInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import { planCatalogImport, parseCatalogSheet, parseAnalyteSheet } from "./catalog-import";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
@@ -385,6 +386,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         departmentCode: service.departmentCode,
         workflowType: service.workflowType,
         requiresSample: service.requiresSample,
+        ...(service.sampleType ? { sampleType: service.sampleType } : {}),
         requiresSchedule: service.requiresSchedule,
         allowsAttachment: service.allowsAttachment,
         resultSchema: service.resultSchema,
@@ -429,6 +431,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           departmentCode,
           workflowType: input.workflowType,
           requiresSample: input.requiresSample,
+          ...(input.sampleType ? { sampleType: requireText(input.sampleType, "sampleType", 60) } : {}),
           requiresSchedule: input.requiresSchedule,
           allowsAttachment: input.allowsAttachment,
           active: true,
@@ -467,8 +470,11 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (structuralChanged && originalState.items.some((item) => item.serviceId === service.id)) {
           throw new ApiError("CATALOG_IN_USE", "A estrutura deste serviço já está referenciada por solicitações e não pode ser alterada.", 409);
         }
+        const sampleType = input.sampleType === undefined ? service.sampleType : input.sampleType === null ? undefined : requireText(input.sampleType, "sampleType", 60);
+        const { sampleType: _previousSampleType, ...serviceWithoutSampleType } = service;
         const updated: DiagnosticService = {
-          ...service,
+          ...serviceWithoutSampleType,
+          ...(sampleType ? { sampleType } : {}),
           name: input.name === undefined ? service.name : requireText(input.name, "name", 120),
           category,
           departmentCode,
@@ -484,6 +490,59 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const correlationId = input.correlationId ?? id("corr");
         const nextState = { ...originalState, services: originalState.services.map((entry) => entry.id === service.id ? updated : entry), auditEvents: [...originalState.auditEvents, createAudit("DiagnosticServiceUpdated", currentActor.id, "DiagnosticService", service.id, correlationId, String(service.version), String(updated.version), { active: updated.active, departmentCode: updated.departmentCode, workflowType: updated.workflowType, allowsAttachment: updated.allowsAttachment })] };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, updated, { serviceId, input }), result: updated };
+      });
+    },
+
+    /**
+     * D10: applies the catalog sheets. A dry run only plans. A real run is all-or-nothing: any ERROR row rejects the
+     * whole sheet (422) so the same file can be corrected and re-sent; an identical re-import writes nothing.
+     */
+    async importCatalog(actor: User, input: CatalogImportInput): Promise<CatalogImportResult> {
+      requireIdempotencyKey(input.idempotencyKey);
+      const scope = "POST:/diagnostic-services/import";
+      const planFor = (state: StoreState, currentActor: User) => {
+        requirePermission(currentActor, "service.catalog.manage", {});
+        return planCatalogImport(state, parseCatalogSheet(input.services), input.analytes === undefined ? undefined : parseAnalyteSheet(input.analytes), {
+          canManageDepartment: (departmentCode) => canAccessResource(currentActor, "service.catalog.manage", { departmentCode })
+        });
+      };
+      if (input.dryRun) {
+        const state = await store.readState();
+        const { writes: _writes, ...report } = planFor(state, requireActiveUser(state, actor));
+        return { applied: false, dryRun: true, ...report };
+      }
+      return store.transaction(async (originalState) => {
+        const currentActor = requireActiveUser(originalState, actor);
+        requirePermission(currentActor, "service.catalog.manage", {});
+        const idempotent = withIdempotency<CatalogImportResult>(originalState, currentActor.id, scope, input.idempotencyKey, { services: input.services, analytes: input.analytes });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        const { writes, ...report } = planFor(originalState, currentActor);
+        if (report.summary.error > 0) {
+          throw new ApiError("CATALOG_IMPORT_INVALID", "A planilha contém erros e nada foi importado. Corrija as linhas indicadas e envie novamente.", 422, { importReport: { applied: false, dryRun: false, ...report } });
+        }
+        const result: CatalogImportResult = { applied: true, dryRun: false, ...report };
+        if (writes.length === 0) return { state: originalState, result };
+        const correlationId = input.correlationId ?? id("corr");
+        let services = originalState.services;
+        let users = originalState.users;
+        const audits: AuditEvent[] = [];
+        for (const write of writes) {
+          const previous = write.existingId ? services.find((entry) => entry.id === write.existingId) : undefined;
+          const { sampleType: _previousSampleType, resultTemplate: _previousTemplate, ...base } = previous ?? { sampleType: undefined, resultTemplate: undefined };
+          const saved: DiagnosticService = { ...base, ...write.next, id: previous?.id ?? id("service"), version: (previous?.version ?? 0) + 1 };
+          if (previous) {
+            services = services.map((entry) => entry.id === previous.id ? saved : entry);
+            audits.push(createAudit("DiagnosticServiceUpdated", currentActor.id, "DiagnosticService", saved.id, correlationId, String(previous.version), String(saved.version), { active: saved.active, departmentCode: saved.departmentCode, workflowType: saved.workflowType, allowsAttachment: saved.allowsAttachment, source: "CATALOG_IMPORT" }));
+          } else {
+            const authorized = saved.active ? authorizeNewServiceForExecutors({ ...originalState, users, services }, saved) : { users, granted: 0 };
+            users = authorized.users;
+            services = [...services, saved];
+            audits.push(createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", saved.id, correlationId, undefined, saved.active ? "ACTIVE" : "INACTIVE", { code: saved.code, workflowType: saved.workflowType, autoAuthorizedExecutors: String(authorized.granted), source: "CATALOG_IMPORT" }));
+          }
+        }
+        audits.push(createAudit("CatalogImported", currentActor.id, "DiagnosticServiceCatalog", "catalog", correlationId, undefined, undefined, { created: report.summary.create, updated: report.summary.update, unchanged: report.summary.unchanged, rows: report.rows.length }));
+        const nextState = { ...originalState, users, services, auditEvents: [...originalState.auditEvents, ...audits] };
+        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { services: input.services, analytes: input.analytes }), result };
       });
     },
 
