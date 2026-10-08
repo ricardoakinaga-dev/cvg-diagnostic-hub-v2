@@ -480,6 +480,70 @@ export interface AuditMetrics {
   resultViewLatencySeconds?: number;
 }
 
+export interface ClinicalArchiveOptions {
+  readonly now?: Date;
+  /** Months a completed request stays in the active aggregate (D5: 24). */
+  readonly activeMonths?: number;
+  readonly dryRun?: boolean;
+  readonly actor?: string;
+}
+
+export interface ClinicalArchiveSummary {
+  readonly batchId?: string;
+  readonly cutoff: Timestamp;
+  readonly requestsArchived: number;
+  readonly entitiesArchived: number;
+  readonly attachmentsArchived: number;
+  readonly requestIds: readonly string[];
+}
+
+/** Entity collections that move to the archive with their request. */
+export const ARCHIVED_COLLECTIONS = ["requests", "items", "samples", "procedures", "schedules", "results", "resultVersions", "notifications", "attachments"] as const;
+export type ArchivedCollection = (typeof ARCHIVED_COLLECTIONS)[number];
+
+export interface ClinicalArchiveRow {
+  readonly requestId: string;
+  readonly collection: ArchivedCollection;
+  readonly entityKey: string;
+  readonly position: number;
+  readonly data: Record<string, unknown>;
+  readonly archivedAt: Timestamp;
+  readonly archiveBatch: string;
+}
+
+export interface ClinicalArchiveQuery {
+  readonly patientId?: string;
+  readonly requestId?: string;
+  readonly limit: number;
+}
+
+export interface ClinicalArchiveEntry {
+  requestId: string;
+  requestCode: string;
+  patientId: string;
+  encounterId: string;
+  requestingDepartmentCode: string;
+  archivedAt: Timestamp;
+  completedAt: Timestamp;
+  /** One entry per distinct service of the archived items; departmentCode is the item's. */
+  services: { code: string; name: string; departmentCode: string }[];
+  attachmentCount: number;
+}
+
+export interface ClinicalArchivePurgeOptions {
+  readonly now?: Date;
+  /** Months after archiving before an entry may be deleted; unset or 0 purges nothing. */
+  readonly purgeAfterMonths?: number;
+  readonly dryRun?: boolean;
+}
+
+export interface ClinicalArchivePurgeSummary {
+  readonly requestsPurged: number;
+  readonly entitiesPurged: number;
+  /** Storage keys of the purged attachments: the caller deletes the objects. */
+  readonly attachmentKeys: string[];
+}
+
 export interface StateStore {
   /** Relational outbox reads never restore delivery history into the snapshot. */
   readOutbox(query: { kind: "replay" | "dead-letter"; limit: number }): Promise<OutboxMessage[]>;
@@ -518,6 +582,18 @@ export interface StateStore {
    * idempotency records and processed outbox messages beyond their windows.
    */
   compactRuntimeState(options?: RuntimeRetentionOptions): Promise<RuntimeRetentionSummary>;
+  /**
+   * D5: moves requests completed more than `activeMonths` ago, with their items,
+   * samples, procedures, schedules, results, versions, notifications and
+   * attachments, out of the active aggregate into the clinical archive.
+   */
+  archiveClinicalRecords(options?: ClinicalArchiveOptions): Promise<ClinicalArchiveSummary>;
+  /** Archive summaries, newest first. Never loads the archive into the aggregate. */
+  readClinicalArchive(query: ClinicalArchiveQuery): Promise<ClinicalArchiveEntry[]>;
+  /** Every archived entity of one request, in original collection order, or undefined. */
+  readArchivedRequest(requestId: string): Promise<ClinicalArchiveRow[] | undefined>;
+  /** Deletes archive rows older than `purgeAfterMonths` and returns their attachment keys. */
+  purgeClinicalArchive(options?: ClinicalArchivePurgeOptions): Promise<ClinicalArchivePurgeSummary>;
   transaction<T>(operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;
   reset?(state: StoreState): Promise<void>;
   healthcheck?(): Promise<void>;

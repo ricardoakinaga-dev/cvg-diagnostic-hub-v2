@@ -22,6 +22,12 @@ export const clinicalHandlers = {
       const search = new URL(request.url).searchParams;
       return responseFor(await service.getPatientDiagnostics(actor, path[1], { limit: parseLimit(search.get("limit")), cursor: parseCursor(search.get("cursor")) }), correlationId, id);
     } },
+  listPatientArchive: { authentication: "session", handle: async ({ request, path, correlationId, id, service, actor }) => {
+      return responseFor(await service.listPatientArchive(actor, path[1], { limit: parseLimit(new URL(request.url).searchParams.get("limit")) }), correlationId, id);
+    } },
+  getArchivedRequest: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
+      return responseFor(await service.getArchivedRequest(actor, path[2]), correlationId, id);
+    } },
   listPatientEncounters: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       return responseFor(await service.listEncounters(actor, path[1]), correlationId, id);
     } },

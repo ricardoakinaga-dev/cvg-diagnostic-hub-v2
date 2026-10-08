@@ -7,6 +7,7 @@ import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { EncounterCloseDialog, EncounterOpenDialog, encounterTypeLabels } from "./encounter-actions";
 import { EmptyState, ErrorState, PartialNotice, StaleNotice } from "./feedback-states";
+import { PatientArchive } from "./patient-archive";
 import { PriorityBadge, StatusBadge, statusLabel } from "./status-badge";
 import { SampleLabelLink } from "./sample-label";
 import { Icon } from "./ui-icons";
@@ -365,5 +366,6 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     </div>
     {encounterDialog === "open" && <EncounterOpenDialog patientId={patientId} onClose={() => setEncounterDialog(null)} onOpened={encounterChanged} />}
     {encounterDialog === "close" && currentEncounter && <EncounterCloseDialog encounter={currentEncounter} onClose={() => setEncounterDialog(null)} onClosed={encounterChanged} />}
+    <PatientArchive patientId={patientId} />
   </div>;
 }

@@ -285,6 +285,10 @@ describe("secure attachment lifecycle", () => {
         readSessionActivity: context.store.readSessionActivity.bind(context.store),
         touchSessionActivity: context.store.touchSessionActivity.bind(context.store),
         compactRuntimeState: context.store.compactRuntimeState.bind(context.store),
+        archiveClinicalRecords: context.store.archiveClinicalRecords.bind(context.store),
+        readClinicalArchive: context.store.readClinicalArchive.bind(context.store),
+        readArchivedRequest: context.store.readArchivedRequest.bind(context.store),
+        purgeClinicalArchive: context.store.purgeClinicalArchive.bind(context.store),
         transaction: async (operation) => {
           if (!simulatedCommitFailure) {
             await operation(context.store.getState());
@@ -573,6 +577,10 @@ describe("secure attachment lifecycle", () => {
         readSessionActivity: context.store.readSessionActivity.bind(context.store),
         touchSessionActivity: context.store.touchSessionActivity.bind(context.store),
         compactRuntimeState: context.store.compactRuntimeState.bind(context.store),
+        archiveClinicalRecords: context.store.archiveClinicalRecords.bind(context.store),
+        readClinicalArchive: context.store.readClinicalArchive.bind(context.store),
+        readArchivedRequest: context.store.readArchivedRequest.bind(context.store),
+        purgeClinicalArchive: context.store.purgeClinicalArchive.bind(context.store),
         transaction: async (operation) => {
           const result = await context.store.transaction(operation);
           const attachment = context.store.getState().attachments.find((entry) => entry.id === session.attachment.id);

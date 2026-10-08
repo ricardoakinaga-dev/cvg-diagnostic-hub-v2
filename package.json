@@ -42,6 +42,7 @@
     "privacy:scan": "node scripts/privacy-scan.mjs",
     "outbox:worker": "tsx scripts/outbox-worker.ts",
     "runtime:retention": "tsx scripts/runtime-retention.ts",
+    "runtime:archive": "tsx scripts/clinical-archive.ts",
     "perf:smoke": "tsx scripts/perf-smoke.ts",
     "perf:postgres": "tsx scripts/perf-postgres.ts",
     "perf:synthetic": "tsx scripts/perf-workload.ts",
