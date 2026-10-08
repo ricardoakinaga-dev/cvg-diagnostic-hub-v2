@@ -116,6 +116,8 @@ export interface DiagnosticService {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  /** Tube or material the label asks the collector for (D8/D10); free text from the catalog sheet. */
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   active: boolean;

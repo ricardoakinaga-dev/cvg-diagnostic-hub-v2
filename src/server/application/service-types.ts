@@ -145,6 +145,7 @@ export interface DiagnosticServiceCreateInput extends CommandMeta {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   resultSchema: DiagnosticService["resultSchema"];
@@ -157,6 +158,7 @@ export interface DiagnosticServicePatchInput extends CommandMeta {
   departmentCode?: string;
   workflowType?: WorkflowType;
   requiresSample?: boolean;
+  sampleType?: string | null;
   requiresSchedule?: boolean;
   active?: boolean;
   allowsAttachment?: boolean;

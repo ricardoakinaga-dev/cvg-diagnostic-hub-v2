@@ -104,7 +104,7 @@ const requestSchemas = {
     ...strictObject({
     code: normalizedCatalogCodeSchema, name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
     departmentCode: normalizedDepartmentCodeSchema, workflowType: { type: "string", enum: ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] },
-    requiresSample: { type: "boolean" }, requiresSchedule: { type: "boolean" }, allowsAttachment: { type: "boolean" },
+    requiresSample: { type: "boolean" }, sampleType: normalizedTextSchema(1, 60), requiresSchedule: { type: "boolean" }, allowsAttachment: { type: "boolean" },
     resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] }, duplicateOfServiceId: identifier, slaHours: schemaReference("SlaHours")
     }, ["code", "name", "category", "departmentCode", "workflowType", "requiresSample", "requiresSchedule", "allowsAttachment", "resultSchema", "slaHours"]),
     oneOf: [
@@ -120,6 +120,7 @@ const requestSchemas = {
     ...strictObject({
     name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] }, departmentCode: normalizedDepartmentCodeSchema,
     workflowType: { type: "string", enum: ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] }, requiresSample: { type: "boolean" },
+    sampleType: { oneOf: [normalizedTextSchema(1, 60), { type: "null" }] },
     requiresSchedule: { type: "boolean" }, active: { type: "boolean" }, allowsAttachment: { type: "boolean" },
     resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] }, slaHours: schemaReference("SlaHours"), expectedVersion
     }),
@@ -271,7 +272,7 @@ const structuredLaboratoryResultCommandSchema = strictObject({
 }, ["kind", "panelCode", "panelVersion", "observations"]);
 const diagnosticServiceSchema = strictObject({
   id: identifier, code: stringSchema(2, 60), name: stringSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] },
-  departmentCode: stringSchema(1, 60), workflowType: workflowSchema, requiresSample: { type: "boolean" }, requiresSchedule: { type: "boolean" },
+  departmentCode: stringSchema(1, 60), workflowType: workflowSchema, requiresSample: { type: "boolean" }, sampleType: stringSchema(1, 60), requiresSchedule: { type: "boolean" },
   allowsAttachment: { type: "boolean" }, active: { type: "boolean" }, resultSchema: { type: "string", enum: ["NUMERIC_PANEL", "NARRATIVE"] },
   resultTemplate: schemaReference("LaboratoryPanelTemplate"),
   slaHours: schemaReference("SlaHours"), version: positiveVersion

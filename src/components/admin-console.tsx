@@ -21,6 +21,7 @@ interface ServiceDraft {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  sampleType: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   resultSchema: ResultSchema;
@@ -39,6 +40,7 @@ function createServiceDraft(creator: SessionUser): ServiceDraft {
     departmentCode,
     workflowType,
     requiresSample: workflowType === "LABORATORY",
+    sampleType: "",
     requiresSchedule: workflowType === "ULTRASOUND",
     allowsAttachment: workflowType !== "LABORATORY",
     resultSchema: "NARRATIVE",
@@ -46,6 +48,13 @@ function createServiceDraft(creator: SessionUser): ServiceDraft {
       : workflowType === "ULTRASOUND" ? { ROUTINE: 48, URGENT: 12, EMERGENCY: 6 }
         : { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }
   };
+}
+
+/** The API rejects an empty sampleType; the field is omitted when blank or when no sample is required. */
+function servicePayload(draft: ServiceDraft): Omit<ServiceDraft, "sampleType"> & { sampleType?: string } {
+  const { sampleType, ...rest } = draft;
+  const trimmed = sampleType.trim();
+  return draft.requiresSample && trimmed ? { ...rest, sampleType: trimmed } : rest;
 }
 
 const departmentLabels: Record<string, string> = { INPATIENT: "Internação", LABORATORY: "Laboratório", RADIOLOGY: "Radiologia", ULTRASOUND: "Ultrassom", OPERATIONS: "Operações", IT: "Tecnologia" };
@@ -140,7 +149,7 @@ function ServiceCreateForm({ creator, existingCodes, onSaved }: { creator: Sessi
     setBusy(true);
     setError("");
     try {
-      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify({ ...draft, name: draft.name.trim(), code: codeFromName(draft.name, existingCodes) }) });
+      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify({ ...servicePayload(draft), name: draft.name.trim(), code: codeFromName(draft.name, existingCodes) }) });
       setDraft(createServiceDraft(creator));
       onSaved();
     } catch (cause) {
@@ -152,7 +161,7 @@ function ServiceCreateForm({ creator, existingCodes, onSaved }: { creator: Sessi
 }
 
 function ServiceRow({ service, existingCodes, onSaved }: { service: CatalogService; existingCodes: string[]; onSaved: () => void }) {
-  const [draft, setDraft] = useState<ServiceDraft>(() => ({ code: service.code, name: service.name, category: service.category ?? "LABORATORY", departmentCode: service.departmentCode, workflowType: service.workflowType ?? "LABORATORY", requiresSample: service.requiresSample ?? false, requiresSchedule: service.requiresSchedule ?? false, allowsAttachment: service.allowsAttachment ?? false, resultSchema: service.resultSchema ?? "NARRATIVE", slaHours: { ...service.slaHours } }));
+  const [draft, setDraft] = useState<ServiceDraft>(() => ({ code: service.code, name: service.name, category: service.category ?? "LABORATORY", departmentCode: service.departmentCode, workflowType: service.workflowType ?? "LABORATORY", requiresSample: service.requiresSample ?? false, sampleType: service.sampleType ?? "", requiresSchedule: service.requiresSchedule ?? false, allowsAttachment: service.allowsAttachment ?? false, resultSchema: service.resultSchema ?? "NARRATIVE", slaHours: { ...service.slaHours } }));
   const [active, setActive] = useState(service.active);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -162,8 +171,8 @@ function ServiceRow({ service, existingCodes, onSaved }: { service: CatalogServi
     setBusy(true);
     setError("");
     try {
-      const { code: _code, ...editableDraft } = draft;
-      await apiFetch(`/diagnostic-services/${service.id}`, { method: "PATCH", body: JSON.stringify({ ...editableDraft, active, expectedVersion: service.version }) });
+      const { code: _code, ...editableDraft } = servicePayload(draft);
+      await apiFetch(`/diagnostic-services/${service.id}`, { method: "PATCH", body: JSON.stringify({ ...editableDraft, sampleType: editableDraft.sampleType ?? null, active, expectedVersion: service.version }) });
       onSaved();
     } catch (cause) {
       setError(getSafeErrorMessage(cause, "Não foi possível salvar o serviço."));
@@ -175,7 +184,7 @@ function ServiceRow({ service, existingCodes, onSaved }: { service: CatalogServi
     setBusy(true); setError("");
     const name = `${draft.name.slice(0, 112)} (cópia)`;
     try {
-      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify({ ...draft, name, code: codeFromName(name, existingCodes), duplicateOfServiceId: service.id }) });
+      await apiFetch("/diagnostic-services", { method: "POST", body: JSON.stringify({ ...servicePayload(draft), name, code: codeFromName(name, existingCodes), duplicateOfServiceId: service.id }) });
       onSaved();
     } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível duplicar o serviço.")); }
     finally { setBusy(false); }
@@ -194,6 +203,7 @@ function ServiceFields({ draft, onChange }: { draft: ServiceDraft; onChange: (ne
     <div className="admin-role-grid"><label>Categoria<select value={draft.category} onChange={(event) => set("category", event.target.value as ServiceCategory)}><option value="LABORATORY">Laboratório</option><option value="IMAGING">Imagem</option></select></label><label>Workflow<select value={draft.workflowType} onChange={(event) => set("workflowType", event.target.value as WorkflowType)}><option value="LABORATORY">Laboratório</option><option value="RADIOLOGY">Radiologia</option><option value="ULTRASOUND">Ultrassom</option></select></label></div>
     <label>Setor<input list="department-code-suggestions" value={draft.departmentCode} onChange={(event) => set("departmentCode", event.target.value.toUpperCase())} maxLength={60} required /></label><small className="field-hint">Use os códigos padrão (LABORATORY, RADIOLOGY, ULTRASOUND, INPATIENT, IT) para os rótulos e filas reconhecerem o setor.</small><datalist id="department-code-suggestions">{["LABORATORY", "RADIOLOGY", "ULTRASOUND", "INPATIENT", "IT"].map((code) => <option key={code} value={code} />)}</datalist>
     <div className="admin-check-grid"><label className="admin-check"><input type="checkbox" checked={draft.requiresSample} onChange={(event) => set("requiresSample", event.target.checked)} /> Exige amostra</label><label className="admin-check"><input type="checkbox" checked={draft.requiresSchedule} onChange={(event) => set("requiresSchedule", event.target.checked)} /> Exige agenda</label><label className="admin-check"><input type="checkbox" checked={draft.allowsAttachment} onChange={(event) => set("allowsAttachment", event.target.checked)} /> Aceita anexo</label></div>
+    {draft.requiresSample && <label>Tipo de amostra<input value={draft.sampleType} onChange={(event) => set("sampleType", event.target.value)} maxLength={60} placeholder="EDTA, soro, urina…" /></label>}
     <label>Modelo de resultado<select value={draft.resultSchema} onChange={(event) => set("resultSchema", event.target.value as ResultSchema)}><option value="NUMERIC_PANEL">Painel numérico</option><option value="NARRATIVE">Narrativo</option></select></label>
     <div className="admin-sla-grid"><label>SLA rotina (h)<input type="number" min="1" max="720" value={draft.slaHours.ROUTINE} onChange={(event) => setSla("ROUTINE", Number(event.target.value))} /></label><label>SLA urgente (h)<input type="number" min="1" max="720" value={draft.slaHours.URGENT} onChange={(event) => setSla("URGENT", Number(event.target.value))} /></label><label>SLA emergência (h)<input type="number" min="1" max="720" value={draft.slaHours.EMERGENCY} onChange={(event) => setSla("EMERGENCY", Number(event.target.value))} /></label></div>
     </details>

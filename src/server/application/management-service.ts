@@ -357,6 +357,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         departmentCode: service.departmentCode,
         workflowType: service.workflowType,
         requiresSample: service.requiresSample,
+        ...(service.sampleType ? { sampleType: service.sampleType } : {}),
         requiresSchedule: service.requiresSchedule,
         allowsAttachment: service.allowsAttachment,
         resultSchema: service.resultSchema,
@@ -401,6 +402,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           departmentCode,
           workflowType: input.workflowType,
           requiresSample: input.requiresSample,
+          ...(input.sampleType ? { sampleType: requireText(input.sampleType, "sampleType", 60) } : {}),
           requiresSchedule: input.requiresSchedule,
           allowsAttachment: input.allowsAttachment,
           active: true,
@@ -439,8 +441,11 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (structuralChanged && originalState.items.some((item) => item.serviceId === service.id)) {
           throw new ApiError("CATALOG_IN_USE", "A estrutura deste serviço já está referenciada por solicitações e não pode ser alterada.", 409);
         }
+        const sampleType = input.sampleType === undefined ? service.sampleType : input.sampleType === null ? undefined : requireText(input.sampleType, "sampleType", 60);
+        const { sampleType: _previousSampleType, ...serviceWithoutSampleType } = service;
         const updated: DiagnosticService = {
-          ...service,
+          ...serviceWithoutSampleType,
+          ...(sampleType ? { sampleType } : {}),
           name: input.name === undefined ? service.name : requireText(input.name, "name", 120),
           category,
           departmentCode,

@@ -21388,6 +21388,14 @@
           "requiresSample": {
             "type": "boolean"
           },
+          "sampleType": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,58}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 60
+          },
           "requiresSchedule": {
             "type": "boolean"
           },
@@ -21476,6 +21484,21 @@
           },
           "requiresSample": {
             "type": "boolean"
+          },
+          "sampleType": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,58}\\S)?[\\s]*$",
+                "x-normalization": "trim",
+                "x-normalized-min-length": 1,
+                "x-normalized-max-length": 60
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "requiresSchedule": {
             "type": "boolean"
@@ -23205,6 +23228,11 @@
           },
           "requiresSample": {
             "type": "boolean"
+          },
+          "sampleType": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60
           },
           "requiresSchedule": {
             "type": "boolean"
