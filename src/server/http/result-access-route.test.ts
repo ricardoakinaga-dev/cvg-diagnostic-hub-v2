@@ -29,7 +29,6 @@ async function routeFixture() {
     items: [{ serviceId: "service-hemogram" }]
   }, { idempotencyKey: "route-security-request" });
   const received = await service.receiveSample(lab, [request.items[0].id], {
-    accessionCode: "ACC-ROUTE-SECURITY",
     sampleType: "EDTA",
     expectedVersion: request.items[0].version,
     idempotencyKey: "route-security-receive"

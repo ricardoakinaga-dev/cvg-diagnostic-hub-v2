@@ -8,6 +8,7 @@ import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes }
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
+import { withCriticalWhatsAppAlert } from "./critical-alert-channel";
 import * as helpers from "./service-common";
 import { reprojectCommandRequest } from "./request-projection";
 import { findById } from "../domain/state-index";
@@ -339,6 +340,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: releasedVersion.critical ? "CRITICAL" : "ACTIONABLE", priority: releasedVersion.critical ? "URGENT" : "HIGH", recipientUserId: requester.id, entityType: "RESULT_VERSION", entityId: releasedVersion.id, deepLink: `/results/${result.id}`, title: releasedVersion.critical ? "Resultado crítico requer confirmação" : "Resultado disponível", body: `${view.patient.displayName} · ${view.service.name} · versão ${releasedVersion.sequence} liberada.`, dedupeKey: `release:${releasedVersion.id}:${requester.id}` };
         nextState = notificationFor(nextState, notification);
         const notificationId = nextState.notifications.find((entry) => entry.dedupeKey === notification.dedupeKey && entry.recipientUserId === notification.recipientUserId)?.id;
+        nextState = withCriticalWhatsAppAlert(nextState, notificationId, view.request, correlationId);
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("ResultReleased", currentActor.id, "ResultVersion", releasedVersion.id, correlationId, "DRAFT", "RELEASED", { resultId, critical: releasedVersion.critical }), createAudit("DiagnosticItemResultAvailable", currentActor.id, "DiagnosticRequestItem", releasedItem.id, correlationId, view.item.status, releasedItem.status, {})], outbox: [...nextState.outbox, createOutbox("ResultReleased", "Result", result.id, correlationId, { versionId: releasedVersion.id, critical: releasedVersion.critical, ...(notificationId ? { notificationId } : {}) })] };
         const response = { result: releasedResult, version: releasedVersion, item: releasedItem, request: requestViewForActor(nextState, currentActor, requestFor(nextState, view.request.id)) };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, response, { resultId, input }), result: response };

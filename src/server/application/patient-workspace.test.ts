@@ -23,7 +23,6 @@ describe("patient workspace projection", () => {
       items: [{ serviceId: "service-hemogram" }, { serviceId: "service-xray" }]
     }, { idempotencyKey: "workspace-complete-request" });
     const received = await service.receiveSample(lab, [request.items[0].id], {
-      accessionCode: "ACC-WORKSPACE-1",
       sampleType: "EDTA",
       expectedVersion: request.items[0].version,
       idempotencyKey: "workspace-complete-receive"
@@ -93,7 +92,7 @@ describe("patient workspace projection", () => {
     });
     expect(hemogram.workspaceContext).toMatchObject({
       operationalContext: { nextAction: { label: "Revisar resultado" } },
-      sample: { id: received.sample.id, accessionCode: "ACC-WORKSPACE-1", status: "RECEIVED" },
+      sample: { id: received.sample.id, accessionCode: received.sample.accessionCode, status: "RECEIVED" },
       result: { id: released.result.id, versionId: released.version.id, status: "RELEASED" },
       attachments: [{ id: cleanAttachment.id, safeName: "laudo.pdf", scanStatus: "CLEAN", uploadStatus: "FINALIZED" }]
     });
@@ -123,7 +122,6 @@ describe("patient workspace projection", () => {
       items: [{ serviceId: "service-hemogram" }, { serviceId: "service-xray" }]
     }, { idempotencyKey: "workspace-scope-request" });
     const received = await service.receiveSample(lab, [request.items[0].id], {
-      accessionCode: "ACC-WORKSPACE-2",
       sampleType: "EDTA",
       expectedVersion: request.items[0].version,
       idempotencyKey: "workspace-scope-receive"

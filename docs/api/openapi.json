@@ -60,6 +60,10 @@
     {
       "name": "Session",
       "description": "Session operations for the CVG diagnostic workflow."
+    },
+    {
+      "name": "Webhooks",
+      "description": "Webhooks operations for the CVG diagnostic workflow."
     }
   ],
   "paths": {
@@ -14601,6 +14605,225 @@
         }
       }
     },
+    "/samples/{sampleId}/label": {
+      "get": {
+        "operationId": "getSampleLabel",
+        "summary": "Read the printable label of a sample",
+        "description": "Read the printable label of a sample. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Diagnostics"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-permissions": [
+          "item.view"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "request access is limited to patient scope, executor department context, or a manager delegated department"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "sampleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[^/%]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getSampleLabelSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/samples/{sampleId}/receive-replacement": {
       "post": {
         "operationId": "receiveReplacementSample",
@@ -22181,6 +22404,472 @@
         }
       }
     },
+    "/webhooks/whatsapp": {
+      "get": {
+        "operationId": "verifyWhatsAppWebhook",
+        "summary": "Answer Meta's WhatsApp webhook verification challenge",
+        "description": "Answer Meta's WhatsApp webhook verification challenge. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [],
+        "x-required-permissions": [],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "hub.mode",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WebhookMode"
+            }
+          },
+          {
+            "name": "hub.verify_token",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WebhookVerifyToken"
+            }
+          },
+          {
+            "name": "hub.challenge",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/WebhookChallenge"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated actor is not authorized",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "receiveWhatsAppStatus",
+        "summary": "Record WhatsApp delivery reports of critical-result alerts",
+        "description": "Record WhatsApp delivery reports of critical-result alerts. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Webhooks"
+        ],
+        "security": [],
+        "x-required-permissions": [],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured",
+          "X-Hub-Signature-256 must be the HMAC-SHA256 of the exact body under WHATSAPP_APP_SECRET"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "X-Hub-Signature-256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^sha256=[0-9a-fA-F]{64}$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WhatsAppWebhookEvent"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/receiveWhatsAppStatusSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Request media type is not supported",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/realtime/events": {
       "get": {
         "operationId": "streamRealtimeEvents",
@@ -22954,6 +23643,29 @@
           }
         }
       },
+      "WhatsAppWebhookEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "object",
+          "entry"
+        ],
+        "properties": {
+          "object": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "entry": {
+            "type": "array",
+            "maxItems": 1000,
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "x-runtime-validation": "Meta webhook envelope; only entry[].changes[field=messages].value.statuses[] are read, recipient and pricing data are discarded"
+      },
       "DeadLetterCommand": {
         "type": "object",
         "additionalProperties": false,
@@ -23654,10 +24366,6 @@
       "SampleCommand": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "accessionCode",
-          "sampleType"
-        ],
         "properties": {
           "accessionCode": {
             "type": "string",
@@ -24109,6 +24817,22 @@
           "ACTIONABLE",
           "CRITICAL"
         ]
+      },
+      "WebhookMode": {
+        "type": "string",
+        "enum": [
+          "subscribe"
+        ]
+      },
+      "WebhookVerifyToken": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200
+      },
+      "WebhookChallenge": {
+        "type": "string",
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9_-]+$"
       },
       "ResponseMeta": {
         "type": "object",
@@ -25862,7 +26586,8 @@
           "version",
           "patient",
           "encounter",
-          "items"
+          "items",
+          "samples"
         ],
         "properties": {
           "id": {
@@ -25950,6 +26675,13 @@
             "items": {
               "$ref": "#/components/schemas/RequestItem"
             }
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sample"
+            },
+            "maxItems": 20
           }
         }
       },
@@ -26327,6 +27059,225 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "SampleLabel": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sample",
+          "request",
+          "patient",
+          "services",
+          "encounter",
+          "requestedAt",
+          "label"
+        ],
+        "properties": {
+          "sample": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "accessionCode",
+              "sampleType",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "accessionCode": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 40,
+                "pattern": "^[A-Z0-9][A-Z0-9-]{2,39}$"
+              },
+              "sampleType": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "EXPECTED",
+                  "RECEIVED",
+                  "REJECTED",
+                  "REPLACED"
+                ]
+              }
+            }
+          },
+          "request": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "requestCode",
+              "priority"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "requestCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "ROUTINE",
+                  "URGENT",
+                  "EMERGENCY"
+                ]
+              }
+            }
+          },
+          "patient": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "displayName",
+              "species",
+              "externalId"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "species": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "name"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              }
+            },
+            "maxItems": 20
+          },
+          "encounter": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "externalId"
+            ],
+            "properties": {
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "widthMm",
+              "heightMm",
+              "barcode"
+            ],
+            "properties": {
+              "widthMm": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 150
+              },
+              "heightMm": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 150
+              },
+              "barcode": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "symbology",
+                  "modules",
+                  "bars"
+                ],
+                "properties": {
+                  "symbology": {
+                    "type": "string",
+                    "const": "code128"
+                  },
+                  "modules": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2000
+                  },
+                  "bars": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "x",
+                        "width"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "width": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4
+                        }
+                      }
+                    },
+                    "maxItems": 400
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -27000,6 +27951,65 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          },
+          "whatsapp": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status",
+              "updatedAt"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "QUEUED",
+                  "SENT",
+                  "DELIVERED",
+                  "READ",
+                  "FAILED",
+                  "SKIPPED"
+                ]
+              },
+              "updatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "messageId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "errorCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              }
+            }
+          },
+          "escalation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "level",
+              "lastEscalatedAt"
+            ],
+            "properties": {
+              "level": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              },
+              "lastEscalatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "escalationOf": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           }
         }
       },
@@ -27155,6 +28165,24 @@
           "loggedOut": {
             "type": "boolean",
             "const": true
+          }
+        }
+      },
+      "WhatsAppWebhookReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "received",
+          "applied"
+        ],
+        "properties": {
+          "received": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "applied": {
+            "type": "integer",
+            "minimum": 0
           }
         }
       },
@@ -29964,6 +30992,22 @@
           }
         }
       },
+      "getSampleLabelSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SampleLabel"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
       "receiveReplacementSampleSuccessResponse": {
         "type": "object",
         "additionalProperties": false,
@@ -30358,6 +31402,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/DeadLetterMutation"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "receiveWhatsAppStatusSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/WhatsAppWebhookReceipt"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

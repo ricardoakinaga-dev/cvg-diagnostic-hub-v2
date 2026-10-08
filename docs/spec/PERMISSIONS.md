@@ -28,7 +28,7 @@ The following identifiers are the authorization contract used by the API specifi
 | `request.view` | View request details | CARE/DEPARTMENT |
 | `request.duplicate_override` | Override duplicate warning | manager/policy |
 | `request.cancel` | Cancel request before or during eligible phase | requester/manager/policy |
-| `item.view` | View diagnostic item and state | CARE/DEPARTMENT |
+| `item.view` | View diagnostic item and state, and read its sample label | CARE/DEPARTMENT |
 | `item.cancel` | Cancel one eligible item | requester/manager/policy |
 | `item.reject` | Reject an item/sample in executor workflow | SERVICE/manager |
 | `sample.receive` | Receive/accession a sample | SERVICE=LAB |

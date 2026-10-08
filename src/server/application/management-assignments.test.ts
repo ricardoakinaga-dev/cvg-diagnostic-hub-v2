@@ -25,7 +25,7 @@ describe("explicit executor assignments and catalog duplication", () => {
     expect(queue).toHaveLength(1);
     expect(queue[0].service.code).toBe("HEMOGRAM");
     const blocked = request.items.find((item) => item.service.code === "CRP")!;
-    await expect(service.receiveSample(actor, [blocked.id], { accessionCode: "ACC-DENIED", sampleType: "EDTA", expectedVersion: blocked.version, idempotencyKey: "assignment-denied" })).rejects.toMatchObject({ status: 404 });
+    await expect(service.receiveSample(actor, [blocked.id], { sampleType: "EDTA", expectedVersion: blocked.version, idempotencyKey: "assignment-denied" })).rejects.toMatchObject({ status: 404 });
     const saved = await service.updateUserRole(admin, created.id, { role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: ["CRP"], expectedVersion: changed.user.version, idempotencyKey: "assignment-update" });
     expect(saved.serviceCodes).toEqual(["CRP"]);
     await expect(authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${changed.sessionToken}` } }))).rejects.toMatchObject({ status: 401 });

@@ -3,7 +3,7 @@ import type { Permission } from "@cvg/contracts";
 export type ApiMethod = "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
 export type ApiAuthentication = "public" | "session";
 export type ApiMediaType = "application/json" | "application/pdf" | "image/jpeg" | "image/png" | "text/event-stream" | "text/plain";
-export type ApiRequestHeaderName = "x-correlation-id" | "x-csrf-token" | "idempotency-key" | "if-match" | "last-event-id" | "x-duplicate-override";
+export type ApiRequestHeaderName = "x-correlation-id" | "x-csrf-token" | "idempotency-key" | "if-match" | "last-event-id" | "x-duplicate-override" | "x-hub-signature-256";
 
 export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getLiveness: "LivenessData",
@@ -11,6 +11,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   login: "LoginData",
   getCurrentSession: "CurrentSessionData",
   logout: "LogoutData",
+  receiveWhatsAppStatus: "WhatsAppWebhookReceipt",
   reauthenticate: "ReauthenticationData",
   changeInitialPassword: "LoginData",
   changeOwnPassword: "LoginData",
@@ -58,6 +59,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   requestDiagnosticItemRecollection: "RecollectionCommandResult",
   createDiagnosticItemResult: "ResultCommandResult",
   receiveReplacementSample: "SampleCommandResult",
+  getSampleLabel: "SampleLabel",
   rescheduleProcedure: "ProcedureRescheduleCommandResult",
   createAttachmentUploadSession: "AttachmentSessionResult",
   uploadAttachmentContent: "AttachmentFinalizationResult",
@@ -124,6 +126,8 @@ export type ApiConditionalRequestRule = Readonly<{
 export type ApiAuthorizationCondition =
   | "temporary password must be replaced before any operational action"
   | "current password must be confirmed; every session of the user is rotated"
+  | "available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured"
+  | "X-Hub-Signature-256 must be the HMAC-SHA256 of the exact body under WHATSAPP_APP_SECRET"
   | "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"
   | "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"
   | "only active reasons for clinical actions authorized in the actor department are returned"
@@ -210,6 +214,7 @@ const IDEMPOTENCY_REQUIRED = { name: "idempotency-key", required: true } as cons
 const IF_MATCH = { name: "if-match", required: false } as const;
 const LAST_EVENT_ID = { name: "last-event-id", required: false } as const;
 const DUPLICATE_OVERRIDE = { name: "x-duplicate-override", required: false } as const;
+const HUB_SIGNATURE = { name: "x-hub-signature-256", required: true } as const;
 
 const PUBLIC_READ_ERRORS = [429, 500] as const;
 const PUBLIC_COMMAND_ERRORS = [400, 401, 429, 500] as const;
@@ -393,6 +398,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/diagnostic-items/{itemId}/request-recollection", "requestDiagnosticItemRecollection", "Request recollection for a diagnostic item", "Diagnostics", jsonBody("RecollectionCommand"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "diagnosticItem.version" }),
   command("POST", "/diagnostic-items/{itemId}/results", "createDiagnosticItemResult", "Create a result draft for a diagnostic item", "Results", jsonBody("ResultDraftCommand"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "diagnosticItem.version", successStatus: 201, errorStatuses: JSON_COMMAND_WITH_POLICY_ERRORS }),
 
+  read("/samples/{sampleId}/label", "getSampleLabel", "Read the printable label of a sample", "Diagnostics"),
   command("POST", "/samples/{sampleId}/receive-replacement", "receiveReplacementSample", "Receive a replacement sample", "Diagnostics", jsonBody("SampleCommand"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "linkedDiagnosticItem.version" }),
   command("POST", "/procedures/{procedureId}/reschedule", "rescheduleProcedure", "Reschedule a procedure", "Diagnostics", jsonBody("ScheduleCommand"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "procedure.version" }),
 
@@ -433,6 +439,13 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/outbox/dead-letters", "listDeadLetters", "List outbox dead-letter messages", "Operations", { queryParameters: [{ name: "limit", schema: "Limit" }] }),
   command("POST", "/outbox/dead-letters/{messageId}/reprocess", "reprocessDeadLetter", "Reprocess an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
   command("POST", "/outbox/dead-letters/{messageId}/discard", "discardDeadLetter", "Discard an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
+  read("/webhooks/whatsapp", "verifyWhatsAppWebhook", "Answer Meta's WhatsApp webhook verification challenge", "Webhooks", {
+    authentication: "public", successMediaTypes: ["text/plain"], errorStatuses: [403, 404, 429, 500],
+    queryParameters: [{ name: "hub.mode", required: true, schema: "WebhookMode" }, { name: "hub.verify_token", required: true, schema: "WebhookVerifyToken" }, { name: "hub.challenge", required: true, schema: "WebhookChallenge" }]
+  }),
+  command("POST", "/webhooks/whatsapp", "receiveWhatsAppStatus", "Record WhatsApp delivery reports of critical-result alerts", "Webhooks", jsonBody("WhatsAppWebhookEvent"), {
+    authentication: "public", headers: [HUB_SIGNATURE], errorStatuses: [400, 401, 404, 415, 429, 500]
+  }),
   read("/realtime/events", "streamRealtimeEvents", "Stream authorized realtime events", "Realtime", {
     queryParameters: [{ name: "snapshot", schema: "Boolean" }], requestHeaders: [LAST_EVENT_ID],
     successMediaTypes: ["text/event-stream"], successHeaders: ["x-correlation-id", "cache-control", "connection"],
@@ -524,6 +537,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   requestDiagnosticItemRecollection: authorization(["sample.recollection.request"], DEPARTMENT),
   createDiagnosticItemResult: authorization(["result.draft.create"], SERVICE),
   receiveReplacementSample: authorization(["sample.replacement.receive"], DEPARTMENT),
+  getSampleLabel: authorization(["item.view"], REQUEST),
   rescheduleProcedure: authorization(["procedure.reschedule"], DEPARTMENT),
   createAttachmentUploadSession: authorization(["attachment.upload_session"], SERVICE),
   uploadAttachmentContent: authorization(["attachment.finalize"], SERVICE),
@@ -555,7 +569,9 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
-  streamRealtimeEvents: authorization(["realtime.connect"], ROLE)
+  streamRealtimeEvents: authorization(["realtime.connect"], ROLE),
+  verifyWhatsAppWebhook: authorization([], ["available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured"]),
+  receiveWhatsAppStatus: authorization([], ["available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured", "X-Hub-Signature-256 must be the HMAC-SHA256 of the exact body under WHATSAPP_APP_SECRET"])
 } satisfies Record<string, ApiAuthorization>);
 
 const ERROR_STATUSES_BY_OPERATION = Object.freeze({
@@ -580,6 +596,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   scheduleDiagnosticItem: [400, 401, 403, 404, 409, 415, 429, 500], startDiagnosticItemProcedure: [400, 401, 403, 404, 409, 415, 429, 500],
   markDiagnosticItemPerformed: [400, 401, 403, 404, 409, 415, 429, 500], requestDiagnosticItemRecollection: [400, 401, 403, 404, 409, 415, 429, 500],
   createDiagnosticItemResult: [400, 401, 403, 404, 409, 415, 422, 429, 500], receiveReplacementSample: [400, 401, 403, 404, 409, 415, 429, 500],
+  getSampleLabel: [401, 404, 429, 500],
   rescheduleProcedure: [400, 401, 403, 404, 409, 415, 429, 500], createAttachmentUploadSession: [400, 401, 403, 404, 409, 415, 429, 500],
   uploadAttachmentContent: [400, 401, 403, 404, 409, 415, 429, 500, 503], finalizeAttachment: [400, 401, 403, 404, 409, 415, 422, 429, 500],
   downloadAttachment: [401, 404, 429, 500, 503], getResult: [401, 404, 429, 500], listResultVersions: [401, 404, 429, 500],
@@ -589,7 +606,8 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getReport: [401, 404, 429, 500], listAuditEvents: [400, 401, 404, 429, 500], listNotifications: [400, 401, 404, 429, 500],
   acknowledgeNotification: [400, 401, 403, 404, 409, 415, 429, 500], listQueueItems: [400, 401, 404, 429, 500],
   searchDiagnostics: [400, 401, 404, 429, 500], getTimeline: [400, 401, 404, 429, 500], getDashboard: [401, 404, 429, 500],
-  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500]
+  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500],
+  verifyWhatsAppWebhook: [403, 404, 429, 500], receiveWhatsAppStatus: [400, 401, 404, 415, 429, 500]
 } satisfies Record<string, ReadonlyArray<number>>);
 
 export const API_OPERATIONS: ReadonlyArray<ApiOperation> = Object.freeze(operations.map((operation) => {

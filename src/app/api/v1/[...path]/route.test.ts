@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELETE, GET, PATCH, POST, PUT } from "./route";
 import { getRuntimeStoreAsync, resetRuntimeStore } from "../../../../server/store/runtime";
@@ -1165,6 +1166,46 @@ describe("versioned API boundary", () => {
     expect((await removed.json()).data.user).not.toHaveProperty("alertContact");
   });
 
+  it("hides the WhatsApp webhook until the channel and both Meta secrets are configured, then verifies Meta's challenge", async () => {
+    const verify = (query: string) => GET(new Request(`http://localhost/api/v1/webhooks/whatsapp?${query}`), params(["webhooks", "whatsapp"]));
+    const valid = "hub.mode=subscribe&hub.verify_token=route-verify-token&hub.challenge=challenge_123";
+    expect((await verify(valid)).status).toBe(404);
+    vi.stubEnv("WHATSAPP_ENABLED", "true");
+    vi.stubEnv("WHATSAPP_VERIFY_TOKEN", "route-verify-token");
+    try {
+      expect((await verify(valid)).status).toBe(404);
+      vi.stubEnv("WHATSAPP_APP_SECRET", "route-app-secret");
+      const answered = await verify(valid);
+      expect(answered.status).toBe(200);
+      expect(answered.headers.get("content-type")).toMatch(/^text\/plain/);
+      expect(await answered.text()).toBe("challenge_123");
+      expect((await verify("hub.mode=subscribe&hub.verify_token=wrong-token&hub.challenge=challenge_123")).status).toBe(403);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("accepts only signed WhatsApp delivery reports and ignores unknown messages", async () => {
+    vi.stubEnv("WHATSAPP_ENABLED", "true");
+    vi.stubEnv("WHATSAPP_VERIFY_TOKEN", "route-verify-token");
+    vi.stubEnv("WHATSAPP_APP_SECRET", "route-app-secret");
+    try {
+      const body = JSON.stringify({ object: "whatsapp_business_account", entry: [{ id: "waba", changes: [{ field: "messages", value: { statuses: [{ id: "wamid.unknown", status: "delivered", timestamp: "1760000000", recipient_id: "5500000000000" }] } }] }] });
+      const signature = (payload: string, secret = "route-app-secret") => `sha256=${createHmac("sha256", secret).update(payload).digest("hex")}`;
+      const report = (payload: string, headers: Record<string, string>) => POST(new Request("http://localhost/api/v1/webhooks/whatsapp", { method: "POST", headers, body: payload }), params(["webhooks", "whatsapp"]));
+      expect((await report(body, { "content-type": "application/json", "x-hub-signature-256": signature(body, "another-secret") })).status).toBe(401);
+      expect((await report(body, { "content-type": "application/json" })).status).toBe(401);
+      expect((await report(body, { "content-type": "application/json", "x-hub-signature-256": "sha1=abc" })).status).toBe(400);
+      expect((await report(body, { "content-type": "text/plain", "x-hub-signature-256": signature(body) })).status).toBe(415);
+      expect((await report("{not json", { "content-type": "application/json", "x-hub-signature-256": signature("{not json") })).status).toBe(400);
+      const accepted = await report(body, { "content-type": "application/json", "x-hub-signature-256": signature(body) });
+      expect(accepted.status).toBe(200);
+      expect((await accepted.json()).data).toEqual({ received: 1, applied: 0 });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it.each(["readAuditMetrics", "readOutboxMetrics"] as const)("fails metrics closed when %s is unavailable", async (method) => {
     const admin = await login("admin@cvg.local");
     const store = await getRuntimeStoreAsync();
@@ -1722,7 +1763,7 @@ describe("versioned API boundary", () => {
     const receive = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/receive-sample`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: lab.cookie, "x-csrf-token": lab.csrf, "idempotency-key": "api-report-receive" },
-      body: JSON.stringify({ accessionCode: "ACC-API-REPORT", sampleType: "EDTA", expectedVersion: created.data.items[0].version })
+      body: JSON.stringify({ sampleType: "EDTA", expectedVersion: created.data.items[0].version })
     }), params(["diagnostic-items", itemId, "receive-sample"]));
     const received = await receive.json();
     const start = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/start-processing`, {

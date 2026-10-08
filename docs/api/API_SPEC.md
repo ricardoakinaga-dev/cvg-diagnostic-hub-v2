@@ -57,6 +57,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | --- | --- | --- |
 | Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact` | authenticated session boundary |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
+| Webhooks | `GET /webhooks/whatsapp`, `POST /webhooks/whatsapp` | public, gated by configuration and Meta's signature |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
 | Diagnostic requests | `POST /diagnostic-requests`, `GET /diagnostic-requests`, `GET /diagnostic-requests/{id}` | create/view scope |
@@ -88,6 +89,8 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
 | `PUT /session/alert-contact` | authenticated active session (not a temporary password) | PROD-402: only the user registers their own WhatsApp number for critical-result alerts. `{ whatsappPhone, consent: true }` stores it in E.164 (10 or 11 digits without a country code are read as Brazilian) with the consent time; `{ whatsappPhone: null }` removes both. The response and `GET /session/me` return only `alertContact.maskedPhone` and `consentAt`; the audit event `AlertContactUpdated` never carries the number |
+| `GET /webhooks/whatsapp` | public | PROD-402: 404 unless `WHATSAPP_ENABLED=true` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET`; answers Meta's `hub.challenge` as `text/plain` only for `hub.mode=subscribe` with the matching verify token (403 otherwise) |
+| `POST /webhooks/whatsapp` | public | PROD-402: same gate; requires `X-Hub-Signature-256` = HMAC-SHA256 of the exact body under the app secret (401 otherwise); reads only delivery statuses, moves the notification's `whatsapp` status forward (`SENT` → `DELIVERED` → `READ`, or `FAILED`) and audits it; unknown message ids are ignored; returns `{ received, applied }` |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
@@ -110,6 +113,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /diagnostic-items/{id}/start-processing` | `sample.process` | service must be Laboratory and state transition valid |
 | `POST /diagnostic-items/{id}/request-recollection` | `sample.recollection.request` | service must be Laboratory and reason required |
 | `POST /samples/{id}/receive-replacement` | `sample.replacement.receive` | active recollection chain and Laboratory scope |
+| `GET /samples/{id}/label` | `item.view` | request patient and service/department scope of a linked item |
 | `POST /diagnostic-items/{id}/schedule` | `procedure.schedule` | service must be RX/US; department/resource scope |
 | `POST /procedures/{id}/reschedule` | `procedure.reschedule` | service, resource and scheduling policy |
 | `POST /diagnostic-items/{id}/start-procedure` | `procedure.start` | executor service and scheduled window |
@@ -215,10 +219,11 @@ Cancellation never deletes. Partial item cancellation returns updated aggregate 
 
 ## 4. Laboratory commands
 
-- `POST /diagnostic-items/{id}/receive-sample` — body `accessionCode` or create sample metadata, sample type, expectedVersion.
+- `POST /diagnostic-items/{id}/receive-sample` — body `accessionCode` (optional), `sampleType` (optional), expectedVersion. When the item has a system-generated `EXPECTED` sample (created with the request, D-034), the code read from the label is optional: if sent it must equal the sample's code (`409 ACCESSION_MISMATCH`), a generated-format code with a wrong check character is `400 ACCESSION_INVALID`, and all items linked to the same sample become `RECEIVED`. `sampleType` defaults to the sample's catalog type and is required only when the catalog has none ("A definir"). For requests created before D-034, the legacy path keeps working: a hand-typed code is checked for duplicates (`409 CONFLICT`) and, when none is sent, the server generates one.
 - `POST /diagnostic-items/{id}/start-processing` — expectedVersion.
 - `POST /diagnostic-items/{id}/request-recollection` — reasonCode, note, affected sample ID, expectedVersion.
-- `POST /samples/{id}/receive-replacement` — accession/sample metadata and item links.
+- `POST /samples/{id}/receive-replacement` — same optional `accessionCode`/`sampleType` rules; the replacement sample already carries a generated accession from the moment the recollection is requested.
+- `GET /samples/{id}/label` (`getSampleLabel`) — printable label data: `sample` (id, accessionCode, sampleType, status), `request` (id, requestCode, priority), `patient` (id, displayName, species, externalId), `services` (code, name) of the items the reader may see, `encounter.externalId`, `requestedAt` and `label` (`widthMm`/`heightMm` from `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM`, `barcode.symbology` `code128`, `barcode.modules` and `barcode.bars` as x/width geometry that the page draws itself, no markup). Permission `item.view` with the same request/patient scope as `GET /diagnostic-items/{id}`; a sample outside the scope answers `404 SCOPE_DENIED`. The request view (`RequestView`) now lists the request's `samples`, so the UI shows the code before receipt.
 
 Each command verifies service workflow, actor role, patient/request consistency and idempotency. Response returns item, sample chain summary and next actions.
 

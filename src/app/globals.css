@@ -1266,6 +1266,22 @@ body {
   .queue-page .page-lede { font-size: 12px; line-height: 1.4; }
 }
 
+/* Sample label (PROD-405): on screen a preview, in print only the label sheet. */
+.sample-label-page { display: grid; gap: 12px; justify-items: start; }
+.sample-label-toolbar { display: flex; align-items: center; gap: 16px; }
+.sample-label-title { font-size: 20px; margin: 0; }
+.sample-label-status { margin: 0; color: var(--muted, #555); }
+.sample-label-sheet { box-sizing: border-box; display: flex; flex-direction: column; gap: 0.3mm; padding: 1.5mm 2mm; overflow: hidden; background: #fff; color: #000; border: 1px dashed #888; font-family: system-ui, sans-serif; font-size: 7pt; line-height: 1.15; }
+.sample-label-code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13pt; letter-spacing: 0.02em; }
+.sample-label-barcode { display: block; height: 9mm; width: 100%; flex: none; }
+.sample-label-patient { font-weight: 700; font-size: 8pt; }
+.sample-label-line { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media print {
+  body * { visibility: hidden; }
+  .sample-label-sheet, .sample-label-sheet * { visibility: visible; }
+  .sample-label-sheet { position: fixed; left: 0; top: 0; border: 0; }
+}
+
 .workspace-encounters-card { margin-bottom: 14px; }
 .workspace-encounter-line { margin: 0 0 8px; }
 .workspace-encounter-history { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; color: var(--text-muted, inherit); font-size: .9em; }

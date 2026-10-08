@@ -101,7 +101,7 @@ describe.sequential("AAA2-002 cancellation phase, scope and atomicity", () => {
   it("blocks the real requested → received → processing regression through HTTP", async () => {
     const context = await fixture();
     const lab = context.store.getState().users.find((user) => user.role === "LAB_TECH")!;
-    const received = await context.service.receiveSample(lab, [context.created.items[0].id], { accessionCode: "CANCEL-REGRESSION", sampleType: "EDTA", expectedVersion: 1, idempotencyKey: randomUUID() });
+    const received = await context.service.receiveSample(lab, [context.created.items[0].id], { sampleType: "EDTA", expectedVersion: 1, idempotencyKey: randomUUID() });
     const started = await context.service.startProcessing(lab, received.items[0].id, { expectedVersion: 2, idempotencyKey: randomUUID() });
     const before = clinicalState(context.store.getState());
     expect((await context.http("item", context.command(started.item.version))).status).toBe(403);

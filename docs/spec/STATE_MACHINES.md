@@ -164,6 +164,8 @@ stateDiagram-v2
 
 Cada substituição referencia `replaces_sample_id`; não se reutiliza accession rejeitado.
 
+**`EXPECTED` nasce na criação da solicitação (D-034).** A amostra é criada com o accession gerado e a etiqueta já pode ser impressa antes da coleta. `EXPECTED → RECEIVED` acontece no recebimento: a leitura do código de barras (ou o campo vazio) confirma a amostra esperada, grava `received_at/by` e move para `RECEIVED` todos os itens `REQUESTED` ligados ao mesmo tubo. Um código diferente do esperado recusa o comando (`409 ACCESSION_MISMATCH`) e um código gerado com dígito verificador errado recusa com `400 ACCESSION_INVALID`; nada muda. Rejeitar um exame que divide um tubo ainda `EXPECTED` apenas o desliga da amostra; rejeitar o último item rejeita a amostra. A recoleta cria a substituta `EXPECTED` já com accession gerado, para imprimir a etiqueta da nova coleta.
+
 O vínculo entre as máquinas é explícito: `SampleRejected`/`RecollectionRequested` grava a amostra como `REJECTED`/`REPLACED` e move cada `DiagnosticRequestItem` afetado para `RECOLLECTION_REQUIRED`; `replacement_received` cria/recebe o novo sample (`EXPECTED → RECEIVED`) e move somente os itens vinculados de volta para `RECEIVED`. Uma amostra rejeitada não pode, sozinha, devolver o item ao processamento.
 
 ## 7. Critical result notification
