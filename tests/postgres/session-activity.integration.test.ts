@@ -343,9 +343,18 @@ describe("PostgreSQL session activity and narrow reads", () => {
         expect(await database.query("SELECT to_regclass('session_activity') AS activity_table"))
           .toEqual({ rows: [{ activity_table: null }], rowCount: 1 });
         const migrationSql = await readFile(new URL("../../db/migrations/012_session_activity.sql", import.meta.url), "utf8");
+        // Until 015 the sessions lived inside the snapshot row, which is what 012 reads.
+        const entityConstraint = await database.query(
+          "SELECT pg_get_constraintdef(oid) AS definition FROM pg_constraint WHERE conrelid = 'cvg_runtime_state'::regclass AND conname = 'runtime_entities_are_external'"
+        );
+        const entityConstraintDefinition = (entityConstraint.rows[0] as { definition: string }).definition;
+        await database.query("ALTER TABLE cvg_runtime_state DROP CONSTRAINT runtime_entities_are_external");
+        await database.query("UPDATE cvg_runtime_state SET state = jsonb_set(state, '{sessions}', $1::jsonb) WHERE id = 1", [JSON.stringify([legacySession])]);
         const deploymentBefore = await pool.query<{ at: Date }>("SELECT clock_timestamp() AS at");
         await database.query(migrationSql);
         const deploymentAfter = await pool.query<{ at: Date }>("SELECT clock_timestamp() AS at");
+        await database.query("UPDATE cvg_runtime_state SET state = jsonb_set(state, '{sessions}', '[]'::jsonb) WHERE id = 1");
+        await database.query(`ALTER TABLE cvg_runtime_state ADD CONSTRAINT runtime_entities_are_external ${entityConstraintDefinition}`);
 
         // Assert the migration's persisted result before authentication could
         // renew it: deploy time must replace the day-old creation reference.

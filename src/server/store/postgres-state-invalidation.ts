@@ -4,6 +4,13 @@ import { runtimePoolTimeouts } from "../domain/database-timeouts";
 const CHANNEL = "cvg_runtime_state_changed";
 const RETRY_MS = 5_000;
 
+/**
+ * `change`: a commit was announced, or the first LISTEN came up after the
+ * initial load. `reconnect`: the listening connection was lost, so changes
+ * (even a restore) may have gone unannounced.
+ */
+export type InvalidationKind = "change" | "reconnect";
+
 /** One dedicated connection per store, independent of DB_POOL_MAX and write locks. */
 export class PostgresStateInvalidation {
   private readonly pool: Pool;
@@ -12,10 +19,11 @@ export class PostgresStateInvalidation {
   private retry?: ReturnType<typeof setTimeout>;
   private closed = false;
   private closing?: Promise<void>;
+  private listened = false;
 
-  constructor(connectionString: string, private readonly invalidate: () => void) {
+  constructor(connectionString: string, private readonly invalidate: (kind: InvalidationKind) => void) {
     this.pool = new Pool({ connectionString, max: 1, application_name: "cvg-runtime-state-cache", ...runtimePoolTimeouts() });
-    this.pool.on("error", () => this.invalidate());
+    this.pool.on("error", () => this.invalidate("reconnect"));
     this.connect();
   }
 
@@ -42,7 +50,7 @@ export class PostgresStateInvalidation {
       client = await this.pool.connect();
       if (this.closed) { client.release(); return; }
       this.client = client;
-      client.on("notification", (message) => { if (message.channel === CHANNEL) this.invalidate(); });
+      client.on("notification", (message) => { if (message.channel === CHANNEL) this.invalidate("change"); });
       const connected = client;
       client.on("error", () => {
         if (this.closed || this.client !== connected) return;
@@ -56,7 +64,8 @@ export class PostgresStateInvalidation {
       });
       await client.query(`LISTEN ${CHANNEL}`);
       // Changes during connection/reconnection are covered by the next version probe.
-      if (!this.closed) this.invalidate();
+      if (!this.closed) this.invalidate(this.listened ? "reconnect" : "change");
+      this.listened = true;
     } catch {
       if (client && this.client === client) this.release();
       this.recover();
@@ -71,7 +80,7 @@ export class PostgresStateInvalidation {
 
   private recover(): void {
     if (this.closed) return;
-    this.invalidate();
+    this.invalidate("reconnect");
     if (this.retry) return;
     this.retry = setTimeout(() => { this.retry = undefined; this.connect(); }, RETRY_MS);
     this.retry.unref?.();

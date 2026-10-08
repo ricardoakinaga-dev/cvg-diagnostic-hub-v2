@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StoreState } from "../../src/server/domain/models";
 import { authenticateRequest, authorizationSnapshotIsCurrent, loginUser, revokeSession } from "../../src/server/security/session";
 import { createDemoState } from "../../src/server/store/fixtures";
-import { CURRENT_STATE_SQL, CURRENT_VERSION_SQL } from "../../src/server/store/postgres-state-codec";
+import { CURRENT_VERSION_SQL } from "../../src/server/store/postgres-state-codec";
 import { withDisposablePostgresDatabase, type DisposablePostgresDatabase } from "../support/postgres-test-harness";
 
 const PASSWORD = "postgres-cache-integration-password";
@@ -153,12 +153,16 @@ describe("PostgreSQL state cache freshness and concurrent read lifecycle", () =>
       const before = await store.readStateSnapshot();
       await store.readStateSnapshot();
       const queries = vi.spyOn(Pool.prototype, "query");
+      // A refresh checks out its own REPEATABLE READ client (connect() without a
+      // callback; pool.query passes one internally). A cache hit never does.
+      const connects = vi.spyOn(Pool.prototype, "connect");
+      const refreshes = () => connects.mock.calls.filter((args) => (args as unknown[]).length === 0).length;
       await store.readStateSnapshot();
-      expect(queries.mock.calls.filter(([sql]) => sql === CURRENT_STATE_SQL)).toHaveLength(0);
+      expect(refreshes()).toBe(0);
       await database.query("SELECT pg_notify('cvg_runtime_state_changed', $1)", ["999999"]);
       await vi.waitFor(async () => {
         expect(await store.readStateSnapshot()).toEqual(before);
-        expect(queries.mock.calls.filter(([sql]) => sql === CURRENT_STATE_SQL)).toHaveLength(1);
+        expect(refreshes()).toBe(1);
       }, { interval: 20, timeout: 3_000 });
       expect(queries.mock.calls.filter(([sql]) => sql === CURRENT_VERSION_SQL).length).toBeGreaterThanOrEqual(2);
     });

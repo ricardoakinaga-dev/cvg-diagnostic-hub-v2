@@ -74,6 +74,15 @@ POSTGRES_TEST_ADMIN_URL=postgresql://<local-user>@127.0.0.1:<port>/postgres \
 npm run test:postgres -- --run tests/postgres/http-multi-instance.integration.test.ts --reporter=verbose
 ```
 
+`tests/postgres/runtime-entity-rows.integration.test.ts` covers migration 015
+(D-030). It upgrades a populated 014 snapshot into ordered entity rows and
+proves the SQL key function matches the runtime key for awkward idempotency
+keys. A duplicate key makes the migration roll back with nothing applied, and
+the constraint refuses an old writer. Two store instances then share the
+database: a write persists only the changed rows, the other instance applies
+them incrementally, and an instance older than the pruned removals reloads
+every entity.
+
 This is local `CONDITIONAL` evidence. The fixture and PostgreSQL cluster are
 synthetic; the `next start` scenario uses a local HTTP responder only for the
 S3-compatible health check and does not persist objects or call a scanner.

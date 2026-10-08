@@ -71,9 +71,9 @@ O PostgreSQL do Compose não publica porta no host, então `npm run db:backup` e
 
 O `up -d` reexecuta `migrate` antes de recriar `app` e `worker`. As migrations são versionadas com checksum; uma migration alterada depois de aplicada aborta o deploy.
 
-### 4.1 Atualização que contém as migrations 013 ou 014 (cutover)
+### 4.1 Atualização que contém as migrations 013, 014 ou 015 (cutover)
 
-As migrations `013_audit_read_authority` e `014_outbox_read_authority` movem a auditoria e o outbox do snapshot para `audit_events` e `outbox_messages`. A 013 cria a constraint `runtime_audit_is_transient`, então a versão antiga do app, que ainda grava auditoria no snapshot, passa a falhar em todo comando clínico. O `up -d` do §4 **não serve** para esta atualização, porque roda o `migrate` com `app` e `worker` antigos no ar. Use esta ordem:
+As migrations `013_audit_read_authority` e `014_outbox_read_authority` movem a auditoria e o outbox do snapshot para `audit_events` e `outbox_messages`. A `015_runtime_entity_rows` move as demais coleções para uma linha por entidade em `cvg_runtime_entities` (D-030); `cvg_runtime_state` fica só com versão, trava e cabeçalho. Cada uma cria uma constraint (`runtime_audit_is_transient`, `runtime_outbox_is_transient`, `runtime_entities_are_external`) que faz a versão antiga do app, que ainda grava no documento, falhar em todo comando clínico. O `up -d` do §4 **não serve** para esta atualização, porque roda o `migrate` com `app` e `worker` antigos no ar. Use esta ordem:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production stop proxy app worker backup
@@ -84,10 +84,10 @@ docker compose -f docker-compose.prod.yml --env-file .env.production run --rm mi
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d
 ```
 
-- Combine a janela de manutenção antes: o sistema fica indisponível entre o `stop` e o `up -d` (no ensaio com 100 mil eventos de auditoria a 013 levou cerca de 3 s; confirme com o volume real).
-- As duas migrations abortam inteiras se encontrarem ID duplicado ou divergência entre snapshot e tabela; nesse caso nada é aplicado e o app antigo pode voltar com `up -d` da tag anterior.
+- Combine a janela de manutenção antes: o sistema fica indisponível entre o `stop` e o `up -d` (no ensaio com 100 mil eventos de auditoria a 013 levou cerca de 3 s; a 015 levou cerca de 3 s com 6 meses de dados, 27 mil exames e 47 MB de snapshot, incluindo a reconciliação; confirme com o volume real).
+- As migrations abortam inteiras se encontrarem ID duplicado, entidade sem chave ou divergência entre snapshot e tabela (`ENTITY_CUTOVER_*` na 015); nesse caso nada é aplicado e o app antigo pode voltar com `up -d` da tag anterior.
 - Depois de aplicadas, o código anterior **não** roda no schema novo. O rollback é o restore do backup tirado acima (§8).
-- O `migrate` tem uma trava: uma migration que começa com `-- Coordinated cutover` (013 e 014) **recusa rodar** enquanto houver outra sessão conectada ao banco, antes de executar qualquer SQL, com o erro `MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:<versão>:<sessões>`. Se aparecer, algum `app`, `worker` ou console ainda está conectado: pare-o e rode de novo. `MIGRATION_CUTOVER_ACKNOWLEDGED=true` ignora a trava e só se usa quando se confirmou que as sessões restantes são inofensivas; nunca no Compose.
+- O `migrate` tem uma trava: uma migration que começa com `-- Coordinated cutover` (013, 014 e 015) **recusa rodar** enquanto houver outra sessão conectada ao banco, antes de executar qualquer SQL, com o erro `MIGRATION_CUTOVER_REQUIRES_STOPPED_RUNTIME:<versão>:<sessões>`. Se aparecer, algum `app`, `worker` ou console ainda está conectado: pare-o e rode de novo. `MIGRATION_CUTOVER_ACKNOWLEDGED=true` ignora a trava e só se usa quando se confirmou que as sessões restantes são inofensivas; nunca no Compose.
 - Ensaie o cutover com um dump representativo antes de produção (PROD-503).
 
 ## 5. Verificação pós-deploy
@@ -242,6 +242,18 @@ processo.
 | `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | `60000` | Encerra uma transação parada que segure a trava global de escrita. |
 
 Com o banco indisponível, toda rota responde `503 DEPENDENCY_UNAVAILABLE` com `retryable: true`, em vez de 500 ou de uma requisição pendurada; `/readyz` também responde 503.
+
+### 6.6 Memória e volume de dados
+
+Cada processo (`app` e `worker`) mantém o agregado de runtime inteiro em memória e o compartilha entre as leituras (D-030). A memória cresce, portanto, com o histórico clínico. O Compose limita o heap do Node abaixo do teto do container (`APP_HEAP_MB`, `WORKER_HEAP_MB`), para que a coleta de lixo trabalhe antes de o kernel matar o processo. Medição de 08/10/2026 com o lote real clonado ([relatório](../RELATORIO_ESCALA_2026-10-08.md)):
+
+| Volume (≈150 exames/dia) | Heap do app | Pico do app | Worker | Lista / escrita (p50) |
+| --- | --- | --- | --- | --- |
+| 6 meses (27 mil exames) | 450 MB | 382 MB | 337 MB | 64 ms / 86 ms |
+| 12 meses (55 mil) | 700 MB | 539 MB | 413 MB | 123 ms / 200 ms |
+| 24 meses (110 mil) | 1.200 MB | 912 MB | 700 MB | 274 ms / 412 ms |
+
+Os padrões (`APP_MEM_LIMIT=2g` com `APP_HEAP_MB=1280`, `WORKER_MEM_LIMIT=1g` com `WORKER_HEAP_MB=768`) cobrem cerca de dois anos nesse ritmo. Acima disso, ou com volume maior que o de D2, aumente os quatro valores na mesma proporção. A alternativa é reduzir o conjunto vivo: retenção clínica (D5/PROD-501) ou cutover relacional (PROD-111). Mantenha o heap em cerca de 65% do teto do container. Acompanhe o RSS dos dois processos; um `FATAL ERROR ... heap out of memory` no log indica heap pequeno para o volume atual.
 
 ## 7. Papéis de banco separados (PROD-305)
 

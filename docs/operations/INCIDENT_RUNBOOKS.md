@@ -40,6 +40,13 @@ Classificação inicial:
 
 Stop criteria: qualquer divergência, migration drift, autoridade ambígua, restore sem checksum ou jornada clínica não reproduzível mantém o tráfego bloqueado.
 
+### Erros do armazenamento por entidade (migration 015)
+
+- `POSTGRES_ENTITY_STATE_DIVERGED:<coleção|removal|upsert>` numa escrita: as linhas de `cvg_runtime_entities` não correspondem ao estado que o processo tinha sob a trava. A transação é desfeita inteira. Uma escrita manual fora do app costuma ser a causa. Pare as escritas manuais e reinicie o processo, que relê todas as entidades. Se o erro voltar, trate como divergência: tráfego bloqueado, comparação com o backup e correção para frente.
+- `POSTGRES_ENTITY_KEY_DUPLICATE` ou `POSTGRES_ENTITY_KEY_INVALID`: um comando produziu duas entidades com a mesma chave, ou uma sem `id`. É defeito de código: abra incidente com a correlação; o estado persistido não muda.
+- `ENTITY_CUTOVER_*` no `migrate`: a 015 recusou o snapshot (coleção que não é array, entidade sem chave, chave duplicada ou cópia diferente da origem). Nada foi aplicado. Corrija o dado no banco 014 preservado e rode de novo.
+- `FATAL ERROR ... heap out of memory` no `app` ou no `worker`: o heap é pequeno para o volume atual; ajuste conforme o [DEPLOYMENT §6.6](DEPLOYMENT.md).
+
 ## Outbox atrasado ou dead-letter
 
 1. Consultar `cvg_outbox_pending`, `cvg_outbox_oldest_age_seconds` e contadores de falha; não editar linhas diretamente. As duas métricas contam só entregas de notificação: eventos de domínio são histórico de replay do tempo real, não têm consumidor no worker e saem pela retenção (desde 07/10/2026).

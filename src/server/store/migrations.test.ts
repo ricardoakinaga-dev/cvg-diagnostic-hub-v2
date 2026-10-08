@@ -8,6 +8,7 @@ import {
   RUNTIME_MIGRATION_VERSIONS,
   applyMigrations,
   assertRuntimeSchemaReady,
+  isCoordinatedCutover,
   migrationChecksum,
   migrationVersion,
   readMigrationSet,
@@ -108,7 +109,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("014_outbox_read_authority");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("015_runtime_entity_rows");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -170,7 +171,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["014_outbox_read_authority"],
+      applied: ["015_runtime_entity_rows"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -384,6 +385,7 @@ describe("runtime schema readiness", () => {
     session_activity_schema_ready: true,
     relational_clinical_core_ready: true,
     transitional_storage_boundary_ready: true,
+    entity_storage_ready: true,
     invalidation_trigger_ready: true
   };
 
@@ -407,7 +409,9 @@ describe("runtime schema readiness", () => {
     expect(readinessSql).toMatch(/sample_item_links_status_check/);
     expect(readinessSql).toMatch(/pg_get_constraintdef/);
     expect(readinessSql).toMatch(/runtime_storage_boundaries/);
-    expect(readinessSql).toMatch(/authoritative_store = 'cvg_runtime_state'/);
+    expect(readinessSql).toMatch(/authoritative_store = 'cvg_runtime_entities'/);
+    expect(readinessSql).toMatch(/runtime_entities_are_external/);
+    expect(readinessSql).toMatch(/entity_removal_floor/);
     expect(readinessSql).toMatch(/status = 'TRANSITIONAL'/);
     expect(readinessSql).toMatch(/session_activity_schema_ready/);
     expect(readinessSql).toMatch(/table_name = 'session_activity'/);
@@ -550,5 +554,35 @@ describe("008 durable outbox routing migration", () => {
     expect(sql).toMatch(/notification\.in_app/i);
     expect(sql).toMatch(/UPDATE relational_schema_markers/i);
     expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE|DELETE FROM)\b/i);
+  });
+});
+
+describe("015 runtime entity rows migration", () => {
+  it("is a coordinated cutover that reconciles every collection before emptying the snapshot", async () => {
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations/015_runtime_entity_rows.sql"), "utf8");
+
+    expect(isCoordinatedCutover(sql)).toBe(true);
+    expect(sql).toMatch(/CREATE TABLE cvg_runtime_entities[\s\S]*PRIMARY KEY \(collection, entity_key\)/i);
+    expect(sql).toMatch(/UNIQUE \(collection, position\) DEFERRABLE INITIALLY DEFERRED/i);
+    expect(sql).toMatch(/CREATE TABLE cvg_runtime_entity_removals/i);
+    expect(sql).toMatch(/ADD COLUMN entity_removal_floor bigint NOT NULL DEFAULT 0/i);
+    // Every rejection happens before the header is emptied, inside the runner's transaction.
+    const reconciliation = sql.indexOf("ENTITY_CUTOVER_RECONCILIATION_FAILED");
+    const emptied = sql.indexOf("SET state = cvg_runtime_state_header(snapshot)");
+    expect(sql.indexOf("ENTITY_CUTOVER_DUPLICATE_KEY")).toBeLessThan(reconciliation);
+    expect(reconciliation).toBeGreaterThan(0);
+    expect(emptied).toBeGreaterThan(reconciliation);
+    expect(sql).toMatch(/ADD CONSTRAINT runtime_entities_are_external CHECK/i);
+    expect(sql).toMatch(/authoritative_store = 'cvg_runtime_entities', contract_version = 'StoreState-entities-v1'/);
+    expect(sql).toMatch(/UPDATE relational_schema_markers SET schema_version = '015_runtime_entity_rows'/i);
+    expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE)\b/i);
+  });
+
+  it("keys idempotency records exactly as the runtime does", async () => {
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations/015_runtime_entity_rows.sql"), "utf8");
+
+    // jsonb::text of a string is its JSON encoding, so the concatenation equals JSON.stringify([actorId, scope, key]).
+    expect(sql).toContain("'[' || (entity->'actorId')::text || ',' || (entity->'scope')::text || ',' || (entity->'key')::text || ']'");
+    expect(sql).toMatch(/WHEN jsonb_typeof\(entity->'id'\) = 'string' THEN entity->>'id'/);
   });
 });
