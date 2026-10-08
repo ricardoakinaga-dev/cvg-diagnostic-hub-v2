@@ -10,18 +10,24 @@ import { createRealtimeResponse } from "../../../../server/observability/realtim
 import { acknowledgeNotificationSchema } from "../../../../server/http/command-schemas";
 import { codePointLength, responseFor, objectBody, parseCommandBody, commandMeta, parseLimit, parseItemState, parseBooleanFilter, parseDateTimeFilter, parseSearchTypes, parseCursor } from "./route-support";
 import type { ApiHandlerGroup } from "./route-support";
+import type { StateStore } from "../../../../server/domain/models";
+/** Shared by the ADMIN session and the Prometheus scrape token (route.ts). */
+export async function metricsResponse(store: StateStore, correlationId: string): Promise<Response> {
+  const state = await store.readState();
+  const [history, outbox] = await Promise.all([
+    store.readAuditMetrics(operationalAuditQuery(state)),
+    store.readOutboxMetrics()
+  ]);
+  refreshOperationalMetrics(state, new Date(), history, outbox);
+  const body = renderPrometheus();
+  return new Response(body, { status: 200, headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store", "x-correlation-id": correlationId } });
+}
+
 export const operationsHandlers = {
   getMetrics: { authentication: "session", handle: async ({ correlationId, store, actor }) => {
       if (!canAccessResource(actor, "health.readiness", {}))
         throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
-      const state = await store.readState();
-      const [history, outbox] = await Promise.all([
-        store.readAuditMetrics(operationalAuditQuery(state)),
-        store.readOutboxMetrics()
-      ]);
-      refreshOperationalMetrics(state, new Date(), history, outbox);
-      const body = renderPrometheus();
-      return new Response(body, { status: 200, headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store", "x-correlation-id": correlationId } });
+      return metricsResponse(store, correlationId);
     } },
   listAuditEvents: { authentication: "session", handle: async ({ request, correlationId, id, service, actor }) => {
       const search = new URL(request.url).searchParams;

@@ -55,8 +55,8 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth` | authenticated session boundary |
-| Observability | `GET /metrics` | `health.readiness` |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change` | authenticated session boundary |
+| Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
 | Diagnostic requests | `POST /diagnostic-requests`, `GET /diagnostic-requests`, `GET /diagnostic-requests/{id}` | create/view scope |
@@ -81,11 +81,12 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | --- | --- | --- |
 | `GET /livez` | none | public liveness boundary; no dependency payload |
 | `GET /readyz` | none | public readiness boundary; checks configured dependencies and fails closed |
-| `GET /metrics` | `health.readiness` | readiness-capable configuration actor; bounded Prometheus labels and no clinical payload |
+| `GET /metrics` | `health.readiness` | readiness-capable configuration actor, or `Authorization: Bearer <METRICS_SCRAPE_TOKEN>` (32+ characters, constant-time comparison, accepted by no other route); bounded Prometheus labels and no clinical payload |
 | `POST /session/login` | none | public credential boundary; issues secure session and CSRF cookies |
 | `GET /session/me` | authenticated active session | returns only the current user/session projection |
 | `POST /session/logout` | authenticated active session | revokes the current session and clears cookies |
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
+| `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |

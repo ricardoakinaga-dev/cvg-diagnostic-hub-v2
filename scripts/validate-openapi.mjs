@@ -63,6 +63,7 @@ const requestSchemas = {
   }, ["email", "password"]),
   ReauthenticationRequest: strictObject({ password: stringSchema(1, 200) }, ["password"]),
   InitialPasswordRequest: strictObject({ password: { ...stringSchema(12, 200), pattern: passwordPattern } }, ["password"]),
+  PasswordChangeRequest: strictObject({ currentPassword: stringSchema(1, 200), newPassword: { ...stringSchema(12, 200), pattern: passwordPattern } }, ["currentPassword", "newPassword"]),
   PatientCreate: {
     ...strictObject({
       displayName: normalizedTextSchema(2, 120), species: normalizedTextSchema(2, 60), breed: normalizedTextSchema(2, 120),
@@ -605,7 +606,7 @@ function responsesFor(operation) {
 function operationObject(operation) {
   const security = operation.authentication === "public"
     ? []
-    : operation.csrf ? [{ session: [], csrfCookie: [] }] : [{ session: [] }];
+    : operation.csrf ? [{ session: [], csrfCookie: [] }] : [{ session: [] }, ...(operation.serviceTokenScheme ? [{ [operation.serviceTokenScheme]: [] }] : [])];
   return {
     operationId: operation.operationId,
     summary: operation.summary,
@@ -646,7 +647,8 @@ function createDocument() {
     components: {
       securitySchemes: {
         session: { type: "apiKey", in: "cookie", name: "cvg_session", description: "Opaque HttpOnly session cookie." },
-        csrfCookie: { type: "apiKey", in: "cookie", name: "cvg_csrf", description: "Readable double-submit CSRF cookie. Authenticated mutations require this cookie and the matching X-CSRF-Token header." }
+        csrfCookie: { type: "apiKey", in: "cookie", name: "cvg_csrf", description: "Readable double-submit CSRF cookie. Authenticated mutations require this cookie and the matching X-CSRF-Token header." },
+        metricsBearer: { type: "http", scheme: "bearer", description: "Static Prometheus scrape token (METRICS_SCRAPE_TOKEN, at least 32 characters). Accepted only by GET /metrics." }
       },
       headers: {
         CorrelationId: { description: "Stable correlation identifier for support and audit tracing.", required: true, schema: stringSchema(1, 100) }
@@ -675,7 +677,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  if (API_OPERATIONS.length !== 73 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 68) throw new Error("The audited API surface must remain exactly 73 operations across 68 paths.");
+  // 74/69 since PROD-201 added POST /session/password/change (2026-10-08).
+  if (API_OPERATIONS.length !== 74 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 69) throw new Error("The audited API surface must remain exactly 74 operations across 69 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

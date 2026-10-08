@@ -36,8 +36,13 @@ export function outboxPage(messages: OutboxMessage[], query: { kind: "replay" | 
     .sort((left, right) => (right.deadLetteredAt ?? right.availableAt).localeCompare(left.deadLetteredAt ?? left.availableAt)).slice(0, limit);
 }
 
-export function outboxMetrics(messages: OutboxMessage[]): { pending: number; oldestAvailableAt?: string } {
+export function outboxMetrics(messages: OutboxMessage[]): { pending: number; oldestAvailableAt?: string; deadLetters?: number } {
   const pending = messages.filter(outboxMessageAwaitsDelivery);
   const oldest = pending.map((message) => Date.parse(message.availableAt)).filter(Number.isFinite).sort((a, b) => a - b)[0];
-  return { pending: pending.length, ...(oldest === undefined ? {} : { oldestAvailableAt: new Date(oldest).toISOString() }) };
+  const deadLetters = messages.filter((message) => message.status === "FAILED").length;
+  return {
+    pending: pending.length,
+    ...(oldest === undefined ? {} : { oldestAvailableAt: new Date(oldest).toISOString() }),
+    ...(deadLetters > 0 ? { deadLetters } : {})
+  };
 }

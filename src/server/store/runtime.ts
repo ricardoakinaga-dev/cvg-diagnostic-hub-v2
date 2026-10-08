@@ -5,6 +5,7 @@ import { PostgresStore } from "./postgres-store";
 import { createFileStoreFromEnv, type FileStore } from "../storage/file-store";
 import { createMalwareScannerFromEnv } from "../storage/malware-scanner";
 import { assertRateLimitConfiguration } from "../security/rate-limit";
+import { assertMetricsTokenConfiguration } from "../security/metrics-token";
 import { assertRealtimeNotificationConfiguration } from "../domain/realtime-configuration";
 
 declare global {
@@ -85,6 +86,7 @@ export async function getRuntimeReadiness(): Promise<{ dataMode: string; storage
   await storage.healthcheck?.();
   createMalwareScannerFromEnv();
   assertRateLimitConfiguration();
+  assertMetricsTokenConfiguration();
   return { dataMode, storageMode: process.env.STORAGE_MODE ?? "local" };
 }
 

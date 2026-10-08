@@ -60,6 +60,9 @@ x-app-environment: &app-environment
   DB_CONNECT_TIMEOUT_MS: ${DB_CONNECT_TIMEOUT_MS:-5000}
   DB_STATEMENT_TIMEOUT_MS: ${DB_STATEMENT_TIMEOUT_MS:-30000}
   DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${DB_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
+  # Optional Prometheus bearer for GET /api/v1/metrics (32+ characters; empty disables it).
+  METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
+  METRICS_SCRAPE_RATE_LIMIT: ${METRICS_SCRAPE_RATE_LIMIT:-60}
 
 # Container logs rotate by default only if asked: without this a busy host fills its disk with json-file logs.
 x-logging: &default-logging

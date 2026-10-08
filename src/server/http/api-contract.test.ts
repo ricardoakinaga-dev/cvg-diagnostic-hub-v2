@@ -160,8 +160,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(73);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 68);
+    expect(API_OPERATIONS).toHaveLength(74);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 69);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 
@@ -181,6 +181,9 @@ describe("exact OpenAPI contract", () => {
         expect(operation.security, `${key} must be public`).toEqual([]);
       } else if (expected.csrf) {
         expect(operation.security, `${key} must require the session and CSRF cookie together`).toEqual([{ session: [], csrfCookie: [] }]);
+      } else if (expected.serviceTokenScheme) {
+        // GET /metrics: the session, or the Prometheus scrape token as an alternative (PROD-511).
+        expect(operation.security, `${key} must accept the session or its service token`).toEqual([{ session: [] }, { [expected.serviceTokenScheme]: [] }]);
       } else {
         expect(operation.security, `${key} must use the opaque session`).toEqual([{ session: [] }]);
       }

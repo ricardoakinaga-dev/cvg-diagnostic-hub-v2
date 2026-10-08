@@ -10,6 +10,7 @@ const expectedVersionSchema = z.number().int().positive().max(999_999_999_999_99
 
 export const reauthenticationSchema = z.object({ password: boundedString(1, 200) }).strict();
 export const initialPasswordSchema = z.object({ password: boundedString(12, 200) }).strict();
+export const passwordChangeSchema = z.object({ currentPassword: boundedString(1, 200), newPassword: boundedString(12, 200) }).strict();
 const serviceCodesSchema = z.array(z.string().trim().regex(/^[A-Za-z][A-Za-z0-9_]{1,59}$/)).max(200).optional();
 const managedDepartmentCodesSchema = z.array(departmentCodeSchema).max(20).optional();
 export const userRoleSchema = z.object({ role: z.enum(ROLES), departmentCode: departmentCodeSchema, managedDepartmentCodes: managedDepartmentCodesSchema, serviceCodes: serviceCodesSchema, active: z.boolean().optional(), expectedVersion: expectedVersionSchema.optional(), reason: normalizedText(1, 500).optional(), confirm: z.literal(true).optional() }).strict();

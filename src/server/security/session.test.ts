@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { StateStore, StoreState } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
-import { authenticateRequest, authorizationSnapshotIsCurrent, changeInitialPassword, getCsrfCookieName, getSessionCookieName, loginUser, reauthenticateUser, revokeSession } from "./session";
+import { authenticateRequest, authorizationSnapshotIsCurrent, changeInitialPassword, changeOwnPassword, getCsrfCookieName, getSessionCookieName, loginUser, reauthenticateUser, revokeSession } from "./session";
+import { resetRateLimits } from "./rate-limit";
 import * as passwordSecurity from "./password";
 
 /**
@@ -451,6 +452,77 @@ describe("secure server sessions", () => {
     await expect(authenticateRequest(store, request, { requireCsrf: true })).rejects.toMatchObject({
       code: "CSRF_INVALID",
       status: 403
+    });
+  });
+
+  describe("self-service password change (PROD-201)", () => {
+    const PASSWORD = "Current-secret-1234";
+    const signedIn = (login: { sessionToken: string; csrfToken: string }) => new Request("http://localhost/api/v1/session/password/change", {
+      headers: { cookie: `cvg_session=${login.sessionToken}; cvg_csrf=${login.csrfToken}`, "x-csrf-token": login.csrfToken }
+    });
+
+    it("requires the current password, rotates every session and audits without secrets", async () => {
+      resetRateLimits();
+      const store = new MemoryStore(createDemoState(PASSWORD));
+      const first = await loginUser(store, "vet@cvg.local", PASSWORD);
+      const second = await loginUser(store, "vet@cvg.local", PASSWORD);
+      const changed = await changeOwnPassword(store, signedIn(first), PASSWORD, "Rotated-secret-5678", "corr-own-change");
+      expect(changed.sessionToken).not.toBe(first.sessionToken);
+      for (const token of [first.sessionToken, second.sessionToken]) {
+        await expect(authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${token}` } }))).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+      }
+      await expect(authenticateRequest(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${changed.sessionToken}` } }))).resolves.toMatchObject({ id: "user-vet" });
+      await expect(loginUser(store, "vet@cvg.local", PASSWORD)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+      await expect(loginUser(store, "vet@cvg.local", "Rotated-secret-5678")).resolves.toMatchObject({ user: { id: "user-vet" } });
+      const saved = await store.readState();
+      expect(saved.auditEvents.find((event) => event.eventType === "PasswordChanged")).toMatchObject({
+        actorId: "user-vet", entityId: "user-vet", previousState: "ACTIVE", newState: "ACTIVE", correlationId: "corr-own-change", metadata: { sessionsRotated: true, sessionsRevoked: 2 }
+      });
+      expect(JSON.stringify(saved)).not.toContain("Rotated-secret-5678");
+      expect(JSON.stringify(saved)).not.toContain(PASSWORD);
+    });
+
+    it("rejects a wrong current password, a reused or weak password and a missing CSRF token without a transaction", async () => {
+      resetRateLimits();
+      const store = new MemoryStore(createDemoState(PASSWORD));
+      const login = await loginUser(store, "vet@cvg.local", PASSWORD);
+      const transaction = vi.spyOn(store, "transaction");
+      await expect(changeOwnPassword(store, signedIn(login), "Wrong-secret-0000", "Rotated-secret-5678", "corr")).rejects.toMatchObject({ code: "CURRENT_PASSWORD_INVALID", status: 400 });
+      await expect(changeOwnPassword(store, signedIn(login), PASSWORD, PASSWORD, "corr")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+      await expect(changeOwnPassword(store, signedIn(login), PASSWORD, "short-1", "corr")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+      await expect(changeOwnPassword(store, signedIn(login), PASSWORD, "only-letters-without-digits", "corr")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+      await expect(changeOwnPassword(store, new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}` } }), PASSWORD, "Rotated-secret-5678", "corr"))
+        .rejects.toMatchObject({ code: "CSRF_INVALID" });
+      expect(transaction).not.toHaveBeenCalled();
+      await expect(authenticateRequest(store, signedIn(login))).resolves.toMatchObject({ id: "user-vet" });
+    });
+
+    it("bounds attempts per account and leaves a temporary password to the first-access flow", async () => {
+      resetRateLimits();
+      const state = createDemoState(PASSWORD);
+      state.users.find((user) => user.id === "user-lab")!.mustChangePassword = true;
+      const store = new MemoryStore(state);
+      const login = await loginUser(store, "vet@cvg.local", PASSWORD);
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await expect(changeOwnPassword(store, signedIn(login), "Wrong-secret-0000", "Rotated-secret-5678", "corr")).rejects.toMatchObject({ code: "CURRENT_PASSWORD_INVALID" });
+      }
+      await expect(changeOwnPassword(store, signedIn(login), PASSWORD, "Rotated-secret-5678", "corr")).rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
+      const temporary = await loginUser(store, "lab@cvg.local", PASSWORD);
+      await expect(changeOwnPassword(store, signedIn(temporary), PASSWORD, "Rotated-secret-5678", "corr")).rejects.toMatchObject({ code: "PASSWORD_CHANGE_REQUIRED" });
+      resetRateLimits();
+    });
+
+    it("lets one of two concurrent changes win and expires the other", async () => {
+      resetRateLimits();
+      const store = new MemoryStore(createDemoState(PASSWORD));
+      const login = await loginUser(store, "vet@cvg.local", PASSWORD);
+      const results = await Promise.allSettled([
+        changeOwnPassword(store, signedIn(login), PASSWORD, "Rotated-secret-5678", "corr-a"),
+        changeOwnPassword(store, signedIn(login), PASSWORD, "Another-secret-9012", "corr-b")
+      ]);
+      expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+      expect(results.find((result) => result.status === "rejected")).toMatchObject({ reason: { code: "SESSION_EXPIRED" } });
+      expect((await store.readState()).auditEvents.filter((event) => event.eventType === "PasswordChanged")).toHaveLength(1);
     });
   });
 });
