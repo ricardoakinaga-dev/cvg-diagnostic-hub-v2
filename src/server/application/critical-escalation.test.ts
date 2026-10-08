@@ -34,7 +34,7 @@ async function releasedCritical() {
     result: undefined
   }));
   const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-crp" }] }, { idempotencyKey: "esc-request" });
-  const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-ESC-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "esc-receive" });
+  const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "esc-receive" });
   const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "esc-start" });
   const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Potássio muito alto.", content: {}, conclusion: "Avaliar", expectedVersion: started.item.version, idempotencyKey: "esc-draft" });
   const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "esc-release" });

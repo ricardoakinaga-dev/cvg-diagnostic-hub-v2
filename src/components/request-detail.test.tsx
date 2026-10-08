@@ -39,6 +39,22 @@ describe("RequestDetail", () => {
     expect(screen.getByRole("link", { name: "Visão geral" })).toHaveAttribute("href", "/");
   });
 
+  it("shows each item's sample with its status and an Etiqueta link", async () => {
+    const withSamples = {
+      ...request,
+      items: [{ ...request.items[0], status: "REQUESTED" as const, currentSampleId: "sample-1" }, { ...request.items[0], id: "item-2", currentSampleId: "sample-missing" }],
+      samples: [{ id: "sample-1", requestId: "request-1", accessionCode: "A261008-00015", sampleType: "EDTA", status: "EXPECTED" as const, itemIds: ["item-1"] }]
+    };
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/diagnostic-requests/request-1" ? Promise.resolve(withSamples) : Promise.resolve([])) as never);
+
+    render(<RequestDetail requestId="request-1" />);
+
+    expect(await screen.findByText("A261008-00015")).toBeInTheDocument();
+    expect(screen.getByText(/Esperada/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /^Etiqueta da amostra/ })).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Etiqueta da amostra A261008-00015" })).toHaveAttribute("href", "/samples/sample-1/label");
+  });
+
   it("reports a partial timeline dependency failure without hiding the request", async () => {
     let timelineAttempts = 0;
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {

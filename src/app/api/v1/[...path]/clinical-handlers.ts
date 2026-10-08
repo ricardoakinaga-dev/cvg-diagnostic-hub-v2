@@ -143,6 +143,9 @@ export const clinicalHandlers = {
       const input = parseCommandBody(body, resultDraftSchema, "Os dados do resultado são inválidos.");
       return responseFor(await service.createResultDraft(actor, itemId, { ...input, ...meta }), correlationId, id, 201);
     } },
+  getSampleLabel: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
+      return responseFor(await service.getSampleLabel(actor, path[1]), correlationId, id);
+    } },
   receiveReplacementSample: { authentication: "session", handle: async ({ request, path, operation, correlationId, id, service, actor }) => {
       const body = await objectBody(request);
       const input = parseCommandBody(body, sampleSchema, "Os dados da amostra substituta são inválidos.");

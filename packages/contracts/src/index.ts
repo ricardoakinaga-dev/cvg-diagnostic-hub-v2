@@ -564,6 +564,29 @@ export interface SearchResult {
   deepLink: string;
 }
 
+export type SampleStatus = "EXPECTED" | "RECEIVED" | "REJECTED" | "REPLACED";
+
+export interface RequestSample {
+  id: string;
+  requestId: string;
+  accessionCode: string;
+  sampleType: string;
+  status: SampleStatus;
+  itemIds: string[];
+  replacesSampleId?: string;
+  receivedAt?: string;
+}
+
+export interface SampleLabel {
+  sample: { id: string; accessionCode: string; sampleType: string; status: SampleStatus };
+  request: { id: string; requestCode: string; priority: Priority };
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  services: Array<{ code: string; name: string }>;
+  encounter: { externalId: string };
+  requestedAt: string;
+  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; modules: number; bars: Array<{ x: number; width: number }> } };
+}
+
 export interface DiagnosticRequestDetail {
   id: string;
   requestCode: string;
@@ -582,6 +605,7 @@ export interface DiagnosticRequestDetail {
     currentSampleId?: string;
     service: { name: string; workflowType: WorkflowType };
   }>;
+  samples?: RequestSample[];
 }
 
 export interface TimelineEvent {
