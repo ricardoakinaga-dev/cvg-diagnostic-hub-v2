@@ -1,0 +1,22 @@
+# Copy to deploy/backup/rclone.conf (gitignored, mode 600) and set OFFSITE_RCLONE_REMOTE to "<remote>:<path>".
+# The file is mounted read-only into the `offsite` service. Use credentials that can write but NOT delete
+# objects in the WAL path where the destination allows it (ransomware scenario, BACKUP_RESTORE.md section 6).
+# Test the destination before enabling:
+#   docker run --rm -v "$PWD/deploy/backup/rclone.conf:/config/rclone/rclone.conf:ro" rclone/rclone:1.71.2 lsd <remote>:
+
+# S3-compatible (AWS S3, MinIO, Backblaze B2 S3 API, Wasabi...): OFFSITE_RCLONE_REMOTE=s3:cvg-offsite/hospital-a
+[s3]
+type = s3
+provider = Minio
+endpoint = https://minio.example.org
+access_key_id = CHANGE_ME_ACCESS_KEY_ID
+secret_access_key = CHANGE_ME_SECRET
+region = us-east-1
+
+# SFTP to another site's server: OFFSITE_RCLONE_REMOTE=sftp:/backups/cvg
+# Dedicated key pair, private key inline (one line, newlines as \n); the file is mounted read-only and stays out of git.
+[sftp]
+type = sftp
+host = backup.example.org
+user = cvg-backup
+key_pem = CHANGE_ME_PRIVATE_KEY_ON_ONE_LINE_WITH_NEWLINES_AS_BACKSLASH_N

@@ -44,6 +44,7 @@ scan_secrets() {
       --glob '!next-env.d.ts' \
       --glob '!.env' \
       --glob '!.env.*' \
+      --glob '!deploy/backup/rclone.conf' \
       --glob '!.writer.lock' \
       -P "$PATTERN_PCRE" .
   else
@@ -62,6 +63,7 @@ scan_secrets() {
       --exclude=next-env.d.ts \
       --exclude='.env' \
       --exclude='.env.*' \
+      --exclude='rclone.conf' \
       --exclude='.writer.lock' \
       -- "$PATTERN_ERE" .
   fi
@@ -113,5 +115,16 @@ while IFS= read -r env_file; do
     env_failure "$env_file"
   fi
 done < <(list_env_candidates)
+
+# PROD-304: o rclone.conf real guarda as credenciais da cópia externa; só o .example pode ser versionado.
+if [[ -f deploy/backup/rclone.conf ]]; then
+  if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf 'Secret scan ERRO: git indisponível — não é possível determinar se deploy/backup/rclone.conf é versionável.\n' >&2
+    exit 2
+  fi
+  if git ls-files --error-unmatch -- deploy/backup/rclone.conf >/dev/null 2>&1 || ! git check-ignore -q -- deploy/backup/rclone.conf; then
+    env_failure "deploy/backup/rclone.conf"
+  fi
+fi
 
 echo "Secret scan passou (motor: ${REPORT_ENGINE}): nenhum padrão de segredo versionável encontrado."
