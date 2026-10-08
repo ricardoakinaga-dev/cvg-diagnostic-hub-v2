@@ -222,6 +222,18 @@ export interface ManagedUser {
   active: boolean;
   createdAt: string;
   version: number;
+  onCall: boolean;
+  alertContactReady: boolean;
+}
+
+export interface UserOnCallUpdateInput extends CommandMeta {
+  onCall: boolean;
+  reason?: string;
+}
+
+export interface AlertContactUpdateInput {
+  whatsappPhone: string | null;
+  consent?: boolean;
 }
 
 export interface ManagementOverview {

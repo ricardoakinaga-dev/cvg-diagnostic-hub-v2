@@ -14,6 +14,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   reauthenticate: "ReauthenticationData",
   changeInitialPassword: "LoginData",
   changeOwnPassword: "LoginData",
+  updateOwnAlertContact: "CurrentSessionData",
   listUsers: "ManagedUserList",
   listSessions: "ManagedSessionList",
   revokeSession: "ManagedSession",
@@ -21,6 +22,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   regenerateUserPassword: "ManagedUserCreation",
   deactivateUser: "ManagedUser",
   updateUserRole: "ManagedUser",
+  updateUserOnCall: "ManagedUser",
   listDiagnosticServices: "DiagnosticServiceList",
   getResultTemplate: "DiagnosticServiceResultTemplate",
   createDiagnosticService: "DiagnosticService",
@@ -119,6 +121,8 @@ export type ApiConditionalRequestRule = Readonly<{
 export type ApiAuthorizationCondition =
   | "temporary password must be replaced before any operational action"
   | "current password must be confirmed; every session of the user is rotated"
+  | "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"
+  | "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"
   | "only active reasons for clinical actions authorized in the actor department are returned"
   | "granting ADMIN requires recent reauthentication"
   | "deactivating ADMIN requires recent reauthentication"
@@ -318,12 +322,14 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/session/reauth", "reauthenticate", "Refresh privileged-action authentication", "Session", jsonBody("ReauthenticationRequest"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
   command("POST", "/session/password", "changeInitialPassword", "Replace a temporary password and rotate sessions", "Session", jsonBody("InitialPasswordRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
   command("POST", "/session/password/change", "changeOwnPassword", "Change the signed-in user's password and rotate sessions", "Session", jsonBody("PasswordChangeRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
+  command("PUT", "/session/alert-contact", "updateOwnAlertContact", "Register or remove the signed-in user's WhatsApp number for critical-result alerts", "Session", jsonBody("AlertContactUpdate"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
 
   read("/users", "listUsers", "List managed users", "Administration"),
   read("/sessions", "listSessions", "List managed sessions", "Administration"),
   command("POST", "/users", "createUser", "Create a managed user", "Administration", jsonBody("ManagedUserCreate"), { headers: [IDEMPOTENCY_REQUIRED], successStatus: 201 }),
   command("DELETE", "/users/{userId}", "deactivateUser", "Deactivate a managed user", "Administration", jsonBody("ManagedUserDeactivate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/users/{userId}/roles", "updateUserRole", "Update a managed user's role", "Administration", jsonBody("UserRoleUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
+  command("PUT", "/users/{userId}/on-call", "updateUserOnCall", "Mark or unmark a managed user as on call for critical-result escalation", "Administration", jsonBody("UserOnCallUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/users/{userId}/password", "regenerateUserPassword", "Generate a one-time temporary password and revoke target sessions", "Administration", jsonBody("ManagedUserPasswordReset"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/sessions/{sessionId}/revoke", "revokeSession", "Revoke a managed session", "Administration", jsonBody("SessionRevoke"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
 
@@ -461,12 +467,14 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   reauthenticate: authorization([], SESSION),
   changeInitialPassword: authorization([], [...SESSION, "temporary password must be replaced before any operational action"]),
   changeOwnPassword: authorization([], [...SESSION, "current password must be confirmed; every session of the user is rotated"]),
+  updateOwnAlertContact: authorization([], [...SESSION, "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"]),
   listClinicalReasons: authorization([], [...ROLE, "only active reasons for clinical actions authorized in the actor department are returned"]),
   listUsers: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only sees operational-role targets in managed departments"]),
   listSessions: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
   createUser: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only creates operational-role targets in managed departments", "granting ADMIN requires recent reauthentication"]),
   deactivateUser: authorization(["user_role.manage"], [...ROLE, "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments", "deactivating ADMIN requires recent reauthentication"]),
   updateUserRole: authorization(["user_role.manage"], [...ROLE, "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department", "granting or removing ADMIN requires recent reauthentication"]),
+  updateUserOnCall: authorization(["user_role.manage"], [...ROLE, "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"]),
   regenerateUserPassword: authorization(["user_role.manage"], [...ROLE, "actor cannot reset self; target must be active and within managed role and department scope", "regenerating an ADMIN credential requires recent reauthentication"]),
   revokeSession: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
   listDiagnosticServices: authorization([], [...ROLE, "includeInactive=true substitutes service.catalog.manage for service.catalog.view", "MANAGER catalog visibility is limited to delegated departments"], false, [
@@ -542,11 +550,11 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
 const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getLiveness: [429, 500], getReadiness: [429, 500, 503], getMetrics: [401, 404, 429, 500],
   login: [400, 401, 415, 429, 500], getCurrentSession: [401, 429, 500], logout: [401, 403, 429, 500],
-  changeInitialPassword: [400, 401, 403, 409, 415, 429, 500], changeOwnPassword: [400, 401, 403, 415, 429, 500], listClinicalReasons: [401, 403, 404, 429, 500],
+  changeInitialPassword: [400, 401, 403, 409, 415, 429, 500], changeOwnPassword: [400, 401, 403, 415, 429, 500], updateOwnAlertContact: [400, 401, 403, 415, 429, 500], listClinicalReasons: [401, 403, 404, 429, 500],
   reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500], listSessions: [401, 404, 429, 500],
   createUser: [400, 401, 403, 404, 409, 415, 429, 500], deactivateUser: [400, 401, 403, 404, 409, 415, 429, 500],
   regenerateUserPassword: [400, 401, 403, 404, 409, 415, 429, 500],
-  updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], revokeSession: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
+  updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], updateUserOnCall: [400, 401, 403, 404, 409, 415, 429, 500], revokeSession: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
   getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
