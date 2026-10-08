@@ -122,7 +122,7 @@ Legend: `✓` allowed within scope and state; `△` allowed only with extra cond
 | Complete item manually | △ | △ policy | — | — | — | — | — | — |
 | View audit/timeline | △ | ✓ | ✓ scope | ✓ scope | ✓ scope | ✓ scope | ✓ scope | △ |
 | Configure catalog/SLA/reasons | ✓ | △ delegated | — | — | △ proposal | △ proposal | △ proposal | — |
-| Manage users/roles | ✓, including MANAGER delegated-scope configuration | ✓ operational users in managed scope | — | — | — | — | — | — |
+| Manage users/roles (inclui gerar senha temporária e link de redefinição de uso único) | ✓, including MANAGER delegated-scope configuration | ✓ operational users in managed scope | — | — | — | — | — | — |
 | Export/delete/archive | ✓ with policy | △ approval | — | — | — | — | — | — |
 
 The matrix is a starting policy, not a claim of current hospital authorization. OQ-001/OQ-002/OQ-003/OQ-017 must be resolved before production.

@@ -156,7 +156,8 @@ const allowedTargets: Record<Layer, ReadonlySet<Layer>> = {
   "server-domain": new Set(["server-domain", "package-domain", "contracts"]),
   "package-domain": new Set(["package-domain", "contracts"]),
   http: new Set(["http", "contracts"]),
-  security: new Set(["security", "server-domain", "contracts", "http"]),
+  // PROD-203: security emits structured warnings and the login-signal metric; observability depends only on server-domain, so no cycle.
+  security: new Set(["security", "server-domain", "contracts", "http", "observability"]),
   store: new Set(["store", "server-domain", "contracts", "security", "storage"]),
   storage: new Set(["storage"]),
   operations: new Set(["operations", "server-domain"]),

@@ -17,6 +17,7 @@ const realtimeConnectionRejections = new Map<string, number>();
 const realtimeSharedReads = new Map<string, number>();
 const realtimeAuthorizationStaleness = new Map<string, number>();
 const gauges = new Map<string, number>();
+let loginDistributedAttemptSignals = 0;
 const allowedGauges = new Set([
   "outbox_pending",
   "outbox_oldest_age_seconds",
@@ -97,6 +98,11 @@ export function setGauge(name: string, value: number): void {
 export function incrementGauge(name: string, delta = 1): void {
   if (!Number.isFinite(delta)) return;
   setGauge(name, (gauges.get(name) ?? 0) + delta);
+}
+
+/** Counts one per-account distributed login attempt signal (PROD-203); never blocks anything. */
+export function recordLoginDistributedAttemptSignal(): void {
+  loginDistributedAttemptSignals += 1;
 }
 
 export function recordReadinessFailure(): void {
@@ -247,6 +253,11 @@ export function renderPrometheus(): string {
   appendCounter(lines, "cvg_realtime_connection_rejections_total", "Realtime connection attempts rejected by bounded capacity.", realtimeConnectionRejections, ["reason"]);
   appendCounter(lines, "cvg_realtime_shared_reads_total", "Full aggregate reads performed by the shared realtime reader.", realtimeSharedReads, ["mode"]);
   appendCounter(lines, "cvg_realtime_authorization_staleness_total", "Realtime authorizations revalidated against a newer runtime-state version.", realtimeAuthorizationStaleness, ["mode"]);
+  lines.push(
+    "# HELP cvg_login_distributed_attempt_signals_total Accounts whose failed logins crossed the aggregated per-account threshold (monitoring only, no blocking).",
+    "# TYPE cvg_login_distributed_attempt_signals_total counter",
+    `cvg_login_distributed_attempt_signals_total ${loginDistributedAttemptSignals}`
+  );
   for (const [name, value] of [...gauges.entries()].sort(([left], [right]) => left.localeCompare(right))) {
     const metricName = `cvg_${name}`;
     lines.push(`# HELP ${metricName} ${gaugeHelp.get(name) ?? "Bounded application gauge."}`, `# TYPE ${metricName} gauge`, `${metricName} ${value}`);
@@ -265,6 +276,7 @@ export function resetMetrics(): void {
   realtimeSharedReads.clear();
   realtimeAuthorizationStaleness.clear();
   gauges.clear();
+  loginDistributedAttemptSignals = 0;
 }
 
 export function routeMetricLabel(path: readonly string[]): string {

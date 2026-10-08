@@ -5,6 +5,7 @@ import type { FileStore } from "../storage/file-store";
 import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
 import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import { ApiError } from "../http/envelope";
+import { assertPasswordPolicy } from "../security/password-policy";
 import { aggregateRequestStatus, transitionItem } from "../domain/state-machine";
 import { findById, idempotencyRecordFor, itemsForRequest, notificationForDedupe, positionOfId, requestsForPatient, resultVersionsForResult, samplesForItem } from "../domain/state-index";
 import { legacyServiceSlaPolicy, startSlaClock } from "./sla-policy";
@@ -187,6 +188,7 @@ export function validatedPassword(value: string): string {
   if (typeof value !== "string" || Array.from(value).length < 12 || Array.from(value).length > 200 || !/[A-Za-z]/.test(value) || !/[0-9]/.test(value)) {
     throw new ApiError("VALIDATION_ERROR", "A senha deve ter pelo menos 12 caracteres, letras e números.", 400);
   }
+  assertPasswordPolicy(value);
   return value;
 }
 

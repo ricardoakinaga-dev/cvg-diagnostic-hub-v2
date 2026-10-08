@@ -21,6 +21,8 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   revokeSession: "ManagedSession",
   createUser: "ManagedUserCreation",
   regenerateUserPassword: "ManagedUserCreation",
+  issuePasswordResetLink: "PasswordResetLinkIssued",
+  completePasswordReset: "PasswordResetCompleted",
   deactivateUser: "ManagedUser",
   updateUserRole: "ManagedUser",
   updateUserOnCall: "ManagedUser",
@@ -137,6 +139,7 @@ export type ApiAuthorizationCondition =
   | "deactivating ADMIN requires recent reauthentication"
   | "granting or removing ADMIN requires recent reauthentication"
   | "regenerating an ADMIN credential requires recent reauthentication"
+  | "issuing a reset link for an ADMIN requires recent reauthentication"
   | "actor cannot reset self; target must be active and within managed role and department scope"
   | "authenticated active session"
   | "permission is evaluated against the actor's current role"
@@ -333,6 +336,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/session/logout", "logout", "Revoke the current session", "Session", undefined, { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"], errorStatuses: [401, 403, 429, 500] }),
   command("POST", "/session/reauth", "reauthenticate", "Refresh privileged-action authentication", "Session", jsonBody("ReauthenticationRequest"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
   command("POST", "/session/password", "changeInitialPassword", "Replace a temporary password and rotate sessions", "Session", jsonBody("InitialPasswordRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
+  command("POST", "/session/password/reset", "completePasswordReset", "Complete an administrator-issued password reset with a one-time token", "Session", jsonBody("PasswordResetCompletion"), { authentication: "public" }),
   command("POST", "/session/password/change", "changeOwnPassword", "Change the signed-in user's password and rotate sessions", "Session", jsonBody("PasswordChangeRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
   command("PUT", "/session/alert-contact", "updateOwnAlertContact", "Register or remove the signed-in user's WhatsApp number for critical-result alerts", "Session", jsonBody("AlertContactUpdate"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
 
@@ -343,6 +347,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/users/{userId}/roles", "updateUserRole", "Update a managed user's role", "Administration", jsonBody("UserRoleUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("PUT", "/users/{userId}/on-call", "updateUserOnCall", "Mark or unmark a managed user as on call for critical-result escalation", "Administration", jsonBody("UserOnCallUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/users/{userId}/password", "regenerateUserPassword", "Generate a one-time temporary password and revoke target sessions", "Administration", jsonBody("ManagedUserPasswordReset"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
+  command("POST", "/users/{userId}/password-reset-link", "issuePasswordResetLink", "Issue a one-time password reset link and revoke target sessions", "Administration", jsonBody("PasswordResetLinkRequest"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version", successStatus: 201 }),
   command("POST", "/sessions/{sessionId}/revoke", "revokeSession", "Revoke a managed session", "Administration", jsonBody("SessionRevoke"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
 
   read("/diagnostic-services", "listDiagnosticServices", "List diagnostic services", "Catalog", { queryParameters: [{ name: "includeInactive", schema: "Boolean" }] }),
@@ -501,6 +506,8 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   updateUserRole: authorization(["user_role.manage"], [...ROLE, "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department", "granting or removing ADMIN requires recent reauthentication"]),
   updateUserOnCall: authorization(["user_role.manage"], [...ROLE, "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"]),
   regenerateUserPassword: authorization(["user_role.manage"], [...ROLE, "actor cannot reset self; target must be active and within managed role and department scope", "regenerating an ADMIN credential requires recent reauthentication"]),
+  issuePasswordResetLink: authorization(["user_role.manage"], [...ROLE, "actor cannot reset self; target must be active and within managed role and department scope", "issuing a reset link for an ADMIN requires recent reauthentication"]),
+  completePasswordReset: authorization([], []),
   revokeSession: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
   listDiagnosticServices: authorization([], [...ROLE, "includeInactive=true substitutes service.catalog.manage for service.catalog.view", "MANAGER catalog visibility is limited to delegated departments"], false, [
     { when: "includeInactive is false or omitted", allOf: ["service.catalog.view"] },
@@ -587,6 +594,8 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500], listSessions: [401, 404, 429, 500],
   createUser: [400, 401, 403, 404, 409, 415, 429, 500], deactivateUser: [400, 401, 403, 404, 409, 415, 429, 500],
   regenerateUserPassword: [400, 401, 403, 404, 409, 415, 429, 500],
+  issuePasswordResetLink: [400, 401, 403, 404, 409, 415, 429, 500],
+  completePasswordReset: [400, 415, 429, 500],
   updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], updateUserOnCall: [400, 401, 403, 404, 409, 415, 429, 500], revokeSession: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
   getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], importDiagnosticServices: [400, 401, 403, 404, 409, 415, 422, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],

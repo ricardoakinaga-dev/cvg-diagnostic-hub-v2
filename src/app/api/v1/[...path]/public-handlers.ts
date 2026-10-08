@@ -1,6 +1,9 @@
 import { getRuntimeReadiness, getRuntimeStoreAsync } from "../../../../server/store/runtime";
 import { InvalidLoginCredentialsError, loginUser, sessionCookies } from "../../../../server/security/session";
 import { ApiError } from "../../../../server/http/envelope";
+import { completePasswordReset } from "../../../../server/security/password-reset";
+import { observeLoginFailure } from "../../../../server/security/login-signal";
+import { passwordResetCompletionSchema } from "../../../../server/http/admin-schemas";
 import { assertLoginAttempt, assertRateLimit, registerLoginFailure, registerLoginSuccess } from "../../../../server/security/rate-limit";
 import { recordReadinessFailure } from "../../../../server/observability/metrics";
 import { loginSchema, responseFor, jsonBody, publicUser, positiveInteger, assertHealthRateLimit } from "./route-support";
@@ -52,6 +55,8 @@ export const publicHandlers = {
         // delayed by somebody else's guessing run.
         if (error instanceof InvalidLoginCredentialsError) {
           await registerLoginFailure(loginIdentity);
+          // Aggregated per-account signal (PROD-203/PROD-517): observes only, never blocks (D-021).
+          await observeLoginFailure(store, loginIdentity, correlationId);
         }
         throw error;
       }
@@ -59,5 +64,15 @@ export const publicHandlers = {
       for (const cookie of sessionCookies(login))
         response.headers.append("set-cookie", cookie);
       return response;
+    } },
+  completePasswordReset: { authentication: "public", handle: async ({ request, correlationId, id, rateLimitClientKey }) => {
+      // Its own low budget per client: the token is 256 bits, so this only bounds audit noise and password-policy probing.
+      await assertRateLimit(`password-reset:${rateLimitClientKey}`, 10, 15 * 60_000);
+      const parsed = passwordResetCompletionSchema.safeParse(await jsonBody(request));
+      if (!parsed.success)
+        throw new ApiError("VALIDATION_ERROR", "Informe o link de redefinição e uma nova senha válida.", 400);
+      const store = await getRuntimeStoreAsync();
+      const result = await completePasswordReset(store, parsed.data.token, parsed.data.password, correlationId);
+      return responseFor({ email: result.email }, correlationId, id);
     } }
 } satisfies ApiHandlerGroup;

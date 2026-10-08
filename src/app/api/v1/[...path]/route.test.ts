@@ -1128,6 +1128,83 @@ describe("versioned API boundary", () => {
     expect(stale.status).toBe(401);
   });
 
+  it("issues a one-time reset link and completes it publicly without minting a session (PROD-202)", async () => {
+    const admin = await login("admin@cvg.local");
+    const vet = await login("vet@cvg.local");
+    const users = await (await GET(new Request("http://localhost/api/v1/users", { headers: { cookie: admin.cookie } }), params(["users"]))).json();
+    const target = users.data.find((user: { email: string }) => user.email === "vet@cvg.local");
+    const issue = (key: string, body: unknown = { expectedVersion: target.version }, auth = admin) => POST(new Request(`http://localhost/api/v1/users/${target.id}/password-reset-link`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: auth.cookie, "x-csrf-token": auth.csrf, "idempotency-key": key },
+      body: JSON.stringify(body)
+    }), params(["users", target.id, "password-reset-link"]));
+    const complete = (body: unknown) => POST(new Request("http://localhost/api/v1/session/password/reset", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body)
+    }), params(["session", "password", "reset"]));
+
+    expect((await issue("link-bad", { expectedVersion: "x" })).status).toBe(400);
+    expect((await issue("link-forbidden", { expectedVersion: 1 }, vet)).status).toBe(404);
+    const issued = await issue("link-ok");
+    const issuedBody = await issued.json();
+    expect(issued.status).toBe(201);
+    expect(issuedBody.data).toMatchObject({ user: { id: target.id, email: "vet@cvg.local" }, resetUrl: expect.stringContaining("/reset-password?token="), expiresAt: expect.any(String) });
+    expect(JSON.stringify(issuedBody)).not.toContain("tokenHash");
+    const replay = await (await issue("link-ok")).json();
+    expect(replay.data).not.toHaveProperty("resetUrl");
+    const stale = await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]));
+    expect(stale.status).toBe(401);
+
+    const token = new URL(issuedBody.data.resetUrl, "http://x").searchParams.get("token");
+    expect((await complete({ token })).status).toBe(400);
+    const weak = await complete({ token, password: "Password123456" });
+    expect(weak.status).toBe(400);
+    expect((await weak.json()).error.code).toBe("PASSWORD_POLICY");
+    const wrong = await complete({ token: "nao-e-o-token", password: "Cavalo-azul-Lua-48-xk" });
+    expect(wrong.status).toBe(400);
+    const wrongBody = await wrong.json();
+    expect(wrongBody.error).toMatchObject({ code: "PASSWORD_RESET_INVALID", message: "Link de redefinição inválido ou expirado." });
+
+    const done = await complete({ token, password: "Cavalo-azul-Lua-48-xk" });
+    expect(done.status).toBe(200);
+    expect((await done.json()).data).toEqual({ email: "vet@cvg.local" });
+    expect(done.headers.get("set-cookie")).toBeNull();
+    const reused = await complete({ token, password: "Outra-senha-Lua-77-q" });
+    expect(reused.status).toBe(400);
+    expect((await reused.json()).error.message).toBe(wrongBody.error.message);
+    const relogin = await POST(new Request("http://localhost/api/v1/session/login", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: "vet@cvg.local", password: "Cavalo-azul-Lua-48-xk" })
+    }), params(["session", "login"]));
+    expect(relogin.status).toBe(200);
+  });
+
+  it("rate limits the public reset endpoint per client with its own budget", async () => {
+    const attempt = () => POST(new Request("http://localhost/api/v1/session/password/reset", {
+      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ token: "guess", password: "Cavalo-azul-Lua-48-xk" })
+    }), params(["session", "password", "reset"]));
+    for (let index = 0; index < 10; index += 1) expect((await attempt()).status).toBe(400);
+    const limited = await attempt();
+    expect(limited.status).toBe(429);
+    expect((await limited.json()).error.code).toBe("RATE_LIMITED");
+  });
+
+  it("raises one aggregated signal for a pseudonymous account without blocking the real user (PROD-203)", async () => {
+    vi.stubEnv("LOGIN_ACCOUNT_SIGNAL_THRESHOLD", "3");
+    vi.stubEnv("SESSION_SECRET", "s".repeat(32));
+    const wrongLogin = (forwarded: string) => POST(new Request("http://localhost/api/v1/session/login", {
+      method: "POST", headers: { "content-type": "application/json", "x-forwarded-for": forwarded }, body: JSON.stringify({ email: "vet@cvg.local", password: "wrong-password-1" })
+    }), params(["session", "login"]));
+    for (const forwarded of ["198.51.100.1", "198.51.100.2", "198.51.100.3", "198.51.100.4"]) expect((await wrongLogin(forwarded)).status).toBe(401);
+
+    const store = await getRuntimeStoreAsync();
+    const events = (await store.readState()).auditEvents.filter((event) => event.eventType === "LoginDistributedAttemptsDetected");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ entityType: "Account", entityId: expect.stringMatching(/^[0-9a-f]{16}$/), metadata: expect.objectContaining({ attempts: 3 }) });
+    expect(JSON.stringify(events)).not.toContain("vet@cvg.local");
+    expect(renderPrometheus()).toContain("cvg_login_distributed_attempt_signals_total 1");
+    expect((await login("vet@cvg.local")).csrf).toBeTruthy();
+    vi.unstubAllEnvs();
+  });
+
   it("lets the signed-in user register a masked alert number and an administrator mark them on call", async () => {
     const vet = await login();
     const digits = ["11", "9", "8765", "4321"];

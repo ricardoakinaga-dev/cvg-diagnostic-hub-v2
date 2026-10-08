@@ -110,6 +110,15 @@ Sinais: container `offsite` `unhealthy`; `check-offsite.sh` com código diferent
 3. Confirmar que lista, busca, timeline, SSE, attachment, draft, versão e comando retornam boundary fail-closed.
 4. Abrir revisão independente; nenhuma correção local substitui o parecer de Segurança, Privacidade ou Clínica.
 
+## Tentativas de login distribuídas
+
+Alerta `CvgLoginDistributedAttempts` / log `security.login_distributed_attempts` / auditoria `LoginDistributedAttemptsDetected` (PROD-203, PROD-517). Significa que **uma conta** acumulou `LOGIN_ACCOUNT_SIGNAL_THRESHOLD` (padrão 20) senhas erradas, somadas de vários clientes, em `LOGIN_ACCOUNT_SIGNAL_WINDOW_MS` (padrão 15 min). É um sinal, não um bloqueio: ninguém foi impedido de entrar e o backoff por par não mudou (D-021).
+
+1. Leia o log: `accountId` (pseudonimizado), `attempts` e `distinctClients`. Muitos clientes distintos sugere tentativa distribuída (password spraying ou botnet); um só cliente costuma ser alguém digitando errado. O `accountId` se reconstrói com `sha256(SESSION_SECRET + e-mail em minúsculas)` (16 primeiros hex) para confirmar de qual conta se trata; não procure o e-mail em log.
+2. Veja a auditoria da mesma conta e as sessões recentes (aba Sistema): houve login bem-sucedido logo depois dos erros? Se sim, trate como possível comprometimento: gere um link de redefinição (`Gerar link de redefinição`, que também encerra as sessões da conta) e entregue pelo canal combinado, confirmando com a pessoa.
+3. Se o padrão continuar, confirme no proxy os endereços de origem (`X-Forwarded-For` confiável, DEPLOYMENT §5.1) e bloqueie-os na borda; não bloqueie a conta no Hub, pois isso trancaria o dono para fora.
+4. Aumente o limiar só se o alerta for ruído comprovado (estações atrás do mesmo NAT). Registre o incidente conforme o fechamento abaixo.
+
 ## Fechamento do incidente
 
 O incidente só pode ser fechado quando houver: causa ou limite documentado; evidência sanitizada; teste/regressão que detectaria a falha; impacto clínico avaliado; ação preventiva; owner e prazo; decisão explícita de reabrir tráfego, manter degradação ou fazer rollback. A ausência de logs por falha do logger não deve alterar a decisão: o boundary HTTP continua sendo a fonte da resposta e a auditoria durável permanece a fonte da ação clínica.

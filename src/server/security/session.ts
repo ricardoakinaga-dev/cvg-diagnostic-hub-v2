@@ -5,6 +5,7 @@ import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
 import { findById, sessionForTokenHash } from "../domain/state-index";
 import { assertRateLimit } from "./rate-limit";
+import { assertAcceptablePassword } from "./password-policy";
 
 const SESSION_COOKIE = "cvg_session";
 const CSRF_COOKIE = "cvg_csrf";
@@ -134,12 +135,6 @@ export async function authenticateRequest(
 const PASSWORD_CHANGE_ATTEMPTS = 5;
 const PASSWORD_CHANGE_WINDOW_MS = 15 * 60 * 1000;
 
-function assertPasswordPolicy(password: string): void {
-  if (Array.from(password).length < 12 || Array.from(password).length > 200 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw new ApiError("VALIDATION_ERROR", "Use de 12 a 200 caracteres, com letras e números.", 400);
-  }
-}
-
 /**
  * Stores the new hash, revokes every live session of the user and issues one
  * new session, in the caller's transaction. A stolen cookie dies with the old
@@ -176,7 +171,7 @@ function rotateCredentials(
 export async function changeInitialPassword(store: StateStore, request: Request, password: string, correlationId: string) {
   const actor = await authenticateRequest(store, request, { requireCsrf: true, allowPasswordChange: true });
   if (!actor.mustChangePassword) throw new ApiError("INVALID_STATE", "A senha inicial já foi substituída.", 409);
-  assertPasswordPolicy(password);
+  await assertAcceptablePassword(password, { email: actor.email, displayName: actor.displayName });
   if (passwordSecurity.verifyPassword(password, actor.passwordHash)) {
     throw new ApiError("VALIDATION_ERROR", "Escolha uma senha diferente da senha inicial.", 400);
   }
@@ -199,7 +194,7 @@ export async function changeInitialPassword(store: StateStore, request: Request,
 export async function changeOwnPassword(store: StateStore, request: Request, currentPassword: string, newPassword: string, correlationId: string) {
   const actor = await authenticateRequest(store, request, { requireCsrf: true });
   await assertRateLimit(`password-change:${actor.id}`, PASSWORD_CHANGE_ATTEMPTS, PASSWORD_CHANGE_WINDOW_MS);
-  assertPasswordPolicy(newPassword);
+  await assertAcceptablePassword(newPassword, { email: actor.email, displayName: actor.displayName });
   if (!passwordSecurity.verifyPassword(currentPassword, actor.passwordHash)) {
     throw new ApiError("CURRENT_PASSWORD_INVALID", "A senha atual não confere.", 400);
   }

@@ -19,6 +19,13 @@ export interface ScopedResource {
   ownerId?: string;
 }
 
+export interface PasswordResetGrant {
+  tokenHash: string;
+  expiresAt: Timestamp;
+  issuedAt: Timestamp;
+  issuedBy: string;
+}
+
 export interface User extends Actor {
   email: string;
   displayName: string;
@@ -28,6 +35,8 @@ export interface User extends Actor {
   version: number;
   /** Temporary credentials can only establish a session for password replacement. */
   mustChangePassword?: boolean;
+  /** Pending administrator-issued reset (PROD-202). Only the SHA-256 of the token is stored; never returned by the API. */
+  passwordReset?: PasswordResetGrant;
   /** PROD-402: E.164 number for critical-result alerts over WhatsApp, set only by the user with consent. */
   whatsappPhone?: string;
   /** PROD-402: when the user consented to receive the alerts on whatsappPhone. */

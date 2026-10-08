@@ -60,6 +60,9 @@ describe("secure server sessions", () => {
     expect(authorizationSnapshotIsCurrent(store.getState(), temporaryActor, { allowPasswordChange: true })).toBe(true);
     await expect(changeInitialPassword(store, request, "Initial-secret-1234", "corr-first-login")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(changeInitialPassword(store, request, "weak", "corr-first-login")).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    // PROD-203: breached/common/personal/sequential choices are refused on the first login too.
+    await expect(changeInitialPassword(store, request, "Password123456", "corr-first-login")).rejects.toMatchObject({ code: "PASSWORD_POLICY" });
+    await expect(changeInitialPassword(store, request, "Marina-azul-Lua-48-xk", "corr-first-login")).rejects.toMatchObject({ code: "PASSWORD_POLICY" });
     const changed = await changeInitialPassword(store, request, "Personal-secret-5678", "corr-first-login");
     expect(changed.sessionToken).not.toBe(first.sessionToken);
     expect(changed.csrfToken).not.toBe(first.csrfToken);
@@ -467,6 +470,16 @@ describe("secure server sessions", () => {
     const PASSWORD = "Current-secret-1234";
     const signedIn = (login: { sessionToken: string; csrfToken: string }) => new Request("http://localhost/api/v1/session/password/change", {
       headers: { cookie: `cvg_session=${login.sessionToken}; cvg_csrf=${login.csrfToken}`, "x-csrf-token": login.csrfToken }
+    });
+
+    it("applies the strengthened policy before touching credentials (PROD-203)", async () => {
+      resetRateLimits();
+      const store = new MemoryStore(createDemoState(PASSWORD));
+      const login = await loginUser(store, "vet@cvg.local", PASSWORD);
+      for (const weak of ["Qwerty-azul-Lua-4", "Boa-senha-xxxxxx-91", "Password123456", "Marina-azul-Lua-48-xk"]) {
+        await expect(changeOwnPassword(store, signedIn(login), PASSWORD, weak, "corr")).rejects.toMatchObject({ code: "PASSWORD_POLICY", status: 400 });
+      }
+      expect(store.getState().auditEvents.some((event) => event.eventType === "PasswordChanged")).toBe(false);
     });
 
     it("requires the current password, rotates every session and audits without secrets", async () => {

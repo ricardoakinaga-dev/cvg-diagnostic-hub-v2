@@ -1,6 +1,6 @@
 import { listClinicalReasons } from "../../../../server/application/clinical-reasons";
 import { updateOwnAlertContact } from "../../../../server/application/alert-contact";
-import { reauthenticationSchema, initialPasswordSchema, passwordChangeSchema, alertContactSchema, serviceCreateSchema, servicePatchSchema, catalogImportSchema, userRoleSchema, userOnCallSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, sessionRevokeSchema } from "../../../../server/http/admin-schemas";
+import { reauthenticationSchema, initialPasswordSchema, passwordChangeSchema, alertContactSchema, serviceCreateSchema, servicePatchSchema, catalogImportSchema, userRoleSchema, userOnCallSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, passwordResetLinkSchema, sessionRevokeSchema } from "../../../../server/http/admin-schemas";
 import { changeInitialPassword, changeOwnPassword, clearSessionCookies, getCookieValue, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
 import { ApiError } from "../../../../server/http/envelope";
 import { reasonCreateSchema, reasonPatchSchema, responseFor, jsonBody, objectBody, commandMeta, publicUser, parseBooleanFilter } from "./route-support";
@@ -100,6 +100,13 @@ export const administrationHandlers = {
       if (!parsed.success)
         throw new ApiError("VALIDATION_ERROR", "Os dados de recuperação de acesso são inválidos.", 400);
       return responseFor(await service.regenerateManagedUserPassword(actor, path[1], { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id);
+    } },
+  issuePasswordResetLink: { authentication: "session", handle: async ({ request, path, operation, correlationId, id, service, actor }) => {
+      const body = await objectBody(request);
+      const parsed = passwordResetLinkSchema.safeParse(body);
+      if (!parsed.success)
+        throw new ApiError("VALIDATION_ERROR", "Os dados do link de redefinição são inválidos.", 400);
+      return responseFor(await service.issuePasswordResetLink(actor, path[1], { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id, 201);
     } },
   listDiagnosticServices: { authentication: "session", handle: async ({ request, correlationId, id, service, actor }) => {
       const includeInactive = parseBooleanFilter(new URL(request.url).searchParams.get("includeInactive"), "includeInactive") ?? false;

@@ -50,12 +50,13 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | `POST /users` | required | recent password reauthentication, operational role/scope validation, non-empty reason and explicit confirmation |
 | `POST /users/{id}/roles` | required | recent password reauthentication, target `expectedVersion`, non-empty reason and explicit confirmation |
 | `DELETE /users/{id}` | required | recent password reauthentication, target `expectedVersion`, non-empty reason and explicit confirmation; soft deactivation |
+| `POST /users/{id}/password-reset-link` | required | target `expectedVersion` (body or `If-Match`); recent password reauthentication when the target is ADMIN; replay returns the stored response without the URL |
 
 ## 2. Resources
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact` | authenticated session boundary |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact`, `POST /session/password/reset` (public) | authenticated session boundary, except the administrator-issued reset token |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
 | Webhooks | `GET /webhooks/whatsapp`, `POST /webhooks/whatsapp` | public, gated by configuration and Meta's signature |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
@@ -91,6 +92,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `PUT /session/alert-contact` | authenticated active session (not a temporary password) | PROD-402: only the user registers their own WhatsApp number for critical-result alerts. `{ whatsappPhone, consent: true }` stores it in E.164 (10 or 11 digits without a country code are read as Brazilian) with the consent time; `{ whatsappPhone: null }` removes both. The response and `GET /session/me` return only `alertContact.maskedPhone` and `consentAt`; the audit event `AlertContactUpdated` never carries the number |
 | `GET /webhooks/whatsapp` | public | PROD-402: 404 unless `WHATSAPP_ENABLED=true` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET`; answers Meta's `hub.challenge` as `text/plain` only for `hub.mode=subscribe` with the matching verify token (403 otherwise) |
 | `POST /webhooks/whatsapp` | public | PROD-402: same gate; requires `X-Hub-Signature-256` = HMAC-SHA256 of the exact body under the app secret (401 otherwise); reads only delivery statuses, moves the notification's `whatsapp` status forward (`SENT` → `DELIVERED` → `READ`, or `FAILED`) and audits it; unknown message ids are ignored; returns `{ received, applied }` |
+| `POST /session/password/reset` | none (public, administrator-issued one-time token) | PROD-202: body `{ token, password }` (token 1–200, password 12–200 characters); no CSRF and no session, like login; 10 attempts per client per 15 minutes (`429 RATE_LIMITED`); password policy of PROD-203 (`400 VALIDATION_ERROR`, `PASSWORD_POLICY`, `PASSWORD_BREACHED`); unknown, expired, used or deactivated-account token all answer `400 PASSWORD_RESET_INVALID` "Link de redefinição inválido ou expirado."; success `200 { email }` sets the password, consumes the token, clears `mustChangePassword`, revokes every session and creates none |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
@@ -155,6 +157,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /users/{id}/roles` | `user_role.manage` | ADMIN or delegated MANAGER target scope; recent password reauthentication, target `expectedVersion`, reason, confirmation and audit; ADMIN may revise a MANAGER's `managedDepartmentCodes` |
 | `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit; also takes the user off call |
 | `PUT /users/{id}/on-call` | `user_role.manage` | PROD-402: ADMIN or delegated MANAGER target scope; `{ onCall, expectedVersion }` with an idempotency key; an inactive user cannot go on call; audits `UserOnCallUpdated`. The user list shows `onCall` and `alertContactReady`, never the number |
+| `POST /users/{id}/password-reset-link` | `user_role.manage` | PROD-202: same target scope as `POST /users/{id}/password` (not self, target active, step-up for ADMIN targets); `Idempotency-Key` and `expectedVersion` required; `201 { user, resetUrl, expiresAt }` where `resetUrl` (`APP_ORIGIN/reset-password?token=…`) is shown once and only its keyed fingerprint (scrypt with `SESSION_SECRET`) is stored; replaces any previous link, revokes the target's sessions and audits `PasswordResetLinkIssued` without the token |
 | `GET /management/overview` | `dashboard.view`, `user_role.manage` | active MANAGER only; data is filtered to own department plus explicitly managed diagnostic departments |
 | `GET /dashboard` | `dashboard.view` | department and patient scope; bounded operational indicators only |
 | `GET /audit-events` | `audit.view` | manager/admin or scoped audit policy |

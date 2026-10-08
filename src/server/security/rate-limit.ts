@@ -176,7 +176,11 @@ export async function registerLoginSuccess(identity: LoginAttemptIdentity): Prom
 }
 
 async function readLoginFailureCount(identity: LoginAttemptIdentity, timestamp: number): Promise<number> {
-  const key = loginFailureKey(identity);
+  return readRateLimitCounter(loginFailureKey(identity), LOGIN_FAILURE_DECAY_MS, timestamp);
+}
+
+/** Current value of a counter without consuming it (0 when its window ended). */
+export async function readRateLimitCounter(key: string, windowMs: number, timestamp = Date.now()): Promise<number> {
   if (assertRateLimitConfiguration() === "memory") {
     const current = buckets.get(key);
     if (!current || current.resetAt <= timestamp) return 0;
@@ -186,7 +190,7 @@ async function readLoginFailureCount(identity: LoginAttemptIdentity, timestamp: 
     const result = await rateLimitPool().query<{ request_count: number | string }>(
       `SELECT request_count FROM rate_limit_buckets
         WHERE bucket_key = $1 AND window_started_at + ($3 * interval '1 millisecond') > $2`,
-      [key, new Date(timestamp), LOGIN_FAILURE_DECAY_MS]
+      [key, new Date(timestamp), windowMs]
     );
     if (result.rows.length === 0) return 0;
     const count = Number(result.rows[0].request_count);
@@ -201,7 +205,7 @@ async function readLoginFailureCount(identity: LoginAttemptIdentity, timestamp: 
  * Atomically increments one wrong-password counter. Dependency failures fail
  * closed; reads and successful logins never consume this counter.
  */
-async function consumeRateLimitCounter(key: string, windowMs: number, timestamp: number): Promise<number> {
+export async function consumeRateLimitCounter(key: string, windowMs: number, timestamp = Date.now()): Promise<number> {
   if (assertRateLimitConfiguration() === "memory") {
     const current = buckets.get(key);
     const bucket = !current || current.resetAt <= timestamp ? { count: 0, resetAt: timestamp + windowMs, windowStartedAt: timestamp } : current;
