@@ -104,6 +104,8 @@ Acrescente `--apply` para gravar. `--no-deps` evita que o Compose reexecute o `m
 
 ## 4. Limites conhecidos
 
+- **Tamanho do envio.** As duas planilhas viajam em um único corpo JSON, limitado por `JSON_BODY_MAX_BYTES` (1 MiB por padrão). A tela recusa arquivos acima de 900 KB cada um; se a soma passar de 1 MiB, divida a planilha de analitos em partes (cada parte precisa trazer os exames correspondentes na planilha de exames) ou aumente o limite com revisão de risco.
+
 - **Faixas por espécie:** o modelo atual guarda **uma** faixa de referência por analito, sem distinguir cão, gato ou outras espécies. Enquanto não existir um modelo de faixas por espécie, registre as faixas específicas em `observacao` e deixe `referencia_minima` e `referencia_maxima` vazias (faixa pendente) ou preencha só a faixa que valha para todos os pacientes atendidos. A observação é exibida junto à faixa, mas não é usada para marcar baixo/alto.
 - **Valores permitidos de analito qualitativo** (lista fechada de opções) ainda não fazem parte da planilha: um analito `QUALITATIVE` aceita qualquer texto.
 - Alterar os analitos de um exame sobe a versão do painel; rascunhos de resultado abertos na versão anterior precisam ser relançados no painel novo.

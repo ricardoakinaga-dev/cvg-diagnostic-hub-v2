@@ -71,6 +71,8 @@ As equipes executoras continuam limitadas ao setor e à lista explícita de exam
 - vendor/storage agreements and encryption at rest/in transit;
 - data subject workflow where legally applicable.
 
+Alert number (PROD-402): the WhatsApp number for critical-result alerts is a professional's personal data. Only the person registers it, in **Minha conta**, with explicit consent recorded with a timestamp; they can remove it at any time, which erases both fields. Administrators see only whether a number exists. Responses return it masked, and audit events, logs and metrics never carry it. Messages carry no clinical data, only the protocol and the Hub link.
+
 OQ-013 is a release gate. Do not claim “LGPD compliant” from this document alone.
 
 ## 8. Audit and integrity

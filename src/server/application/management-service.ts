@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, ManagedSession, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
-import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, CatalogImportInput, CatalogImportResult, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, SessionRevokeInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, CatalogImportInput, CatalogImportResult, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, UserOnCallUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, SessionRevokeInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
 import { planCatalogImport, parseCatalogSheet, parseAnalyteSheet } from "./catalog-import";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
@@ -223,13 +223,40 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           throw new ApiError("CONFLICT", "O último administrador ativo não pode perder o acesso administrativo.", 409);
         }
         const serviceCodes = assignedServices(originalState, input.role, departmentCode, input.serviceCodes ?? (isExecutorRole({ ...target, role: input.role }) && target.departmentCode === departmentCode ? target.serviceCodes : undefined));
-        const updated: User = { ...target, role: input.role, departmentCode, managedDepartmentCodes, serviceCodes, active: nextActive, version: target.version + 1 };
+        const updated: User = { ...target, role: input.role, departmentCode, managedDepartmentCodes, serviceCodes, active: nextActive, ...(target.onCall && !nextActive ? { onCall: false } : {}), version: target.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         const nextState = {
           ...originalState,
           users: originalState.users.map((user) => user.id === target.id ? updated : user),
           sessions: revokeUserSessions(originalState, target.id),
           auditEvents: [...originalState.auditEvents, createAudit("UserRoleUpdated", currentActor.id, "User", target.id, correlationId, `${target.role}:${target.departmentCode}:${target.active}`, `${updated.role}:${updated.departmentCode}:${updated.active}`, { action: "UPDATE_USER_ACCESS", departmentCode: updated.departmentCode, previousManagedDepartmentCodes: target.managedDepartmentCodes?.join(",") ?? "", managedDepartmentCodes: managedDepartmentCodes?.join(",") ?? "", previousServiceCodes: target.serviceCodes?.join(",") ?? "", serviceCodes: serviceCodes?.join(",") ?? "" })]
+        };
+        const result = managedUser(updated);
+        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result };
+      });
+    },
+
+    /** PROD-402: the ON_CALL rule of the critical-result policy escalates to whoever is marked here. */
+    async updateUserOnCall(actor: User, userId: string, input: UserOnCallUpdateInput): Promise<ManagedUser> {
+      const scope = "PUT:/users/on-call";
+      return store.transaction(async (originalState) => {
+        const currentActor = requireActiveUser(originalState, actor);
+        requireIdempotencyKey(input.idempotencyKey);
+        requirePermission(currentActor, "user_role.manage", {});
+        if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para alterar o plantão.", 400);
+        const target = findOrThrow(findById(originalState.users, userId));
+        if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
+        const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
+        if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        ensureExpectedVersion(target.version, input.expectedVersion);
+        if (input.onCall && !target.active) throw new ApiError("VALIDATION_ERROR", "Um acesso desativado não pode entrar no plantão.", 400);
+        const previous = target.onCall === true;
+        const updated: User = { ...target, onCall: input.onCall, version: target.version + 1 };
+        const correlationId = input.correlationId ?? id("corr");
+        const nextState = {
+          ...originalState,
+          users: originalState.users.map((user) => user.id === target.id ? updated : user),
+          auditEvents: [...originalState.auditEvents, createAudit("UserOnCallUpdated", currentActor.id, "User", target.id, correlationId, previous ? "ON_CALL" : "OFF_CALL", input.onCall ? "ON_CALL" : "OFF_CALL", { action: "UPDATE_USER_ON_CALL", departmentCode: target.departmentCode, ...(input.reason ? { reason: requireText(input.reason, "reason", 500) } : {}) })]
         };
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result };
@@ -299,7 +326,8 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (target.role === "ADMIN" && target.active && originalState.users.filter((user) => user.active && user.role === "ADMIN" && user.id !== target.id).length === 0) {
           throw new ApiError("CONFLICT", "O último administrador ativo não pode ser desativado.", 409);
         }
-        const updated: User = { ...target, active: false, version: target.version + 1 };
+        // Nobody stays on call (PROD-402) after losing access.
+        const updated: User = { ...target, active: false, ...(target.onCall ? { onCall: false } : {}), version: target.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         const nextState = {
           ...originalState,
