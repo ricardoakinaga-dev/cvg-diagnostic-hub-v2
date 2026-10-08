@@ -63,12 +63,20 @@ describe("diagnostic application service", () => {
       service.createRequest(actor, input, { idempotencyKey: "request-duplicate" })
     ).rejects.toMatchObject({ code: "DUPLICATE_WARNING", status: 409 });
 
+    await expect(
+      service.createRequest(actor, input, { idempotencyKey: "request-override-without-reason", allowDuplicateOverride: true })
+    ).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
     const override = await service.createRequest(
       actor,
       { ...input, overrideReason: "Repetir coleta por decisão clínica" },
       { idempotencyKey: "request-override", allowDuplicateOverride: true }
     );
     expect(override.items).toHaveLength(1);
+    // Every active duplicate is reported, in the order the exams were created.
+    const [original] = (await service.listRequests(actor, {})).items.filter((request) => request.id !== override.id);
+    await expect(
+      service.createRequest(actor, input, { idempotencyKey: "request-third" })
+    ).rejects.toMatchObject({ code: "DUPLICATE_WARNING", details: { existingRequestCodes: [original.requestCode, override.requestCode] } });
   });
 
   it("preserves a replaced sample chain and makes replacement actionable", async () => {
