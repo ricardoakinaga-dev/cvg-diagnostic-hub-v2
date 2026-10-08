@@ -14003,6 +14003,225 @@
         }
       }
     },
+    "/samples/{sampleId}/label": {
+      "get": {
+        "operationId": "getSampleLabel",
+        "summary": "Read the printable label of a sample",
+        "description": "Read the printable label of a sample. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Diagnostics"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-permissions": [
+          "item.view"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "request access is limited to patient scope, executor department context, or a manager delegated department"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "sampleId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[^/%]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getSampleLabelSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/samples/{sampleId}/receive-replacement": {
       "post": {
         "operationId": "receiveReplacementSample",
@@ -22996,10 +23215,6 @@
       "SampleCommand": {
         "type": "object",
         "additionalProperties": false,
-        "required": [
-          "accessionCode",
-          "sampleType"
-        ],
         "properties": {
           "accessionCode": {
             "type": "string",
@@ -25204,7 +25419,8 @@
           "version",
           "patient",
           "encounter",
-          "items"
+          "items",
+          "samples"
         ],
         "properties": {
           "id": {
@@ -25292,6 +25508,13 @@
             "items": {
               "$ref": "#/components/schemas/RequestItem"
             }
+          },
+          "samples": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sample"
+            },
+            "maxItems": 20
           }
         }
       },
@@ -25669,6 +25892,225 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "SampleLabel": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "sample",
+          "request",
+          "patient",
+          "services",
+          "encounter",
+          "requestedAt",
+          "label"
+        ],
+        "properties": {
+          "sample": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "accessionCode",
+              "sampleType",
+              "status"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "accessionCode": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 40,
+                "pattern": "^[A-Z0-9][A-Z0-9-]{2,39}$"
+              },
+              "sampleType": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "EXPECTED",
+                  "RECEIVED",
+                  "REJECTED",
+                  "REPLACED"
+                ]
+              }
+            }
+          },
+          "request": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "requestCode",
+              "priority"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "requestCode": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "priority": {
+                "type": "string",
+                "enum": [
+                  "ROUTINE",
+                  "URGENT",
+                  "EMERGENCY"
+                ]
+              }
+            }
+          },
+          "patient": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "displayName",
+              "species",
+              "externalId"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 120
+              },
+              "species": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 60
+              },
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          },
+          "services": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "code",
+                "name"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              }
+            },
+            "maxItems": 20
+          },
+          "encounter": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "externalId"
+            ],
+            "properties": {
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "label": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "widthMm",
+              "heightMm",
+              "barcode"
+            ],
+            "properties": {
+              "widthMm": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 150
+              },
+              "heightMm": {
+                "type": "number",
+                "minimum": 20,
+                "maximum": 150
+              },
+              "barcode": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "symbology",
+                  "modules",
+                  "bars"
+                ],
+                "properties": {
+                  "symbology": {
+                    "type": "string",
+                    "const": "code128"
+                  },
+                  "modules": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 2000
+                  },
+                  "bars": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "x",
+                        "width"
+                      ],
+                      "properties": {
+                        "x": {
+                          "type": "integer",
+                          "minimum": 0
+                        },
+                        "width": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 4
+                        }
+                      }
+                    },
+                    "maxItems": 400
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -29229,6 +29671,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ResultCommandResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "getSampleLabelSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/SampleLabel"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

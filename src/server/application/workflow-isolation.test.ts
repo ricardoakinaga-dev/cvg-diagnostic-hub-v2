@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createDemoState } from "../store/fixtures";
+import { createDemoState, withoutPreassignedSamples } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { createApplicationService } from "./service";
 
@@ -13,6 +13,8 @@ describe("workflow command isolation and replay", () => {
   it("rejects reused accession numbers for initial and replacement samples without touching other work", async () => {
     const c = setup();
     const request = await c.service.createRequest(c.vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }, { serviceId: "service-crp" }] }, { idempotencyKey: "isolation-lab-request" });
+    // Legacy request (before PROD-405): hand-typed accession numbers.
+    await c.store.transaction((state) => ({ state: withoutPreassignedSamples(state, request.id), result: undefined }));
     const received = await c.service.receiveSample(c.lab, [request.items[0].id], { accessionCode: "ACC-ISOLATED", sampleType: "EDTA", expectedVersion: 1, idempotencyKey: "isolated-sample" });
     const before = c.store.getState();
     await expect(c.service.receiveSample(c.lab, [request.items[1].id], { accessionCode: "ACC-ISOLATED", sampleType: "EDTA", expectedVersion: 1, idempotencyKey: "duplicate-accession" })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
@@ -22,9 +24,10 @@ describe("workflow command isolation and replay", () => {
     expect(c.store.getState().samples.find((sample) => sample.id === other.sample.id)).toEqual(other.sample);
     const pending = c.store.getState();
     await expect(c.service.requestRecollection(c.lab, received.sample.id, { reasonCode: "HEMOLYZED", expectedVersion: recollected.items[0].version, idempotencyKey: "recollect-replaced" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION", status: 409 });
-    await expect(c.service.receiveReplacement(c.lab, recollected.replacement.id, { accessionCode: "ACC-OTHER", sampleType: "EDTA", expectedVersion: recollected.items[0].version, idempotencyKey: "replacement-duplicate" })).rejects.toMatchObject({ code: "CONFLICT", status: 409 });
+    // The replacement already carries its generated code: another sample's code is a mismatch and changes nothing.
+    await expect(c.service.receiveReplacement(c.lab, recollected.replacement.id, { accessionCode: "ACC-OTHER", sampleType: "EDTA", expectedVersion: recollected.items[0].version, idempotencyKey: "replacement-duplicate" })).rejects.toMatchObject({ code: "ACCESSION_MISMATCH", status: 409 });
     expect(c.store.getState()).toEqual(pending);
-    await expect(c.service.receiveReplacement(c.lab, recollected.replacement.id, { accessionCode: "ACC-REPLACEMENT", sampleType: "EDTA", expectedVersion: recollected.items[0].version, idempotencyKey: "replacement-unique" })).resolves.toMatchObject({ sample: { status: "RECEIVED", accessionCode: "ACC-REPLACEMENT" } });
+    await expect(c.service.receiveReplacement(c.lab, recollected.replacement.id, { accessionCode: recollected.replacement.accessionCode, expectedVersion: recollected.items[0].version, idempotencyKey: "replacement-unique" })).resolves.toMatchObject({ sample: { status: "RECEIVED", accessionCode: recollected.replacement.accessionCode } });
   });
 
   it("rejects an item before sample receipt, replays the decision and refuses a new rejection", async () => {
@@ -33,7 +36,8 @@ describe("workflow command isolation and replay", () => {
     const input = { reasonCode: "UNPROCESSABLE", note: "  Material indisponível  ", expectedVersion: 1, idempotencyKey: "reject-unsampled" };
     const rejected = await c.service.rejectItem(c.lab, request.items[0].id, input);
     expect(rejected.item).toMatchObject({ status: "REJECTED", rejectionReason: "Material indisponível", version: 2 });
-    expect(c.store.getState().samples).toEqual([]);
+    // The pre-assigned tube is rejected with the item; nothing was ever received.
+    expect(c.store.getState().samples).toEqual([expect.objectContaining({ status: "REJECTED", rejectionCode: "UNPROCESSABLE" })]);
     const before = c.store.getState();
     await expect(c.service.rejectItem(c.lab, request.items[0].id, input)).resolves.toEqual(rejected);
     await expect(c.service.rejectItem(c.lab, request.items[0].id, { ...input, expectedVersion: 2, idempotencyKey: "reject-again" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION", status: 409 });

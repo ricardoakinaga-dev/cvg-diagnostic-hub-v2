@@ -55,7 +55,7 @@ describe("application reads validate filters and resolve current context", () =>
   it("does not count unresolved, acknowledged or superseded critical notifications in the management overview", async () => {
     const c = setup();
     const request = await c.service.createRequest(c.vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "overview-notification-request" });
-    const received = await c.service.receiveSample(c.lab, [request.items[0].id], { accessionCode: "ACC-OVERVIEW", sampleType: "EDTA", expectedVersion: 1, idempotencyKey: "overview-sample" });
+    const received = await c.service.receiveSample(c.lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: 1, idempotencyKey: "overview-sample" });
     const notifications = [
       notification("valid-critical", { entityType: "SAMPLE", entityId: received.sample.id }),
       notification("orphan-sample", { entityType: "SAMPLE", entityId: "missing-sample" }),
@@ -80,7 +80,7 @@ describe("application reads validate filters and resolve current context", () =>
     const started = await c.service.startProcedure(c.rx, imaging.id, { expectedVersion: 1, idempotencyKey: "history-start" });
     const performed = await c.service.markProcedurePerformed(c.rx, imaging.id, { expectedVersion: started.item.version, idempotencyKey: "history-perform" });
     const draft = await c.service.createResultDraft(c.rx, imaging.id, { narrative: "Laudo sintético", content: {}, expectedVersion: performed.item.version, idempotencyKey: "history-draft" });
-    const sample = await c.service.receiveSample(c.lab, [request.items[1].id], { accessionCode: "ACC-HISTORY", sampleType: "EDTA", expectedVersion: 1, idempotencyKey: "history-sample" });
+    const sample = await c.service.receiveSample(c.lab, [request.items[1].id], { sampleType: "EDTA", expectedVersion: 1, idempotencyKey: "history-sample" });
     const orphanEntities = [
       { entityType: "DiagnosticRequestItem", entityId: "orphan-item" },
       { entityType: "Sample", entityId: "orphan-sample" },

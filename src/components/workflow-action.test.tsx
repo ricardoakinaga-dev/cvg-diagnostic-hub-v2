@@ -22,14 +22,16 @@ describe("WorkflowAction", () => {
     vi.restoreAllMocks();
   });
 
-  it("validates and receives a sample with normalized accession data", async () => {
+  it("receives a legacy sample with normalized typed accession data", async () => {
     const onComplete = vi.fn();
     const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockResolvedValue({});
     render(<WorkflowAction item={item()} onComplete={onComplete} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+    fireEvent.change(screen.getByLabelText("Tipo de amostra"), { target: { value: " " } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Informe o accession da amostra.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Informe o tipo de amostra.");
+    expect(apiFetchMock).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText("Accession"), { target: { value: " acc-7 " } });
     fireEvent.change(screen.getByLabelText("Tipo de amostra"), { target: { value: "CITRATO" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
@@ -37,6 +39,79 @@ describe("WorkflowAction", () => {
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/diagnostic-items/item-1/receive-sample", expect.objectContaining({ method: "POST" })));
     expect(JSON.parse(apiFetchMock.mock.calls[0]?.[1]?.body as string)).toMatchObject({ accessionCode: "ACC-7", sampleType: "CITRATO", expectedVersion: 3 });
     expect(onComplete).toHaveBeenCalledOnce();
+  });
+
+  describe("pre-assigned sample (accession label)", () => {
+    const expected = { sample: { id: "sample-9", accessionCode: "A261008-00015", sampleType: "Soro", status: "EXPECTED" } };
+    const withExpected = (receive: (path: string) => Promise<unknown>) => vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/samples/sample-9/label" ? Promise.resolve(expected) : receive(String(path))) as never);
+
+    it("shows the expected code, pre-fills the type and submits a blank scan field", async () => {
+      const onComplete = vi.fn();
+      const apiFetchMock = withExpected(() => Promise.resolve({}));
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} onComplete={onComplete} />);
+
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      expect(await screen.findByText("Amostra esperada:")).toBeInTheDocument();
+      expect(screen.getByText("A261008-00015")).toBeInTheDocument();
+      expect(screen.getByLabelText("Accession")).toHaveAttribute("placeholder", "Leia o código de barras ou deixe em branco");
+      expect(screen.getByLabelText("Accession")).toHaveFocus();
+      await waitFor(() => expect(screen.getByLabelText("Tipo de amostra")).toHaveValue("Soro"));
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+
+      await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+      const body = JSON.parse(apiFetchMock.mock.calls.find(([path]) => path === "/diagnostic-items/item-1/receive-sample")?.[1]?.body as string);
+      expect(body).toEqual({ sampleType: "Soro", expectedVersion: 3 });
+    });
+
+    it("submits the scanned code when the reader presses Enter", async () => {
+      const apiFetchMock = withExpected(() => Promise.resolve({}));
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      await screen.findByText("Amostra esperada:");
+      const field = screen.getByLabelText("Accession");
+      fireEvent.change(field, { target: { value: "a261008-00015" } });
+      fireEvent.submit(field.closest("form") as HTMLFormElement);
+      await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/diagnostic-items/item-1/receive-sample", expect.anything()));
+      const call = apiFetchMock.mock.calls.find(([path]) => path === "/diagnostic-items/item-1/receive-sample");
+      expect(JSON.parse(call?.[1]?.body as string)).toMatchObject({ accessionCode: "A261008-00015" });
+    });
+
+    it("shows the API mismatch message and keeps the form open", async () => {
+      withExpected(() => Promise.reject(new apiClient.ApiClientError(409, { error: { code: "ACCESSION_MISMATCH", message: "x" } } as never)));
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      await screen.findByText("Amostra esperada:");
+      fireEvent.change(screen.getByLabelText("Accession"), { target: { value: "OUTRO-1" } });
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("O código lido não corresponde à amostra esperada deste exame.");
+      expect(screen.getByRole("form", { name: "Receber amostra" })).toBeInTheDocument();
+    });
+
+    it("asks for the type when the catalog has none and ignores a failed label read", async () => {
+      vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/samples/sample-9/label" ? Promise.resolve({ sample: { ...expected.sample, sampleType: "A definir" } }) : Promise.resolve({})) as never);
+      const { unmount } = render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      await screen.findByText("Amostra esperada:");
+      await waitFor(() => expect(screen.getByLabelText("Tipo de amostra")).toHaveValue(""));
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+      expect(await screen.findByRole("alert")).toHaveTextContent("Informe o tipo de amostra.");
+      unmount();
+
+      vi.restoreAllMocks();
+      vi.spyOn(apiClient, "apiFetch").mockRejectedValue(new Error("offline"));
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      await waitFor(() => expect(apiClient.apiFetch).toHaveBeenCalledWith("/samples/sample-9/label"));
+      expect(screen.queryByText("Amostra esperada:")).not.toBeInTheDocument();
+    });
+
+    it("ignores a label that is no longer EXPECTED", async () => {
+      vi.spyOn(apiClient, "apiFetch").mockResolvedValue({ sample: { ...expected.sample, status: "RECEIVED" } } as never);
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      await waitFor(() => expect(apiClient.apiFetch).toHaveBeenCalled());
+      expect(screen.queryByText("Amostra esperada:")).not.toBeInTheDocument();
+    });
   });
 
   it("keeps the selected workflow action pending until the server confirms it", async () => {

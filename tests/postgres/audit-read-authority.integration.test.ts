@@ -127,7 +127,7 @@ async function createReleasedResult(store: StateStore) {
   }, { idempotencyKey: "audit-review-request" });
   const item = request.items[0];
   const received = await service.receiveSample(lab, [item.id], {
-    accessionCode: "AUDIT-REVIEW-001", sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "audit-review-receive"
+    accessionCode: request.samples[0].accessionCode, sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "audit-review-receive"
   });
   const processing = await service.startProcessing(lab, item.id, {
     expectedVersion: received.items[0].version, idempotencyKey: "audit-review-process"

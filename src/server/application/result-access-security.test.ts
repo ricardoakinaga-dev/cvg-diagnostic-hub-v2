@@ -44,7 +44,6 @@ async function prepareHemogramItem(context: ReturnType<typeof setup>) {
     items: [{ serviceId: "service-hemogram" }]
   }, { idempotencyKey: `security-request-${crypto.randomUUID()}` });
   const received = await context.service.receiveSample(context.lab, [request.items[0].id], {
-    accessionCode: `ACC-${crypto.randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
     sampleType: "EDTA",
     expectedVersion: request.items[0].version,
     idempotencyKey: `security-receive-${crypto.randomUUID()}`
@@ -77,7 +76,6 @@ async function createManagerMultiSectorDraft(context: ReturnType<typeof setup>) 
   const hemogramItem = request.items.find((item) => item.serviceId === "service-hemogram");
   if (!hemogramItem) throw new Error("missing manager hemogram item");
   const received = await context.service.receiveSample(context.manager, [hemogramItem.id], {
-    accessionCode: `ACC-${crypto.randomUUID().replaceAll("-", "").slice(0, 20).toUpperCase()}`,
     sampleType: "EDTA",
     expectedVersion: hemogramItem.version,
     idempotencyKey: `security-manager-receive-${crypto.randomUUID()}`

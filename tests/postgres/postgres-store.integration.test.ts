@@ -133,7 +133,7 @@ describe("PostgresStore multi-instance integration", () => {
         items: [{ serviceId: "service-hemogram" }]
       }, { idempotencyKey: "postgres-result-lineage-request" });
       const received = await writer.receiveSample(actor, [request.items[0].id], {
-        accessionCode: "ACC-PG-LINEAGE",
+        accessionCode: request.samples[0].accessionCode,
         sampleType: "EDTA",
         expectedVersion: request.items[0].version,
         idempotencyKey: "postgres-result-lineage-receive"
