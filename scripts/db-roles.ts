@@ -12,6 +12,11 @@ export interface RoleProvisioningOptions {
   readonly adminUrl: string;
   readonly migrationUrl: string;
   readonly runtimeUrl: string;
+  /**
+   * Optional dedicated backup login (PROD-304). pg_basebackup needs REPLICATION, which the runtime
+   * role must never hold; pg_read_all_data lets the same role take a logical dump if ever needed.
+   */
+  readonly backup?: { readonly role: string; readonly password: string };
 }
 
 function passwordFromUrl(url: string): string {
@@ -42,6 +47,18 @@ export async function provisionDatabaseRoles(options: RoleProvisioningOptions): 
     for (const role of [roles.migrator, roles.runtime]) {
       const exists = (await client.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [role])).rowCount === 1;
       await client.query(`${exists ? "ALTER" : "CREATE"} ROLE ${quote(role)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION PASSWORD ${client.escapeLiteral(passwords.get(role)!)}`);
+    }
+    if (options.backup) {
+      const { role, password } = options.backup;
+      if (!/^[a-z_][a-z0-9_]{0,62}$/.test(role) || role === roles.migrator || role === roles.runtime || role === administrator) throw new Error("DATABASE_BACKUP_ROLE_INVALID");
+      if (!password) throw new Error("DATABASE_ROLE_PASSWORD_REQUIRED");
+      const exists = (await client.query("SELECT 1 FROM pg_roles WHERE rolname = $1", [role])).rowCount === 1;
+      await client.query(`${exists ? "ALTER" : "CREATE"} ROLE ${quote(role)} LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE REPLICATION PASSWORD ${client.escapeLiteral(password)}`);
+      try {
+        await client.query(`GRANT pg_read_all_data TO ${quote(role)}`);
+      } catch {
+        console.warn(JSON.stringify({ event: "database.roles_backup_read_grant_skipped", backupRole: role, impact: "base backups work; logical dumps as this role do not" }));
+      }
     }
     // The cutover guard reads pg_stat_activity as the migrator. Without this predefined role,
     // PostgreSQL hides the backend type of sessions owned by other roles; the guard then
@@ -90,6 +107,13 @@ export async function provisionDatabaseRoles(options: RoleProvisioningOptions): 
   return roles;
 }
 
+/** The backup role is opt-in: no POSTGRES_BACKUP_PASSWORD, no role (installations without WAL archiving). */
+function backupFromEnvironment(): RoleProvisioningOptions["backup"] {
+  const password = process.env.POSTGRES_BACKUP_PASSWORD?.trim();
+  if (!password) return undefined;
+  return { role: process.env.POSTGRES_BACKUP_USER?.trim() || "cvg_backup", password };
+}
+
 /**
  * Applies the least-privilege split (PROD-305).
  *
@@ -110,7 +134,7 @@ async function main(): Promise<void> {
   }
   const adminUrl = process.env.DATABASE_ADMIN_URL?.trim();
   const roles: DatabasePrivilegeRoles = adminUrl
-    ? await provisionDatabaseRoles({ adminUrl, migrationUrl, runtimeUrl })
+    ? await provisionDatabaseRoles({ adminUrl, migrationUrl, runtimeUrl, backup: backupFromEnvironment() })
     : rolesFromConnectionStrings(migrationUrl, runtimeUrl);
 
   await runMigrations({ connectionString: migrationUrl, cutoverAcknowledged: process.env.MIGRATION_CUTOVER_ACKNOWLEDGED === "true" });
