@@ -35,6 +35,8 @@ Armazenamento S3 e antivírus são **serviços externos obrigatórios**: em prod
 
 O `/readyz` falha (503) em produção, antes de tocar no banco, se `SESSION_SECRET` ou `TRUST_PROXY_SHARED_SECRET` tiverem menos de 32 caracteres ou se `TRUST_PROXY` não for `true`.
 
+**Girar o `SESSION_SECRET`** encerra todas as sessões abertas e **invalida os links de redefinição de senha ainda não usados** (a impressão digital do token é calculada com o segredo, PROD-202). Faça a troca em janela de manutenção e, se alguém estava com um link pendente, emita outro depois (`POST /users/{id}/password-reset-link` ou `npm run db:reset-link`).
+
 ## 3. Primeiro deploy
 
 Preencha o `.env.production` com **quatro segredos diferentes** de banco e aplicação: `POSTGRES_PASSWORD` (papel administrativo, usado só pelo `migrate`), `POSTGRES_MIGRATION_PASSWORD` (DDL), `POSTGRES_RUNTIME_PASSWORD` (app e worker) e `SESSION_SECRET`.
