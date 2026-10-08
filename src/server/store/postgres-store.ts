@@ -43,6 +43,7 @@ import {
   reconcileRelationalRequest,
   type RelationalRequestReconciliation
 } from "./relational/cutover";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 export type {
   RelationalClinicalCoreBackfillOptions,
@@ -131,7 +132,7 @@ export class PostgresStore implements StateStore {
   }
 
   private static async open(connectionString: string, fallbackState?: StoreState, initialization?: PostgresInitializationOptions, relationalClinicalCore?: RelationalClinicalCoreRuntime, relationalReadiness: PostgresRelationalClinicalCoreReadiness = "STRICT"): Promise<PostgresStore> {
-    const pool = new Pool({ connectionString, max: databasePoolMax(process.env.DB_POOL_MAX), idleTimeoutMillis: 30_000 });
+    const pool = new Pool({ connectionString, max: databasePoolMax(process.env.DB_POOL_MAX), idleTimeoutMillis: 30_000, ...runtimePoolTimeouts() });
     if (typeof pool.on === "function") {
       pool.on("error", () => {
         // Idle-client failures are surfaced by the next readiness/transaction call;

@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { ApiError } from "../http/envelope";
 import { isPostgresConnectionString } from "../domain/realtime-configuration";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 interface Bucket { count: number; resetAt: number; windowStartedAt: number }
 const buckets = new Map<string, Bucket>();
@@ -238,7 +239,7 @@ async function assertPostgresRateLimitCounter(
 
 function rateLimitPool(): Pool {
   if (!databasePool) {
-    databasePool = new Pool({ connectionString: process.env.DATABASE_URL, max: assertRateLimitPoolMax(process.env.RATE_LIMIT_DB_POOL_MAX), idleTimeoutMillis: 30_000 });
+    databasePool = new Pool({ connectionString: process.env.DATABASE_URL, max: assertRateLimitPoolMax(process.env.RATE_LIMIT_DB_POOL_MAX), idleTimeoutMillis: 30_000, ...runtimePoolTimeouts() });
     databasePool.on("error", () => {
       // The next query fails closed with DEPENDENCY_UNAVAILABLE.
     });

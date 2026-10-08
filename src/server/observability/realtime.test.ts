@@ -21,6 +21,7 @@ vi.mock("pg", () => ({
 }));
 
 import { assertRealtimeNotificationConfiguration, closeRealtimeNotificationAdapter, getRealtimeNotificationAdapter, notifyRealtimeMutation, PostgresListenRealtimeNotificationAdapter, type RealtimeNotificationClient, type RealtimeNotificationMessage, type RealtimeNotificationPool } from "./realtime";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 describe("realtime notification seam", () => {
   const previousAdapter = process.env.REALTIME_NOTIFICATION_ADAPTER;
@@ -79,7 +80,7 @@ describe("realtime notification seam", () => {
     });
 
     expect(adapter).toMatchObject({ name: "postgres-listen", scope: "multi-instance" });
-    expect(postgresPool.options).toEqual([{ connectionString: "postgresql://db.example/cvg", max: 3, idleTimeoutMillis: 30_000 }]);
+    expect(postgresPool.options).toEqual([{ connectionString: "postgresql://db.example/cvg", max: 3, idleTimeoutMillis: 30_000, ...runtimePoolTimeouts() }]);
     await closeRealtimeNotificationAdapter();
     expect(postgresPool.end).toHaveBeenCalledOnce();
   });

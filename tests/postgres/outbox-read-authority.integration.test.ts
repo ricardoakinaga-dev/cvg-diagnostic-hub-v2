@@ -400,10 +400,31 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
     }
   });
 
+  it("counts only notification deliveries as pending and prunes old domain events, which have no worker consumer", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      const store = await database.createStore(fixture([
+        message("domain-old", { availableAt: "2026-10-01T12:00:00.000Z" }),
+        delivery("delivery-old", { availableAt: "2026-10-01T12:00:00.000Z" }),
+        message("domain-recent", { availableAt: "2026-10-04T11:59:00.000Z" })
+      ]));
+      expect(await store.readOutboxMetrics()).toEqual({ pending: 1, oldestAvailableAt: "2026-10-01T12:00:00.000Z" });
+      const summary = await store.compactRuntimeState({ now: NOW, outboxHotWindow: 100, outboxRetentionMs: 86_400_000 });
+      expect(summary.outboxMessagesRemoved).toBe(1);
+      expect(await database.query("SELECT id FROM outbox_messages ORDER BY event_position")).toEqual({ rows: [{ id: "delivery-old" }, { id: "domain-recent" }], rowCount: 2 });
+      const memory = new MemoryStore(fixture([
+        message("domain-old", { availableAt: "2026-10-01T12:00:00.000Z" }),
+        delivery("delivery-old", { availableAt: "2026-10-01T12:00:00.000Z" }),
+        message("domain-recent", { availableAt: "2026-10-04T11:59:00.000Z" })
+      ]));
+      expect(await memory.readOutboxMetrics()).toEqual({ pending: 1, oldestAvailableAt: "2026-10-01T12:00:00.000Z" });
+      expect((await memory.compactRuntimeState({ now: NOW, outboxHotWindow: 100, outboxRetentionMs: 86_400_000 })).outboxMessagesRemoved).toBe(1);
+    });
+  });
+
   it("reads metrics from relational backlog and retains only the newest 100 processed rows within age without losing failed or active work", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       const recent = Array.from({ length: 105 }, (_, index) => message(`recent-${index}`, { status: "PROCESSED", availableAt: "2026-10-04T11:59:00.000Z" }));
-      const protectedRows = [message("pending", { availableAt: "2026-10-04T11:59:30.000Z" }), message("processing", { status: "PROCESSING", availableAt: "2026-10-04T11:58:00.000Z", lockedAt: TIME, workerId: "active", claimToken: randomUUID() }),
+      const protectedRows = [delivery("pending", { availableAt: "2026-10-04T11:59:30.000Z" }), delivery("processing", { status: "PROCESSING", availableAt: "2026-10-04T11:58:00.000Z", lockedAt: TIME, workerId: "active", claimToken: randomUUID() }),
         message("failed", { status: "FAILED", availableAt: "2026-10-01T12:00:00.000Z", deadLetteredAt: TIME, lastError: "Keep evidence" }),
         message("discarded", { status: "DISCARDED", availableAt: "2026-10-01T12:00:00.000Z", deadLetteredAt: TIME, discardedAt: TIME, discardedBy: "user-admin", discardReason: "Keep disposition" })];
       // Insert old processed evidence last: a recent event_position alone cannot defeat the age limit.
@@ -436,7 +457,7 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
     try {
       await withDisposablePostgresDatabase(async (database) => {
         const processed = ["env-oldest", "env-middle", "env-newest"].map((id) => message(id, { status: "PROCESSED", availableAt: "2026-10-02T12:00:00.000Z" }));
-        const protectedRows = [message("env-active", { availableAt: "2026-09-01T12:00:00.000Z" }), message("env-failed", { status: "FAILED", availableAt: "2026-09-01T12:00:00.000Z", deadLetteredAt: TIME, lastError: "Keep evidence" })];
+        const protectedRows = [delivery("env-active", { availableAt: "2026-09-01T12:00:00.000Z" }), message("env-failed", { status: "FAILED", availableAt: "2026-09-01T12:00:00.000Z", deadLetteredAt: TIME, lastError: "Keep evidence" })];
         const state = fixture([...processed, ...protectedRows]);
         const store = await database.createStore(state);
         const memory = new MemoryStore(state);

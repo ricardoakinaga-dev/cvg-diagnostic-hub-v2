@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditEvent, RuntimeRetentionOptions, RuntimeRetentionSummary, StoreState } from "../domain/models";
+import { outboxMessageSettled } from "../domain/outbox-read";
 
 const DEFAULT_OUTBOX_HOT_WINDOW = 100;
 const DEFAULT_SESSION_RETENTION_MS = 24 * 60 * 60 * 1000;
@@ -26,12 +27,12 @@ export function compactRuntimeState(
   // events and retains durable history in audit_events. Retention removes neither.
   const auditEvents = [...state.auditEvents];
   const processedOutbox = state.outbox.filter((message) => {
-    if (message.status !== "PROCESSED") return false;
+    if (!outboxMessageSettled(message)) return false;
     const availableAt = Date.parse(message.availableAt);
     return Number.isFinite(availableAt) && nowMs - availableAt <= outboxRetentionMs;
   }).slice(-outboxHotWindow);
   const retainedProcessedIds = new Set(processedOutbox.map((message) => message.id));
-  const outbox = state.outbox.filter((message) => message.status !== "PROCESSED" || retainedProcessedIds.has(message.id));
+  const outbox = state.outbox.filter((message) => !outboxMessageSettled(message) || retainedProcessedIds.has(message.id));
   const retainedOutboxIds = new Set(outbox.map((message) => message.id));
   const sessions = state.sessions.filter((session) => {
     if (!session.revokedAt && Date.parse(session.expiresAt) > nowMs) return true;

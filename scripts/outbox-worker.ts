@@ -6,6 +6,7 @@ import { pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { createRuntimeRetentionSchedule, runScheduledRuntimeRetention } from "../src/server/operations/runtime-retention-job";
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
 import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
+import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 
 const once = process.argv.includes("--once") || process.env.OUTBOX_ONCE === "true";
 const intervalMs = positiveInteger(process.env.OUTBOX_INTERVAL_MS, 5_000);
@@ -120,7 +121,7 @@ function createWorkerSink(): WorkerSink {
   const configuredMode = process.env.OUTBOX_SINK?.trim().toLowerCase();
   const connectionString = process.env.DATABASE_URL?.trim();
   const pool = configuredMode === "postgres" && connectionString
-    ? new Pool({ connectionString, max: positiveInteger(process.env.OUTBOX_DB_POOL_MAX, 2), idleTimeoutMillis: 30_000 })
+    ? new Pool({ connectionString, max: positiveInteger(process.env.OUTBOX_DB_POOL_MAX, 2), idleTimeoutMillis: 30_000, ...runtimePoolTimeouts() })
     : undefined;
   if (pool && typeof pool.on === "function") pool.on("error", () => undefined);
   try {

@@ -35,6 +35,7 @@ vi.mock("pg", () => ({
 }));
 
 import { PostgresStore } from "./postgres-store";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 const readyRuntimeSchema = {
   state_exists: true,
@@ -142,7 +143,8 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     expect(pool.options[0]).toEqual({
       connectionString,
       max: 3,
-      idleTimeoutMillis: 30_000
+      idleTimeoutMillis: 30_000,
+      ...runtimePoolTimeouts()
     });
     expect(pool.on).toHaveBeenCalledWith("error", expect.any(Function));
     expect(pool.query).toHaveBeenNthCalledWith(

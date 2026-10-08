@@ -4,6 +4,7 @@ import {
   isPostgresConnectionString,
   realtimeNotificationChannel
 } from "../domain/realtime-configuration";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 export { assertRealtimeNotificationConfiguration } from "../domain/realtime-configuration";
 export type { RealtimeNotificationAdapterName } from "../domain/realtime-configuration";
 
@@ -197,7 +198,7 @@ function postgresRealtimePool(environment: NodeJS.ProcessEnv): RealtimeNotificat
   if (!isPostgresConnectionString(databaseUrl)) return undefined;
   const configuredMax = Number(environment.REALTIME_LISTEN_POOL_MAX);
   const max = Number.isSafeInteger(configuredMax) && configuredMax > 0 ? Math.min(configuredMax, 10) : 2;
-  const pool = new Pool({ connectionString: databaseUrl, max, idleTimeoutMillis: 30_000 });
+  const pool = new Pool({ connectionString: databaseUrl, max, idleTimeoutMillis: 30_000, ...runtimePoolTimeouts() });
   pool.on("error", () => {
     // Listener/publisher failures are contained by the adapter; durable poll
     // and the next reconnect attempt remain authoritative.

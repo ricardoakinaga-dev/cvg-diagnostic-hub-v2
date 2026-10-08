@@ -16,6 +16,7 @@ vi.mock("pg", () => ({
 }));
 
 import { PostgresStateInvalidation } from "./postgres-state-invalidation";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 const listeners: PostgresStateInvalidation[] = [];
 function open() {
@@ -53,7 +54,7 @@ describe("PostgresStateInvalidation dedicated connection lifecycle", () => {
     expect(fake.connect).toHaveBeenCalledOnce();
     expect(fake.options).toEqual([{
       connectionString: "postgres://test.invalid/cvg_test_listener", max: 1,
-      application_name: "cvg-runtime-state-cache", connectionTimeoutMillis: 5_000
+      application_name: "cvg-runtime-state-cache", ...runtimePoolTimeouts()
     }]);
     await connected();
     expect(fake.client.query).toHaveBeenCalledWith("LISTEN cvg_runtime_state_changed");

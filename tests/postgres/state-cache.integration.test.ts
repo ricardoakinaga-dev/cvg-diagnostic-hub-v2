@@ -43,9 +43,10 @@ function eventFixture(): StoreState {
     correlationId: "correlation-cache", metadata: { committed: true }, occurredAt: "2026-10-04T12:00:00.000Z"
   }];
   state.outbox = [{
-    id: "outbox-cache-committed", eventType: "RequestCreated", aggregateType: "DiagnosticRequest",
-    aggregateId: "request-cache-committed", payload: { committed: true }, consumerType: "DOMAIN_EVENT",
-    routingKey: "domain.RequestCreated", status: "PENDING", attempts: 0,
+    // A notification delivery: pending worker work, so it also proves the committed metrics read.
+    id: "outbox-cache-committed", eventType: "ResultReleased", aggregateType: "DiagnosticRequest",
+    aggregateId: "request-cache-committed", payload: { committed: true, notificationId: "notification-cache-committed" }, consumerType: "NOTIFICATION_DELIVERY",
+    routingKey: "notification.in_app", status: "PENDING", attempts: 0,
     availableAt: "2026-10-04T12:00:00.000Z", correlationId: "correlation-cache"
   }];
   return state;

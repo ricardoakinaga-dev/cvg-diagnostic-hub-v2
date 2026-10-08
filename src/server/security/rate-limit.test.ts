@@ -33,6 +33,7 @@ import {
   registerLoginSuccess,
   resetRateLimits
 } from "./rate-limit";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 describe("API rate limiter", () => {
   beforeEach(() => {
@@ -91,7 +92,7 @@ describe("API rate limiter", () => {
       details: { retryAfterMs: 1_000 }
     });
 
-    expect(pool.options).toEqual([{ connectionString: "postgresql://rate-limit.test/cvg", max: 2, idleTimeoutMillis: 30_000 }]);
+    expect(pool.options).toEqual([{ connectionString: "postgresql://rate-limit.test/cvg", max: 2, idleTimeoutMillis: 30_000, ...runtimePoolTimeouts() }]);
     expect(pool.on).toHaveBeenCalledWith("error", expect.any(Function));
     expect(pool.query).toHaveBeenCalledWith(
       expect.stringMatching(/ON CONFLICT \(bucket_key\)[\s\S]*RETURNING request_count[\s\S]*window_started_at \+ \(\$3 \* interval '1 millisecond'\)/),

@@ -420,11 +420,13 @@ describe("exact OpenAPI contract", () => {
   });
 
   it("does not assign one helper-wide generic error set to every operation family", () => {
+    // 400 and 503 (dependency unavailable) apply to every operation; the rest stays per family.
+    expect(API_OPERATIONS.every(({ errorStatuses }) => errorStatuses.includes(400) && errorStatuses.includes(503))).toBe(true);
     const serializedSets = API_OPERATIONS.map((operation) => JSON.stringify(operation.errorStatuses));
     expect(new Set(serializedSets).size).toBeGreaterThanOrEqual(11);
-    expect(API_OPERATIONS.find(({ operationId }) => operationId === "getCurrentSession")?.errorStatuses).toEqual([400, 401, 429, 500]);
-    expect(API_OPERATIONS.find(({ operationId }) => operationId === "listUsers")?.errorStatuses).toEqual([400, 401, 404, 429, 500]);
+    expect(API_OPERATIONS.find(({ operationId }) => operationId === "getCurrentSession")?.errorStatuses).toEqual([400, 401, 429, 500, 503]);
+    expect(API_OPERATIONS.find(({ operationId }) => operationId === "listUsers")?.errorStatuses).toEqual([400, 401, 404, 429, 500, 503]);
     expect(API_OPERATIONS.find(({ operationId }) => operationId === "uploadAttachmentContent")?.errorStatuses).toEqual([400, 401, 403, 404, 409, 415, 429, 500, 503]);
-    expect(API_OPERATIONS.find(({ operationId }) => operationId === "finalizeAttachment")?.errorStatuses).toEqual([400, 401, 403, 404, 409, 415, 422, 429, 500]);
+    expect(API_OPERATIONS.find(({ operationId }) => operationId === "finalizeAttachment")?.errorStatuses).toEqual([400, 401, 403, 404, 409, 415, 422, 429, 500, 503]);
   });
 });
