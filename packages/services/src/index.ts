@@ -22,6 +22,7 @@ export interface ApiFailure {
 export const ACCESS_DENIED_MESSAGE = "Você não tem acesso a este recurso.";
 const GENERIC_API_ERROR = "Não foi possível concluir a operação. Informe o código de correlação ao suporte.";
 const SAFE_ERROR_MESSAGES: Record<string, string> = {
+  CATALOG_IMPORT_INVALID: "A planilha contém erros e nada foi importado. Valide novamente antes de aplicar.",
   CSRF_INVALID: "A sessão de segurança expirou. Atualize a página e tente novamente.",
   CURRENT_PASSWORD_INVALID: "A senha atual não confere.",
   IDEMPOTENCY_KEY_REUSED: "Esta operação já foi recebida. Atualize os dados antes de tentar novamente.",

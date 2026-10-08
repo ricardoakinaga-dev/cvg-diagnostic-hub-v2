@@ -124,6 +124,9 @@ const requestSchemas = {
       "category=IMAGING requires workflowType=RADIOLOGY or ULTRASOUND"
     ]
   },
+  CatalogImportRequest: strictObject({
+    services: stringSchema(1, 1000000), analytes: stringSchema(1, 1000000), dryRun: { type: "boolean" }
+  }, ["services"]),
   DiagnosticServicePatch: {
     ...strictObject({
     name: normalizedTextSchema(1, 120), category: { type: "string", enum: ["LABORATORY", "IMAGING"] }, departmentCode: normalizedDepartmentCodeSchema,
@@ -413,6 +416,14 @@ const responseDataSchemas = {
   JsonObject: { type: "object", additionalProperties: schemaReference("JsonValue"), maxProperties: 100 },
   PublicUser: publicUserSchema,
   ManagedUser: managedUserSchema,
+  CatalogImportReport: strictObject({
+    applied: { type: "boolean" }, dryRun: { type: "boolean" },
+    summary: strictObject({ create: nonNegativeInteger, update: nonNegativeInteger, unchanged: nonNegativeInteger, error: nonNegativeInteger }, ["create", "update", "unchanged", "error"]),
+    rows: arrayOf(strictObject({
+      line: { type: "integer", minimum: 1 }, code: stringSchema(0, 100), action: { type: "string", enum: ["CREATE", "UPDATE", "UNCHANGED", "ERROR"] },
+      changes: arrayOf(stringSchema(1, 1000)), errors: arrayOf(stringSchema(1, 1000))
+    }, ["line", "code", "action"]))
+  }, ["applied", "dryRun", "summary", "rows"]),
   ManagedUserCreation: strictObject({ ...managedUserSchema.properties, initialPassword: stringSchema(12, 200) }, managedUserSchema.required),
   ManagedSession: strictObject({
     id: identifier, userId: identifier, userDisplayName: stringSchema(1, 160), userEmail: { type: "string", format: "email", maxLength: 320 },
@@ -705,8 +716,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
-  if (API_OPERATIONS.length !== 76 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 71) throw new Error("The audited API surface must remain exactly 76 operations across 71 paths.");
+  // 78/73 since PROD-405 added GET /samples/{sampleId}/label (2026-10-08); 77/72 since PROD-407 added POST /diagnostic-services/import (2026-10-08); 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
+  if (API_OPERATIONS.length !== 78 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 73) throw new Error("The audited API surface must remain exactly 78 operations across 73 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {
