@@ -757,6 +757,38 @@ describe("versioned API boundary", () => {
     expect((await updated.json()).data).toMatchObject({ name: "Serviço configurável revisado", departmentCode: "ULTRASOUND", workflowType: "ULTRASOUND" });
   });
 
+  it("validates and applies a catalog import sheet through the HTTP boundary", async () => {
+    const admin = await login("admin@cvg.local");
+    const header = "codigo;nome;categoria;setor;fluxo;exige_amostra;tipo_amostra;exige_agenda;permite_anexo;esquema_resultado;sla_rotina_h;sla_urgente_h;sla_emergencia_h;ativo";
+    const send = (body: unknown, key: string | null, cookies = admin) => POST(new Request("http://localhost/api/v1/diagnostic-services/import", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: cookies.cookie, "x-csrf-token": cookies.csrf, ...(key ? { "idempotency-key": key } : {}) },
+      body: JSON.stringify(body)
+    }), params(["diagnostic-services", "import"]));
+    const good = `${header}\nIMPORT_GLUCOSE;Glicose;LABORATORY;LABORATORY;LABORATORY;sim;Soro;não;não;NARRATIVE;8;4;2;sim`;
+
+    const missingKey = await send({ services: good }, null);
+    expect(missingKey.status).toBe(400);
+    expect((await send({ services: "" }, "import-empty")).status).toBe(400);
+    expect((await send({ services: good, extra: true }, "import-extra")).status).toBe(400);
+
+    const dry = await send({ services: good, dryRun: true }, "import-dry");
+    expect(dry.status).toBe(200);
+    expect((await dry.json()).data).toMatchObject({ applied: false, dryRun: true, summary: { create: 1, error: 0 }, rows: [{ line: 2, code: "IMPORT_GLUCOSE", action: "CREATE" }] });
+
+    const invalid = await send({ services: `${good}\nBAD;Ruim;IMAGING;LABORATORY;LABORATORY;não;;não;não;NARRATIVE;8;4;2;sim` }, "import-invalid");
+    expect(invalid.status).toBe(422);
+    const invalidBody = await invalid.json();
+    expect(invalidBody.error).toMatchObject({ code: "CATALOG_IMPORT_INVALID", details: { importReport: { applied: false, summary: { create: 1, error: 1 } } } });
+
+    const applied = await send({ services: good }, "import-apply");
+    expect(applied.status).toBe(200);
+    expect((await applied.json()).data).toMatchObject({ applied: true, summary: { create: 1 } });
+
+    const vet = await login("vet@cvg.local");
+    expect((await send({ services: good }, "import-denied", vet)).status).toBe(404);
+  });
+
   it("creates a request through the authenticated HTTP boundary", async () => {
     const auth = await login();
     const response = await POST(new Request("http://localhost/api/v1/diagnostic-requests", {

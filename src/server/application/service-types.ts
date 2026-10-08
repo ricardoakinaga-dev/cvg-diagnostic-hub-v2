@@ -145,6 +145,7 @@ export interface DiagnosticServiceCreateInput extends CommandMeta {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   resultSchema: DiagnosticService["resultSchema"];
@@ -157,11 +158,28 @@ export interface DiagnosticServicePatchInput extends CommandMeta {
   departmentCode?: string;
   workflowType?: WorkflowType;
   requiresSample?: boolean;
+  sampleType?: string | null;
   requiresSchedule?: boolean;
   active?: boolean;
   allowsAttachment?: boolean;
   resultSchema?: DiagnosticService["resultSchema"];
   slaHours?: Record<Priority, number>;
+}
+
+export interface CatalogImportInput extends CommandMeta {
+  services: string;
+  analytes?: string;
+  dryRun?: boolean;
+}
+
+export type CatalogImportAction = "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
+export interface CatalogImportRow { line: number; code: string; action: CatalogImportAction; changes?: string[]; errors?: string[] }
+export interface CatalogImportSummary { create: number; update: number; unchanged: number; error: number }
+export interface CatalogImportReport { rows: CatalogImportRow[]; summary: CatalogImportSummary }
+
+export interface CatalogImportResult extends CatalogImportReport {
+  applied: boolean;
+  dryRun: boolean;
 }
 
 export interface ReasonCodeCreateInput extends CommandMeta {
