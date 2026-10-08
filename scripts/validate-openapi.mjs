@@ -716,8 +716,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 77/72 since PROD-407 added POST /diagnostic-services/import (2026-10-08); 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
-  if (API_OPERATIONS.length !== 77 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 72) throw new Error("The audited API surface must remain exactly 77 operations across 72 paths.");
+  // 79/73 since PROD-406 added POST /patients/{patientId}/encounters and POST /encounters/{encounterId}/close (2026-10-08); 77/72 since PROD-407 added POST /diagnostic-services/import (2026-10-08); 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
+  if (API_OPERATIONS.length !== 79 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 73) throw new Error("The audited API surface must remain exactly 79 operations across 73 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {
