@@ -77,6 +77,10 @@ x-app-environment: &app-environment
   # Optional Prometheus bearer for GET /api/v1/metrics (32+ characters; empty disables it).
   METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
   METRICS_SCRAPE_RATE_LIMIT: ${METRICS_SCRAPE_RATE_LIMIT:-60}
+  # Sample accession labels (PROD-405).
+  ACCESSION_PREFIX: ${ACCESSION_PREFIX:-A}
+  LABEL_WIDTH_MM: ${LABEL_WIDTH_MM:-50}
+  LABEL_HEIGHT_MM: ${LABEL_HEIGHT_MM:-30}
 
 # Container logs rotate by default only if asked: without this a busy host fills its disk with json-file logs.
 x-logging: &default-logging

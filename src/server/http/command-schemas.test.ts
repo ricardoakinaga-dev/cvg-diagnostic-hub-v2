@@ -19,6 +19,10 @@ import {
 describe("strict command schemas", () => {
   it("rejects coercion-prone values and unknown keys", () => {
     expect(sampleSchema.safeParse({ accessionCode: {}, sampleType: "EDTA" }).success).toBe(false);
+    // Scanned accession and type are optional (system-generated sample); a malformed code is still refused.
+    expect(sampleSchema.safeParse({ expectedVersion: 2 }).success).toBe(true);
+    expect(sampleSchema.safeParse({ accessionCode: "A261008-00015" }).success).toBe(true);
+    expect(sampleSchema.safeParse({ accessionCode: "a261008-00015" }).success).toBe(false);
     expect(cancelSchema.safeParse({ reasonCode: "CLINICAL_DECISION", unexpected: true }).success).toBe(false);
     expect(scheduleSchema.safeParse({ startsAt: "2026-08-25T10:00:00.000Z", endsAt: "2026-08-25T10:30:00.000Z", resource: 42 }).success).toBe(false);
     expect(scheduleSchema.safeParse({ startsAt: "tomorrow", endsAt: "later", resource: "RX-1" }).success).toBe(false);

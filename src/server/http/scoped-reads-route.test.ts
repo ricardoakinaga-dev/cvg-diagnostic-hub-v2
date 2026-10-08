@@ -48,6 +48,22 @@ describe.sequential("AAA2 scoped public clinical reads", () => {
     resetRateLimits();
   });
 
+  it("serves the sample label inside the patient scope and answers 404 outside it", async () => {
+    const f = await fixture();
+    await f.update("user-vet", { patientIds: ["patient-mel"] });
+    const client = await f.client("vet@cvg.local");
+    const own = (await f.service.getRequest(f.store.getState().users.find((user) => user.id === "user-vet")!, f.requests[1].id)).samples[0];
+    const foreign = f.store.getState().samples.find((sample) => sample.requestId === f.requests[0].id)!;
+    const allowed = await client.get(["samples", own.id, "label"]);
+    expect(allowed.status).toBe(200);
+    expect((await allowed.json()).data).toMatchObject({ sample: { id: own.id, accessionCode: own.accessionCode, status: "EXPECTED" }, patient: { id: "patient-mel" }, label: { widthMm: 50, heightMm: 30, barcode: { symbology: "code128" } } });
+    for (const sampleId of [foreign.id, "sample-unknown"]) {
+      const denied = await client.get(["samples", sampleId, "label"]);
+      expect(denied.status).toBe(404);
+      expect((await denied.json()).error).toMatchObject({ code: "SCOPE_DENIED" });
+    }
+  });
+
   it.each(["VETERINARIAN", "INPATIENT_TEAM", "VIEWER"] as const)("filters %s patient scope before queue limits and counts", async (role) => {
     const f = await fixture();
     await f.update("user-vet", { role, departmentCode: "LABORATORY", patientIds: ["patient-mel"] });
@@ -127,7 +143,7 @@ describe.sequential("AAA2 scoped public clinical reads", () => {
     const f = await fixture();
     const lab = f.store.getState().users.find((user) => user.id === "user-lab")!;
     const item = f.requests[0].items[0];
-    const received = await f.service.receiveSample(lab, [item.id], { accessionCode: "AAA2-SCOPE", sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "scope-receive" });
+    const received = await f.service.receiveSample(lab, [item.id], { sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "scope-receive" });
     const started = await f.service.startProcessing(lab, item.id, { expectedVersion: received.items[0].version, idempotencyKey: "scope-start" });
     const draft = await f.service.createResultDraft(lab, item.id, { narrative: "Synthetic scoped result", content: syntheticHemogramContent(), expectedVersion: started.item.version, idempotencyKey: "scope-draft" });
     const released = await f.service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "scope-release" });

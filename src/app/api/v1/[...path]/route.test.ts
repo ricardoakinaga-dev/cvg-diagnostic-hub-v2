@@ -1733,7 +1733,7 @@ describe("versioned API boundary", () => {
     const receive = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/receive-sample`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: lab.cookie, "x-csrf-token": lab.csrf, "idempotency-key": "api-report-receive" },
-      body: JSON.stringify({ accessionCode: "ACC-API-REPORT", sampleType: "EDTA", expectedVersion: created.data.items[0].version })
+      body: JSON.stringify({ sampleType: "EDTA", expectedVersion: created.data.items[0].version })
     }), params(["diagnostic-items", itemId, "receive-sample"]));
     const received = await receive.json();
     const start = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/start-processing`, {

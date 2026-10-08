@@ -27,7 +27,7 @@ async function releaseCritical(registerNumber: boolean) {
   const lab = store.getState().users.find((user) => user.email === "lab@cvg.local")!;
   if (registerNumber) await updateOwnAlertContact(store, vet, { whatsappPhone: phone, consent: true }, "corr-contact");
   const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-crp" }] }, { idempotencyKey: "wa-request" });
-  const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-WA-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "wa-receive" });
+  const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "wa-receive" });
   const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "wa-start" });
   const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Resultado sensível.", content: {}, conclusion: "Avaliar", expectedVersion: started.item.version, idempotencyKey: "wa-draft" });
   const released = await service.releaseResult(lab, draft.result.id, { critical: true, expectedVersion: draft.result.version, idempotencyKey: "wa-release" });

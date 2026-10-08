@@ -272,7 +272,21 @@ O app só responde atrás da borda em produção, porque o proxy injeta a identi
 
 Fica para o ambiente (D2, D11, PROD-513): donos e roteamento dos alertas; disparo de cada um em staging; métricas do PostgreSQL (`postgres_exporter`); validade do certificado e falha de backup (blackbox/cron). Os limiares são pontos de partida técnicos, e os clínicos (atraso de SLA, crítico) dependem de D3 e D7.
 
-### 6.8 Canal WhatsApp do resultado crítico (PROD-402)
+### 6.8 Etiquetas e leitor de código de barras (PROD-405)
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `ACCESSION_PREFIX` | `A` | Prefixo do accession gerado (`<PREFIXO><AAMMDD>-<NNNN><C>`), de 1 a 4 caracteres `[A-Z0-9]`. Valor inválido faz a criação de solicitações falhar (500) até ser corrigido. |
+| `LABEL_WIDTH_MM` | `50` | Largura da etiqueta em milímetros (20 a 150). Define o `@page` da impressão. |
+| `LABEL_HEIGHT_MM` | `30` | Altura da etiqueta em milímetros (20 a 150). |
+
+A solicitação já nasce com a amostra e o accession; a etiqueta é aberta pelo link **Etiqueta** ao lado da amostra (detalhe da solicitação, painel do exame, área do paciente) e impressa pelo botão **Imprimir** do navegador. O código de barras é Code 128 e o dígito final do accession é um verificador Mod-10: um código lido ou digitado errado é recusado antes de qualquer mudança.
+
+Qualquer leitor que funcione como teclado (digita o código e envia Enter) e qualquer impressora de etiquetas que imprima pelo navegador (driver do sistema operacional, tamanho de papel igual a `LABEL_*_MM`) funcionam; não há integração com modelo específico. No recebimento, o campo **Accession** já vem com o foco: ler a etiqueta confirma a amostra esperada, e deixar o campo vazio também.
+
+O que o hospital ainda precisa informar: o **modelo da impressora** e o **tamanho real da etiqueta** (para ajustar `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM` e validar a margem de impressão) e o **modelo do leitor** (para confirmar que envia Enter ao final e lê Code 128). Até lá, os padrões de 50 × 30 mm valem como estimativa.
+
+### 6.9 Canal WhatsApp do resultado crítico (PROD-402)
 
 Pela decisão D3, o resultado crítico é avisado no Hub e também pelo WhatsApp Business, como canal redundante e sem SMS de reserva. A confirmação continua sendo feita no Hub.
 
