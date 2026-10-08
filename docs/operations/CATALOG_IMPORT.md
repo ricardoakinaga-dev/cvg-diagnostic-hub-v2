@@ -76,10 +76,10 @@ Requer `APP_DATA_MODE=postgres` e `DATABASE_URL` do ambiente. O responsável (`-
 
 ```bash
 # validação (padrão): imprime a tabela e o resumo JSON, nada é gravado
-npm run catalog:import -- --services exames.csv --analytes analitos.csv --actor admin@hospital.exemplo
+npm run catalog:import -- --services exames.csv --analytes analitos.csv --actor admin@hospital.example
 
 # aplicação
-npm run catalog:import -- --services exames.csv --analytes analitos.csv --actor admin@hospital.exemplo --apply
+npm run catalog:import -- --services exames.csv --analytes analitos.csv --actor admin@hospital.example --apply
 ```
 
 O código de saída é `1` quando há linha com erro (inclusive na validação) e `0` caso contrário, o que permite usar o comando em um passo de pipeline.
@@ -89,7 +89,7 @@ No servidor do hospital (Compose de produção) o comando roda de dentro da imag
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production run --rm --no-deps \
   -v "$PWD/planilhas:/planilhas:ro" worker \
-  node_modules/.bin/tsx scripts/catalog-import.ts --services /planilhas/exames.csv --analytes /planilhas/analitos.csv --actor admin@hospital.exemplo
+  node_modules/.bin/tsx scripts/catalog-import.ts --services /planilhas/exames.csv --analytes /planilhas/analitos.csv --actor admin@hospital.example
 ```
 
 Acrescente `--apply` para gravar. `--no-deps` evita que o Compose reexecute o `migrate` antes da importação.
