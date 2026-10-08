@@ -77,12 +77,34 @@ services:
     init: true
     image: postgres:16-alpine
     restart: unless-stopped
+    # Continuous WAL archiving (PROD-304, D2): a segment is closed at least every WAL_ARCHIVE_TIMEOUT_SECONDS and
+    # copied atomically into cvg-wal-archive by archive-wal.sh; the offsite service ships it out of the building.
+    # A failing archive_command makes PostgreSQL retry and keep the WAL, so a full archive volume is an alert, not data loss.
+    entrypoint: ["/bin/sh", "/opt/backup/postgres-entrypoint.sh"]
+    command:
+      - postgres
+      - -c
+      - wal_level=replica
+      - -c
+      - archive_mode=on
+      - -c
+      - archive_timeout=${WAL_ARCHIVE_TIMEOUT_SECONDS:-300}
+      - -c
+      - archive_command=/bin/sh /opt/backup/archive-wal.sh %p %f
+      - -c
+      - hba_file=/opt/backup/pg_hba.conf
+      - -c
+      - max_wal_senders=4
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?}
       POSTGRES_USER: ${POSTGRES_USER:?}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
     volumes:
       - cvg-postgres:/var/lib/postgresql/data
+      - cvg-wal-archive:/wal-archive
+      - ./deploy/backup/postgres-entrypoint.sh:/opt/backup/postgres-entrypoint.sh:ro
+      - ./deploy/backup/archive-wal.sh:/opt/backup/archive-wal.sh:ro
+      - ./deploy/backup/pg_hba.conf:/opt/backup/pg_hba.conf:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 5s
@@ -99,6 +121,8 @@ services:
     environment:
       <<: *app-environment
       DATABASE_ADMIN_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      # Creates the cvg_backup role (REPLICATION) used by pg_basebackup in the backup service; unset = no role.
+      POSTGRES_BACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:-}
       MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-cvg_migrator}:${POSTGRES_MIGRATION_PASSWORD:?POSTGRES_MIGRATION_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
     depends_on:
       postgres: { condition: service_healthy }
@@ -186,7 +210,9 @@ services:
     depends_on:
       app: { condition: service_healthy }
 
-  # Daily logical backup into the cvg-backups volume (see deploy/backup/backup-loop.sh).
+  # Daily logical dump + daily physical base backup into the cvg-backups volume, and pruning of both and of the WAL
+  # archive (see deploy/backup/backup-loop.sh). The dump runs as the runtime role; the base backup runs as cvg_backup,
+  # the only role with REPLICATION (created by the migrate service from POSTGRES_BACKUP_PASSWORD).
   backup:
     image: postgres:16-alpine
     entrypoint: ["/bin/sh", "/opt/backup-loop.sh"]
@@ -195,13 +221,42 @@ services:
       PGDATABASE: ${POSTGRES_DB:?}
       PGUSER: ${POSTGRES_RUNTIME_USER:-cvg_runtime}
       PGPASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}
+      PGBACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:-}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     volumes:
       - ./deploy/backup/backup-loop.sh:/opt/backup-loop.sh:ro
       - cvg-backups:/backups
+      - cvg-wal-archive:/wal-archive
     depends_on:
       migrate: { condition: service_completed_successfully }
+    restart: unless-stopped
+    logging: *default-logging
+    mem_limit: 256m
+
+  # Off-site copy (PROD-304): ships the WAL archive and the backups to OFFSITE_RCLONE_REMOTE every
+  # OFFSITE_SHIP_INTERVAL_SECONDS. Opt-in: with the remote empty it logs offsite.disabled and idles; the stack runs without it.
+  # Healthy = last successful shipment younger than 3 x interval (deploy/backup/check-offsite.sh). The rclone
+  # config (credentials) is mounted read-only from OFFSITE_RCLONE_CONFIG and never committed.
+  offsite:
+    image: rclone/rclone:1.71.2
+    entrypoint: ["/bin/sh", "/opt/backup/ship-offsite.sh"]
+    environment:
+      RCLONE_CONFIG: /config/rclone/rclone.conf
+      OFFSITE_RCLONE_REMOTE: ${OFFSITE_RCLONE_REMOTE:-}
+      OFFSITE_SHIP_INTERVAL_SECONDS: ${OFFSITE_SHIP_INTERVAL_SECONDS:-300}
+    volumes:
+      - ./deploy/backup/ship-offsite.sh:/opt/backup/ship-offsite.sh:ro
+      - ./deploy/backup/check-offsite.sh:/opt/backup/check-offsite.sh:ro
+      - ${OFFSITE_RCLONE_CONFIG:-./deploy/backup/rclone.conf.example}:/config/rclone/rclone.conf:ro
+      - cvg-wal-archive:/wal-archive:ro
+      - cvg-backups:/backups
+    healthcheck:
+      test: ["CMD", "/bin/sh", "/opt/backup/check-offsite.sh"]
+      interval: 60s
+      timeout: 10s
+      start_period: 180s
+      retries: 3
     restart: unless-stopped
     logging: *default-logging
     mem_limit: 256m
@@ -209,5 +264,6 @@ services:
 volumes:
   cvg-postgres:
   cvg-backups:
+  cvg-wal-archive:
   cvg-caddy-data:
   cvg-caddy-config:

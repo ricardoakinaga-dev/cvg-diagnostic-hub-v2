@@ -22,7 +22,9 @@ app ──> S3 compatível (anexos)      app ──HTTPS──> antivírus exter
 | `worker` | `Dockerfile` target `ops` | Entrega durável do outbox (`OUTBOX_SINK=postgres`). |
 | `migrate` | target `ops` | Aplica migrations; o `app` e o `worker` só sobem depois dele terminar com sucesso. |
 | `bootstrap` | target `ops`, profile `bootstrap` | Cria o primeiro ADMIN em banco vazio. Recusa banco já inicializado. |
-| `postgres` | `postgres:16-alpine` | Pode ser trocado por instância gerenciada ajustando `DATABASE_URL`. |
+| `postgres` | `postgres:16-alpine` | Com `wal_level=replica`, `archive_mode=on` e `archive_timeout` de `WAL_ARCHIVE_TIMEOUT_SECONDS`: cada segmento de WAL vai para o volume `cvg-wal-archive` ([`archive-wal.sh`](../../deploy/backup/archive-wal.sh)). Trocar por instância gerenciada ajustando `DATABASE_URL` abre mão deste arquivamento (D11 manda o banco no servidor do hospital). |
+| `backup` | `postgres:16-alpine` + [`backup-loop.sh`](../../deploy/backup/backup-loop.sh) | Dump diário (papel de runtime), backup base diário (`pg_basebackup`, papel `cvg_backup`) e poda; volumes `cvg-backups` e `cvg-wal-archive`. |
+| `offsite` | `rclone/rclone:1.71.2` + [`ship-offsite.sh`](../../deploy/backup/ship-offsite.sh) | Opt-in: copia o WAL e sincroniza dumps e backups base para `OFFSITE_RCLONE_REMOTE` a cada `OFFSITE_SHIP_INTERVAL_SECONDS`. Sem destino, registra `offsite.disabled` e a aplicação sobe normalmente. `healthcheck` falha se o último envio com sucesso tiver mais de 3 intervalos. |
 
 Armazenamento S3 e antivírus são **serviços externos obrigatórios**: em produção o runtime recusa `STORAGE_MODE=local` e `STORAGE_SCAN_MODE=local`, e exige scanner em HTTPS com host na allowlist.
 
@@ -315,8 +317,24 @@ Com o volume real, repita o ensaio em homologação antes da janela.
 
 - Quem sabe a senha atual a troca em **Minha conta → Alterar senha** (`POST /session/password/change`, PROD-201): as outras sessões são encerradas. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
 - RPO/RTO, roteamento de alertas e failover continuam abertos em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
-- **Backup:** o serviço `backup` do Compose grava um `pg_dump` diário (retenção de 14 dias) no volume `cvg-backups`, como o papel de runtime. É uma rede de segurança no mesmo servidor, não recuperação de desastre: copie o volume para fora da máquina e ensaie o restore ([BACKUP_RESTORE.md](BACKUP_RESTORE.md)). Recuperação para um ponto no tempo (WAL) exige banco gerenciado ou arquivamento de WAL (D2 e D11).
+- **Backup:** o Compose mantém um dump diário, um backup base diário e o arquivamento contínuo de WAL (retenção de 14 dias), e o serviço `offsite` leva tudo para fora do servidor ([BACKUP_RESTORE.md](BACKUP_RESTORE.md), §10 abaixo). O PITR foi ensaiado só em laboratório (`npm run db:backup:drill`); o restore cronometrado no servidor e no destino reais, e o backup do S3, seguem pendentes (PROD-514).
 - **Exames numéricos (hemograma em painel):** não existe tela nem API para criar o template laboratorial versionado; um serviço `NUMERIC_PANEL` só pode ser criado duplicando um que já tenha template. Em uma instalação nova, use serviços narrativos até a decisão D10 definir o catálogo e o carregamento dos templates.
 - **Códigos de setor:** são texto livre, mas rótulos em português e filas reconhecem `LABORATORY`, `RADIOLOGY`, `ULTRASOUND`, `INPATIENT` e `IT`. Outros códigos funcionam e aparecem como foram digitados.
 - **Logs e memória:** os containers rotacionam logs (`LOG_MAX_SIZE`, `LOG_MAX_FILE`) e têm teto de memória (`APP_MEM_LIMIT`, `WORKER_MEM_LIMIT`, `PROXY_MEM_LIMIT`).
 - O stack de Compose é de host único; escalar `app` horizontalmente é suportado pelo runtime (rate limit e realtime em PostgreSQL), mas exige balanceador fora deste arquivo.
+
+## 10. Backup contínuo e cópia externa (PROD-304)
+
+Variáveis novas (todas em `.env.production.example`):
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `POSTGRES_BACKUP_PASSWORD` | vazio | Senha do papel `cvg_backup` (`REPLICATION` + `pg_read_all_data`), criado pelo `migrate` e usado só pelo `pg_basebackup` do serviço `backup`. Use um valor distinto dos outros segredos. Vazio = sem backup base e sem PITR (o dump diário continua). Entra no `migrate` e no `backup`, nunca no `app` nem no `worker`. |
+| `WAL_ARCHIVE_TIMEOUT_SECONDS` | `300` | `archive_timeout` do PostgreSQL: um segmento é fechado e arquivado pelo menos a cada 5 min. Com o envio de 300 s o RPO nominal é 10 min (orçamento D2: 15 min). |
+| `OFFSITE_RCLONE_REMOTE` | vazio | Destino do rclone, `<remoto>:<caminho>` (`s3:cvg-offsite/hospital-a`, `sftp:/backups`). Vazio desliga a cópia externa. |
+| `OFFSITE_RCLONE_CONFIG` | `./deploy/backup/rclone.conf.example` no Compose; `./deploy/backup/rclone.conf` no `.env.production.example` | Arquivo de configuração do rclone, montado somente leitura em `/config/rclone/rclone.conf`. O arquivo real fica fora do git (`.gitignore` e `scripts/secret-scan.sh` exigem isso); crie-o a partir de [`rclone.conf.example`](../../deploy/backup/rclone.conf.example) **antes** do `up`, senão o Docker cria um diretório no lugar. |
+| `OFFSITE_SHIP_INTERVAL_SECONDS` | `300` | Intervalo do envio e base do `healthcheck` (3 × intervalo). |
+
+Atualização de uma instalação existente: definir `POSTGRES_BACKUP_PASSWORD`, rodar `up -d` (recria o `postgres` com os novos parâmetros, com uma reinicialização curta do banco, e o `migrate` cria o papel) e esperar o primeiro backup base (`docker compose ... logs backup`, evento `basebackup.completed`) antes de contar com o PITR. O `pg_hba` passa a vir de [`deploy/backup/pg_hba.conf`](../../deploy/backup/pg_hba.conf) (mesmas regras da imagem mais a linha de replicação do `cvg_backup`).
+
+O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco + WAL + backups: reserve pelo menos 100 GB além do banco para 14 dias de WAL a `archive_timeout` 300 s, dumps e backups base; CPU/RAM conforme §6.6), o **destino externo** fora do prédio (bucket S3-compatível, outro site por SFTP ou equivalente, com política de ciclo de vida para `wal/`), as **credenciais** desse destino e quem as guarda, e os **operadores** que acompanham o `healthcheck` do `offsite` e fazem o ensaio mensal. Sem eles o mecanismo está pronto e ensaiado em laboratório, mas o RPO de 15 min **fora do prédio** não está garantido.

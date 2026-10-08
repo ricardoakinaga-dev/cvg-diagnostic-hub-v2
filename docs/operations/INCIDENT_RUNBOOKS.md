@@ -64,6 +64,19 @@ Stop criteria: qualquer divergência, migration drift, autoridade ambígua, rest
 4. Corrigir o serviço externo ou executar o procedimento de contingência aprovado; não trocar `STORAGE_MODE`/`STORAGE_SCAN_MODE` em produção para local.
 5. Liberar somente após checksum, MIME/signature, scan `CLEAN`, vínculo e auditoria serem confirmados.
 
+## Backup falho ou cópia externa parada
+
+Sinais: container `offsite` `unhealthy`; `check-offsite.sh` com código diferente de zero; `lastResult` diferente de `ok` em `/backups/offsite-status.json`; eventos `backup.failed`, `basebackup.failed` ou `wal.archive_failed` nos logs; `pg_stat_archiver.failed_count` crescendo; volume do banco ou `pg_wal` enchendo. Cada minuto parado é um minuto a menos do orçamento de RPO (15 min, D2).
+
+1. Verificar e anotar o estado, sem imprimir credenciais:
+   `docker compose -f docker-compose.prod.yml --env-file .env.production exec offsite sh /opt/backup/check-offsite.sh` (e `cat /backups/offsite-status.json`), `docker compose ... logs --tail 100 offsite backup`.
+2. Arquivamento local parado (`pg_stat_archiver.last_failed_time` recente): `docker compose ... exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "select last_archived_wal, last_archived_time, failed_count, last_failed_wal from pg_stat_archiver"`. Causas comuns: volume `cvg-wal-archive` cheio (`df`, libere dumps antigos ou aumente o disco; o PostgreSQL retém o WAL e tenta de novo sozinho), segmento diferente já existente (`different_segment_exists`: dois clusters no mesmo arquivo, parar e escalar), permissão do diretório. Enquanto falha, o `pg_wal` cresce: acompanhe o disco do banco.
+3. Cópia externa parada com arquivamento local normal: destino inacessível, credencial vencida ou rotacionada, cota cheia, relógio errado. Testar com `docker compose ... run --rm --entrypoint rclone offsite lsd "$OFFSITE_RCLONE_REMOTE"` (o prefixo do remoto antes dos dois-pontos). Corrigir a causa; o serviço retoma sozinho e o `healthcheck` volta a `healthy` no próximo ciclo (`--once` força um: `docker compose ... run --rm offsite sh /opt/backup/ship-offsite.sh --once`).
+4. Backup base ou dump falhando (`basebackup.failed`): conferir `POSTGRES_BACKUP_PASSWORD` (papel `cvg_backup` existe? `\du`) e a conexão de replicação; o `backup` repete em até 15 min. Tire um backup manual: `docker compose ... run --rm --no-deps backup --once`.
+5. `sync` abortado por `--max-delete`: o diretório local mudou demais (poda de retenção alterada, volume vazio). Não aumente o limite antes de entender o motivo; o destino ainda guarda o que existia.
+6. Enquanto a cópia externa estiver parada, registrar o intervalo sem cobertura (do último `lastShippedAt` até o fim da correção) como exposição de RPO e informar o responsável; se o servidor puder ser perdido nesse intervalo, considere copiar `cvg-backups` e `cvg-wal-archive` manualmente para outra mídia.
+7. Fechamento: `check-offsite.sh` com código 0, `walSegments` crescendo no status e um registro no incidente do intervalo exposto. O restore em si segue [BACKUP_RESTORE.md §4](BACKUP_RESTORE.md#4-runbook-de-restore).
+
 ## Realtime degradado
 
 1. Verificar `cvg_realtime_connection_rejections_total`, falhas de poll, closures e resyncs.
