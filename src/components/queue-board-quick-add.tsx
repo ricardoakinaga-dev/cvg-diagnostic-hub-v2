@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { DiagnosticService, Encounter, Patient } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
@@ -96,7 +97,6 @@ export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshin
       const open = nextEncounters.filter((encounter) => encounter.patientId === nextId && encounter.status === "OPEN");
       setEncounters(open);
       if (open.length === 1) setEncounterId(open[0].id);
-      if (open.length === 0) setError("Este paciente precisa de um atendimento aberto antes de solicitar o exame.");
     } catch (cause) {
       if (request === encounterRequest.current) setError(getSafeErrorMessage(cause, "Não foi possível carregar o atendimento do paciente."));
     } finally {
@@ -144,6 +144,7 @@ export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshin
     {loadingPatients && <p role="status">Buscando pacientes…</p>}
     {loadingServices && <p role="status">Carregando exames…</p>}
     {loadingEncounter && <p role="status">Carregando atendimento…</p>}
+    {patientId && !loadingEncounter && !error && encounters.length === 0 && <p role="status">Este paciente não tem atendimento aberto. <Link href={`/patients/${encodeURIComponent(patientId)}/diagnostics`}>Abra um novo atendimento na página do paciente.</Link></p>}
     {!loadingPatients && !patientError && patients.length === 0 && <p role="status">Nenhum paciente encontrado. Tente outro nome ou identificação.</p>}
     {!loadingPatients && patientError && <p role="alert">{patientError}<button type="button" disabled={pending || disabled || refreshing} onClick={() => setPatientRetry((value) => value + 1)}>Tentar novamente</button></p>}
     {!loadingServices && serviceError && <p role="alert">{serviceError}<button type="button" disabled={pending || disabled || refreshing} onClick={() => setServiceRetry((value) => value + 1)}>Tentar novamente</button></p>}

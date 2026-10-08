@@ -820,6 +820,7 @@ button.pill:disabled { opacity: 1; cursor: default; }
 .inbox-detail p { color: var(--txt-secondary); font-size: 14px; line-height: 1.55; }
 .inbox-detail-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--txt-tertiary); font-size: 12.5px; }
 .inbox-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 20px; }
+.inbox-channels { display: grid; gap: 4px; margin: 12px 0 0; padding-left: 18px; color: var(--txt-secondary); font-size: 12.5px; }
 .inbox-detail .empty-panel { margin-top: 15vh; }
 .inbox-ack { max-width: 520px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border-subtle); }
 .inbox-ack .notification-confirmation { display: grid; gap: 8px; }
