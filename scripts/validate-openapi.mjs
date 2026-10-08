@@ -407,7 +407,9 @@ const notificationSchema = strictObject({
   whatsapp: strictObject({
     status: { type: "string", enum: ["QUEUED", "SENT", "DELIVERED", "READ", "FAILED", "SKIPPED"] }, updatedAt: timestamp,
     messageId: stringSchema(1, 200), errorCode: stringSchema(1, 100)
-  }, ["status", "updatedAt"])
+  }, ["status", "updatedAt"]),
+  escalation: strictObject({ level: { type: "integer", minimum: 1, maximum: 8 }, lastEscalatedAt: timestamp }, ["level", "lastEscalatedAt"]),
+  escalationOf: identifier
 }, ["id", "category", "priority", "recipientUserId", "entityType", "entityId", "deepLink", "title", "body", "dedupeKey", "state", "createdAt", "attempts", "version"]);
 const auditEventSchema = strictObject({
   id: identifier, eventType: stringSchema(1, 200), actorId: identifier, entityType: stringSchema(1, 200), entityId: identifier,

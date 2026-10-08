@@ -40,6 +40,20 @@ function NotificationActions({ item, reason, confirmed, onReasonChange, onConfir
   </div>;
 }
 
+const whatsAppLabels: Record<NonNullable<Notification["whatsapp"]>["status"], string> = {
+  QUEUED: "na fila de envio", SENT: "enviado", DELIVERED: "entregue", READ: "lido", FAILED: "não entregue", SKIPPED: "não enviado"
+};
+
+/** PROD-402: where the critical alert also went (WhatsApp) and why this person received it (escalation). */
+function CriticalChannels({ item }: { item: Notification }) {
+  if (!item.whatsapp && !item.escalation && !item.escalationOf) return null;
+  return <ul className="inbox-channels">
+    {item.escalationOf && <li>Você recebeu este alerta porque ninguém confirmou o resultado crítico no prazo.</li>}
+    {item.escalation && <li>Sem confirmação no prazo: o alerta já foi escalonado {item.escalation.level === 1 ? "uma vez" : `${item.escalation.level} vezes`}.</li>}
+    {item.whatsapp && <li>WhatsApp: {whatsAppLabels[item.whatsapp.status]}.</li>}
+  </ul>;
+}
+
 export function NotificationsView() {
   const [items, setItems] = useState<Notification[]>([]);
   const [filter, setFilter] = useState("ALL");
@@ -152,6 +166,7 @@ export function NotificationsView() {
           <div className="inbox-detail-meta"><span className={`inbox-icon tone-${categoryTone(selected)}`} aria-hidden="true"><Icon name={selected.category === "CRITICAL" ? "attention" : "notifications"} size={14} /></span><span>{categoryLabel(selected)}</span><span>·</span><time dateTime={selected.createdAt}>{formatRelativeTime(selected.createdAt)}</time>{selected.priority !== "NORMAL" && <span className="pill pill-danger"><span>{selected.priority === "URGENT" ? "Urgente" : "Alta"}</span></span>}</div>
           <h2>{selected.title}</h2>
           <p>{selected.body}</p>
+          <CriticalChannels item={selected} />
           <div className="inbox-detail-actions"><Link href={selected.deepLink} className="button button-primary">Abrir contexto <Icon name="arrow-right" size={15} /></Link></div>
           <div className="inbox-ack">
             <NotificationActions item={selected} reason={reasons[selected.id] ?? ""} confirmed={confirmations[selected.id] === true} pending={acknowledgingId === selected.id} blocked={acknowledgingId !== null && acknowledgingId !== selected.id} onReasonChange={(value) => setReasons((current) => ({ ...current, [selected.id]: value }))} onConfirmationChange={(value) => setConfirmations((current) => ({ ...current, [selected.id]: value }))} onAcknowledge={() => void acknowledge(selected)} />
