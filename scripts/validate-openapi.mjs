@@ -78,6 +78,18 @@ const requestSchemas = {
       "externalId is generated when omitted"
     ]
   },
+  EncounterOpen: {
+    ...strictObject({
+      encounterType: { type: "string", enum: ["INPATIENT", "EMERGENCY", "OUTPATIENT"] },
+      ward: normalizedTextSchema(1, 100), bed: normalizedTextSchema(1, 100), reason: normalizedTextSchema(1, 500)
+    }, ["encounterType"]),
+    "x-cross-field-constraints": [
+      "encounterType=INPATIENT requires ward and bed",
+      "ward and bed are only accepted for encounterType=INPATIENT",
+      "the patient must be active and have no open encounter"
+    ]
+  },
+  EncounterClose: strictObject({ reason: normalizedTextSchema(1, 500) }),
   ManagedUserCreate: {
     ...strictObject({
     email: { type: "string", format: "email", maxLength: 320 }, displayName: normalizedTextSchema(2, 160),
@@ -494,15 +506,17 @@ const responseDataSchemas = {
   DiagnosticServiceList: arrayOf(schemaReference("DiagnosticService")),
   ReasonCodeList: arrayOf(schemaReference("ReasonCode")),
   PatientList: arrayOf(schemaReference("Patient"), { maxItems: 100 }),
+  EncounterOpenResult: strictObject({ encounter: schemaReference("Encounter"), admission: schemaReference("Admission") }, ["encounter"]),
+  EncounterCloseResult: strictObject({ encounter: schemaReference("Encounter"), admission: schemaReference("Admission"), pendingItems: nonNegativeInteger }, ["encounter", "pendingItems"]),
   PatientCreateResult: strictObject({ patient: schemaReference("Patient"), encounter: schemaReference("Encounter"), admission: schemaReference("Admission") }, ["patient", "encounter"]),
   PatientWorkspaceSummary: strictObject({
     asOf: timestamp,
     dataQuality: strictObject({ status: { type: "string", enum: ["FRESH", "DEGRADED"] }, asOf: timestamp, note: stringSchema(1, 500) }, ["status", "asOf"]),
     currentContext: strictObject({
-      encounterId: { oneOf: [identifier, { type: "null" }] }, admissionId: { oneOf: [identifier, { type: "null" }] },
+      hasOpenEncounter: { type: "boolean" }, encounterId: { oneOf: [identifier, { type: "null" }] }, admissionId: { oneOf: [identifier, { type: "null" }] },
       departmentCode: { oneOf: [normalizedDepartmentCodeSchema, { type: "null" }] }, ward: { oneOf: [stringSchema(1, 100), { type: "null" }] },
       bed: { oneOf: [stringSchema(1, 100), { type: "null" }] }, responsibleLabel: { oneOf: [stringSchema(1, 160), { type: "null" }] }
-    }, ["encounterId", "admissionId", "departmentCode", "ward", "bed", "responsibleLabel"]),
+    }, ["hasOpenEncounter", "encounterId", "admissionId", "departmentCode", "ward", "bed", "responsibleLabel"]),
     summary: strictObject({
       requestCount: nonNegativeInteger, itemCount: nonNegativeInteger, activeItemCount: nonNegativeInteger,
       availableResultCount: nonNegativeInteger, sampleCount: nonNegativeInteger, attachmentCount: nonNegativeInteger
@@ -731,8 +745,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 80/74 since PROD-402 added GET/POST /webhooks/whatsapp; 78/73 since PROD-405 added GET /samples/{sampleId}/label; 77/72 since PROD-407 added POST /diagnostic-services/import; 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
-  if (API_OPERATIONS.length !== 80 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 74) throw new Error("The audited API surface must remain exactly 80 operations across 74 paths.");
+  // 82/75 since PROD-406 added POST /patients/{patientId}/encounters and POST /encounters/{encounterId}/close; 80/74 since PROD-402 added GET/POST /webhooks/whatsapp; 78/73 since PROD-405 added GET /samples/{sampleId}/label; 77/72 since PROD-407 added POST /diagnostic-services/import; 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
+  if (API_OPERATIONS.length !== 82 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 75) throw new Error("The audited API surface must remain exactly 82 operations across 75 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

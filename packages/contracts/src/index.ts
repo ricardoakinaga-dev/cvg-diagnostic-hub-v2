@@ -164,6 +164,7 @@ export type Permission =
   | "patient.view"
   | "patient.create"
   | "encounter.view"
+  | "encounter.manage"
   | "admission.view"
   | "admission.context.manage"
   | "request.create"
@@ -615,6 +616,17 @@ export interface TimelineEvent {
   occurredAt: string;
 }
 
+export interface EncounterOpenResult {
+  encounter: Encounter;
+  admission?: Admission;
+}
+
+export interface EncounterCloseResult {
+  encounter: Encounter;
+  admission?: Admission;
+  pendingItems: number;
+}
+
 export interface PatientCreateResult {
   patient: Patient;
   encounter: Encounter;
@@ -675,7 +687,7 @@ export interface PatientWorkspaceRequest {
 export interface PatientWorkspaceSummary {
   asOf: string;
   dataQuality?: { status: "FRESH" | "DEGRADED"; asOf: string; note?: string };
-  currentContext: { encounterId: string | null; admissionId: string | null; departmentCode: string | null; ward: string | null; bed: string | null; responsibleLabel: string | null };
+  currentContext: { hasOpenEncounter: boolean; encounterId: string | null; admissionId: string | null; departmentCode: string | null; ward: string | null; bed: string | null; responsibleLabel: string | null };
   summary: { requestCount: number; itemCount: number; activeItemCount: number; availableResultCount: number; sampleCount: number; attachmentCount: number };
 }
 

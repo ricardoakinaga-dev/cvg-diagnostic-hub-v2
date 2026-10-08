@@ -83,11 +83,11 @@ describe("pure API handler registry", () => {
 });
 
 describe("production operation handler registry", () => {
-  it("contains exactly all 80 manifest operations without duplicate group entries", () => {
+  it("contains exactly all 82 manifest operations without duplicate group entries", () => {
     const expected = API_OPERATIONS.map(({ operationId }) => operationId).sort();
     const actual = API_HANDLER_GROUPS.flatMap((group) => Object.keys(group));
-    expect(expected).toHaveLength(80);
-    expect(new Set(actual).size).toBe(80);
+    expect(expected).toHaveLength(82);
+    expect(new Set(actual).size).toBe(82);
     expect([...actual].sort()).toEqual(expected);
     expect([...API_HANDLER_REGISTRY.operationIds].sort()).toEqual(expected);
     expect(Object.isFrozen(API_HANDLER_REGISTRY)).toBe(true);

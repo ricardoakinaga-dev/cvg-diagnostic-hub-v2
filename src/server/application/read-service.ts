@@ -143,7 +143,9 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const currentActor = requireActiveUser(state, actor);
       requirePatientPermission(state, currentActor, "encounter.view", patientId);
       const patient = findOrThrowScoped(findById(state.patients, patientId));
-      return encountersForPatient(state, patient.id).map((encounter) => ({ ...encounter }));
+      return encountersForPatient(state, patient.id)
+        .map((encounter) => ({ ...encounter }))
+        .sort((left, right) => Number(right.status === "OPEN") - Number(left.status === "OPEN") || right.openedAt.localeCompare(left.openedAt) || left.id.localeCompare(right.id));
     },
 
     async getEncounter(actor: User, encounterId: string) {

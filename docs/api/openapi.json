@@ -8362,6 +8362,304 @@
             }
           }
         }
+      },
+      "post": {
+        "operationId": "openPatientEncounter",
+        "summary": "Open a new encounter for a registered patient",
+        "description": "Open a new encounter for a registered patient. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Patients"
+        ],
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": []
+          }
+        ],
+        "x-required-permissions": [
+          "encounter.manage"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient must be active and have no open encounter"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "\\S"
+            }
+          },
+          {
+            "name": "patientId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[^/%]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EncounterOpen"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Resource created",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/openPatientEncounterSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, concurrency, or idempotency conflict",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Request media type is not supported",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/encounters/{encounterId}": {
@@ -8486,6 +8784,306 @@
           },
           "404": {
             "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/encounters/{encounterId}/close": {
+      "post": {
+        "operationId": "closeEncounter",
+        "summary": "Close an open encounter without cancelling pending exams",
+        "description": "Close an open encounter without cancelling pending exams. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Patients"
+        ],
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": []
+          }
+        ],
+        "x-required-permissions": [
+          "encounter.manage"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "encounter must be OPEN; pending diagnostic items stay with the requester"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "\\S"
+            }
+          },
+          {
+            "name": "encounterId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[^/%]+$"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EncounterClose"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/closeEncounterSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, concurrency, or idempotency conflict",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Request media type is not supported",
             "headers": {
               "X-Correlation-Id": {
                 "$ref": "#/components/headers/CorrelationId"
@@ -22704,6 +23302,66 @@
           "externalId is generated when omitted"
         ]
       },
+      "EncounterOpen": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "encounterType"
+        ],
+        "properties": {
+          "encounterType": {
+            "type": "string",
+            "enum": [
+              "INPATIENT",
+              "EMERGENCY",
+              "OUTPATIENT"
+            ]
+          },
+          "ward": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,98}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 100
+          },
+          "bed": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,98}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 100
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,498}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 500
+          }
+        },
+        "x-cross-field-constraints": [
+          "encounterType=INPATIENT requires ward and bed",
+          "ward and bed are only accepted for encounterType=INPATIENT",
+          "the patient must be active and have no open encounter"
+        ]
+      },
+      "EncounterClose": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[\\s]*\\S(?:[\\s\\S]{0,498}\\S)?[\\s]*$",
+            "x-normalization": "trim",
+            "x-normalized-min-length": 1,
+            "x-normalized-max-length": 500
+          }
+        }
+      },
       "ManagedUserCreate": {
         "type": "object",
         "additionalProperties": false,
@@ -27604,6 +28262,41 @@
         },
         "maxItems": 100
       },
+      "EncounterOpenResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "encounter"
+        ],
+        "properties": {
+          "encounter": {
+            "$ref": "#/components/schemas/Encounter"
+          },
+          "admission": {
+            "$ref": "#/components/schemas/Admission"
+          }
+        }
+      },
+      "EncounterCloseResult": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "encounter",
+          "pendingItems"
+        ],
+        "properties": {
+          "encounter": {
+            "$ref": "#/components/schemas/Encounter"
+          },
+          "admission": {
+            "$ref": "#/components/schemas/Admission"
+          },
+          "pendingItems": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
       "PatientCreateResult": {
         "type": "object",
         "additionalProperties": false,
@@ -27666,6 +28359,7 @@
             "type": "object",
             "additionalProperties": false,
             "required": [
+              "hasOpenEncounter",
               "encounterId",
               "admissionId",
               "departmentCode",
@@ -27674,6 +28368,9 @@
               "responsibleLabel"
             ],
             "properties": {
+              "hasOpenEncounter": {
+                "type": "boolean"
+              },
               "encounterId": {
                 "oneOf": [
                   {
@@ -29975,6 +30672,22 @@
           }
         }
       },
+      "openPatientEncounterSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EncounterOpenResult"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
       "getEncounterSuccessResponse": {
         "type": "object",
         "additionalProperties": false,
@@ -29985,6 +30698,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/Encounter"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "closeEncounterSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/EncounterCloseResult"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"
