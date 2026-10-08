@@ -61,7 +61,8 @@ describe("QueueBoardQuickAdd", () => {
     const api = mockApi([encounter("p1", "e1", "CLOSED")]);
     render(<QueueBoardQuickAdd departments={["LABORATORY"]} disabled={false} onCreated={vi.fn()} />);
     await selectQuickAdd();
-    expect(screen.getByRole("alert")).toHaveTextContent("atendimento aberto");
+    expect(screen.getByText(/Este paciente não tem atendimento aberto\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Abra um novo atendimento na página do paciente." })).toHaveAttribute("href", "/patients/p1/diagnostics");
     fireEvent.click(screen.getByRole("button", { name: "Adicionar exame" }));
     expect(api.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });

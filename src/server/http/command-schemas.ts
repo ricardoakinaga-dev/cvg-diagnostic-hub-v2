@@ -57,6 +57,15 @@ export const admissionContextSchema = z.discriminatedUnion("action", [
   }).strict()
 ]);
 
+export const encounterOpenSchema = z.object({
+  encounterType: z.enum(["INPATIENT", "EMERGENCY", "OUTPATIENT"]),
+  ward: boundedText(100).optional(),
+  bed: boundedText(100).optional(),
+  reason: boundedText(500).optional()
+}).strict();
+
+export const encounterCloseSchema = z.object({ reason: boundedText(500).optional() }).strict();
+
 export const emptyCommandSchema = z.object({ expectedVersion }).strict();
 
 export const cancelSchema = z.object({
@@ -77,8 +86,8 @@ export const rejectSchema = z.object({
 }).strict();
 
 export const sampleSchema = z.object({
-  accessionCode: z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,39}$/),
-  sampleType: boundedText(100),
+  accessionCode: z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,39}$/).optional(),
+  sampleType: boundedText(100).optional(),
   expectedVersion
 }).strict();
 

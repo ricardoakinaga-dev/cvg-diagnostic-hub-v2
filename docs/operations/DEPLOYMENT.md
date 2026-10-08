@@ -53,7 +53,7 @@ O `migrate` (`scripts/db-roles.ts`) faz tudo o que o banco precisa, sem passo ma
 Depois do primeiro login do ADMIN:
 
 1. remova `BOOTSTRAP_ADMIN_PASSWORD` do `.env.production` e do secret manager;
-2. pela tela **Administração**, cadastre serviços diagnósticos, códigos de motivo e colaboradores (tudo é auditado; só criar, promover, rebaixar, desativar ou redefinir um ADMIN pede a sua senha). Cadastre os **exames antes dos colaboradores**: um técnico novo recebe todos os exames ativos do setor, e um exame novo chega sozinho a quem já tinha todos os do setor (quem foi restrito a um subconjunto mantém o subconjunto);
+2. carregue o catálogo de exames pela planilha-modelo validada ([CATALOG_IMPORT.md](CATALOG_IMPORT.md): tela **Administração → Importar catálogo por planilha** ou `npm run catalog:import`, repetível em homologação e produção) e, pela tela **Administração**, cadastre códigos de motivo e colaboradores (a tela também cria ou ajusta exames avulsos) (tudo é auditado; só criar, promover, rebaixar, desativar ou redefinir um ADMIN pede a sua senha). Cadastre os **exames antes dos colaboradores**: um técnico novo recebe todos os exames ativos do setor, e um exame novo chega sozinho a quem já tinha todos os do setor (quem foi restrito a um subconjunto mantém o subconjunto);
 3. confirme a trilha em `audit_events` (evento `ProductionBootstrap`).
 
 O seed sintético (`npm run db:seed`) é proibido em produção e não deve ser usado para popular o ambiente.
@@ -274,6 +274,66 @@ O app só responde atrás da borda em produção, porque o proxy injeta a identi
 
 Fica para o ambiente (D2, D11, PROD-513): donos e roteamento dos alertas; disparo de cada um em staging; métricas do PostgreSQL (`postgres_exporter`); validade do certificado e falha de backup (blackbox/cron). Os limiares são pontos de partida técnicos, e os clínicos (atraso de SLA, crítico) dependem de D3 e D7.
 
+### 6.8 Etiquetas e leitor de código de barras (PROD-405)
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `ACCESSION_PREFIX` | `A` | Prefixo do accession gerado (`<PREFIXO><AAMMDD>-<NNNN><C>`), de 1 a 4 caracteres `[A-Z0-9]`. Valor inválido faz a criação de solicitações falhar (500) até ser corrigido. |
+| `LABEL_WIDTH_MM` | `50` | Largura da etiqueta em milímetros (20 a 150). Define o `@page` da impressão. |
+| `LABEL_HEIGHT_MM` | `30` | Altura da etiqueta em milímetros (20 a 150). |
+
+A solicitação já nasce com a amostra e o accession; a etiqueta é aberta pelo link **Etiqueta** ao lado da amostra (detalhe da solicitação, painel do exame, área do paciente) e impressa pelo botão **Imprimir** do navegador. O código de barras é Code 128 e o dígito final do accession é um verificador Mod-10: um código lido ou digitado errado é recusado antes de qualquer mudança.
+
+Qualquer leitor que funcione como teclado (digita o código e envia Enter) e qualquer impressora de etiquetas que imprima pelo navegador (driver do sistema operacional, tamanho de papel igual a `LABEL_*_MM`) funcionam; não há integração com modelo específico. No recebimento, o campo **Accession** já vem com o foco: ler a etiqueta confirma a amostra esperada, e deixar o campo vazio também.
+
+O que o hospital ainda precisa informar: o **modelo da impressora** e o **tamanho real da etiqueta** (para ajustar `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM` e validar a margem de impressão) e o **modelo do leitor** (para confirmar que envia Enter ao final e lê Code 128). Até lá, os padrões de 50 × 30 mm valem como estimativa.
+
+### 6.9 Canal WhatsApp do resultado crítico (PROD-402)
+
+Pela decisão D3, o resultado crítico é avisado no Hub e também pelo WhatsApp Business, como canal redundante e sem SMS de reserva. A confirmação continua sendo feita no Hub.
+
+**O que sai na mensagem:** um template aprovado pela Meta, da categoria UTILITY, em `pt_BR`.
+- O corpo recebe só o protocolo da solicitação (`{{1}}`).
+- O botão de URL recebe o caminho do Hub (`https://APP_DOMAIN/{{1}}`, por exemplo `results/<id>`).
+- Nenhum dado clínico, nome de paciente ou valor de exame vai na mensagem.
+- Sugestão de corpo para aprovar: "Hub CVG: há um resultado crítico aguardando a sua confirmação. Protocolo {{1}}. Abra o Hub para ver e confirmar."
+
+**Quem recebe:** só quem cadastrou o próprio celular em **Minha conta**, com consentimento (§9).
+- O número é conferido de novo no envio. Quem removeu o número ou já confirmou o alerta não recebe.
+- Sem número cadastrado, a notificação registra `SKIPPED/NO_CONTACT` e o alerta fica só no Hub.
+
+**Como ligar:**
+1. Na Meta, criar o app, a conta WhatsApp Business e o número remetente. Aprovar o template.
+2. Preencher `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` (token permanente de usuário do sistema) e `WHATSAPP_TEMPLATE_NAME` no `.env.production`.
+   - O app e o worker leem o mesmo bloco do Compose.
+   - Com `WHATSAPP_ENABLED=true` e a configuração incompleta, o worker não sobe (`WHATSAPP_CONFIG_INVALID:<variável>`).
+3. Liberar a saída HTTPS do servidor para `graph.facebook.com:443`.
+4. Para os relatórios de entrega, gerar `WHATSAPP_VERIFY_TOKEN` (aleatório) e copiar o app secret para `WHATSAPP_APP_SECRET`. Na Meta, configurar o webhook `https://APP_DOMAIN/api/v1/webhooks/whatsapp` com o mesmo verify token e assinar o campo `messages`.
+   - Sem os dois segredos, a rota responde 404.
+   - O `POST` só é aceito com `X-Hub-Signature-256` válido sobre o corpo exato.
+5. Ligar `WHATSAPP_ENABLED=true` junto com a política crítica (`CRITICAL_POLICY_*`) e fazer um teste com um crítico de homologação.
+
+**Servidor só na rede interna (D11):** o envio funciona, desde que haja saída para a Meta. Os relatórios de entrega e leitura só chegam se o webhook for alcançável pela internet. Sem eles, o alerta fica em `SENT`. O escalonamento depende da confirmação no Hub, não do status do WhatsApp.
+
+**Estados no campo `whatsapp` da notificação:**
+- `QUEUED` → `SENT` → `DELIVERED` → `READ`;
+- `FAILED`, com o código da Meta;
+- `SKIPPED`: `NO_CONTACT`, `SETTLED` ou `CHANNEL_DISABLED`.
+
+Cada mudança gera um evento de auditoria (`CriticalAlertWhatsApp*`) sem o número. Desligar o canal faz os alertas na fila serem encerrados como `CHANNEL_DISABLED`. Falhas de credencial ou de template vão para o dead letter (runbook "WhatsApp do crítico").
+
+**Escalonamento ao plantão:** quem roda é o worker, a cada ciclo, só com a política crítica ativa.
+- Se ninguém confirmou o crítico, a cada limiar de `CRITICAL_POLICY_ESCALATION_AFTER_MS` (padrão 15, 30 e 60 min após a liberação) o Hub avisa o próximo degrau de `CRITICAL_POLICY_RECIPIENT_RULES`. Cada degrau é a primeira regra que alcança alguém ainda não avisado.
+- A D3 pede o plantão primeiro. Uma escada que segue isso: `REQUESTER,ON_CALL,RESPONSIBLE,DEPARTMENT_MANAGER`.
+- Plantão: todos os profissionais ativos do setor solicitante marcados com **Colocar no plantão**.
+- Gestor: quem gerencia o setor solicitante, mesmo lotado em outro setor.
+- Só entra quem pode confirmar notificações; ADMIN e VIEWER ficam de fora.
+- Cada pessoa avisada recebe a própria notificação crítica, no Hub e pelo WhatsApp se tiver número cadastrado.
+- Veterinários e equipe de internação passam a ter o paciente no escopo para abrir o resultado. A concessão fica auditada (`CriticalEscalationPatientAccessGranted`).
+- A confirmação de qualquer pessoa interrompe a escalada.
+- Esgotada a escada, o nível fica registrado com a regra `NONE` e o crítico continua pendente no painel de gestão, contado uma vez por resultado.
+- Toda subida gera `CriticalResultEscalated` na auditoria e uma linha `critical.escalation` no log do worker.
+
 ## 7. Papéis de banco separados (PROD-305)
 
 Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:
@@ -304,6 +364,7 @@ O `/readyz` exige que a última migration aplicada seja exatamente a que o códi
 | 001–012 | Aditivas: tabelas, colunas, constraints, gatilhos; a 008 preenche `consumer_type` e a 009 valida dados legados | Backup (§4) | Abortam inteiras no erro (o runner aplica cada uma numa transação, com o ledger); corrigir o dado e rodar de novo |
 | 013, 014 | Cutover coordenado: auditoria e outbox saem do snapshot | Parar `proxy`, `app` e `worker` e fazer backup (§4.1) | Abortam inteiras em divergência; depois de aplicadas, voltar exige o restore |
 | 015 | Cutover coordenado: uma linha por entidade (D-030) | Idem | Aborta inteira em chave inválida, duplicada ou cópia divergente; depois de aplicada, voltar exige o restore |
+| 016 | Aditiva (rolling): a rota do outbox passa a aceitar `notification.whatsapp` (PROD-402) | Backup (§4) | Só troca uma constraint; as linhas existentes continuam válidas. Para voltar, restaurar o backup ou deixar o canal desligado |
 
 **Ensaio de 08/10/2026 (dump representativo):**
 1. Banco na 014 com 12 meses do lote real clonado: 55 mil exames, 95 MB de snapshot.
@@ -316,9 +377,10 @@ Com o volume real, repita o ensaio em homologação antes da janela.
 ## 9. Limites conhecidos
 
 - Quem sabe a senha atual a troca em **Minha conta → Alterar senha** (`POST /session/password/change`, PROD-201): as outras sessões são encerradas. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
+- **Alertas de resultado crítico no WhatsApp (PROD-402):** cada profissional cadastra o próprio celular em **Minha conta → Resultado crítico no WhatsApp**, com consentimento. Ninguém cadastra por outra pessoa. O gestor ou o ADMIN marca quem está de plantão com **Colocar no plantão**, na linha do usuário, que também mostra se a pessoa já tem número. Desativar um acesso tira a pessoa do plantão.
 - RPO/RTO, roteamento de alertas e failover continuam abertos em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
 - **Backup:** o Compose mantém um dump diário, um backup base diário e o arquivamento contínuo de WAL (retenção de 14 dias), e o serviço `offsite` leva tudo para fora do servidor ([BACKUP_RESTORE.md](BACKUP_RESTORE.md), §10 abaixo). O PITR foi ensaiado só em laboratório (`npm run db:backup:drill`); o restore cronometrado no servidor e no destino reais, e o backup do S3, seguem pendentes (PROD-514).
-- **Exames numéricos (hemograma em painel):** não existe tela nem API para criar o template laboratorial versionado; um serviço `NUMERIC_PANEL` só pode ser criado duplicando um que já tenha template. Em uma instalação nova, use serviços narrativos até a decisão D10 definir o catálogo e o carregamento dos templates.
+- **Exames numéricos (hemograma em painel):** a tela de cadastro avulso só cria `NUMERIC_PANEL` duplicando um serviço que já tenha template. O painel versionado (analitos, unidades e faixas) entra pela importação de planilha ([CATALOG_IMPORT.md](CATALOG_IMPORT.md), D-035); faixas por espécie ainda não existem no modelo e seguem como observação.
 - **Códigos de setor:** são texto livre, mas rótulos em português e filas reconhecem `LABORATORY`, `RADIOLOGY`, `ULTRASOUND`, `INPATIENT` e `IT`. Outros códigos funcionam e aparecem como foram digitados.
 - **Logs e memória:** os containers rotacionam logs (`LOG_MAX_SIZE`, `LOG_MAX_FILE`) e têm teto de memória (`APP_MEM_LIMIT`, `WORKER_MEM_LIMIT`, `PROXY_MEM_LIMIT`).
 - O stack de Compose é de host único; escalar `app` horizontalmente é suportado pelo runtime (rate limit e realtime em PostgreSQL), mas exige balanceador fora deste arquivo.

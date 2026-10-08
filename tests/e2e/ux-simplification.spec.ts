@@ -330,7 +330,10 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   const row = page.locator("[data-item-row]").filter({ hasText: patientName });
   await row.getByRole("button", { name: "Receber amostra", exact: true }).click();
   const peek = page.getByRole("dialog", { name: "Hemograma", exact: true });
-  await peek.getByLabel("Accession", { exact: true }).fill(`ACC-${Date.now()}`);
+  // D8: the pre-assigned tube is received with the accession left empty; the demo catalog has no
+  // sample type for the hemogram, so the technician types it.
+  await expect(peek.getByText(/Amostra esperada:/)).toBeVisible();
+  await peek.getByLabel("Tipo de amostra").fill("EDTA");
   await peek.getByRole("button", { name: "Confirmar", exact: true }).click();
   await expect(peek.getByRole("button", { name: "Iniciar processamento", exact: true })).toBeVisible();
   await peek.getByRole("button", { name: "Fechar contexto" }).click();

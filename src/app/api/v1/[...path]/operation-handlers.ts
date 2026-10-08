@@ -4,10 +4,11 @@ import { administrationHandlers } from "./administration-handlers";
 import { clinicalHandlers } from "./clinical-handlers";
 import { operationsHandlers } from "./operations-handlers";
 import { publicHandlers } from "./public-handlers";
+import { webhookHandlers } from "./webhook-handlers";
 import type { PublicHandlerContext, SessionHandlerContext } from "./route-support";
 
 export const API_HANDLER_GROUPS = Object.freeze([
-  publicHandlers, administrationHandlers, clinicalHandlers, operationsHandlers
+  publicHandlers, administrationHandlers, clinicalHandlers, operationsHandlers, webhookHandlers
 ]);
 
 export const API_HANDLER_REGISTRY = createApiHandlerRegistry<PublicHandlerContext, SessionHandlerContext>(

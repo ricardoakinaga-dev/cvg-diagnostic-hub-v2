@@ -2,6 +2,14 @@ import { describe, expect, it } from "vitest";
 import { canAccessResource, hasPermission, hasPermissionForUser, rolePermissions } from "./authorization";
 
 describe("server authorization", () => {
+  it("grants encounter.manage only to veterinarians, the inpatient team and managers", () => {
+    for (const role of ["VETERINARIAN", "INPATIENT_TEAM", "MANAGER"] as const) expect(hasPermission(role, "encounter.manage")).toBe(true);
+    for (const role of ["ADMIN", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"] as const) expect(hasPermission(role, "encounter.manage")).toBe(false);
+    const vet = { id: "user-care", role: "VETERINARIAN" as const, departmentCode: "INPATIENT", patientIds: ["patient-1"] };
+    expect(canAccessResource(vet, "encounter.manage", { patientId: "patient-1" })).toBe(true);
+    expect(canAccessResource(vet, "encounter.manage", { patientId: "patient-2" })).toBe(false);
+  });
+
   it("grants lab operations only to a lab role", () => {
     expect(hasPermission("LAB_TECH", "sample.receive")).toBe(true);
     expect(hasPermission("VETERINARIAN", "sample.receive")).toBe(false);

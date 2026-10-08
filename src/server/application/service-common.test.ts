@@ -129,7 +129,6 @@ describe("shared application scope helpers", () => {
       items: [{ serviceId: "service-hemogram" }]
     }, { idempotencyKey: "service-common-result-request" });
     const received = await service.receiveSample(laboratory, [request.items[0].id], {
-      accessionCode: "ACC-SERVICE-COMMON-RESULT",
       sampleType: "EDTA",
       expectedVersion: request.items[0].version,
       idempotencyKey: "service-common-result-sample"

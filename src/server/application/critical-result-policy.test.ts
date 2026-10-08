@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   criticalPolicyFromEnvironment,
   defaultCriticalResultPolicy,
+  nextCriticalRecipients,
   planCriticalEscalation,
   resolveCriticalRecipients,
   validateCriticalResultPolicy,
@@ -123,5 +124,37 @@ describe("critical result policy", () => {
     expect(defaults.escalationAfterMs).toEqual([900_000, 1_800_000, 3_600_000]);
     expect(defaults.recipientRules).toContain("ADMIN_FALLBACK");
     expect(() => validateCriticalResultPolicy(defaults, new Date("2026-09-05T00:00:00.000Z"))).not.toThrow();
+  });
+});
+
+describe("escalation ladder (PROD-402)", () => {
+  const people: CriticalRecipientCandidate[] = [
+    { userId: "requester", role: "VETERINARIAN", departmentCode: "INPATIENT", active: true },
+    { userId: "on-call-b", role: "VETERINARIAN", departmentCode: "INPATIENT", active: true, onCall: true },
+    { userId: "on-call-a", role: "INPATIENT_TEAM", departmentCode: "inpatient", active: true, onCall: true },
+    { userId: "on-call-away", role: "VETERINARIAN", departmentCode: "LABORATORY", active: true, onCall: true },
+    { userId: "on-call-inactive", role: "VETERINARIAN", departmentCode: "INPATIENT", active: false, onCall: true },
+    { userId: "manager", role: "MANAGER", departmentCode: "IT", active: true, managedDepartmentCodes: ["INPATIENT"] }
+  ];
+  const context = { requesterId: "requester", departmentCode: "INPATIENT", candidates: people };
+  const ladder = policy({ recipientRules: ["REQUESTER", "RESPONSIBLE", "ON_CALL", "DEPARTMENT_MANAGER", "ADMIN_FALLBACK"] });
+
+  it("returns the first rule that reaches someone new, with every on-call professional of the department", () => {
+    expect(nextCriticalRecipients(context, ladder, new Set())).toEqual({ rule: "REQUESTER", recipients: [people[0]] });
+    const onCall = nextCriticalRecipients(context, ladder, new Set(["requester"]));
+    expect(onCall?.rule).toBe("ON_CALL");
+    expect(onCall?.recipients.map((candidate) => candidate.userId)).toEqual(["on-call-a", "on-call-b"]);
+    // The manager works in another department but manages this one.
+    expect(nextCriticalRecipients(context, ladder, new Set(["requester", "on-call-a", "on-call-b"]))).toEqual({ rule: "DEPARTMENT_MANAGER", recipients: [people[5]] });
+  });
+
+  it("reaches a single person per step when distinct recipients are not required, and nobody once the ladder is exhausted", () => {
+    expect(nextCriticalRecipients(context, policy({ ...ladder, requireDistinctRecipients: false }), new Set(["requester"]))?.recipients.map((candidate) => candidate.userId)).toEqual(["on-call-a"]);
+    expect(nextCriticalRecipients(context, ladder, new Set(["requester", "on-call-a", "on-call-b", "manager"]))).toBeUndefined();
+    expect(() => nextCriticalRecipients(context, policy({ recipientRules: [] }), new Set())).toThrow("CRITICAL_POLICY_RECIPIENT_RULES_EMPTY");
+  });
+
+  it("keeps the single on-call recipient of the release-time resolution", () => {
+    expect(resolveCriticalRecipients(context, policy({ recipientRules: ["ON_CALL", "ADMIN_FALLBACK"] })).map((candidate) => candidate.userId)).toEqual(["on-call-a"]);
   });
 });

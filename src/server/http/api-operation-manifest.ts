@@ -3,7 +3,7 @@ import type { Permission } from "@cvg/contracts";
 export type ApiMethod = "DELETE" | "GET" | "PATCH" | "POST" | "PUT";
 export type ApiAuthentication = "public" | "session";
 export type ApiMediaType = "application/json" | "application/pdf" | "image/jpeg" | "image/png" | "text/event-stream" | "text/plain";
-export type ApiRequestHeaderName = "x-correlation-id" | "x-csrf-token" | "idempotency-key" | "if-match" | "last-event-id" | "x-duplicate-override";
+export type ApiRequestHeaderName = "x-correlation-id" | "x-csrf-token" | "idempotency-key" | "if-match" | "last-event-id" | "x-duplicate-override" | "x-hub-signature-256";
 
 export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getLiveness: "LivenessData",
@@ -11,9 +11,11 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   login: "LoginData",
   getCurrentSession: "CurrentSessionData",
   logout: "LogoutData",
+  receiveWhatsAppStatus: "WhatsAppWebhookReceipt",
   reauthenticate: "ReauthenticationData",
   changeInitialPassword: "LoginData",
   changeOwnPassword: "LoginData",
+  updateOwnAlertContact: "CurrentSessionData",
   listUsers: "ManagedUserList",
   listSessions: "ManagedSessionList",
   revokeSession: "ManagedSession",
@@ -21,9 +23,11 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   regenerateUserPassword: "ManagedUserCreation",
   deactivateUser: "ManagedUser",
   updateUserRole: "ManagedUser",
+  updateUserOnCall: "ManagedUser",
   listDiagnosticServices: "DiagnosticServiceList",
   getResultTemplate: "DiagnosticServiceResultTemplate",
   createDiagnosticService: "DiagnosticService",
+  importDiagnosticServices: "CatalogImportReport",
   updateDiagnosticService: "DiagnosticService",
   listReasonCodes: "ReasonCodeList",
   listClinicalReasons: "ReasonCodeList",
@@ -34,6 +38,8 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getPatient: "Patient",
   getPatientDiagnostics: "PatientDiagnostics",
   listPatientEncounters: "EncounterList",
+  openPatientEncounter: "EncounterOpenResult",
+  closeEncounter: "EncounterCloseResult",
   getEncounter: "Encounter",
   getAdmission: "Admission",
   updateAdmissionContext: "AdmissionContextCommandResult",
@@ -53,6 +59,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   requestDiagnosticItemRecollection: "RecollectionCommandResult",
   createDiagnosticItemResult: "ResultCommandResult",
   receiveReplacementSample: "SampleCommandResult",
+  getSampleLabel: "SampleLabel",
   rescheduleProcedure: "ProcedureRescheduleCommandResult",
   createAttachmentUploadSession: "AttachmentSessionResult",
   uploadAttachmentContent: "AttachmentFinalizationResult",
@@ -119,6 +126,10 @@ export type ApiConditionalRequestRule = Readonly<{
 export type ApiAuthorizationCondition =
   | "temporary password must be replaced before any operational action"
   | "current password must be confirmed; every session of the user is rotated"
+  | "available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured"
+  | "X-Hub-Signature-256 must be the HMAC-SHA256 of the exact body under WHATSAPP_APP_SECRET"
+  | "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"
+  | "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"
   | "only active reasons for clinical actions authorized in the actor department are returned"
   | "granting ADMIN requires recent reauthentication"
   | "deactivating ADMIN requires recent reauthentication"
@@ -140,6 +151,8 @@ export type ApiAuthorizationCondition =
   | "the result state selects result.view or result.draft.edit_own and attachment.view is always required"
   | "notification must belong to the actor; a manager may use authorized request context"
   | "role must be MANAGER"
+  | "patient must be active and have no open encounter"
+  | "encounter must be OPEN; pending diagnostic items stay with the requester"
   | "delegated MANAGER only sees operational-role targets in managed departments"
   | "delegated MANAGER only creates operational-role targets in managed departments"
   | "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department"
@@ -201,6 +214,7 @@ const IDEMPOTENCY_REQUIRED = { name: "idempotency-key", required: true } as cons
 const IF_MATCH = { name: "if-match", required: false } as const;
 const LAST_EVENT_ID = { name: "last-event-id", required: false } as const;
 const DUPLICATE_OVERRIDE = { name: "x-duplicate-override", required: false } as const;
+const HUB_SIGNATURE = { name: "x-hub-signature-256", required: true } as const;
 
 const PUBLIC_READ_ERRORS = [429, 500] as const;
 const PUBLIC_COMMAND_ERRORS = [400, 401, 429, 500] as const;
@@ -318,18 +332,21 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/session/reauth", "reauthenticate", "Refresh privileged-action authentication", "Session", jsonBody("ReauthenticationRequest"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
   command("POST", "/session/password", "changeInitialPassword", "Replace a temporary password and rotate sessions", "Session", jsonBody("InitialPasswordRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
   command("POST", "/session/password/change", "changeOwnPassword", "Change the signed-in user's password and rotate sessions", "Session", jsonBody("PasswordChangeRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
+  command("PUT", "/session/alert-contact", "updateOwnAlertContact", "Register or remove the signed-in user's WhatsApp number for critical-result alerts", "Session", jsonBody("AlertContactUpdate"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
 
   read("/users", "listUsers", "List managed users", "Administration"),
   read("/sessions", "listSessions", "List managed sessions", "Administration"),
   command("POST", "/users", "createUser", "Create a managed user", "Administration", jsonBody("ManagedUserCreate"), { headers: [IDEMPOTENCY_REQUIRED], successStatus: 201 }),
   command("DELETE", "/users/{userId}", "deactivateUser", "Deactivate a managed user", "Administration", jsonBody("ManagedUserDeactivate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/users/{userId}/roles", "updateUserRole", "Update a managed user's role", "Administration", jsonBody("UserRoleUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
+  command("PUT", "/users/{userId}/on-call", "updateUserOnCall", "Mark or unmark a managed user as on call for critical-result escalation", "Administration", jsonBody("UserOnCallUpdate"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/users/{userId}/password", "regenerateUserPassword", "Generate a one-time temporary password and revoke target sessions", "Administration", jsonBody("ManagedUserPasswordReset"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "managedUser.version" }),
   command("POST", "/sessions/{sessionId}/revoke", "revokeSession", "Revoke a managed session", "Administration", jsonBody("SessionRevoke"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
 
   read("/diagnostic-services", "listDiagnosticServices", "List diagnostic services", "Catalog", { queryParameters: [{ name: "includeInactive", schema: "Boolean" }] }),
   read("/diagnostic-services/{serviceId}/result-template", "getResultTemplate", "Read the configured laboratory result template", "Catalog"),
   command("POST", "/diagnostic-services", "createDiagnosticService", "Create a diagnostic service", "Catalog", jsonBody("DiagnosticServiceCreate"), { headers: [IDEMPOTENCY], successStatus: 201 }),
+  command("POST", "/diagnostic-services/import", "importDiagnosticServices", "Validate or apply a catalog import sheet", "Catalog", jsonBody("CatalogImportRequest"), { headers: [IDEMPOTENCY_REQUIRED] }),
   command("PATCH", "/diagnostic-services/{serviceId}", "updateDiagnosticService", "Update a diagnostic service", "Catalog", jsonBody("DiagnosticServicePatch"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "diagnosticService.version" }),
   read("/reason-codes", "listReasonCodes", "List reason codes", "Catalog"),
   read("/clinical-reasons", "listClinicalReasons", "List active reasons for authorized clinical actions", "Catalog"),
@@ -341,7 +358,9 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/patients/{patientId}", "getPatient", "Read a patient", "Patients"),
   read("/patients/{patientId}/diagnostics", "getPatientDiagnostics", "List a patient's diagnostics", "Patients", { queryParameters: pagination }),
   read("/patients/{patientId}/encounters", "listPatientEncounters", "List a patient's encounters", "Patients"),
+  command("POST", "/patients/{patientId}/encounters", "openPatientEncounter", "Open a new encounter for a registered patient", "Patients", jsonBody("EncounterOpen"), { headers: [IDEMPOTENCY_REQUIRED], successStatus: 201 }),
   read("/encounters/{encounterId}", "getEncounter", "Read an encounter", "Patients"),
+  command("POST", "/encounters/{encounterId}/close", "closeEncounter", "Close an open encounter without cancelling pending exams", "Patients", jsonBody("EncounterClose"), { headers: [IDEMPOTENCY_REQUIRED] }),
   read("/admissions/{admissionId}", "getAdmission", "Read an admission", "Patients"),
   command("POST", "/admissions/{admissionId}/context", "updateAdmissionContext", "Apply an approved admission context transition", "Patients", jsonBody("AdmissionContextCommand"), {
     headers: [IDEMPOTENCY_REQUIRED, IF_MATCH],
@@ -379,6 +398,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   command("POST", "/diagnostic-items/{itemId}/request-recollection", "requestDiagnosticItemRecollection", "Request recollection for a diagnostic item", "Diagnostics", jsonBody("RecollectionCommand"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "diagnosticItem.version" }),
   command("POST", "/diagnostic-items/{itemId}/results", "createDiagnosticItemResult", "Create a result draft for a diagnostic item", "Results", jsonBody("ResultDraftCommand"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "diagnosticItem.version", successStatus: 201, errorStatuses: JSON_COMMAND_WITH_POLICY_ERRORS }),
 
+  read("/samples/{sampleId}/label", "getSampleLabel", "Read the printable label of a sample", "Diagnostics"),
   command("POST", "/samples/{sampleId}/receive-replacement", "receiveReplacementSample", "Receive a replacement sample", "Diagnostics", jsonBody("SampleCommand"), { headers: [IDEMPOTENCY_REQUIRED, IF_MATCH], concurrencyResource: "linkedDiagnosticItem.version" }),
   command("POST", "/procedures/{procedureId}/reschedule", "rescheduleProcedure", "Reschedule a procedure", "Diagnostics", jsonBody("ScheduleCommand"), { headers: [IDEMPOTENCY, IF_MATCH], concurrencyResource: "procedure.version" }),
 
@@ -419,6 +439,13 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/outbox/dead-letters", "listDeadLetters", "List outbox dead-letter messages", "Operations", { queryParameters: [{ name: "limit", schema: "Limit" }] }),
   command("POST", "/outbox/dead-letters/{messageId}/reprocess", "reprocessDeadLetter", "Reprocess an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
   command("POST", "/outbox/dead-letters/{messageId}/discard", "discardDeadLetter", "Discard an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
+  read("/webhooks/whatsapp", "verifyWhatsAppWebhook", "Answer Meta's WhatsApp webhook verification challenge", "Webhooks", {
+    authentication: "public", successMediaTypes: ["text/plain"], errorStatuses: [403, 404, 429, 500],
+    queryParameters: [{ name: "hub.mode", required: true, schema: "WebhookMode" }, { name: "hub.verify_token", required: true, schema: "WebhookVerifyToken" }, { name: "hub.challenge", required: true, schema: "WebhookChallenge" }]
+  }),
+  command("POST", "/webhooks/whatsapp", "receiveWhatsAppStatus", "Record WhatsApp delivery reports of critical-result alerts", "Webhooks", jsonBody("WhatsAppWebhookEvent"), {
+    authentication: "public", headers: [HUB_SIGNATURE], errorStatuses: [400, 401, 404, 415, 429, 500]
+  }),
   read("/realtime/events", "streamRealtimeEvents", "Stream authorized realtime events", "Realtime", {
     queryParameters: [{ name: "snapshot", schema: "Boolean" }], requestHeaders: [LAST_EVENT_ID],
     successMediaTypes: ["text/event-stream"], successHeaders: ["x-correlation-id", "cache-control", "connection"],
@@ -461,12 +488,14 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   reauthenticate: authorization([], SESSION),
   changeInitialPassword: authorization([], [...SESSION, "temporary password must be replaced before any operational action"]),
   changeOwnPassword: authorization([], [...SESSION, "current password must be confirmed; every session of the user is rotated"]),
+  updateOwnAlertContact: authorization([], [...SESSION, "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"]),
   listClinicalReasons: authorization([], [...ROLE, "only active reasons for clinical actions authorized in the actor department are returned"]),
   listUsers: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only sees operational-role targets in managed departments"]),
   listSessions: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
   createUser: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only creates operational-role targets in managed departments", "granting ADMIN requires recent reauthentication"]),
   deactivateUser: authorization(["user_role.manage"], [...ROLE, "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments", "deactivating ADMIN requires recent reauthentication"]),
   updateUserRole: authorization(["user_role.manage"], [...ROLE, "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department", "granting or removing ADMIN requires recent reauthentication"]),
+  updateUserOnCall: authorization(["user_role.manage"], [...ROLE, "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"]),
   regenerateUserPassword: authorization(["user_role.manage"], [...ROLE, "actor cannot reset self; target must be active and within managed role and department scope", "regenerating an ADMIN credential requires recent reauthentication"]),
   revokeSession: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
   listDiagnosticServices: authorization([], [...ROLE, "includeInactive=true substitutes service.catalog.manage for service.catalog.view", "MANAGER catalog visibility is limited to delegated departments"], false, [
@@ -476,6 +505,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getResultTemplate: authorization(["service.catalog.view"], SERVICE),
   createDiagnosticService: authorization(["service.catalog.manage"], DEPARTMENT),
   updateDiagnosticService: authorization(["service.catalog.manage"], DEPARTMENT),
+  importDiagnosticServices: authorization(["service.catalog.manage"], DEPARTMENT),
   listReasonCodes: authorization(["reason_code.manage"], ROLE),
   createReasonCode: authorization(["reason_code.manage"], ROLE),
   updateReasonCode: authorization(["reason_code.manage"], ROLE),
@@ -484,6 +514,8 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getPatient: authorization(["patient.view"], PATIENT),
   getPatientDiagnostics: authorization(["patient.view", "diagnostic.timeline.view"], PATIENT),
   listPatientEncounters: authorization(["encounter.view"], PATIENT),
+  openPatientEncounter: authorization(["encounter.manage"], [...PATIENT, "patient must be active and have no open encounter"]),
+  closeEncounter: authorization(["encounter.manage"], [...PATIENT, "encounter must be OPEN; pending diagnostic items stay with the requester"]),
   getEncounter: authorization(["encounter.view"], PATIENT),
   getAdmission: authorization(["admission.view"], PATIENT),
   updateAdmissionContext: authorization(["admission.context.manage"], [...PATIENT, "current and destination departments must remain inside manager delegation and responsibility never grants patient scope"]),
@@ -505,6 +537,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   requestDiagnosticItemRecollection: authorization(["sample.recollection.request"], DEPARTMENT),
   createDiagnosticItemResult: authorization(["result.draft.create"], SERVICE),
   receiveReplacementSample: authorization(["sample.replacement.receive"], DEPARTMENT),
+  getSampleLabel: authorization(["item.view"], REQUEST),
   rescheduleProcedure: authorization(["procedure.reschedule"], DEPARTMENT),
   createAttachmentUploadSession: authorization(["attachment.upload_session"], SERVICE),
   uploadAttachmentContent: authorization(["attachment.finalize"], SERVICE),
@@ -536,22 +569,24 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
-  streamRealtimeEvents: authorization(["realtime.connect"], ROLE)
+  streamRealtimeEvents: authorization(["realtime.connect"], ROLE),
+  verifyWhatsAppWebhook: authorization([], ["available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured"]),
+  receiveWhatsAppStatus: authorization([], ["available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured", "X-Hub-Signature-256 must be the HMAC-SHA256 of the exact body under WHATSAPP_APP_SECRET"])
 } satisfies Record<string, ApiAuthorization>);
 
 const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getLiveness: [429, 500], getReadiness: [429, 500, 503], getMetrics: [401, 404, 429, 500],
   login: [400, 401, 415, 429, 500], getCurrentSession: [401, 429, 500], logout: [401, 403, 429, 500],
-  changeInitialPassword: [400, 401, 403, 409, 415, 429, 500], changeOwnPassword: [400, 401, 403, 415, 429, 500], listClinicalReasons: [401, 403, 404, 429, 500],
+  changeInitialPassword: [400, 401, 403, 409, 415, 429, 500], changeOwnPassword: [400, 401, 403, 415, 429, 500], updateOwnAlertContact: [400, 401, 403, 415, 429, 500], listClinicalReasons: [401, 403, 404, 429, 500],
   reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500], listSessions: [401, 404, 429, 500],
   createUser: [400, 401, 403, 404, 409, 415, 429, 500], deactivateUser: [400, 401, 403, 404, 409, 415, 429, 500],
   regenerateUserPassword: [400, 401, 403, 404, 409, 415, 429, 500],
-  updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], revokeSession: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
-  getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
+  updateUserRole: [400, 401, 403, 404, 409, 415, 429, 500], updateUserOnCall: [400, 401, 403, 404, 409, 415, 429, 500], revokeSession: [400, 401, 403, 404, 409, 415, 429, 500], listDiagnosticServices: [400, 401, 404, 429, 500],
+  getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], importDiagnosticServices: [400, 401, 403, 404, 409, 415, 422, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
   createPatient: [400, 401, 404, 409, 415, 429, 500], getPatient: [401, 404, 429, 500], getPatientDiagnostics: [400, 401, 404, 429, 500],
-  listPatientEncounters: [401, 404, 429, 500], getEncounter: [401, 404, 429, 500], getAdmission: [401, 404, 429, 500],
+  listPatientEncounters: [401, 404, 429, 500], openPatientEncounter: [400, 401, 404, 409, 415, 429, 500], closeEncounter: [400, 401, 404, 409, 415, 429, 500], getEncounter: [401, 404, 429, 500], getAdmission: [401, 404, 429, 500],
   updateAdmissionContext: [400, 401, 403, 404, 409, 415, 422, 429, 500, 503],
   listDiagnosticRequests: [400, 401, 404, 429, 500], createDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],
   getDiagnosticRequest: [401, 404, 429, 500], cancelDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],
@@ -561,6 +596,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   scheduleDiagnosticItem: [400, 401, 403, 404, 409, 415, 429, 500], startDiagnosticItemProcedure: [400, 401, 403, 404, 409, 415, 429, 500],
   markDiagnosticItemPerformed: [400, 401, 403, 404, 409, 415, 429, 500], requestDiagnosticItemRecollection: [400, 401, 403, 404, 409, 415, 429, 500],
   createDiagnosticItemResult: [400, 401, 403, 404, 409, 415, 422, 429, 500], receiveReplacementSample: [400, 401, 403, 404, 409, 415, 429, 500],
+  getSampleLabel: [401, 404, 429, 500],
   rescheduleProcedure: [400, 401, 403, 404, 409, 415, 429, 500], createAttachmentUploadSession: [400, 401, 403, 404, 409, 415, 429, 500],
   uploadAttachmentContent: [400, 401, 403, 404, 409, 415, 429, 500, 503], finalizeAttachment: [400, 401, 403, 404, 409, 415, 422, 429, 500],
   downloadAttachment: [401, 404, 429, 500, 503], getResult: [401, 404, 429, 500], listResultVersions: [401, 404, 429, 500],
@@ -570,7 +606,8 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getReport: [401, 404, 429, 500], listAuditEvents: [400, 401, 404, 429, 500], listNotifications: [400, 401, 404, 429, 500],
   acknowledgeNotification: [400, 401, 403, 404, 409, 415, 429, 500], listQueueItems: [400, 401, 404, 429, 500],
   searchDiagnostics: [400, 401, 404, 429, 500], getTimeline: [400, 401, 404, 429, 500], getDashboard: [401, 404, 429, 500],
-  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500]
+  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500],
+  verifyWhatsAppWebhook: [403, 404, 429, 500], receiveWhatsAppStatus: [400, 401, 404, 415, 429, 500]
 } satisfies Record<string, ReadonlyArray<number>>);
 
 export const API_OPERATIONS: ReadonlyArray<ApiOperation> = Object.freeze(operations.map((operation) => {

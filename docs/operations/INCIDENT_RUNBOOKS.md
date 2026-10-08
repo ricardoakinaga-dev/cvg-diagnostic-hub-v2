@@ -56,6 +56,24 @@ Stop criteria: qualquer divergência, migration drift, autoridade ambígua, rest
 5. Para notificação crítica, usar o fallback institucional e registrar acknowledgement fora do sistema se a política aprovada exigir.
 6. Após a recuperação, confirmar que a entrega é idempotente e que o estado clínico não foi duplicado.
 
+## WhatsApp do crítico (PROD-402)
+
+O WhatsApp é redundante: o alerta do Hub e a confirmação continuam valendo. Nunca procure o número de alguém no banco nem nos logs; ele não aparece em auditoria, outbox ou métricas.
+
+1. Ver o campo `whatsapp` das notificações críticas e os eventos `CriticalAlertWhatsApp*` na auditoria.
+2. Dead letters de rota `notification.whatsapp` (`lastError`):
+   - `WHATSAPP_API_190`: token expirado ou revogado. Gerar um token novo, atualizar `WHATSAPP_ACCESS_TOKEN`, reiniciar o worker e reprocessar.
+   - `WHATSAPP_API_132001` ou `132015`: template inexistente, não aprovado ou pausado. Corrigir na Meta antes de reprocessar.
+   - `WHATSAPP_API_132000`: o template não tem exatamente um parâmetro no corpo e um no botão.
+   - `WHATSAPP_TIMEOUT` ou `WHATSAPP_NETWORK`: conferir a saída para `graph.facebook.com:443`.
+3. `FAILED` com `WHATSAPP_API_131026` não vai para o dead letter: o número não usa WhatsApp. Peça à pessoa para corrigir o número em **Minha conta**.
+4. Webhook recusando (401 em `/api/v1/webhooks/whatsapp`): conferir se `WHATSAPP_APP_SECRET` é o app secret atual. Um 404 indica canal desligado ou segredo ausente.
+5. O crítico não escalou:
+   - conferir se o worker tem a política (`CRITICAL_POLICY_ENABLED`, `VERSION`, `APPROVAL_REF`, `APPROVED_AT` e os limiares);
+   - procurar `critical.escalation` ou `critical.escalation_error` no log do worker;
+   - ver os eventos `CriticalResultEscalated` da notificação do solicitante. A regra `NONE` quer dizer que ninguém do setor estava de plantão ou gerenciando.
+6. Para desligar o canal: `WHATSAPP_ENABLED=false` no app e no worker. Os alertas na fila são encerrados como `SKIPPED/CHANNEL_DISABLED`, e o crítico segue só no Hub.
+
 ## Storage, upload ou scanner AV indisponível
 
 1. Marcar a operação como degradada e não liberar resultado que dependa de anexo não verificado.

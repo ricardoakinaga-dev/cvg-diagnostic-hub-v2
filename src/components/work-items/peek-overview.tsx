@@ -7,6 +7,7 @@ import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "@/components/
 import { Icon } from "@/components/ui-icons";
 import { canUseWorkflowAction, WorkflowAction, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
 import { eventLabel, eventStateLabel } from "@/components/request-detail";
+import { SampleLabelLink } from "@/components/sample-label";
 import { useDialogFocus } from "@/components/use-dialog-focus";
 import { Avatar, DepartmentIcon, PriorityIcon } from "./icons";
 import { StatePill, WorkItemKey } from "./properties";
@@ -141,6 +142,7 @@ export function PeekOverview({ item, role, initialAction, onClose, onChanged, on
           {operation && <Property icon="attention" label="Escalonamento"><span className={`escalation-badge escalation-${operation.escalationLevel.toLowerCase()}`}>{escalationLabels[operation.escalationLevel]}</span></Property>}
           <Property icon="requests" label="Protocolo"><Link className="peek-link mono" href={`/requests/${item.requestId}#${item.id}`}>{item.requestCode}</Link></Property>
           <Property icon="calendar" label="Solicitado em">{formatDateTime(item.createdAt)}</Property>
+          {item.currentSampleId && <Property icon="hash" label="Amostra"><SampleLabelLink sampleId={item.currentSampleId} /></Property>}
           {item.currentResultId && <Property icon="check" label="Resultado"><Link className="peek-link" href={`/results/${item.currentResultId}`}>Abrir resultado <Icon name="external" size={12} /></Link></Property>}
         </dl>
       </section>

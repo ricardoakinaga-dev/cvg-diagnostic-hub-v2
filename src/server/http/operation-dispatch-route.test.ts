@@ -61,7 +61,7 @@ async function releasedFixture() {
   const f = await fixture();
   const request = await f.service.createRequest(f.vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "released-request" });
   const item = request.items[0];
-  const received = await f.service.receiveSample(f.lab, [item.id], { accessionCode: "ACC-DISPATCH", sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "received" });
+  const received = await f.service.receiveSample(f.lab, [item.id], { sampleType: "EDTA", expectedVersion: item.version, idempotencyKey: "received" });
   const started = await f.service.startProcessing(f.lab, item.id, { expectedVersion: received.items[0].version, idempotencyKey: "started" });
   const draft = await f.service.createResultDraft(f.lab, item.id, { narrative: "Resultado sintético completo.", content: syntheticHemogramContent(), expectedVersion: started.item.version, idempotencyKey: "draft" });
   const released = await f.service.releaseResult(f.lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "released" });
@@ -310,11 +310,11 @@ describe("manifest dispatcher through real clinical HTTP commands", () => {
     const f = await fixture();
     const request = await f.service.createRequest(f.vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "recollection-request" });
     const itemId = request.items[0].id;
-    const received = await f.service.receiveSample(f.lab, [itemId], { accessionCode: "ACC-ORIGINAL", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "original-sample" });
+    const received = await f.service.receiveSample(f.lab, [itemId], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "original-sample" });
     const lab = await f.headers("lab@cvg.local");
     expect((await command(["diagnostic-items", itemId, "request-recollection"], { expectedVersion: received.items[0].version }, lab)).status).toBe(400);
     const recollection = await data<Awaited<ReturnType<typeof f.service.requestRecollectionForItem>>>(await command(["diagnostic-items", itemId, "request-recollection"], { reasonCode: "HEMOLYZED", expectedVersion: received.items[0].version }, lab));
-    const replacement = await data<Awaited<ReturnType<typeof f.service.receiveReplacement>>>(await command(["samples", recollection.replacement.id, "receive-replacement"], { accessionCode: "ACC-REPLACEMENT", sampleType: "EDTA", expectedVersion: recollection.items[0].version }, lab));
+    const replacement = await data<Awaited<ReturnType<typeof f.service.receiveReplacement>>>(await command(["samples", recollection.replacement.id, "receive-replacement"], { sampleType: "EDTA", expectedVersion: recollection.items[0].version }, lab));
     expect(replacement.sample.replacesSampleId).toBe(received.sample.id);
     await data(await command(["diagnostic-items", itemId, "reject"], { reasonCode: "UNPROCESSABLE", expectedVersion: replacement.items[0].version }, lab));
     expect(f.store.getState().items.find((entry) => entry.id === itemId)?.status).toBe("REJECTED");

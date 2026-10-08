@@ -491,7 +491,7 @@ describe("Relational sample/accession lineage on disposable PostgreSQL", () => {
         await assertClean();
 
         const replacement = await service.receiveReplacement(labActor, recollection.replacement.id, {
-          accessionCode: "PG-WORKFLOW-002",
+          accessionCode: recollection.replacement.accessionCode,
           sampleType: "EDTA",
           expectedVersion: recollection.items[0].version,
           idempotencyKey: "pg-workflow-replacement"
@@ -509,7 +509,7 @@ describe("Relational sample/accession lineage on disposable PostgreSQL", () => {
             id: replacement.sample.id,
             status: "RECEIVED",
             version: 2,
-            accessionCode: "PG-WORKFLOW-002",
+            accessionCode: recollection.replacement.accessionCode,
             replacesSampleId: received.sample.id
           })
         ]));

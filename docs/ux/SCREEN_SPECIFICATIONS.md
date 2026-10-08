@@ -59,6 +59,7 @@ Cada tela define objetivo, usuário, dados e estados. Textos são exemplos em `p
 - Empty: “Nenhum paciente atribuído neste momento.”
 - Error/degraded: last successful refresh and retry.
 - Mobile: patient cards; no dense unfiltered list.
+- Patient page (PROD-406): "Atendimentos" panel with the open encounter and the history; "Novo atendimento" when none is open and "Encerrar atendimento" (confirmation with optional reason) when one is, both role-gated; status is always written ("Em aberto", "Encerrado em …").
 
 ## S-06 — Result entry/release
 

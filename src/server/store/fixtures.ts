@@ -141,3 +141,16 @@ export function createDemoState(password?: string): StoreState {
     protocolSequence: 1
   };
 }
+
+/**
+ * Turns a request created with pre-assigned samples (PROD-405) into one created
+ * before that feature: drops its EXPECTED samples and the item links. Used by
+ * tests and tooling that exercise the legacy receipt path.
+ */
+export function withoutPreassignedSamples(state: StoreState, requestId: string): StoreState {
+  return {
+    ...state,
+    samples: state.samples.filter((sample) => !(sample.requestId === requestId && sample.status === "EXPECTED" && !sample.replacesSampleId)),
+    items: state.items.map((item) => item.requestId === requestId ? { ...item, currentSampleId: undefined } : item)
+  };
+}

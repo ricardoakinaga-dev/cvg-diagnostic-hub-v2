@@ -109,7 +109,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("015_runtime_entity_rows");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("016_outbox_whatsapp_route");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -171,7 +171,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["015_runtime_entity_rows"],
+      applied: ["016_outbox_whatsapp_route"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -584,5 +584,18 @@ describe("015 runtime entity rows migration", () => {
     // jsonb::text of a string is its JSON encoding, so the concatenation equals JSON.stringify([actorId, scope, key]).
     expect(sql).toContain("'[' || (entity->'actorId')::text || ',' || (entity->'scope')::text || ',' || (entity->'key')::text || ']'");
     expect(sql).toMatch(/WHEN jsonb_typeof\(entity->'id'\) = 'string' THEN entity->>'id'/);
+  });
+});
+
+describe("016 outbox WhatsApp route migration", () => {
+  it("widens only the notification route check and keeps the previous app's rows valid", async () => {
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations/016_outbox_whatsapp_route.sql"), "utf8");
+
+    expect(isCoordinatedCutover(sql)).toBe(false);
+    expect(sql).toMatch(/DROP CONSTRAINT outbox_messages_route_consistency_check;/);
+    expect(sql).toMatch(/consumer_type = 'NOTIFICATION_DELIVERY' AND routing_key IN \('notification\.in_app', 'notification\.whatsapp'\)/);
+    expect(sql).toMatch(/consumer_type = 'DOMAIN_EVENT' AND routing_key LIKE 'domain\.%'/);
+    expect(sql).toMatch(/UPDATE relational_schema_markers SET schema_version = '016_outbox_whatsapp_route'/i);
+    expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE|DELETE FROM|UPDATE outbox_messages)\b/i);
   });
 });

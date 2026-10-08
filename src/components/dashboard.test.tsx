@@ -108,6 +108,29 @@ describe("RequestDialog patient search", () => {
     vi.restoreAllMocks();
   });
 
+  it("lists only open encounters and points to the patient page when none is open", async () => {
+    const closed = { ...encounters[0], id: "encounter-thor-1", externalId: "ATD-THOR-001", status: "CLOSED", closedAt: "2026-08-20T10:00:00.000Z" };
+    let returned: unknown[] = [closed, encounters[0]];
+    mockDashboardResponses((path) => path === "/patients/patient-thor/encounters" ? Promise.resolve(returned) : undefined);
+    renderRequestDialog();
+    const select = screen.getByRole("combobox", { name: "Paciente" });
+    await waitFor(() => expect(select).toBeEnabled());
+    fireEvent.change(select, { target: { value: "patient-thor" } });
+    await screen.findByRole("option", { name: /ATD-THOR-002/ });
+    expect(screen.queryByRole("option", { name: /ATD-THOR-001/ })).not.toBeInTheDocument();
+    expect(screen.queryByText(/não tem atendimento aberto/)).not.toBeInTheDocument();
+
+    cleanup();
+    returned = [closed];
+    renderRequestDialog();
+    const secondSelect = screen.getByRole("combobox", { name: "Paciente" });
+    await waitFor(() => expect(secondSelect).toBeEnabled());
+    fireEvent.change(secondSelect, { target: { value: "patient-thor" } });
+    expect(await screen.findByText(/Este paciente não tem atendimento aberto\./)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Abra um novo atendimento na página do paciente." })).toHaveAttribute("href", "/patients/patient-thor/diagnostics");
+    expect(screen.queryByRole("option", { name: /ATD-THOR-001/ })).not.toBeInTheDocument();
+  });
+
   it("finds and submits an authorized patient beyond the first 100 using an encoded server query", async () => {
     const first100 = Array.from({ length: 100 }, (_, index) => ({ ...patients[0], id: `patient-${index}`, displayName: `Paciente ${index}` }));
     const remotePatient = { ...patients[0], id: "patient-101", displayName: "Amora & 101", externalId: "HIS-101" };

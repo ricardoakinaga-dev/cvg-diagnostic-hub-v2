@@ -30,6 +30,8 @@
 - `Admission`: período e localização (department/ward/bed) associados a encounter; transferências são eventos.
 - `ExternalReference`: `source_system`, `external_id`, `entity_type`, unique por source/entity.
 
+Ciclo de vida do `Encounter` (D9, D-036): nasce `OPEN` no cadastro do paciente ou em `POST /patients/{id}/encounters` e passa a `CLOSED` em `POST /encounters/{id}/close` (ou na alta aprovada da internação). Um paciente tem no máximo um atendimento `OPEN`; abrir outro exige encerrar o atual (`409 ENCOUNTER_ALREADY_OPEN`). Encerrar dá alta à internação aberta do atendimento, mas **não cancela exames**: os itens pendentes continuam com quem solicitou e o encerramento audita quantos eram (`pendingItems`). Solicitar exame em atendimento `CLOSED` é recusado (`409 ENCOUNTER_CLOSED`).
+
 Invariant: request não cruza patient; encounter deve pertencer ao patient; external reference não é confiada como identidade única sem source.
 
 ### DiagnosticService and policies
@@ -67,6 +69,8 @@ Não preencher timestamps só para “ter todos”: cada campo representa evento
 ### Sample
 
 Sample/accession pode atender múltiplos itens. Campos: `id`, `request_id`, `accession_code`, `sample_type`, `collected_at/by`, `received_at/by`, `status`, `replaces_sample_id`, rejection reason, version. Recoleta preserva a amostra histórica como `REPLACED` e cria um novo sample; `sample_item_link` registra item, status derivado, adequacy e timestamps. Na seam relacional transitória, a projeção também carrega a membership declarada para verificar que nenhum item esperado ficou sem vínculo ou recebeu vínculo extra.
+
+**Accession gerado pelo sistema (D8, D-034).** Na criação da solicitação, cada item cujo serviço exige amostra recebe um `Sample` em `EXPECTED` com `accession_code` gerado no formato `<PREFIXO><AAMMDD>-<NNNN><C>`: `PREFIXO` de 1 a 4 caracteres `[A-Z0-9]` (`ACCESSION_PREFIX`, padrão `A`), `AAMMDD` o dia do calendário do hospital no momento da geração (`APP_TIMEZONE`, padrão America/Sao_Paulo: uma etiqueta impressa às 22h leva a data daquele dia), `NNNN` a sequência do dia (0001, 0002… pelo maior valor já existente + 1, seguro porque as transações são serializadas) e `C` o dígito verificador Mod-10 (Luhn) sobre os dez dígitos de data e sequência. Itens cujo serviço tem o mesmo `sample_type` no catálogo dividem o mesmo tubo (um `Sample` com vários `itemIds`); sem tipo no catálogo, cada item tem a sua amostra, com `sample_type` "A definir" até o recebimento. O `currentSampleId` do item aponta para a amostra desde a criação, e a recoleta também recebe um código gerado, não mais um provisório. Solicitações anteriores à D-034 continuam sem amostra até o recebimento, quando o código é digitado ou gerado.
 
 ### Procedure and schedule
 

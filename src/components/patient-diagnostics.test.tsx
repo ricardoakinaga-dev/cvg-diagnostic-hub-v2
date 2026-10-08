@@ -32,7 +32,7 @@ const workspace = {
   nextActions: [{ id: "item-1", requestId: "request-1", requestCode: "EX-260819-0001", itemId: "item-1", label: "Revisar resultado", deepLink: "/requests/request-1", status: "RESULT_AVAILABLE" as const, priority: "URGENT" as const, dueAt: "2026-08-20T12:00:00.000Z", departmentCode: "LABORATORY" }],
   workspace: {
     asOf: "2026-08-19T12:00:00.000Z",
-    currentContext: { encounterId: "encounter-thor", admissionId: "admission-thor", departmentCode: "INPATIENT", ward: "UTI 1", bed: "Box 03", responsibleLabel: null },
+    currentContext: { hasOpenEncounter: true, encounterId: "encounter-thor", admissionId: "admission-thor", departmentCode: "INPATIENT", ward: "UTI 1", bed: "Box 03", responsibleLabel: null },
     summary: { requestCount: 1, itemCount: 1, activeItemCount: 1, availableResultCount: 1, sampleCount: 1, attachmentCount: 1 }
   }
 };
@@ -54,7 +54,8 @@ describe("PatientDiagnostics workspace", () => {
     expect(screen.getByText("UTI 1 · Box 03")).toBeInTheDocument();
     expect(screen.getByText("Internação")).toBeInTheDocument();
     expect(screen.getAllByText("Revisar resultado", { exact: true })).toHaveLength(2);
-    expect(screen.getByText("Amostra ACC-1 · Recebida")).toBeInTheDocument();
+    expect(screen.getByText(/Amostra ACC-1 · Recebida/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Etiqueta da amostra ACC-1" })).toHaveAttribute("href", "/samples/sample-1/label");
     expect(screen.getByRole("link", { name: /Resultado liberado · revisar/ })).toHaveAttribute("href", "/results/result-1");
     expect(screen.getByText("laudo.pdf")).toBeInTheDocument();
     expect(screen.getByText("Resultado liberado", { exact: true })).toBeInTheDocument();
@@ -132,6 +133,7 @@ describe("PatientDiagnostics workspace", () => {
 
   it("keeps the last confirmed snapshot visible when refresh becomes stale", async () => {
     const api = vi.spyOn(apiClient, "apiFetch")
+      .mockResolvedValueOnce({ user: { role: "VIEWER" } } as never)
       .mockResolvedValueOnce(workspace as never)
       .mockRejectedValueOnce(new Error("dependency failure"))
       .mockResolvedValueOnce(workspace as never);
@@ -146,12 +148,13 @@ describe("PatientDiagnostics workspace", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Reconciliar visão" }));
     await waitFor(() => expect(screen.getByTestId("patient-workspace")).toHaveAttribute("data-workspace-state", "ready"));
-    expect(api).toHaveBeenCalledTimes(3);
+    expect(api).toHaveBeenCalledTimes(4);
   });
 
   it("keeps the stale warning visible while reconciliation is still pending", async () => {
     let resolveRetry!: (value: typeof workspace) => void;
     const api = vi.spyOn(apiClient, "apiFetch")
+      .mockResolvedValueOnce({ user: { role: "VIEWER" } } as never)
       .mockResolvedValueOnce(workspace as never)
       .mockRejectedValueOnce(new Error("dependency failure"))
       .mockImplementationOnce(() => new Promise((resolve) => { resolveRetry = resolve as typeof resolveRetry; }) as never);
@@ -168,7 +171,7 @@ describe("PatientDiagnostics workspace", () => {
 
     resolveRetry(workspace);
     await waitFor(() => expect(screen.getByTestId("patient-workspace")).toHaveAttribute("data-workspace-state", "ready"));
-    expect(api).toHaveBeenCalledTimes(3);
+    expect(api).toHaveBeenCalledTimes(4);
   });
 
   it("labels a degraded auxiliary read without hiding the authorized workspace", async () => {
@@ -259,5 +262,100 @@ describe("PatientDiagnostics workspace", () => {
     render(<PatientDiagnostics patientId="patient-thor" />);
 
     expect(await screen.findByRole("heading", { name: "Internação" })).toBeInTheDocument();
+  });
+});
+
+describe("PatientDiagnostics encounter actions", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  const closedWorkspace = {
+    ...workspace,
+    encounters: [{ ...workspace.encounters[0], status: "CLOSED", closedAt: "2026-08-20T12:00:00.000Z" }],
+    admissions: [],
+    workspace: { ...workspace.workspace, currentContext: { hasOpenEncounter: false, encounterId: null, admissionId: null, departmentCode: null, ward: null, bed: null, responsibleLabel: null } }
+  };
+
+  function mockApi(data: unknown, role = "VETERINARIAN", commandResult: unknown = {}) {
+    return vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+      if (path === "/session/me") return Promise.resolve({ user: { role } }) as never;
+      if (init?.method === "POST") return (commandResult instanceof Error ? Promise.reject(commandResult) : Promise.resolve(commandResult)) as never;
+      return Promise.resolve(data) as never;
+    });
+  }
+
+  it("closes the open encounter after a confirmation that keeps pending exams with the requester", async () => {
+    const api = mockApi(workspace);
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    expect(await screen.findByText("Atendimento aberto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Novo atendimento" })).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Encerrar atendimento" }));
+    const dialog = await screen.findByRole("dialog", { name: "Encerrar atendimento" });
+    expect(dialog).toHaveTextContent("Os exames pendentes continuam com quem solicitou.");
+    expect(dialog).toHaveTextContent("a internação receberá alta");
+    fireEvent.change(screen.getByLabelText(/Motivo/), { target: { value: "  alta clínica  " } });
+    fireEvent.click(screen.getAllByRole("button", { name: "Encerrar atendimento" }).at(-1)!);
+
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/encounters/encounter-thor/close", expect.objectContaining({ method: "POST", body: JSON.stringify({ reason: "alta clínica" }) })));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(api.mock.calls.filter(([path]) => String(path).startsWith("/patients/patient-thor/diagnostics")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("closes without a reason, shows a safe error and allows cancelling", async () => {
+    const api = mockApi({ ...workspace, encounters: [{ ...workspace.encounters[0], type: "OUTPATIENT" }] }, "MANAGER", new Error("falha"));
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Encerrar atendimento" }));
+    expect(await screen.findByRole("dialog")).not.toHaveTextContent("a internação receberá alta");
+    fireEvent.click(screen.getAllByRole("button", { name: "Encerrar atendimento" }).at(-1)!);
+    expect(await screen.findByRole("alert")).toHaveTextContent(/Não foi possível encerrar|falha/);
+    expect(api).toHaveBeenCalledWith("/encounters/encounter-thor/close", expect.objectContaining({ body: "{}" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("offers a new encounter when none is open and lists the closed one with its closing date", async () => {
+    const api = mockApi(closedWorkspace, "INPATIENT_TEAM", { encounter: { id: "encounter-new" } });
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    expect(await screen.findByText("Sem atendimento aberto")).toBeInTheDocument();
+    expect(screen.getByRole("list", { name: "Histórico de atendimentos" })).toHaveTextContent(/Encerrado em/);
+    expect(screen.queryByRole("button", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Novo atendimento" }));
+    expect(await screen.findByRole("dialog", { name: "Novo atendimento" })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Ala ou unidade")).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Tipo de atendimento"), { target: { value: "INPATIENT" } });
+    fireEvent.change(screen.getByLabelText("Ala ou unidade"), { target: { value: " UTI 1 " } });
+    fireEvent.change(screen.getByLabelText("Leito"), { target: { value: "Box 02" } });
+    fireEvent.click(screen.getByRole("button", { name: "Abrir atendimento" }));
+
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/patients/patient-thor/encounters", expect.objectContaining({ method: "POST", body: JSON.stringify({ encounterType: "INPATIENT", ward: "UTI 1", bed: "Box 02" }) })));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("opens an outpatient encounter without ward and bed and reports a failure", async () => {
+    const api = mockApi(closedWorkspace, "VETERINARIAN", new Error("já aberto"));
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Novo atendimento" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Abrir atendimento" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(api).toHaveBeenCalledWith("/patients/patient-thor/encounters", expect.objectContaining({ body: JSON.stringify({ encounterType: "OUTPATIENT" }) }));
+    fireEvent.click(screen.getByRole("button", { name: "Fechar novo atendimento" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("hides the encounter buttons from roles without encounter.manage and when the session cannot be read", async () => {
+    mockApi(closedWorkspace, "VIEWER");
+    const { unmount } = render(<PatientDiagnostics patientId="patient-thor" />);
+    expect(await screen.findByText("Sem atendimento aberto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Novo atendimento" })).not.toBeInTheDocument();
+    unmount();
+    vi.restoreAllMocks();
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/session/me" ? Promise.reject(new Error("offline")) : Promise.resolve(workspace)) as never);
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    expect(await screen.findByText("Atendimento aberto")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
   });
 });

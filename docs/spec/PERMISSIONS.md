@@ -21,13 +21,14 @@ The following identifiers are the authorization contract used by the API specifi
 | `patient.view` | View patient and identity context | CARE/assigned |
 | `patient.create` | Register patient and open the initial encounter | VETERINARIAN/INPATIENT scope |
 | `encounter.view` | View encounter | CARE/assigned |
+| `encounter.manage` | Open a new encounter for a registered patient and close an open one | VETERINARIAN/INPATIENT scope; MANAGER within delegated departments |
 | `admission.view` | View admission/ward context | WARD/CARE |
 | `request.create` | Create diagnostic request | CARE/department |
 | `request.list` | List diagnostic requests | DEPARTMENT/CARE |
 | `request.view` | View request details | CARE/DEPARTMENT |
 | `request.duplicate_override` | Override duplicate warning | manager/policy |
 | `request.cancel` | Cancel request before or during eligible phase | requester/manager/policy |
-| `item.view` | View diagnostic item and state | CARE/DEPARTMENT |
+| `item.view` | View diagnostic item and state, and read its sample label | CARE/DEPARTMENT |
 | `item.cancel` | Cancel one eligible item | requester/manager/policy |
 | `item.reject` | Reject an item/sample in executor workflow | SERVICE/manager |
 | `sample.receive` | Receive/accession a sample | SERVICE=LAB |
@@ -93,6 +94,7 @@ Legend: `✓` allowed within scope and state; `△` allowed only with extra cond
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Search authorized resources | — (break-glass only) | ✓ assigned scope | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
 | Register patient + initial encounter | — | — | ✓ | ✓ | — | — | — | — |
+| Open / close encounter (`encounter.manage`) | — | △ delegated scope | ✓ | ✓ | — | — | — | — |
 | Create diagnostic request | — (break-glass only) | △ | ✓ | ✓ | △ | △ | △ | — |
 | Override duplicate warning | △ | ✓ | △ reason | △ reason | △ | △ | △ | — |
 | View request/item | — (break-glass only) | ✓ assigned department | ✓ care | ✓ ward | ✓ lab | ✓ imaging | ✓ imaging | ✓ assigned |
