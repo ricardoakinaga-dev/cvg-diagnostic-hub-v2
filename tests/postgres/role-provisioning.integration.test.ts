@@ -27,6 +27,24 @@ describe("production role provisioning from a single-superuser installation", ()
       const roles = await provision("migrator-pass-1", "runtime-pass-1");
       expect(roles).toEqual({ migrator, runtime });
 
+      // PROD-304: the optional backup role holds REPLICATION (pg_basebackup) and reads all data, and nothing else.
+      const backup = `cvg_backup_${suffix}`;
+      const withBackup = (password: string) => provisionDatabaseRoles({
+        adminUrl, migrationUrl: urlFor(adminUrl, migrator, "migrator-pass-1"), runtimeUrl: urlFor(adminUrl, runtime, "runtime-pass-1"), backup: { role: backup, password }
+      });
+      await withBackup("backup-pass-1");
+      await withBackup("backup-pass-2");
+      const adminPool = new Pool({ connectionString: adminUrl, max: 1 });
+      try {
+        await expect(adminPool.query("SELECT rolreplication, rolsuper, rolcreatedb, rolcreaterole, pg_has_role(oid, 'pg_read_all_data', 'MEMBER') AS reads FROM pg_roles WHERE rolname = $1", [backup]))
+          .resolves.toMatchObject({ rows: [{ rolreplication: true, rolsuper: false, rolcreatedb: false, rolcreaterole: false, reads: true }] });
+        await expect(adminPool.query("SELECT rolreplication FROM pg_roles WHERE rolname = $1", [runtime])).resolves.toMatchObject({ rows: [{ rolreplication: false }] });
+      } finally {
+        await adminPool.end();
+      }
+      await expect(provisionDatabaseRoles({ adminUrl, migrationUrl: urlFor(adminUrl, migrator, "migrator-pass-1"), runtimeUrl: urlFor(adminUrl, runtime, "runtime-pass-1"), backup: { role: runtime, password: "x" } }))
+        .rejects.toThrow("DATABASE_BACKUP_ROLE_INVALID");
+
       const migratorUrl = urlFor(adminUrl, migrator, "migrator-pass-1");
       await runMigrations({ connectionString: migratorUrl, logger: { info: () => undefined } });
       const migratorPool = new Pool({ connectionString: migratorUrl, max: 1 });

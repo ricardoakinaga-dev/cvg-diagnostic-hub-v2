@@ -1,0 +1,217 @@
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const bash = (file, args = [], env = {}) =>
+  spawnSync("bash", [path.join(root, file), ...args], { encoding: "utf8", env: { PATH: process.env.PATH, ...env } });
+const sh = (file, args = [], env = {}) =>
+  spawnSync("sh", [path.join(root, file), ...args], { encoding: "utf8", env: { PATH: process.env.PATH, ...env } });
+const temp = () => mkdtempSync(path.join(tmpdir(), "cvg-wal-test-"));
+
+const shellScripts = [
+  "scripts/restore-pitr.sh", "scripts/backup-drill.sh", "scripts/secret-scan.sh",
+  "deploy/backup/archive-wal.sh", "deploy/backup/backup-loop.sh", "deploy/backup/check-offsite.sh",
+  "deploy/backup/ship-offsite.sh", "deploy/backup/postgres-entrypoint.sh"
+];
+
+test("every WAL archiving and PITR script parses", () => {
+  for (const file of shellScripts) {
+    const result = spawnSync(file.startsWith("deploy") ? "sh" : "bash", ["-n", path.join(root, file)], { encoding: "utf8" });
+    assert.equal(result.status, 0, `${file}: ${result.stderr}`);
+  }
+});
+
+test("restore-pitr.sh --help documents the contract and validates its arguments", () => {
+  const help = bash("scripts/restore-pitr.sh", ["--help"]);
+  assert.equal(help.status, 0);
+  assert.match(help.stdout, /--target-time/);
+  assert.match(help.stdout, /--latest/);
+
+  const base = temp();
+  const wal = path.join(base, "wal");
+  const data = path.join(base, "data");
+  mkdirSync(wal);
+  writeFileSync(path.join(base, "base.tar.gz"), "x");
+  const common = ["--base", base, "--wal", wal, "--data", data, "--port", "55399"];
+  const fails = (args, pattern) => {
+    const result = bash("scripts/restore-pitr.sh", args);
+    assert.equal(result.status, 2, result.stdout + result.stderr);
+    assert.match(result.stderr, pattern);
+  };
+  fails(common, /--target-time <ISO-8601> ou --latest/);
+  fails([...common, "--latest", "--target-time", "2026-10-08T10:00:00Z"], /não os dois/);
+  fails([...common, "--target-time", "ontem"], /ISO-8601/);
+  fails(["--wal", wal, "--data", data, "--port", "55399", "--latest"], /--base é obrigatório/);
+  fails([...common.slice(0, -1), "80", "--latest"], /--port/);
+  fails([...common, "--latest", "--bogus"], /desconhecido/);
+  fails(["--base", path.join(base, "missing"), "--wal", wal, "--data", data, "--port", "55399", "--latest"], /backup base não encontrado/);
+
+  const dry = bash("scripts/restore-pitr.sh", [...common, "--target-time", "2026-10-08T10:00:00-03:00", "--dry-run"]);
+  assert.equal(dry.status, 0, dry.stderr);
+  const plan = JSON.parse(dry.stdout);
+  assert.equal(plan.event, "pitr.dry_run");
+  assert.equal(plan.target, "2026-10-08T10:00:00-03:00");
+  assert.equal(existsSync(data), false, "a dry run must not create the data directory");
+
+  mkdirSync(data);
+  assert.equal(bash("scripts/restore-pitr.sh", [...common, "--latest", "--dry-run"]).status, 0, "an existing empty directory is accepted");
+  writeFileSync(path.join(data, "PG_VERSION"), "16");
+  fails([...common, "--latest", "--dry-run"], /não está vazio/);
+  rmSync(base, { recursive: true, force: true });
+});
+
+test("check-offsite.sh is healthy when fresh, disabled or opted out, and fails when stale, missing or unreadable", () => {
+  const dir = temp();
+  const status = path.join(dir, "offsite-status.json");
+  const env = { OFFSITE_RCLONE_REMOTE: "s3:bucket/path", OFFSITE_SHIP_INTERVAL_SECONDS: "300", NOW_EPOCH: "10000" };
+  const check = (extra = {}) => sh("deploy/backup/check-offsite.sh", [status], { ...env, ...extra });
+  const write = (epoch, result = "ok") =>
+    writeFileSync(status, JSON.stringify({ lastShippedAt: "x", lastShippedEpoch: epoch, lastResult: result, walSegments: 3, bytes: 1 }));
+
+  assert.equal(check().status, 1, "missing status file");
+  assert.match(check().stderr, /status file missing/);
+  writeFileSync(status, "not json");
+  assert.equal(check().status, 1);
+  assert.match(check().stderr, /unreadable/);
+  write(10000 - 899);
+  assert.equal(check().status, 0, "899 s old with a 900 s limit");
+  write(10000 - 900);
+  assert.equal(check().status, 0, "exactly 3 x interval is still fresh");
+  write(10000 - 901);
+  const stale = check();
+  assert.equal(stale.status, 1);
+  assert.match(stale.stderr, /"reason":"stale"/);
+  write(0, "error");
+  assert.equal(check().status, 1, "never shipped");
+  write(10000 - 400, "error");
+  assert.equal(check().status, 0, "a failed attempt keeps the last success timestamp");
+  assert.equal(check({ OFFSITE_SHIP_INTERVAL_SECONDS: "100" }).status, 1, "the limit follows the interval");
+  assert.equal(check({ OFFSITE_RCLONE_REMOTE: "" }).status, 0, "opt-in feature: disabled is healthy");
+  assert.match(check({ OFFSITE_RCLONE_REMOTE: "" }).stdout, /disabled/);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh without a remote logs offsite.disabled and exits cleanly in --once mode", () => {
+  const dir = temp();
+  const result = sh("deploy/backup/ship-offsite.sh", ["--once"], { OFFSITE_RCLONE_REMOTE: "", BACKUP_DIRECTORY: dir, WAL_ARCHIVE_DIRECTORY: dir });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /"event":"offsite.disabled"/);
+  const status = JSON.parse(readFileSync(path.join(dir, "offsite-status.json"), "utf8"));
+  assert.equal(status.lastResult, "disabled");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("archive-wal.sh copies atomically, is idempotent and refuses to overwrite a different segment", () => {
+  const dir = temp();
+  const archive = path.join(dir, "archive");
+  mkdirSync(archive);
+  const segment = path.join(dir, "000000010000000000000007");
+  writeFileSync(segment, Buffer.alloc(4096, 7));
+  const env = { WAL_ARCHIVE_DIRECTORY: archive };
+  const name = "000000010000000000000007";
+
+  const first = sh("deploy/backup/archive-wal.sh", [segment, name], env);
+  assert.equal(first.status, 0, first.stderr);
+  assert.deepEqual(readdirSync(archive), [name], "no temp file is left behind");
+  assert.deepEqual(readFileSync(path.join(archive, name)), readFileSync(segment));
+
+  assert.equal(sh("deploy/backup/archive-wal.sh", [segment, name], env).status, 0, "re-archiving the same segment succeeds (crash after rename)");
+
+  writeFileSync(segment, Buffer.alloc(4096, 9));
+  const clash = sh("deploy/backup/archive-wal.sh", [segment, name], env);
+  assert.equal(clash.status, 1);
+  assert.match(clash.stderr, /different_segment_exists/);
+  assert.equal(readFileSync(path.join(archive, name))[0], 7, "the archived segment is never replaced");
+
+  const missing = sh("deploy/backup/archive-wal.sh", [path.join(dir, "absent"), "000000010000000000000008"], env);
+  assert.equal(missing.status, 1);
+  assert.match(missing.stderr, /source_missing/);
+  const noArchive = sh("deploy/backup/archive-wal.sh", [segment, "000000010000000000000009"], { WAL_ARCHIVE_DIRECTORY: path.join(dir, "gone") });
+  assert.equal(noArchive.status, 1);
+  assert.match(noArchive.stderr, /archive_missing/);
+  assert.notEqual(sh("deploy/backup/archive-wal.sh", [], env).status, 0, "missing arguments fail");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("backup-loop.sh prunes old dumps and base backups but never the WAL the oldest retained base backup needs", () => {
+  const dir = temp();
+  const backups = path.join(dir, "backups");
+  const wal = path.join(dir, "wal");
+  mkdirSync(path.join(backups, "base"), { recursive: true });
+  mkdirSync(wal);
+  const day = 86400 * 1000;
+  const age = (target, days) => { const when = new Date(Date.now() - days * day); utimesSync(target, when, when); };
+  const baseBackup = (stamp, startWal, days) => {
+    const folder = path.join(backups, "base", stamp);
+    mkdirSync(folder);
+    const label = path.join(dir, "backup_label");
+    writeFileSync(label, `START WAL LOCATION: 0/3000028 (file ${startWal})\nCHECKPOINT LOCATION: 0/3000060\n`);
+    const tar = spawnSync("tar", ["-czf", path.join(folder, "base.tar.gz"), "-C", dir, "backup_label"]);
+    assert.equal(tar.status, 0);
+    age(folder, days);
+  };
+  baseBackup("20260920T020000Z", "000000010000000000000003", 18); // expired, but newest-but-one
+  baseBackup("20260930T020000Z", "000000010000000000000010", 8);
+  baseBackup("20261007T020000Z", "000000010000000000000020", 3);
+  for (const n of [1, 2, 3, 15, 16, 17, 31, 32, 40]) writeFileSync(path.join(wal, `0000000100000000000000${n.toString(16).toUpperCase().padStart(2, "0")}`), "w");
+  writeFileSync(path.join(wal, "00000002.history"), "h");
+  for (const [name, days] of [["cvg-old.dump", 20], ["cvg-new.dump", 1]]) { writeFileSync(path.join(backups, name), "d"); age(path.join(backups, name), days); }
+
+  const run = (retention) => spawnSync("sh", ["-c", `. "${path.join(root, "deploy/backup/backup-loop.sh")}"; prune`], {
+    encoding: "utf8",
+    env: { PATH: process.env.PATH, BACKUP_LOOP_SOURCE_ONLY: "1", PGHOST: "x", PGUSER: "x", PGPASSWORD: "x", PGDATABASE: "x", BACKUP_DIRECTORY: backups, WAL_ARCHIVE_DIRECTORY: wal, BACKUP_RETENTION_DAYS: String(retention) }
+  });
+  const result = run(14);
+  assert.equal(result.status, 0, result.stderr);
+  assert.deepEqual(readdirSync(path.join(backups, "base")).sort(), ["20260930T020000Z", "20261007T020000Z"]);
+  assert.deepEqual(readdirSync(backups).filter((f) => f.endsWith(".dump")), ["cvg-new.dump"]);
+  // oldest retained base backup starts at WAL 0x10: everything older goes, everything from 0x10 on and the history file stay
+  assert.match(result.stdout, /"boundary":"000000010000000000000010","removed":4/);
+  assert.deepEqual(readdirSync(wal).sort(), ["00000001000000000000001F", "000000010000000000000010", "000000010000000000000011", "000000010000000000000020", "000000010000000000000028", "00000002.history"].sort());
+  assert.ok(existsSync(path.join(wal, "000000010000000000000010")));
+  assert.ok(existsSync(path.join(wal, "000000010000000000000020")));
+  assert.ok(existsSync(path.join(wal, "00000002.history")));
+
+  // Retention shorter than every backup: the newest base backup still survives, and so does the WAL from it onward.
+  assert.equal(run(0).status, 0);
+  assert.deepEqual(readdirSync(path.join(backups, "base")), ["20261007T020000Z"]);
+  assert.ok(existsSync(path.join(wal, "000000010000000000000020")));
+  assert.ok(!existsSync(path.join(wal, "000000010000000000000010")));
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("docker-compose.prod.yml renders with an environment built from .env.production.example", { skip: spawnSync("docker", ["compose", "version"]).status !== 0 }, () => {
+  const dir = temp();
+  const example = readFileSync(path.join(root, ".env.production.example"), "utf8");
+  const filled = example.split("\n").map((line) => {
+    const match = /^([A-Z0-9_]+)=$/.exec(line);
+    return match ? `${match[1]}=${/REMOTE|ENDPOINT|DOMAIN|EMAIL|VERSION|REF|APPROVED|TOKEN/.test(match[1]) && !/ENDPOINT|DOMAIN/.test(match[1]) ? "" : "value-for-config-check-0123456789abcdef"}` : line;
+  }).join("\n");
+  const envFile = path.join(dir, "env");
+  writeFileSync(envFile, filled);
+  const config = (files) => spawnSync("docker", ["compose", ...files.flatMap((f) => ["-f", path.join(root, f)]), "--env-file", envFile, "config", "--format", "json"], { encoding: "utf8", env: { ...process.env, DRILL_PORT: "55304" } });
+  const result = config(["docker-compose.prod.yml"]);
+  assert.equal(result.status, 0, result.stderr);
+  const parsed = JSON.parse(result.stdout);
+  const postgres = parsed.services.postgres;
+  assert.ok(postgres.command.includes("archive_mode=on"));
+  assert.ok(postgres.command.includes("wal_level=replica"));
+  assert.ok(postgres.command.includes("archive_timeout=300"));
+  assert.ok(postgres.command.some((arg) => arg.startsWith("archive_command=") && arg.includes("archive-wal.sh %p %f")));
+  assert.ok(postgres.volumes.some((v) => v.target === "/wal-archive" && v.source.endsWith("cvg-wal-archive")));
+  assert.ok(parsed.services.offsite.volumes.some((v) => v.target === "/wal-archive" && v.read_only === true));
+  assert.ok(parsed.services.offsite.volumes.some((v) => v.target === "/config/rclone/rclone.conf" && v.read_only === true));
+  assert.match(parsed.services.offsite.image, /^rclone\/rclone:\d+\.\d+\.\d+$/);
+  assert.equal(parsed.services.offsite.healthcheck.test.at(-1), "/opt/backup/check-offsite.sh");
+  assert.equal(parsed.services.migrate.environment.POSTGRES_BACKUP_PASSWORD, "value-for-config-check-0123456789abcdef");
+  assert.equal(parsed.services.backup.environment.PGBACKUP_PASSWORD, "value-for-config-check-0123456789abcdef");
+
+  const drill = config(["docker-compose.prod.yml", "docker-compose.pitr-drill.yml"]);
+  assert.equal(drill.status, 0, drill.stderr);
+  rmSync(dir, { recursive: true, force: true });
+});

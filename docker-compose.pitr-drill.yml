@@ -1,0 +1,15 @@
+# Override used ONLY by scripts/backup-drill.sh (PROD-304/PROD-514): the production stack on a disposable
+# Compose project, with PostgreSQL published on loopback for the rehearsal. The drill starts just postgres, migrate,
+# backup and offsite; app, worker and proxy are never started, so no TLS edge, domain or clinical data is involved.
+#
+#   docker compose -p <project> -f docker-compose.prod.yml -f docker-compose.pitr-drill.yml --env-file <drill.env> up -d postgres migrate backup offsite
+services:
+  postgres:
+    ports: !override
+      - "127.0.0.1:${DRILL_PORT:?}:5432"
+  proxy:
+    profiles: ["never"]
+  app:
+    profiles: ["never"]
+  worker:
+    profiles: ["never"]

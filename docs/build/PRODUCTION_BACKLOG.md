@@ -58,7 +58,7 @@
 | PROD-301 | P0 | READY | M | Homologação e produção separadas (banco, bucket, segredos) no servidor do hospital (D11), com o Compose ensaiado. | Servidor disponível | P1.2, AUD-034 |
 | PROD-302 | P0 | READY | M | Segredos fora do repositório e do host de build no servidor do hospital; rotação documentada e ensaiada. | PROD-301 | P1.3, AUD-034 |
 | PROD-303 | P0 | READY | M | Registry de imagens e pipeline de deploy: build → Trivy → push com tag do commit → staging automático → produção com aprovação. | PROD-002 | P1.4 |
-| PROD-304 | P0 | READY | M | PostgreSQL no servidor do hospital com arquivamento contínuo de WAL para fora do prédio (RPO 15 min, D2); restore point-in-time demonstrado. | PROD-301 | P1.5, AUD-033 |
+| PROD-304 | P0 | VERIFY | M | PostgreSQL no servidor do hospital com arquivamento contínuo de WAL para fora do prédio (RPO 15 min, D2); restore point-in-time demonstrado. **Entregue:** WAL contínuo + base backup + cópia externa por rclone, PITR ensaiado localmente em 6 s (381 MB, 36 segmentos de WAL; `npm run db:backup:drill`, [BACKUP_RESTORE.md](../operations/BACKUP_RESTORE.md)); **falta:** servidor e destino externo reais. | PROD-301 | P1.5, AUD-033 |
 | PROD-305 | P1 | VERIFY | S | Usuários de banco separados: migration (DDL) e runtime (DML, sem `ALTER`/`DROP` nem `DELETE` em `audit_events`). Aceite: teste negativo de privilégio. | — | P1.6 |
 | PROD-306 | P1 | VERIFY | S | Liveness do worker do outbox (heartbeat + healthcheck no compose) e métrica de idade da mensagem pendente mais antiga. Aceite: worker travado fica `unhealthy`. | — | F-07 |
 | PROD-307 | P0 | READY | S | Armazenamento S3 (MinIO local, D11) com criptografia, versionamento, sem acesso público e ciclo de vida conforme D5 (24 meses ativo, depois arquivo). | PROD-301 | P1.7 |
@@ -85,7 +85,7 @@
 | PROD-511 | P0 | VERIFY | M | Métricas Prometheus com token de coleta (`METRICS_SCRAPE_TOKEN`), memória do processo contra o heap e dead letters; `deploy/observability/` com scrape, 9 regras testadas com `promtool` e dashboard Grafana, todos verificados na CI. Falta coletar em staging e acrescentar `postgres_exporter` (D11). | PROD-303 (staging) | P5.1, D-031 |
 | PROD-512 | P1 | READY | S | Agregação de logs com busca por `correlationId`. | PROD-303 | P5.2 |
 | PROD-513 | P0 | BLOCKED | M | Alertas com dono e roteamento, cada um disparado em homologação (inclui dead-letter, worker parado, backup falho, certificado vencendo). As regras técnicas já existem e são testadas (PROD-511). | PROD-516, PROD-301 | P5.3, AUD-020 |
-| PROD-514 | P0 | BLOCKED | M | Backup de PostgreSQL **e** S3, com restore completo cronometrado contra RTO 4 h e RPO 15 min (D2). | PROD-304 | P5.4, AUD-033 |
+| PROD-514 | P0 | BLOCKED | M | Backup de PostgreSQL **e** S3, com restore completo cronometrado contra RTO 4 h e RPO 15 min (D2). O script de ensaio local do PostgreSQL existe (`npm run db:backup:drill`: restaura da cópia externa a um instante entre marcadores; medido em 2026-10-08, restore 6 s, RPO de arquivamento 4 s + envio 15 s); falta o backup do S3, o servidor e o destino reais, e o restore cronometrado neles. | PROD-304 | P5.4, AUD-033 |
 | PROD-515 | P1 | BLOCKED | M | Runbooks ensaiados (banco, storage, antivírus, crítico não entregue, rede degradada). | PROD-513 | P5.5 |
 | PROD-516 | P1 | READY | S | Escala de plantão, contatos de incidente e janela de manutenção para o servidor do hospital (D11). | Nomes da operação | P5.6 |
 | PROD-517 | P2 | READY | S | **Monitoramento de tentativas distribuídas por conta:** agregar falhas de login do mesmo e-mail entre clientes distintos, com identificador de conta pseudonimizado, janela e limiar de alerta documentados. O backoff do PROD-107 continua por par; trocar de IP não acumula esse backoff. Aceite: simulação em staging com múltiplas origens gera sinal agregado e alerta, sem bloquear login nem ampliar a janela de outros clientes da conta. | PROD-511, PROD-512 | PROD-107, F-04, D-021 |
@@ -112,10 +112,10 @@
 | W0 Base | 3 | 0 | 3 | 0 | 0 |
 | W1 Escala | 12 | 0 | 7 | 4 | 1 |
 | W2 Identidade | 6 | 2 | 1 | 2 | 1 |
-| W3 Infra | 9 | 7 | 0 | 2 | 0 |
-| W4 Clínico/dados/operação | 20 | 7 | 2 | 7 | 4 |
+| W3 Infra | 9 | 6 | 0 | 3 | 0 |
+| W4 Clínico/dados/operação | 20 | 6 | 2 | 8 | 4 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **60** | **16** | **13** | **15** | **16** |
+| **Total** | **60** | **14** | **13** | **17** | **16** |
 
 Em 08/10/2026 as 12 decisões (D1–D12) foram tomadas ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026)); os 16 itens ainda bloqueados dependem de entradas de conteúdo (lista de críticos, prazo legal, planilhas), do servidor de homologação ou das validações externas. Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 
