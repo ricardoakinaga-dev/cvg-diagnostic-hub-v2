@@ -162,14 +162,15 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
     const workload = fixture(auditEvents, connectionCount, writeCount);
     const seeded = await database.createStore({ ...workload.state, auditEvents: [] });
     await database.closeStore(seeded);
-    // Keep the same durable event volume as the legacy baseline, while the
-    // runtime snapshot uses the PROD-101 audit-free representation.
+    // Keep the same durable event volume as the legacy baseline. The entities
+    // were seeded above; the runtime row holds only the header (PROD-101, 015).
     await database.query(`WITH source AS (SELECT $1::jsonb AS state), seeded AS (
-      UPDATE cvg_runtime_state SET state=jsonb_set(source.state,'{auditEvents}','[]'::jsonb), version=version+1 FROM source WHERE id=1 RETURNING cvg_runtime_state.id
+      UPDATE cvg_runtime_state SET version=version+1 WHERE id=1 RETURNING cvg_runtime_state.id
     ) INSERT INTO audit_events (id,event_type,entity_type,entity_id,correlation_id,metadata,occurred_at)
       SELECT e->>'id',e->>'eventType',e->>'entityType',e->>'entityId',e->>'correlationId',e->'metadata',(e->>'occurredAt')::timestamptz
       FROM source, seeded, jsonb_array_elements(source.state->'auditEvents') e`, [JSON.stringify(workload.state)]);
-    const initial = await database.query("SELECT (SELECT count(*)::int FROM audit_events) AS events, pg_column_size(state) AS bytes FROM cvg_runtime_state WHERE id=1");
+    const initial = await database.query(`SELECT (SELECT count(*)::int FROM audit_events) AS events,
+      pg_column_size(state) + (SELECT COALESCE(sum(pg_column_size(data)), 0)::int FROM cvg_runtime_entities) AS bytes FROM cvg_runtime_state WHERE id=1`);
     const initialRow = initial.rows[0] as { events: number; bytes: number };
     const probe = await storageProbe();
     const applicationName = `cvg-perf-${process.pid}`;
@@ -226,7 +227,8 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
             (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1 AND state='active') AS active,
             (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1 AND wait_event IS NOT NULL) AS waiting,
             (SELECT count(*)::int FROM pg_stat_activity WHERE datname=current_database() AND application_name=$1 AND wait_event_type='Lock') AS "lockWaiting",
-            pg_column_size(state) AS "snapshotBytes" FROM cvg_runtime_state WHERE id=1`, [applicationName]);
+            pg_column_size(state) + (SELECT COALESCE(sum(pg_column_size(data)), 0)::int FROM cvg_runtime_entities) AS "snapshotBytes"
+            FROM cvg_runtime_state WHERE id=1`, [applicationName]);
           resourceSamples.push({ elapsedMs: round(performance.now() - measuredStarted), ...observation.rows[0] as Omit<typeof resourceSamples[number], "elapsedMs"> });
           await new Promise((resolve) => setTimeout(resolve, 500));
         }
@@ -248,7 +250,7 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
       monitoring = false;
       await monitor;
       const ids = writes.samples.flatMap((entry) => entry.id ? [entry.id] : []);
-      const durable = await database.query(`SELECT count(*)::int AS count FROM cvg_runtime_state, jsonb_array_elements(state->'requests') r WHERE id=1 AND r->>'id'=ANY($1::text[])`, [ids]);
+      const durable = await database.query("SELECT count(*)::int AS count FROM cvg_runtime_entities WHERE collection='requests' AND entity_key=ANY($1::text[])", [ids]);
       const durableWrites = Number((durable.rows[0] as { count: number }).count);
       const deliveryStarted = performance.now();
       while (!streams.every((stream) => stream.unexpectedClosure || isHealthySse(stream, ids, writeCount, measurementFinishedAt)) && performance.now() - deliveryStarted < REQUEST_TIMEOUT_MS) {

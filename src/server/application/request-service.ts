@@ -10,6 +10,7 @@ import type { ApplicationServiceContext, PatientDiagnosticsAuxiliaryRead } from 
 import * as helpers from "./service-common";
 import { patientAuditScope, readPatientAuditEvents } from "./audit-read";
 import { reprojectRequestForActor } from "./request-projection";
+import { encountersForPatient, findById, itemsForRequest, positionOfId, requestsForPatient } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -112,10 +113,10 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         if (!input.patientId || !input.encounterId || !Array.isArray(input.items) || input.items.length < 1 || input.items.length > 20) {
           throw new ApiError("VALIDATION_ERROR", "Paciente, atendimento e pelo menos um serviço são obrigatórios.", 400);
         }
-        const patient = findOrThrow(originalState.patients.find((entry) => entry.id === input.patientId));
-        const encounter = findOrThrow(originalState.encounters.find((entry) => entry.id === input.encounterId));
+        const patient = findOrThrow(findById(originalState.patients, input.patientId));
+        const encounter = findOrThrow(findById(originalState.encounters, input.encounterId));
         if (encounter.patientId !== patient.id) throw new ApiError("VALIDATION_ERROR", "Atendimento não pertence ao paciente informado.", 400);
-        const admission = input.admissionId ? findOrThrow(originalState.admissions.find((entry) => entry.id === input.admissionId)) : undefined;
+        const admission = input.admissionId ? findOrThrow(findById(originalState.admissions, input.admissionId)) : undefined;
         if (admission && admission.encounterId !== encounter.id) throw new ApiError("VALIDATION_ERROR", "Internação não pertence ao atendimento informado.", 400);
         const services = input.items.map((entry) => serviceFor(originalState, entry.serviceId));
         if (currentActor.role === "MANAGER" && services.some((service) => !managerCanAccessDepartment(currentActor, service.departmentCode))) {
@@ -126,11 +127,12 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         // original request was committed.
         const idempotent = withIdempotency<RequestView>(originalState, currentActor.id, scope, meta.idempotencyKey, { input, allowDuplicateOverride: meta.allowDuplicateOverride });
         if (idempotent.found) return { state: originalState, result: reprojectRequestForActor(originalState, currentActor, (idempotent.existing as RequestView).id) };
-        const duplicateItems = originalState.items.filter((item) =>
-          item.status !== "COMPLETED" && item.status !== "CANCELLED" && item.status !== "REJECTED" &&
-          item.requestId && input.items.some((requested) => requested.serviceId === item.serviceId) &&
-          originalState.requests.some((request) => request.id === item.requestId && request.patientId === patient.id)
-        );
+        const duplicateItems = requestsForPatient(originalState, patient.id)
+          .flatMap((request) => itemsForRequest(originalState, request.id))
+          .filter((item) =>
+            item.status !== "COMPLETED" && item.status !== "CANCELLED" && item.status !== "REJECTED" &&
+            input.items.some((requested) => requested.serviceId === item.serviceId))
+          .sort((left, right) => positionOfId(originalState.items, left.id) - positionOfId(originalState.items, right.id));
         if (duplicateItems.length > 0 && !meta.allowDuplicateOverride) {
           throw new ApiError("DUPLICATE_WARNING", "Já existe um exame ativo compatível para este paciente.", 409, {
             existingRequestCodes: duplicateItems.map((item) => requestFor(originalState, item.requestId).requestCode)
@@ -200,7 +202,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
     async getRequest(actor: User, requestId: string): Promise<RequestView> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const request = findOrThrowScoped(state.requests.find((entry) => entry.id === requestId));
+      const request = findOrThrowScoped(findById(state.requests, requestId));
       requireRequestPermission(state, currentActor, "request.view", request);
       return requestViewForActor(state, currentActor, request);
     },
@@ -216,11 +218,11 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
       // for the same reason.
       requirePatientPermission(state, currentActor, "patient.view", patientId);
       requirePatientPermission(state, currentActor, "diagnostic.timeline.view", patientId);
-      const patient = state.patients.find((entry) => entry.id === patientId);
+      const patient = findById(state.patients, patientId);
       if (!patient) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
       const asOf = now();
-      const requests = state.requests
-        .filter((request) => request.patientId === patient.id && canViewRequest(state, currentActor, request))
+      const requests = requestsForPatient(state, patient.id)
+        .filter((request) => canViewRequest(state, currentActor, request))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id));
       const afterCursor = cursor ? requests.filter((request) => request.createdAt < cursor.createdAt || (request.createdAt === cursor.createdAt && request.id > cursor.id)) : requests;
       const pageRequests = afterCursor.slice(0, limit);
@@ -247,8 +249,8 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
       const scopedEncounterIds = isExecutorRole(currentActor) || currentActor.role === "MANAGER"
         ? new Set(requests.map((request) => request.encounterId))
         : undefined;
-      const encounters = state.encounters
-        .filter((encounter) => encounter.patientId === patient.id && (!scopedEncounterIds || scopedEncounterIds.has(encounter.id)))
+      const encounters = encountersForPatient(state, patient.id)
+        .filter((encounter) => !scopedEncounterIds || scopedEncounterIds.has(encounter.id))
         .map((encounter) => ({ ...encounter }));
       const encounterIds = new Set(encounters.map((encounter) => encounter.id));
       const admissions = state.admissions
@@ -265,7 +267,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         patientId: patient.id,
         departmentCode: currentAdmission.departmentCode
       })
-        ? state.users.find((user) => user.id === currentAdmission.responsibleUserId)?.displayName ?? null
+        ? findById(state.users, currentAdmission.responsibleUserId)?.displayName ?? null
         : null;
       const visibleItems = requests.flatMap((request) => request.itemIds
         .map((itemId) => itemFor(state, itemId))
@@ -401,11 +403,11 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
     async getItem(actor: User, itemId: string): Promise<ItemView> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const item = findOrThrowScoped(state.items.find((entry) => entry.id === itemId));
+      const item = findOrThrowScoped(findById(state.items, itemId));
       const request = requestFor(state, item.requestId);
       const service = serviceFor(state, item.serviceId);
       requireItemPermission(state, currentActor, "item.view", item);
-      const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
+      const patient = findOrThrow(findById(state.patients, request.patientId));
       return { item, request: requestViewForActor(state, currentActor, request), patient, service };
     },
 

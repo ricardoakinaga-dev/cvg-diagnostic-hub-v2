@@ -671,15 +671,15 @@ describe("Relational sample/accession lineage on disposable PostgreSQL", () => {
         });
         await waitForActiveDatabaseQuery(database, "UPDATE relational_backfill_runs");
 
-        const driftedState = {
-          ...populated,
-          requests: [{ ...populated.requests[0], updatedAt: "2026-09-06T04:00:00.000Z" }]
-        };
+        const driftedRequest = { ...populated.requests[0], updatedAt: "2026-09-06T04:00:00.000Z" };
+        // A runtime writer: the version bump waits for the row lock, then the entity row changes.
         const writerMutation = (async () => {
           await writer.query("BEGIN");
           await writer.query(
-            "UPDATE cvg_runtime_state SET state = $1::jsonb, version = version + 1 WHERE id = 1",
-            [JSON.stringify(driftedState)]
+            `WITH bumped AS (UPDATE cvg_runtime_state SET version = version + 1 WHERE id = 1 RETURNING version)
+             UPDATE cvg_runtime_entities SET data = $1::jsonb, written_version = (SELECT version FROM bumped)
+              WHERE collection = 'requests' AND entity_key = $2`,
+            [JSON.stringify(driftedRequest), driftedRequest.id]
           );
           await writer.query("COMMIT");
         })();

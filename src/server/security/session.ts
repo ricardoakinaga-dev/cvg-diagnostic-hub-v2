@@ -3,6 +3,7 @@ import type { StateStore, StoreState, User } from "../domain/models";
 import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivity } from "../domain/session-activity";
 import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
+import { findById, sessionForTokenHash } from "../domain/state-index";
 
 const SESSION_COOKIE = "cvg_session";
 const CSRF_COOKIE = "cvg_csrf";
@@ -70,7 +71,7 @@ export async function loginUser(store: StateStore, email: string, password: stri
   }
 
   return store.transaction(async (currentState) => {
-    const currentUser = currentState.users.find((candidate) => candidate.id === user.id);
+    const currentUser = findById(currentState.users, user.id);
     if (
       !currentUser
       || !currentUser.active
@@ -102,6 +103,11 @@ export async function loginUser(store: StateStore, email: string, password: stri
   });
 }
 
+function activeUser(state: StoreState, userId: string): User | undefined {
+  const user = findById(state.users, userId);
+  return user?.active ? user : undefined;
+}
+
 export async function authenticateRequest(
   store: StateStore,
   request: Request,
@@ -110,12 +116,12 @@ export async function authenticateRequest(
   const token = parseCookies(request)[SESSION_COOKIE];
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
   const state = await store.readState();
-  const session = state.sessions.find((entry) => entry.tokenHash === hash(token));
+  const session = sessionForTokenHash(state, hash(token));
   if (!session || sessionTerminallyExpired(session)) {
     throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   }
   if (options.requireCsrf) assertCsrf(request, session.csrfTokenHash);
-  const user = state.users.find((entry) => entry.id === session.userId && entry.active);
+  const user = activeUser(state, session.userId);
   if (!user) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   await assertSessionIsActive(store, session);
   if (user.mustChangePassword && !options.allowPasswordChange) {
@@ -137,7 +143,7 @@ export async function changeInitialPassword(store: StateStore, request: Request,
   const passwordHash = passwordSecurity.hashPassword(password);
   return store.transaction((state) => {
     if (!authorizationSnapshotIsCurrent(state, actor, { allowPasswordChange: true })) throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
-    const current = state.users.find((user) => user.id === actor.id)!;
+    const current = findById(state.users, actor.id)!;
     if (!current.mustChangePassword || current.passwordHash !== actor.passwordHash) {
       throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
     }
@@ -160,8 +166,9 @@ export async function changeInitialPassword(store: StateStore, request: Request,
 }
 
 export function authorizationSnapshotIsCurrent(state: StoreState, actor: User, options: { allowPasswordChange?: boolean } = {}): boolean {
-  const current = state.users.find((user) => user.id === actor.id);
-  const session = actor.sessionId ? state.sessions.find((entry) => entry.id === actor.sessionId && entry.userId === actor.id) : undefined;
+  const current = findById(state.users, actor.id);
+  const sessionById = findById(state.sessions, actor.sessionId);
+  const session = sessionById?.userId === actor.id ? sessionById : undefined;
   return Boolean(
     current?.active
     && (!current.mustChangePassword || options.allowPasswordChange === true)
@@ -182,19 +189,20 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
   const tokenHash = hash(token);
   const state = await store.readState();
-  const session = state.sessions.find((entry) => entry.tokenHash === tokenHash);
+  const session = sessionForTokenHash(state, tokenHash);
   if (!session || sessionTerminallyExpired(session)) {
     throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   }
   await assertSessionIsActive(store, session);
-  const user = state.users.find((entry) => entry.id === session.userId && entry.active);
+  const user = activeUser(state, session.userId);
   const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
   if (!user || !passwordValid) {
     throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
   }
 
   return store.transaction((currentState) => {
-    const currentSession = currentState.sessions.find((entry) => entry.id === session.id && entry.userId === session.userId && entry.tokenHash === tokenHash);
+    const sessionById = findById(currentState.sessions, session.id);
+    const currentSession = sessionById?.userId === session.userId && sessionById.tokenHash === tokenHash ? sessionById : undefined;
     if (
       !currentSession
       || currentSession.revokedAt
@@ -203,7 +211,7 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
     ) {
       throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
     }
-    const currentUser = currentState.users.find((entry) => entry.id === user.id);
+    const currentUser = findById(currentState.users, user.id);
     if (!currentUser || !currentUser.active) {
       throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
     }

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEvent, Notification } from "../domain/models";
 import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
-import { canViewManagementAudit, ensureExpectedVersion, hasServicePatientContext, requestForNotification, requestViewForActor, resultView } from "./service-common";
+import { auditEventItemIds, canViewManagementAudit, ensureExpectedVersion, hasServicePatientContext, notificationFor, requestForAuditEvent, requestForNotification, requestViewForActor, requireActiveUser, requirePatientPermission, resultView, saveIdempotency, serviceFor, visibleResultVersions, withIdempotency } from "./service-common";
+import { freezeState } from "../store/immutable-state";
 import { createApplicationService } from "./service";
 import { MemoryStore } from "../store/memory-store";
 
@@ -147,5 +148,94 @@ describe("shared application scope helpers", () => {
     const view = resultView(store.getState(), { ...draft.result, currentVersionId: undefined });
     expect(view.version.id).toBe(draft.version.id);
     expect(() => ensureExpectedVersion(view.result.version, undefined)).toThrowError(/expectedVersion/);
+  });
+});
+
+describe("indexed lookups over the frozen snapshot", () => {
+  it("deduplicates a notification by recipient and key", () => {
+    const state = freezeState({ ...createDemoState("service-common-dedupe-password"), notifications: [notification("REQUEST", "request-dedupe")] });
+    const { id: _id, createdAt: _createdAt, attempts: _attempts, state: _state, version: _version, ...input } = state.notifications[0];
+    expect(notificationFor(state, input)).toBe(state);
+    expect(notificationFor(state, { ...input, recipientUserId: "user-lab" }).notifications).toHaveLength(2);
+  });
+
+  it("finds, replaces and rejects reused idempotency keys through the index", () => {
+    const base = createDemoState("service-common-idempotency-password");
+    const saved = freezeState(saveIdempotency(base, "user-vet", "scope", "key", { first: true }, { payload: 1 }));
+    expect(withIdempotency(saved, "user-vet", "scope", "key", { payload: 1 })).toMatchObject({ found: true, existing: { first: true } });
+    expect(() => withIdempotency(saved, "user-vet", "scope", "key", { payload: 2 })).toThrow("A chave de repetição já foi usada com outro conteúdo.");
+    const replaced = saveIdempotency(saved, "user-vet", "scope", "key", { second: true }, { payload: 3 });
+    expect(replaced.idempotency).toHaveLength(1);
+    expect(replaced.idempotency[0]).toMatchObject({ response: { second: true } });
+    expect(withIdempotency(saved, "user-vet", "scope", undefined, {})).toEqual({ found: false, state: saved });
+  });
+
+  it("refuses an inactive service even when it exists", () => {
+    const base = createDemoState("service-common-inactive-password");
+    const state = freezeState({ ...base, services: base.services.map((service) => service.id === "service-hemogram" ? { ...service, active: false } : service) });
+    expect(() => serviceFor(state, "service-hemogram")).toThrow("Serviço diagnóstico indisponível.");
+    expect(() => serviceFor(state, "service-missing")).toThrow("Serviço diagnóstico indisponível.");
+  });
+
+  it("takes the newest version when the current pointer is missing and lists visible versions newest first", () => {
+    const base = createDemoState("service-common-version-password");
+    const state = freezeState({
+      ...base,
+      requests: [{ id: "request-v", patientId: "patient-thor", itemIds: ["item-v"] } as never],
+      items: [{ id: "item-v", requestId: "request-v", serviceId: "service-hemogram" } as never],
+      results: [{ id: "result-v", itemId: "item-v" } as never],
+      resultVersions: [
+        { id: "version-1", resultId: "result-v", sequence: 1, status: "SUPERSEDED" },
+        { id: "version-3", resultId: "result-v", sequence: 3, status: "DRAFT" },
+        { id: "version-2", resultId: "result-v", sequence: 2, status: "RELEASED" }
+      ] as never
+    });
+    expect(resultView(state, state.results[0]).version.id).toBe("version-3");
+    expect(visibleResultVersions(state, "result-v").map((version) => version.id)).toEqual(["version-2", "version-1"]);
+  });
+
+  it("resolves nothing for audit events whose references were removed", () => {
+    const state = freezeState({
+      ...createDemoState("service-common-dangling-password"),
+      results: [{ id: "result-orphan", itemId: "item-gone" } as never],
+      resultVersions: [{ id: "version-orphan", resultId: "result-gone" } as never],
+      procedures: [{ id: "procedure-orphan", itemId: "item-gone" } as never],
+      schedules: [{ id: "schedule-orphan", procedureId: "procedure-gone" } as never],
+      attachments: [{ id: "attachment-orphan", resultVersionId: "version-gone" } as never]
+    });
+    for (const [entityType, entityId] of [
+      ["Result", "result-orphan"], ["ResultVersion", "version-orphan"], ["Procedure", "procedure-orphan"],
+      ["ProcedureSchedule", "schedule-orphan"], ["Attachment", "attachment-orphan"], ["Sample", "sample-gone"],
+      ["DiagnosticRequestItem", "item-gone"], ["DiagnosticRequest", "request-gone"]
+    ] as const) {
+      expect(requestForAuditEvent(state, auditEvent(entityType, entityId)), entityType).toBeUndefined();
+      expect(auditEventItemIds(state, auditEvent(entityType, entityId)), entityType).toEqual([]);
+    }
+  });
+
+  it("ignores a session id that belongs to another user", () => {
+    const base = createDemoState("service-common-session-password");
+    const session = { id: "session-other", userId: "user-lab", tokenHash: "hash", csrfTokenHash: "csrf", createdAt: "2026-10-08T00:00:00.000Z", expiresAt: "2999-01-01T00:00:00.000Z", version: 1 };
+    const state = freezeState({ ...base, sessions: [session] });
+    const veterinarian = state.users.find((user) => user.id === "user-vet")!;
+    expect(() => requireActiveUser(state, { ...veterinarian, sessionId: session.id })).toThrow("Sessão inválida ou expirada.");
+  });
+
+  it("lets an executor reach a patient through any of several visible items", () => {
+    const base = createDemoState("service-common-executor-password");
+    const state = freezeState({
+      ...base,
+      requests: [
+        { id: "request-a", patientId: "patient-thor", itemIds: ["item-a"], requestingDepartmentCode: "INPATIENT" } as never,
+        { id: "request-b", patientId: "patient-thor", itemIds: ["item-b"], requestingDepartmentCode: "INPATIENT" } as never
+      ],
+      items: [
+        { id: "item-b", requestId: "request-b", serviceId: "service-crp", departmentCode: "LABORATORY" } as never,
+        { id: "item-a", requestId: "request-a", serviceId: "service-hemogram", departmentCode: "LABORATORY" } as never
+      ]
+    });
+    const lab = state.users.find((user) => user.id === "user-lab")!;
+    expect(() => requirePatientPermission(state, lab, "patient.view", "patient-thor")).not.toThrow();
+    expect(() => requirePatientPermission(state, lab, "patient.view", "patient-mel")).toThrow("Você não tem acesso a este recurso.");
   });
 });

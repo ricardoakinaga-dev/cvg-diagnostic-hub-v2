@@ -9,6 +9,7 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { reprojectCommandRequest, reprojectRequestForActor } from "./request-projection";
+import { findById } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -174,7 +175,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const sample = findOrThrow(originalState.samples.find((entry) => entry.id === sampleId));
+        const sample = findOrThrow(findById(originalState.samples, sampleId));
         const request = requestFor(originalState, sample.requestId);
         const linkedItems = sample.itemIds.map((itemId) => itemFor(originalState, itemId));
         const service = serviceFor(originalState, linkedItems[0].serviceId);
@@ -189,7 +190,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: `PENDING-${randomUUID().slice(0, 8).toUpperCase()}`, sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
         const updatedItems = linkedItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECOLLECTION_REQUIRED", item.workflowType), currentSampleId: replacement.id, version: item.version + 1 }));
         let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples.map((entry) => entry.id === sample.id ? replacedSample : entry), replacement] }, request, updatedItems);
-        const requester = findOrThrow(originalState.users.find((user) => user.id === request.requesterId));
+        const requester = findOrThrow(findById(originalState.users, request.requesterId));
         const correlationId = input.correlationId ?? id("corr");
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: "ACTIONABLE", priority: "HIGH", recipientUserId: requester.id, entityType: "SAMPLE", entityId: replacement.id, deepLink: `/requests/${request.id}`, title: "Nova coleta necessária", body: `${requester.displayName}, a amostra ${sample.accessionCode} precisa ser recolhida: ${reason.label}.`, dedupeKey: `recollection:${sample.id}:${replacement.id}` };
         nextState = notificationFor(nextState, notification);
@@ -205,7 +206,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const expected = findOrThrow(originalState.samples.find((entry) => entry.id === sampleId));
+        const expected = findOrThrow(findById(originalState.samples, sampleId));
         const guardedItems = expected.itemIds.map((itemId) => itemFor(originalState, itemId));
         guardedItems.forEach((item) => requireItemPermission(originalState, currentActor, "sample.replacement.receive", item));
         const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
@@ -438,7 +439,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         activeReason(originalState, "REJECT", input.reasonCode);
         if (!["REQUESTED", "RECEIVED", "IN_PROGRESS"].includes(item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser rejeitado nesta fase.", 409);
         const updatedItem = { ...item, status: transitionItem(item.status, "REJECTED", item.workflowType), rejectionReason: input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : input.reasonCode, version: item.version + 1 };
-        const sample = item.currentSampleId ? originalState.samples.find((entry) => entry.id === item.currentSampleId) : undefined;
+        const sample = item.currentSampleId ? findById(originalState.samples, item.currentSampleId) : undefined;
         const samples = sample ? originalState.samples.map((entry) => entry.id === sample.id ? { ...entry, status: "REJECTED" as const, rejectionCode: input.reasonCode, rejectionNote: input.note, version: entry.version + 1 } : entry) : originalState.samples;
         const correlationId = input.correlationId ?? id("corr");
         let nextState = nextRequestState({ ...originalState, samples }, request, [updatedItem]);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "014_outbox_read_authority";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "015_runtime_entity_rows";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -23,7 +23,8 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "011_outbox_dead_letter",
   "012_session_activity",
   "013_audit_read_authority",
-  "014_outbox_read_authority"
+  "014_outbox_read_authority",
+  "015_runtime_entity_rows"
 ] as const;
 
 /**
@@ -45,7 +46,8 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "011_outbox_dead_letter": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073",
   "012_session_activity": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5",
   "013_audit_read_authority": "9b5ca0a5b3107e4cbe5770081bea50c6b1de3ff1f9fc44cc878a794dea463d98",
-  "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031"
+  "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031",
+  "015_runtime_entity_rows": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -107,6 +109,7 @@ interface RuntimeSchemaRow {
   readonly session_activity_schema_ready: boolean;
   readonly relational_clinical_core_ready: boolean;
   readonly transitional_storage_boundary_ready: boolean;
+  readonly entity_storage_ready: boolean;
   readonly invalidation_trigger_ready: boolean;
 }
 
@@ -389,14 +392,37 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
     SELECT 1
       FROM runtime_storage_boundaries
      WHERE boundary_key = 'runtime-jsonb-snapshot-v1'
-       AND authoritative_store = 'cvg_runtime_state'
+       AND authoritative_store = 'cvg_runtime_entities'
        AND read_mode = 'SNAPSHOT'
        AND write_mode = 'SNAPSHOT'
        AND status = 'TRANSITIONAL'
        AND reconciliation_mode = 'CONTINUOUS'
-       AND contract_version = 'StoreState-v1'
+       AND contract_version = 'StoreState-entities-v1'
        AND projected_relations = ARRAY[]::text[]
   ) AS transitional_storage_boundary_ready,
+  (
+    to_regclass(format('%I.%I', current_schema(), 'cvg_runtime_entities')) IS NOT NULL
+    AND to_regclass(format('%I.%I', current_schema(), 'cvg_runtime_entity_removals')) IS NOT NULL
+    AND to_regprocedure('cvg_runtime_entity_rows(jsonb,bigint)') IS NOT NULL
+    AND to_regprocedure('cvg_runtime_state_header(jsonb)') IS NOT NULL
+    AND EXISTS (
+      SELECT 1
+        FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name = 'cvg_runtime_state'
+         AND column_name = 'entity_removal_floor'
+         AND data_type = 'bigint'
+         AND is_nullable = 'NO'
+    )
+    AND EXISTS (
+      SELECT 1
+        FROM pg_constraint
+       WHERE conrelid = 'cvg_runtime_state'::regclass
+         AND conname = 'runtime_entities_are_external'
+         AND convalidated
+         AND pg_get_constraintdef(oid) ILIKE '%items%[]%'
+    )
+  ) AS entity_storage_ready,
   EXISTS (
     SELECT 1
       FROM pg_trigger
@@ -659,6 +685,7 @@ function runtimeSchemaRow(value: unknown): RuntimeSchemaRow | undefined {
     || typeof row.session_activity_schema_ready !== "boolean"
     || typeof row.relational_clinical_core_ready !== "boolean"
     || typeof row.transitional_storage_boundary_ready !== "boolean"
+    || typeof row.entity_storage_ready !== "boolean"
     || typeof row.invalidation_trigger_ready !== "boolean"
   ) return undefined;
   return row as RuntimeSchemaRow;

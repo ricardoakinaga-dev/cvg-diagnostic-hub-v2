@@ -74,20 +74,24 @@ export async function prunePostgresOutbox(client: PoolClient, options: RuntimeRe
   return result.rowCount ?? 0;
 }
 
-export const REALTIME_OUTBOX_SQL = `SELECT state, version,
+/** The replay window; the caller reads it in the same snapshot as the state. */
+export const REALTIME_OUTBOX_SQL = `SELECT
   COALESCE((SELECT jsonb_agg(message ORDER BY position) FROM (
     SELECT to_jsonb(entry) - 'position' AS message, position FROM (
       SELECT ${COLUMNS}, event_position AS position FROM outbox_messages
       WHERE status IN ('PENDING', 'PROCESSED') ORDER BY event_position DESC LIMIT $1
     ) entry
-  ) replay), '[]'::jsonb) AS outbox
-  FROM cvg_runtime_state WHERE id = 1`;
+  ) replay), '[]'::jsonb) AS outbox`;
 
-/** Seed snapshot and both event authorities in one concurrent-safe statement. */
+/** Seed header, entity rows and both event authorities in one concurrent-safe statement. */
 export const RUNTIME_SEED_WITH_EVENTS_SQL = `WITH source AS (SELECT $1::jsonb AS state), seeded AS (
           INSERT INTO cvg_runtime_state (id, state)
-          SELECT 1, jsonb_set(jsonb_set(state, '{auditEvents}', '[]'::jsonb), '{outbox}', '[]'::jsonb) FROM source
-          ON CONFLICT (id) DO NOTHING RETURNING id
+          SELECT 1, cvg_runtime_state_header(jsonb_set(jsonb_set(state, '{auditEvents}', '[]'::jsonb), '{outbox}', '[]'::jsonb)) FROM source
+          ON CONFLICT (id) DO NOTHING RETURNING id, version AS seeded_version
+        ), seeded_entities AS (
+          INSERT INTO cvg_runtime_entities (collection, entity_key, position, data, written_version)
+          SELECT entity.collection, entity.entity_key, entity.entity_position, entity.data, entity.written_version
+          FROM source, seeded, cvg_runtime_entity_rows(source.state, seeded.seeded_version) AS entity RETURNING collection
         ), seeded_users AS (
           INSERT INTO users (id, email, display_name, password_hash, timezone, active, created_at, updated_at, version)
           SELECT person.id, email, "displayName", "passwordHash", timezone, COALESCE(active, true), "createdAt", now(), version

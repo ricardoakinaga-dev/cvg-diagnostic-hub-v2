@@ -6,6 +6,7 @@ import { Pool, type PoolClient } from "pg";
 import { describe, expect, it } from "vitest";
 import type { DiagnosticItem, DiagnosticRequest, Sample, StoreState } from "../../src/server/domain/models";
 import { createDemoState } from "../../src/server/store/fixtures";
+import { loadEntityState, stateHeader } from "../../src/server/store/postgres-entity-state";
 import {
   applyMigrations,
   LATEST_RUNTIME_SCHEMA_VERSION,
@@ -398,7 +399,14 @@ describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL",
           rows: [{ schema_version: LATEST_RUNTIME_SCHEMA_VERSION }],
           rowCount: 1
         });
-        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual({ ...beforeState, auditEvents: [], outbox: [] });
+        // 015 keeps only the header in the snapshot row; every entity survives as a row, in order.
+        const migratedState = { ...beforeState, auditEvents: [], outbox: [] };
+        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual(stateHeader(migratedState));
+        const entities = await loadEntityState({ query: async (text, values) => {
+          const result = await probe.query(text, values);
+          return { rows: [...result.rows], rowCount: result.rowCount ?? null };
+        } });
+        expect(entities.state).toEqual(migratedState);
         expect(await probe.query("SELECT * FROM audit_events ORDER BY id")).toEqual(beforeAudits);
 
         const adapter = new RelationalClinicalCoreAdapter();

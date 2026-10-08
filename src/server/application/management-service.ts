@@ -8,6 +8,7 @@ import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
+import { findById } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -158,7 +159,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       requirePermission(currentActor, "user_role.manage", {});
       if (currentActor.role !== "ADMIN") throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
       return state.sessions
-        .map((session) => ({ session, user: state.users.find((user) => user.id === session.userId) }))
+        .map((session) => ({ session, user: findById(state.users, session.userId) }))
         .filter((entry): entry is { session: typeof state.sessions[number]; user: User } => Boolean(entry.user && canManageUserTarget(currentActor, entry.user.role, entry.user.departmentCode)))
         .sort((left, right) => right.session.createdAt.localeCompare(left.session.createdAt))
         .map(({ session, user }) => managedSession(session, user, currentActor.sessionId));
@@ -171,8 +172,8 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         requireIdempotencyKey(input.idempotencyKey);
         requirePermission(currentActor, "user_role.manage", {});
         if (currentActor.role !== "ADMIN") throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
-        const targetSession = findOrThrow(originalState.sessions.find((session) => session.id === sessionId));
-        const targetUser = findOrThrow(originalState.users.find((user) => user.id === targetSession.userId));
+        const targetSession = findOrThrow(findById(originalState.sessions, sessionId));
+        const targetUser = findOrThrow(findById(originalState.users, targetSession.userId));
         if (!canManageUserTarget(currentActor, targetUser.role, targetUser.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a esta sessão.", 404);
         const idempotent = withIdempotency<ManagedSession>(originalState, currentActor.id, scope, input.idempotencyKey, { sessionId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
@@ -202,7 +203,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (!ROLES.includes(input.role)) throw new ApiError("VALIDATION_ERROR", "O role informado é inválido.", 400);
         const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
-        const target = findOrThrow(originalState.users.find((user) => user.id === userId));
+        const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode) || !canManageUserTarget(currentActor, input.role, departmentCode)) {
           throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
         }
@@ -288,7 +289,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         requireIdempotencyKey(input.idempotencyKey);
         requirePermission(currentActor, "user_role.manage", {});
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A própria sessão não pode ser desativada.", 400);
-        const target = findOrThrow(originalState.users.find((user) => user.id === userId));
+        const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
         if (target.role === "ADMIN" && target.active) requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
@@ -317,7 +318,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         requireIdempotencyKey(input.idempotencyKey);
         requirePermission(currentActor, "user_role.manage", {});
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A recuperação da própria conta deve ser feita por outro administrador.", 400);
-        const target = findOrThrow(originalState.users.find((user) => user.id === userId));
+        const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
         // Replacing an ADMIN credential grants control of an administrative account.
         if (target.role === "ADMIN") requireRecentReauthentication(currentActor);
@@ -369,7 +370,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
     async getResultTemplate(actor: User, serviceId: string) {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const service = findOrThrow(state.services.find((entry) => entry.id === serviceId));
+      const service = findOrThrow(findById(state.services, serviceId));
       if (!service.active) throw new ApiError("NOT_FOUND", "O serviço diagnóstico não está disponível.", 404);
       requirePermission(currentActor, "service.catalog.view", { departmentCode: service.departmentCode, serviceCode: service.code });
       return service.resultTemplate?.status === "ACTIVE" ? service.resultTemplate : null;
@@ -388,7 +389,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (!/^[A-Z][A-Z0-9_]{1,59}$/.test(code)) throw new ApiError("VALIDATION_ERROR", "Código de serviço inválido.", 400);
         if (originalState.services.some((service) => service.code === code)) throw new ApiError("CONFLICT", "Código de serviço já utilizado.", 409);
         validateServiceDefinition(input.category, input.workflowType);
-        const source = input.duplicateOfServiceId ? findOrThrow(originalState.services.find((entry) => entry.id === input.duplicateOfServiceId)) : undefined;
+        const source = input.duplicateOfServiceId ? findOrThrow(findById(originalState.services, input.duplicateOfServiceId)) : undefined;
         if (source) requirePermission(currentActor, "service.catalog.manage", { departmentCode: source.departmentCode });
         const resultTemplate = input.resultSchema === "NUMERIC_PANEL" ? source?.resultTemplate : undefined;
         validateServiceResultSchema(input.category, input.workflowType, input.resultSchema, resultTemplate);
@@ -419,7 +420,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const scope = "PATCH:/diagnostic-services";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const service = findOrThrow(originalState.services.find((entry) => entry.id === serviceId));
+        const service = findOrThrow(findById(originalState.services, serviceId));
         requirePermission(currentActor, "service.catalog.manage", { departmentCode: service.departmentCode });
         ensureExpectedVersion(service.version, input.expectedVersion);
         const departmentCode = input.departmentCode === undefined ? service.departmentCode : requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
@@ -486,7 +487,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const scope = "PATCH:/reason-codes";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        const reason = findOrThrow(originalState.reasonCodes.find((entry) => entry.id === reasonId));
+        const reason = findOrThrow(findById(originalState.reasonCodes, reasonId));
         requirePermission(currentActor, "reason_code.manage", {});
         const idempotent = withIdempotency<ReasonCode>(originalState, currentActor.id, scope, input.idempotencyKey, { reasonId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };

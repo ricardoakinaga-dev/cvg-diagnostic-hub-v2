@@ -4,7 +4,8 @@ import type { StoreState } from "../domain/models";
 import type { RelationalClinicalCoreRuntime, RelationalSqlClient } from "./relational/clinical-core-contracts";
 import { createDemoState } from "./fixtures";
 import { executePostgresClinicalCoreBackfill } from "./postgres-backfill-executor";
-import { CURRENT_STATE_SQL, LOCKED_STATE_SQL } from "./postgres-state-codec";
+import { stateHeader } from "./postgres-entity-state";
+import { FakeEntityDatabase } from "../../test/fake-entity-database";
 import {
   normalizeRelationalClinicalCoreBackfillOptions,
   relationalClinicalCoreSourceHash,
@@ -29,14 +30,19 @@ function sourceState(): StoreState {
   };
 }
 
+const isHeader = (text: string) => text.startsWith("SELECT state, version, entity_removal_floor FROM cvg_runtime_state");
+const isLockedHeader = (text: string) => isHeader(text) && text.endsWith("FOR UPDATE");
+
 function harness() {
   const state = sourceState();
+  const entities = new FakeEntityDatabase(state, 7);
   let run: Record<string, unknown> | undefined;
   let savedRun: Record<string, unknown> | undefined;
   const projected = new Set<string>();
   let savedProjected: string[] = [];
   const query = vi.fn(async (text: string, values: unknown[] = []) => {
-    if (text === CURRENT_STATE_SQL || text === LOCKED_STATE_SQL) return { rows: [{ state, version: "7" }], rowCount: 1 };
+    const persisted = entities.handle(text, values);
+    if (persisted) return persisted;
     if (text === "BEGIN") {
       savedRun = structuredClone(run);
       savedProjected = [...projected];
@@ -118,6 +124,15 @@ function harness() {
   };
 }
 
+/** COMMITs closing a batch or verification transaction, not the read-only source snapshot. */
+function writeCommits(calls: readonly (readonly unknown[])[]): number {
+  let opened = "";
+  return calls.filter(([text]) => {
+    if (String(text).startsWith("BEGIN")) opened = String(text);
+    return text === "COMMIT" && opened === "BEGIN";
+  }).length;
+}
+
 describe("PostgreSQL backfill executor lifecycle", () => {
   it("commits each projection with its checkpoint, then verifies completion and safely replays", async () => {
     const h = harness();
@@ -125,7 +140,9 @@ describe("PostgreSQL backfill executor lifecycle", () => {
     await expect(h.execute()).resolves.toMatchObject({ requestCount: 2, requestsProcessed: 2, rowsProjected: 2, requestsReconciled: 2 });
     expect(h.getRun()).toMatchObject({ status: "COMPLETED", last_request_id: "request-b" });
     expect(h.adapter.assertReady.mock.calls[0][1]).toEqual({ allowUnvalidatedSampleMembership: true });
-    expect(h.query.mock.calls.filter(([text]) => text === "COMMIT")).toHaveLength(3);
+    expect(writeCommits(h.query.mock.calls)).toBe(3);
+    // The source aggregate is read once, in one consistent read-only snapshot.
+    expect(h.query.mock.calls.filter(([text]) => text === "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY")).toHaveLength(1);
     const checkpoints = h.query.mock.calls.filter(([text]) => text.includes("last_request_id = $2"));
     expect(checkpoints.map(([, values]) => values)).toEqual([[runId, "request-a", 1, 1, 1], [runId, "request-b", 2, 2, 2]]);
     expect(h.query.mock.calls[0]).toEqual(["SELECT pg_advisory_lock(hashtext($1))", [`cvg_relational_backfill:${runId}`]]);
@@ -182,7 +199,7 @@ describe("PostgreSQL backfill executor lifecycle", () => {
     let expected = "";
     if (failure === "missing snapshot") {
       expected = "runtime state row is missing";
-      h.query.mockImplementation(async (text, values) => text === CURRENT_STATE_SQL ? { rows: [], rowCount: 0 } : original(text, values));
+      h.query.mockImplementation(async (text, values) => isHeader(text) && !isLockedHeader(text) ? { rows: [], rowCount: 0 } : original(text, values));
     } else if (failure === "readiness failure") {
       expected = "readiness failed";
       h.adapter.assertReady.mockRejectedValueOnce(new Error(expected));
@@ -204,6 +221,20 @@ describe("PostgreSQL backfill executor lifecycle", () => {
     }
   });
 
+  it("keeps the source read error when rolling back that read-only snapshot also fails", async () => {
+    const h = harness();
+    const original = h.query.getMockImplementation()!;
+    h.query.mockImplementation(async (text, values) => {
+      if (isHeader(text) && !isLockedHeader(text)) return { rows: [], rowCount: 0 };
+      if (text === "ROLLBACK") throw new Error("rollback connection lost");
+      return original(text, values);
+    });
+    await expect(h.execute()).rejects.toThrow("runtime state row is missing");
+    expect(h.query).toHaveBeenCalledWith("ROLLBACK");
+    expect(h.release).toHaveBeenCalledOnce();
+    expect(h.query.mock.calls.at(-1)?.[0]).toContain("pg_advisory_unlock");
+  });
+
   it("aborts between batches while preserving the last committed checkpoint", async () => {
     const h = harness();
     const controller = new AbortController();
@@ -217,7 +248,9 @@ describe("PostgreSQL backfill executor lifecycle", () => {
   it("refuses a moved source under the transaction lock before projecting", async () => {
     const h = harness();
     const original = h.query.getMockImplementation()!;
-    h.query.mockImplementation(async (text, values) => text === LOCKED_STATE_SQL ? { rows: [{ state: h.state, version: "8" }], rowCount: 1 } : original(text, values));
+    h.query.mockImplementation(async (text, values) => isLockedHeader(text)
+      ? { rows: [{ state: stateHeader(h.state), version: "8", entity_removal_floor: "0" }], rowCount: 1 }
+      : original(text, values));
     await expect(h.execute()).rejects.toThrow("POSTGRES_RELATIONAL_BACKFILL_SOURCE_CHANGED");
     expect(h.adapter.projectStateDelta).not.toHaveBeenCalled();
     expect(h.getRun()).toMatchObject({ status: "FAILED", requests_processed: 0 });
@@ -237,7 +270,7 @@ describe("PostgreSQL backfill executor lifecycle", () => {
 
     await expect(h.execute()).rejects.toBe(error);
     expect(h.getRun()).toMatchObject({ status: "FAILED", requests_processed: 0, last_request_id: null });
-    expect(h.query).not.toHaveBeenCalledWith("COMMIT");
+    expect(writeCommits(h.query.mock.calls)).toBe(0);
     expect(h.release).toHaveBeenCalledOnce();
 
     h.query.mockImplementation(original);
@@ -263,7 +296,7 @@ describe("PostgreSQL backfill executor lifecycle", () => {
 
     await expect(h.execute()).rejects.toBe(cleanupError);
     expect(rollbackAttempts).toBe(2);
-    expect(h.query).not.toHaveBeenCalledWith("COMMIT");
+    expect(writeCommits(h.query.mock.calls)).toBe(0);
     expect(h.getRun()).toMatchObject({ status: "FAILED", requests_processed: 0 });
     expect(h.query.mock.calls.at(-1)).toEqual(["SELECT pg_advisory_unlock(hashtext($1))", [`cvg_relational_backfill:${runId}`]]);
     expect(h.release).toHaveBeenCalledOnce();

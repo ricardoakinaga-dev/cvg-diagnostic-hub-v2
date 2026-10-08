@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AuditEvent, OutboxMessage, StoreState } from "../domain/models";
 import { createDemoState } from "./fixtures";
+import { FakeEntityDatabase } from "../../test/fake-entity-database";
+import { stateHeader } from "./postgres-entity-state";
 
 const pool = vi.hoisted(() => ({
   connect: vi.fn(),
@@ -53,6 +55,7 @@ const readyRuntimeSchema = {
   rate_limit_schema_ready: true,
   relational_clinical_core_ready: true,
   transitional_storage_boundary_ready: true,
+  entity_storage_ready: true,
   invalidation_trigger_ready: true
 };
 
@@ -60,26 +63,50 @@ function result(rowCount: number, rows: readonly unknown[] = []) {
   return { rowCount, rows };
 }
 
-function stateRow(state: StoreState, version: unknown = "1") {
-  return result(1, [{ state, version }]);
+function versionRow(version: unknown = "1") {
+  return result(1, [{ version }]);
 }
 
-function queueReadyOpen(state: StoreState, version: unknown = "1") {
-  pool.query
-    .mockResolvedValueOnce(stateRow(state, version))
-    .mockResolvedValueOnce(result(1, [readyRuntimeSchema]));
-}
-
-function createClient(initial: StoreState, updatedVersion: unknown = "2") {
+/** A pooled client reading the entity tables, as a REPEATABLE READ load or refresh does. */
+function entityClient(database: FakeEntityDatabase) {
   return {
-    query: vi.fn(async (text: string) => {
-      if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return result(0);
-      if (text.includes("FOR UPDATE")) return stateRow(initial, "1");
-      if (text.startsWith("UPDATE cvg_runtime_state")) return result(1, [{ version: updatedVersion }]);
-      return result(0);
+    query: vi.fn(async (text: string, values?: readonly unknown[]) => {
+      if (text.startsWith("BEGIN") || text === "COMMIT" || text === "ROLLBACK") return result(0);
+      const handled = database.handle(text, values ?? []);
+      if (handled) return handled;
+      throw new Error(`Unexpected entity SQL: ${text}`);
     }),
     release: vi.fn()
   };
+}
+
+/** Open = version probe, schema readiness, then one consistent load of every entity. */
+function queueReadyOpen(state: StoreState, version: unknown = "1") {
+  const database = new FakeEntityDatabase(state, Number(version));
+  pool.query
+    .mockResolvedValueOnce(versionRow(version))
+    .mockResolvedValueOnce(result(1, [readyRuntimeSchema]));
+  pool.connect.mockResolvedValueOnce(entityClient(database));
+  return database;
+}
+
+/** Writer client: version lock, header update, and the entity diff against the same rows. */
+function createClient(initial: StoreState, updatedVersion: unknown = "2") {
+  const database = new FakeEntityDatabase(initial, 1);
+  return {
+    query: vi.fn(async (text: string, values?: readonly unknown[]) => {
+      if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return result(0);
+      if (text.includes("FOR UPDATE")) return versionRow("1");
+      if (text.startsWith("UPDATE cvg_runtime_state")) return result(1, [{ version: updatedVersion }]);
+      return database.handle(text, values ?? []) ?? result(0);
+    }),
+    release: vi.fn()
+  };
+}
+
+/** pool.connect calls made after the store finished opening. */
+function connectsAfterOpen() {
+  return pool.connect.mock.calls.length - 1;
 }
 
 describe("PostgresStore behavior coverage with an isolated pg mock", () => {
@@ -131,8 +158,9 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     pool.query
       .mockResolvedValueOnce(result(0))
       .mockResolvedValueOnce(result(1))
-      .mockResolvedValueOnce(stateRow(fallbackState, "7"))
+      .mockResolvedValueOnce(versionRow("7"))
       .mockResolvedValueOnce(result(1, [readyRuntimeSchema]));
+    pool.connect.mockResolvedValueOnce(entityClient(new FakeEntityDatabase(fallbackState, 7)));
 
     const store = await PostgresStore.create(
       connectionString,
@@ -168,7 +196,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
 
     await expect(store.reset(initial, { authorization: "ALLOW_DB_SMOKE_RESET" }))
       .rejects.toThrow("POSTGRES_ADMIN_RESET_FORBIDDEN_IN_PRODUCTION");
-    expect(pool.connect).not.toHaveBeenCalled();
+    expect(connectsAfterOpen()).toBe(0);
 
     await store.close();
   });
@@ -182,7 +210,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
 
     await expect(store.reset(initial, { authorization: "ALLOW_SYNTHETIC_SEED" }))
       .rejects.toThrow("POSTGRES_ADMIN_RESET_TARGET_NOT_ALLOWED");
-    expect(pool.connect).not.toHaveBeenCalled();
+    expect(connectsAfterOpen()).toBe(0);
 
     await store.close();
   });
@@ -223,7 +251,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     const client = createClient(initial, "8");
     client.query.mockImplementation(async (text: string, _values?: readonly unknown[]) => {
       if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return result(0);
-      if (text.includes("FOR UPDATE")) return stateRow(initial, "7");
+      if (text.includes("FOR UPDATE")) return versionRow("7");
       if (text.startsWith("UPDATE cvg_runtime_state")) return result(1, [{ version: "8" }]);
       if (text.startsWith("INSERT INTO audit_events")) return result(1, [{ id: auditEvent.id }]);
       if (text.startsWith("INSERT INTO outbox_messages")) return result(1, [{ id: outboxMessage.id }]);
@@ -233,19 +261,24 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     pool.connect.mockResolvedValueOnce(client);
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_commit");
 
-    await expect(store.transaction(async () => ({ state: nextState, result: "committed" })))
-      .resolves.toBe("committed");
+    // Like the services, derive the next state from the shared snapshot (structural sharing).
+    await expect(store.transaction(async (state) => ({
+      state: { ...state, auditEvents: [auditEvent], outbox: [outboxMessage], protocolSequence: state.protocolSequence + 1 },
+      result: "committed"
+    }))).resolves.toBe("committed");
 
     expect(client.query.mock.calls.map(([text]) => String(text))).toEqual([
       "BEGIN",
-      expect.stringContaining("SELECT state, version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
+      // The cache already holds version 7: the lock reads only the version column.
+      expect.stringContaining("SELECT version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE"),
       expect.stringContaining("UPDATE cvg_runtime_state"),
       expect.stringContaining("INSERT INTO audit_events"),
       expect.stringContaining("INSERT INTO outbox_messages"),
       "COMMIT"
     ]);
     const updateCall = client.query.mock.calls.find(([text]) => String(text).startsWith("UPDATE cvg_runtime_state"));
-    expect((updateCall as readonly unknown[] | undefined)?.[1]).toEqual([JSON.stringify({ ...nextState, auditEvents: [], outbox: [] })]);
+    // The row keeps only the header; no entity collection changed, so no entity statement ran.
+    expect((updateCall as readonly unknown[] | undefined)?.[1]).toEqual([JSON.stringify(stateHeader(nextState))]);
     const auditCall = client.query.mock.calls.find(([text]) => String(text).startsWith("INSERT INTO audit_events"));
     expect((auditCall as readonly unknown[] | undefined)?.[1]).toEqual([
       auditEvent.id,
@@ -298,8 +331,12 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     const client = {
       query: vi.fn(async (text: string, values?: readonly unknown[]) => {
         if (text === "BEGIN" || text === "COMMIT" || text === "ROLLBACK") return result(0);
-        if (text.includes("FOR UPDATE")) return stateRow(structuredClone(initial));
+        if (text.includes("FOR UPDATE")) return versionRow("1");
         if (text.startsWith("UPDATE cvg_runtime_state")) return result(1, [{ version: "2" }]);
+        if (text.startsWith("INSERT INTO cvg_runtime_entities")) {
+          expect(JSON.parse(String(values?.[0]))).toEqual([{ collection: "sessions", entity_key: session.id, position: 2, data: session }]);
+          return result(1);
+        }
         if (text.includes("INSERT INTO session_activity")) {
           expect(values).toEqual([session.id, session.userId, session.createdAt]);
           if (outcome === "insert failure") throw new Error("injected activity insert failure");
@@ -314,11 +351,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     pool.connect.mockResolvedValueOnce(client);
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_activity_commit");
     try {
-      // Also exercise callbacks that mutate their private snapshot in place.
-      const transaction = store.transaction((state) => {
-        state.sessions.push(session);
-        return { state, result: "committed" };
-      });
+      const transaction = store.transaction((state) => ({ state: { ...state, sessions: [...state.sessions, session] }, result: "committed" }));
       if (outcome === "success") {
         await expect(transaction).resolves.toBe("committed");
         expect(store.getState()).toEqual(nextState);
@@ -332,6 +365,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
         "BEGIN",
         expect.stringContaining("FOR UPDATE"),
         expect.stringContaining("UPDATE cvg_runtime_state"),
+        expect.stringContaining("INSERT INTO cvg_runtime_entities"),
         expect.stringContaining("INSERT INTO session_activity"),
         outcome === "success" ? "COMMIT" : "ROLLBACK"
       ]);
@@ -347,7 +381,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     const client = createClient(initial);
     client.query.mockImplementation(async (text: string) => {
       if (text === "BEGIN" || text === "ROLLBACK") return result(0);
-      if (text.includes("FOR UPDATE")) return stateRow(initial, "1");
+      if (text.includes("FOR UPDATE")) return versionRow("1");
       if (text.startsWith("UPDATE cvg_runtime_state")) return result(0);
       return result(0);
     });
@@ -382,7 +416,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     const client = createClient(initial);
     client.query.mockImplementation(async (text: string) => {
       if (text === "BEGIN" || text === "ROLLBACK") return result(0);
-      if (text.includes("FOR UPDATE")) return stateRow(initial, "1");
+      if (text.includes("FOR UPDATE")) return versionRow("1");
       if (text.startsWith("UPDATE cvg_runtime_state")) return result(1, [{ version: "2" }]);
       if (text.startsWith("INSERT INTO audit_events")) return result(0);
       return result(0);
@@ -420,10 +454,12 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     const client = createClient(initial);
     client.query.mockImplementation(async (text: string) => {
       if (text === "BEGIN" || text === "ROLLBACK") return result(0);
-      if (text.includes("FOR UPDATE")) return stateRow(initial, "1");
+      if (text.includes("FOR UPDATE")) return versionRow("1");
       return result(0);
     });
-    queueReadyOpen(initial);
+    // 013 keeps audit out of the row; a legacy header that still carries one must stay immutable.
+    const database = queueReadyOpen(initial);
+    database.header = { ...database.header, auditEvents: [originalAuditEvent] };
     pool.connect.mockResolvedValueOnce(client);
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_audit_append_only");
 
@@ -444,13 +480,12 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
 
   it("accepts a bigint PostgreSQL version but keeps the validated cache after a later invalid read", async () => {
     const initial = createDemoState("postgres-coverage-version-password");
-    pool.query
-      .mockResolvedValueOnce(stateRow(initial, 1n))
-      .mockResolvedValueOnce(result(1, [readyRuntimeSchema]))
-      .mockResolvedValueOnce(result(1, [{ version: 2n }]))
-      .mockResolvedValueOnce(stateRow(initial, 2n))
-      .mockResolvedValueOnce(result(1, [{ version: 0 }]));
+    queueReadyOpen(initial, 1n);
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_version");
+    const advanced = new FakeEntityDatabase(initial, 1);
+    advanced.version = 2;
+    pool.query.mockResolvedValueOnce(versionRow(2n)).mockResolvedValueOnce(versionRow(0));
+    pool.connect.mockResolvedValueOnce(entityClient(advanced));
 
     await expect(store.readState()).resolves.toEqual(initial);
     await expect(store.readState()).rejects.toThrow("PostgreSQL runtime state version is invalid.");
@@ -489,6 +524,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       { authorization: "ALLOW_POSTGRES_INTEGRATION_TESTS" }))
       .rejects.toThrow("PostgreSQL runtime state row is missing after seed initialization.");
     expect(pool.query).toHaveBeenCalledTimes(3);
+    expect(pool.connect).not.toHaveBeenCalled();
     expect(pool.end).toHaveBeenCalledOnce();
     expect(listenerPool.connect).not.toHaveBeenCalled();
   });
@@ -501,7 +537,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       await expect(store.readRelationalClinicalRequest("request-a")).rejects.toThrow("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
       await expect(store.reconcileRelationalClinicalRequest("request-a")).rejects.toThrow("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
       await expect(store.backfillRelationalClinicalCore()).rejects.toThrow("POSTGRES_RELATIONAL_RUNTIME_NOT_ENABLED");
-      expect(pool.connect).not.toHaveBeenCalled();
+      expect(connectsAfterOpen()).toBe(0);
       expect(pool.query).toHaveBeenCalledTimes(2);
       const client = createClient(initial);
       pool.connect.mockResolvedValueOnce(client);
@@ -517,12 +553,23 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     queueReadyOpen(initial);
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_missing_read");
     try {
-      pool.query.mockResolvedValueOnce(result(0));
+      const missing = { query: vi.fn(async () => result(0)), release: vi.fn() };
+      pool.connect.mockResolvedValueOnce(missing);
       await expect(store.readRealtimeSnapshot(5)).rejects.toThrow("PostgreSQL runtime state row is missing.");
+      expect(missing.query).toHaveBeenLastCalledWith("ROLLBACK");
+      expect(missing.release).toHaveBeenCalledOnce();
       pool.query.mockResolvedValueOnce(result(0));
       await expect(store.readStateVersion()).rejects.toThrow("PostgreSQL runtime state row is missing.");
       expect(store.getState()).toEqual(initial);
-      pool.query.mockResolvedValueOnce(result(1, [{ state: initial, version: "2", outbox: [] }]));
+      const advanced = new FakeEntityDatabase(initial, 1);
+      advanced.version = 2;
+      const realtime = entityClient(advanced);
+      realtime.query.mockImplementation(async (text: string, values?: readonly unknown[]) => {
+        if (text.startsWith("BEGIN") || text === "COMMIT") return result(0);
+        if (text.includes("FROM outbox_messages")) return result(1, [{ outbox: [] }]);
+        return advanced.handle(text, values ?? []) ?? result(0);
+      });
+      pool.connect.mockResolvedValueOnce(realtime);
       await expect(store.readRealtimeSnapshot(5)).resolves.toEqual({ state: initial, version: 2 });
       pool.query.mockResolvedValueOnce(result(1, [{ version: "2" }]));
       await expect(store.readStateVersion()).resolves.toBe(2);
@@ -559,16 +606,41 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
     }
   });
 
-  it("returns an isolated state snapshot with its durable version", async () => {
+  it("rejects a transaction callback that mutates the shared state in place, before anything is written", async () => {
+    const initial = createDemoState("postgres-frozen-transaction-password");
+    queueReadyOpen(initial, "1");
+    const client = createClient(initial);
+    pool.connect.mockResolvedValueOnce(client);
+    const store = await PostgresStore.create("postgres://test.invalid/cvg_test_frozen_transaction");
+    try {
+      await expect(store.transaction((state) => {
+        state.sessions.push({ ...state.sessions[0]!, id: "session-in-place" });
+        return { state, result: undefined };
+      })).rejects.toThrow(TypeError);
+      const statements = client.query.mock.calls.map(([text]) => String(text));
+      expect(statements).toContain("ROLLBACK");
+      expect(statements.some((text) => text.startsWith("UPDATE cvg_runtime_state"))).toBe(false);
+      expect(store.getState().sessions.some((session) => session.id === "session-in-place")).toBe(false);
+    } finally {
+      await store.close();
+    }
+  });
+
+  it("returns the shared frozen snapshot with its durable version and keeps getState an independent copy", async () => {
     const initial = createDemoState("postgres-snapshot-isolation-password");
+    const original = structuredClone(initial);
     queueReadyOpen(initial, "7");
     const store = await PostgresStore.create("postgres://test.invalid/cvg_test_snapshot_isolation");
     try {
-      pool.query.mockResolvedValueOnce(result(1, [{ version: "7" }])).mockResolvedValueOnce(stateRow(initial, "7"));
+      // The completed LISTEN invalidated the cache once: the first read refreshes (nothing changed).
+      pool.query.mockResolvedValueOnce(versionRow("7"));
+      pool.connect.mockResolvedValueOnce(entityClient(new FakeEntityDatabase(initial, 7)));
       const snapshot = await store.readStateSnapshot();
-      expect(snapshot).toEqual({ state: initial, version: 7 });
-      snapshot.state.users[0].active = false;
-      expect(store.getState()).toEqual(initial);
+      expect(snapshot).toEqual({ state: original, version: 7 });
+      expect(() => { snapshot.state.users[0].active = false; }).toThrow(TypeError);
+      const copy = store.getState();
+      copy.users[0].active = false;
+      expect(store.getState()).toEqual(original);
       pool.query.mockResolvedValueOnce(result(0));
       await expect(store.readStateSnapshot()).rejects.toThrow("PostgreSQL runtime state row is missing.");
       expect(store.getState()).toEqual(initial);
@@ -647,7 +719,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       await expect(store.readOutboxMetrics()).resolves.toEqual({ pending: 3, oldestAvailableAt: message.availableAt });
       pool.query.mockResolvedValueOnce(result(1, [{ pending: "0", oldest: null }]));
       await expect(store.readOutboxMetrics()).resolves.toEqual({ pending: 0 });
-      expect(pool.connect).not.toHaveBeenCalled();
+      expect(connectsAfterOpen()).toBe(0);
       expect(store.getState()).toEqual(initial);
     } finally {
       await store.close();
@@ -691,7 +763,7 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       pool.query.mockResolvedValueOnce(result(1, [{ recollections: 0, latency: null }]));
       await expect(store.readAuditMetrics({ requestCount: 0, samples: [], releasedVersions: [] }))
         .resolves.toEqual({ recollectionRate: undefined, resultViewLatencySeconds: undefined });
-      expect(pool.connect).not.toHaveBeenCalled();
+      expect(connectsAfterOpen()).toBe(0);
       expect(store.getState()).toEqual(initial);
     } finally {
       await store.close();

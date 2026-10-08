@@ -419,7 +419,7 @@ describe("PostgresStore multi-instance integration", () => {
       const boundary = await database.query("SELECT boundary_key, authoritative_store, status, reconciliation_mode FROM runtime_storage_boundaries WHERE boundary_key = 'runtime-jsonb-snapshot-v1'");
       expect(boundary.rows).toEqual([expect.objectContaining({
         boundary_key: "runtime-jsonb-snapshot-v1",
-        authoritative_store: "cvg_runtime_state",
+        authoritative_store: "cvg_runtime_entities",
         status: "TRANSITIONAL",
         reconciliation_mode: "CONTINUOUS"
       })]);

@@ -10,6 +10,7 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { reprojectCommandRequest } from "./request-projection";
+import { findById } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -334,7 +335,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const releasedItem = { ...view.item, status: transitionItem(view.item.status, "RESULT_AVAILABLE", view.item.workflowType), releasedAt, version: view.item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         let nextState = nextRequestState({ ...releaseState, results: releaseState.results.map((entry) => entry.id === result.id ? releasedResult : entry), resultVersions: releaseState.resultVersions.map((entry) => entry.id === view.version.id ? releasedVersion : entry) }, view.request, [releasedItem]);
-        const requester = findOrThrow(releaseState.users.find((user) => user.id === view.request.requesterId));
+        const requester = findOrThrow(findById(releaseState.users, view.request.requesterId));
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: releasedVersion.critical ? "CRITICAL" : "ACTIONABLE", priority: releasedVersion.critical ? "URGENT" : "HIGH", recipientUserId: requester.id, entityType: "RESULT_VERSION", entityId: releasedVersion.id, deepLink: `/results/${result.id}`, title: releasedVersion.critical ? "Resultado crítico requer confirmação" : "Resultado disponível", body: `${view.patient.displayName} · ${view.service.name} · versão ${releasedVersion.sequence} liberada.`, dedupeKey: `release:${releasedVersion.id}:${requester.id}` };
         nextState = notificationFor(nextState, notification);
         const notificationId = nextState.notifications.find((entry) => entry.dedupeKey === notification.dedupeKey && entry.recipientUserId === notification.recipientUserId)?.id;
@@ -386,7 +387,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const voidedVersion = { ...view.version, status: "VOIDED" as const, needsReReview: false, version: view.version.version + 1 };
         const voidedResult = { ...result, lifecycleStatus: "VOIDED" as const, needsReReview: false, version: result.version + 1 };
         const updatedItem = { ...view.item, status: view.item.status === "RESULT_VOIDED" ? view.item.status : transitionItem(view.item.status, "RESULT_VOIDED", view.item.workflowType), version: view.item.version + 1 };
-        const requester = findOrThrow(originalState.users.find((user) => user.id === view.request.requesterId));
+        const requester = findOrThrow(findById(originalState.users, view.request.requesterId));
         const correlationId = input.correlationId ?? id("corr");
         let nextState = supersedeCriticalNotifications(nextRequestState({ ...originalState, results: originalState.results.map((entry) => entry.id === result.id ? voidedResult : entry), resultVersions: originalState.resultVersions.map((entry) => entry.id === view.version.id ? voidedVersion : entry) }, view.request, [updatedItem]), view.version.id, currentActor.id, correlationId);
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: "ACTIONABLE", priority: "HIGH", recipientUserId: requester.id, entityType: "RESULT_VERSION", entityId: voidedVersion.id, deepLink: `/results/${result.id}`, title: "Resultado invalidado", body: `${view.patient.displayName} · ${view.service.name}: um novo resultado é necessário.`, dedupeKey: `void:${voidedVersion.id}:${requester.id}` };
@@ -402,7 +403,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const version = findOrThrow(originalState.resultVersions.find((entry) => entry.id === versionId));
+        const version = findOrThrow(findById(originalState.resultVersions, versionId));
         const result = resultFor(originalState, version.resultId);
         const view = resultView(originalState, result);
         const resource = { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code };

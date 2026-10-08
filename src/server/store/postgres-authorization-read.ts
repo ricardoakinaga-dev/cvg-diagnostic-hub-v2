@@ -7,10 +7,9 @@ export async function readPostgresAuthorizationSnapshot(
 ): Promise<{ user?: User; session?: Session }> {
   const result = await pool.query<{ user: User | null; session: Session | null }>(
     `SELECT
-       (SELECT value FROM jsonb_array_elements(state->'users') AS user_entry(value)
-        WHERE value->>'id' = $1 LIMIT 1) AS user,
-       (SELECT value FROM jsonb_array_elements(state->'sessions') AS session_entry(value)
-        WHERE value->>'id' = $2 AND value->>'userId' = $1 LIMIT 1) AS session
+       (SELECT data FROM cvg_runtime_entities WHERE collection = 'users' AND entity_key = $1) AS user,
+       (SELECT data FROM cvg_runtime_entities
+         WHERE collection = 'sessions' AND entity_key = $2 AND data->>'userId' = $1) AS session
      FROM cvg_runtime_state
      WHERE id = 1`,
     [query.userId, query.sessionId ?? null]

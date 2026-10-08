@@ -1,6 +1,7 @@
-import type { Pool } from "pg";
+import type { Pool, PoolClient } from "pg";
+import type { StoreState } from "../domain/models";
 import type { RelationalClinicalCoreRuntime } from "./relational/clinical-core-contracts";
-import { CURRENT_STATE_SQL, LOCKED_STATE_SQL, runtimeStateFromRow, versionFromRow } from "./postgres-state-codec";
+import { loadEntityState } from "./postgres-entity-state";
 import {
   assertBackfillNotAborted,
   assertBackfillRunCompatible,
@@ -39,6 +40,25 @@ interface PostgresBackfillExecution {
   readonly runId: string;
 }
 
+/**
+ * The backfill source is the whole runtime aggregate. Inside the batch
+ * transactions `lock` takes the cvg_runtime_state row lock first, as the
+ * former `SELECT ... FOR UPDATE` on the snapshot row did.
+ */
+async function loadSourceSnapshot(client: PoolClient, lock: boolean): Promise<{ state: StoreState; version: number }> {
+  if (lock) return loadEntityState(client, { lock: true });
+  // Outside a transaction: one REPEATABLE READ view for the header and the entities.
+  await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+  try {
+    const snapshot = await loadEntityState(client);
+    await client.query("COMMIT");
+    return snapshot;
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw error;
+  }
+}
+
 /** Executes a stable-source backfill; the store owns enqueue and shutdown. */
 export async function executePostgresClinicalCoreBackfill({
   pool, adapter, allowUnvalidatedSampleMembership, normalized, runId
@@ -53,10 +73,9 @@ export async function executePostgresClinicalCoreBackfill({
       allowUnvalidatedSampleMembership
     });
 
-    const initial = await lockClient.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
-    if (initial.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
-    const sourceSnapshotVersion = versionFromRow(initial.rows[0]?.version);
-    const sourceState = runtimeStateFromRow(initial.rows[0]);
+    const initial = await loadSourceSnapshot(lockClient, false);
+    const sourceSnapshotVersion = initial.version;
+    const sourceState = initial.state;
     const sourceSnapshotHash = relationalClinicalCoreSourceHash(sourceState);
     const requestIds = relationalClinicalCoreRequestIds(sourceState);
     const existing = await readRelationalClinicalCoreBackfillRun(client, runId);
@@ -83,8 +102,7 @@ export async function executePostgresClinicalCoreBackfill({
       transactionOpen = true;
       try {
         await lockClient.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-        const current = await lockClient.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
-        assertBackfillSourceStable(current.rows[0], sourceSnapshotVersion, sourceSnapshotHash);
+        assertBackfillSourceStable(await loadSourceSnapshot(lockClient, true), sourceSnapshotVersion, sourceSnapshotHash);
         for (const requestId of requestIds) {
           await adapter.repairSampleMembership(
             client,
@@ -121,8 +139,7 @@ export async function executePostgresClinicalCoreBackfill({
       transactionOpen = true;
       try {
         await lockClient.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-        const current = await lockClient.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
-        assertBackfillSourceStable(current.rows[0], sourceSnapshotVersion, sourceSnapshotHash);
+        assertBackfillSourceStable(await loadSourceSnapshot(lockClient, true), sourceSnapshotVersion, sourceSnapshotHash);
         await lockClient.query("SET CONSTRAINTS ALL DEFERRED");
         let batchRowsProjected = 0;
         for (const requestId of batchIds) {
@@ -166,8 +183,7 @@ export async function executePostgresClinicalCoreBackfill({
     transactionOpen = true;
     try {
       await lockClient.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-      const current = await lockClient.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
-      assertBackfillSourceStable(current.rows[0], sourceSnapshotVersion, sourceSnapshotHash);
+      assertBackfillSourceStable(await loadSourceSnapshot(lockClient, true), sourceSnapshotVersion, sourceSnapshotHash);
       await verifyRelationalClinicalCoreTarget(adapter, client, sourceState, requestIds);
       await adapter.validateSampleMembership(client);
       await adapter.assertReady(client);

@@ -33,8 +33,8 @@ describe("production bootstrap against a migrated PostgreSQL database", () => {
         bootstrapProductionDatabase(database.connectionString(), { ...ADMIN, email: "intruder@hospital.example.org" })
       ).rejects.toThrow(/BOOTSTRAP_ALREADY_INITIALIZED/);
 
-      const state = await database.query("SELECT state->'users' AS users FROM cvg_runtime_state WHERE id = 1");
-      expect((state.rows[0] as { users: Array<{ id: string }> }).users.map((user) => user.id)).toEqual([adminId]);
+      const users = await database.query("SELECT entity_key FROM cvg_runtime_entities WHERE collection = 'users' ORDER BY position");
+      expect(users.rows).toEqual([{ entity_key: adminId }]);
       const audit = await database.query("SELECT count(*)::int AS total FROM audit_events WHERE event_type = 'ProductionBootstrap'");
       expect(audit.rows).toEqual([{ total: 1 }]);
     });

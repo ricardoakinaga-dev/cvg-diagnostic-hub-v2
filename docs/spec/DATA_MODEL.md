@@ -9,8 +9,8 @@
 | Campo | Valor atual |
 | --- | --- |
 | boundary | `runtime-jsonb-snapshot-v1` |
-| authoritative source | `cvg_runtime_state` |
-| contract | `StoreState-v1` |
+| authoritative source | `cvg_runtime_entities` (uma linha por entidade) + cabeçalho e versão em `cvg_runtime_state` (migration 015, D-030) |
+| contract | `StoreState-entities-v1` (mesmo `StoreState`, persistido por entidade) |
 | status | `TRANSITIONAL` |
 | consistency | `CONTINUOUS` reconciliation |
 | relational projections | audit events, outbox messages, rate-limit buckets |

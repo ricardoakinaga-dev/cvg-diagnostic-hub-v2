@@ -56,11 +56,12 @@ else
 fi
 
 if [[ -n "$direct_url" ]]; then
-  result="$($psql_bin "$smoke_url" -At -v ON_ERROR_STOP=1 -X -c "SELECT (SELECT count(*) FROM cvg_runtime_state), (SELECT count(*) FROM audit_events), (SELECT count(*) FROM outbox_messages);")"
+  result="$($psql_bin "$smoke_url" -At -v ON_ERROR_STOP=1 -X -c "SELECT (SELECT count(*) FROM cvg_runtime_state), (SELECT count(*) FROM audit_events), (SELECT count(*) FROM outbox_messages), (SELECT count(*) FROM cvg_runtime_entities WHERE collection = 'users');")"
 else
-  result="$(docker compose exec -T "$compose_service" psql -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$smoke_db" -c "SELECT (SELECT count(*) FROM cvg_runtime_state), (SELECT count(*) FROM audit_events), (SELECT count(*) FROM outbox_messages);")"
+  result="$(docker compose exec -T "$compose_service" psql -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$smoke_db" -c "SELECT (SELECT count(*) FROM cvg_runtime_state), (SELECT count(*) FROM audit_events), (SELECT count(*) FROM outbox_messages), (SELECT count(*) FROM cvg_runtime_entities WHERE collection = 'users');")"
 fi
-if [[ ! "$result" =~ ^1\|[0-9]+\|[0-9]+$ ]]; then
+# The runtime row plus its entity rows (015): an initialized state has at least one user.
+if [[ ! "$result" =~ ^1\|[0-9]+\|[0-9]+\|[1-9][0-9]*$ ]]; then
   echo "Restore smoke falhou: resultado inesperado '$result'." >&2
   exit 1
 fi

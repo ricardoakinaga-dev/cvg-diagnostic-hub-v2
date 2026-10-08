@@ -135,6 +135,18 @@ describe("memory store narrow seams", () => {
     await store.reset(negative);
     await expect(store.healthcheck()).rejects.toThrow("MEMORY_RUNTIME_STATE_INVALID");
   });
+
+  it("shares one frozen aggregate across reads and rejects in-place mutation by a transaction", async () => {
+    const store = new MemoryStore(createDemoState("memory-frozen-password"));
+    const [first, second] = await Promise.all([store.readState(), store.readState()]);
+    expect(first).toBe(second);
+    expect(Object.isFrozen(first.users[0])).toBe(true);
+    await expect(store.transaction((state) => { state.users.pop(); return { state, result: undefined }; })).rejects.toThrow(TypeError);
+    expect((await store.readState()).users).toHaveLength(first.users.length);
+    const copy = store.getState();
+    copy.users.pop();
+    expect(store.getState().users).toHaveLength(first.users.length);
+  });
 });
 
 type StoreStateLike = ReturnType<MemoryStore["getState"]>;

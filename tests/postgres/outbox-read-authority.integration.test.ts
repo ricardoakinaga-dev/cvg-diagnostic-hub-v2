@@ -87,7 +87,9 @@ async function with013Probe(database: DisposablePostgresDatabase, operation: (pr
         return { rows: result.rows as readonly unknown[], rowCount: result.rowCount };
       } };
       await applyMigrations(sql, { migrationDirectory: directory, logger: { info: () => undefined } });
-      await operation({ sql, query: sql.query, upgrade: () => applyMigrations(sql, { migrationDirectory: MIGRATIONS, logger: { info: () => undefined } }) });
+      // Upgrade through this cutover only; later migrations have their own suites.
+      await copyFile(path.join(MIGRATIONS, `${CUTOVER}.sql`), path.join(directory, `${CUTOVER}.sql`));
+      await operation({ sql, query: sql.query, upgrade: () => applyMigrations(sql, { migrationDirectory: directory, logger: { info: () => undefined } }) });
     } finally {
       client.release();
     }
@@ -500,7 +502,7 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
         expect(await probe.query("SELECT schema_version FROM relational_schema_markers")).toMatchObject({ rows: [{ schema_version: CUTOVER }] });
         expect(await probe.query("SELECT is_identity, identity_generation FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'outbox_messages' AND column_name = 'event_position'")).toMatchObject({ rows: [{ is_identity: "YES", identity_generation: "BY DEFAULT" }] });
         const beforeRerun = await migrationEvidence(probe);
-        await expect(probe.upgrade()).resolves.toEqual({ applied: [], alreadyApplied: [...RUNTIME_MIGRATION_VERSIONS] });
+        await expect(probe.upgrade()).resolves.toEqual({ applied: [], alreadyApplied: RUNTIME_MIGRATION_VERSIONS.filter((version) => version <= CUTOVER) });
         expect(await migrationEvidence(probe)).toEqual(beforeRerun);
         await expect(probe.query("UPDATE cvg_runtime_state SET state = $1::jsonb, version = version + 1 WHERE id = 1", [JSON.stringify(state)])).rejects.toMatchObject({ code: "23514", constraint: "runtime_outbox_is_transient" });
         expect(await migrationEvidence(probe)).toEqual(beforeRerun);
@@ -555,7 +557,7 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
         expect(await readPostgresOutbox(probe.sql, { kind: "dead-letter", limit: 100 })).toEqual([persisted]);
         const recovered = await migrationEvidence(probe);
         expect(recovered.artifacts.rows).toEqual([{ guard: 1, position: 1, indexes: 2 }]);
-        await expect(probe.upgrade()).resolves.toEqual({ applied: [], alreadyApplied: [...RUNTIME_MIGRATION_VERSIONS] });
+        await expect(probe.upgrade()).resolves.toEqual({ applied: [], alreadyApplied: RUNTIME_MIGRATION_VERSIONS.filter((version) => version <= CUTOVER) });
         expect(await migrationEvidence(probe)).toEqual(recovered);
       });
     });

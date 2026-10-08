@@ -17,6 +17,7 @@ import {
   saveIdempotency,
   withIdempotency
 } from "./service-common";
+import { findById } from "../domain/state-index";
 
 const TERMINAL_ITEM_STATES = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const RESPONSIBLE_ROLES = new Set<RoleCode>(["VETERINARIAN", "INPATIENT_TEAM"]);
@@ -97,7 +98,7 @@ function responsibleUser(
   departmentCode: string,
   policy: AdmissionContextPolicy
 ): User {
-  const user = state.users.find((entry) => entry.id === userId);
+  const user = findById(state.users, userId);
   if (
     !user
     || user.active !== true
@@ -131,8 +132,8 @@ export function createAdmissionContextService({ store }: ApplicationServiceConte
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const admission = findOrThrow(originalState.admissions.find((entry) => entry.id === admissionId));
-        const encounter = findOrThrow(originalState.encounters.find((entry) => entry.id === admission.encounterId));
+        const admission = findOrThrow(findById(originalState.admissions, admissionId));
+        const encounter = findOrThrow(findById(originalState.encounters, admission.encounterId));
         requirePermission(currentActor, "admission.context.manage", {
           patientId: encounter.patientId,
           departmentCode: admission.departmentCode

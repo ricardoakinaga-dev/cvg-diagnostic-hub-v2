@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PostgresStateCache } from "./postgres-state-cache";
+import { freezeState } from "./immutable-state";
 import { Pool, type PoolClient } from "pg";
 import { outboxEnvelopeFor, type AuditEntity, type AuditMetrics, type AuditMetricsQuery, type AuditReadPage, type AuditReadQuery, type AuditTransactionReader, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User } from "../domain/models";
 import { auditEventsForReset, postgresAuditTransactionReader, readPostgresAuditActors, readPostgresAuditEvents, readPostgresAuditMetrics } from "./postgres-audit-read";
@@ -9,13 +10,12 @@ import { lockPostgresOutbox, outboxFromRow, prunePostgresOutbox, readPostgresOut
 import { assertRuntimeSchemaReady } from "./migrations";
 import {
   assertAuditEventsAppendOnly,
-  CURRENT_STATE_SQL,
   CURRENT_VERSION_SQL,
-  LOCKED_STATE_SQL,
-  runtimeStateFromRow,
+  LOCKED_VERSION_SQL,
   stateFromRow,
   versionFromRow
 } from "./postgres-state-codec";
+import { loadEntityState, stateHeader, writeEntityState, type EntityQueryable } from "./postgres-entity-state";
 import { relationalClient } from "./postgres-backfill-support";
 import { executePostgresClinicalCoreBackfill } from "./postgres-backfill-executor";
 import {
@@ -140,29 +140,24 @@ export class PostgresStore implements StateStore {
       });
     }
     try {
-      const result = await pool.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
-      let initialState: StoreState;
-      let initialVersion: number;
+      const result = await pool.query<{ version: unknown }>(CURRENT_VERSION_SQL);
       if (result.rowCount === 0) {
         if (!fallbackState) throw new Error("PostgreSQL runtime state row is missing. Execute the explicit synthetic seed when appropriate.");
         assertInitializationAuthorized(connectionString, initialization?.authorization);
         const validatedFallbackState = stateFromRow(fallbackState);
         await pool.query(RUNTIME_SEED_WITH_EVENTS_SQL,
         [JSON.stringify({ ...validatedFallbackState, outbox: validatedFallbackState.outbox.map((message) => ({ ...message, ...outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey) })) })]);
-        const seeded = await pool.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
+        const seeded = await pool.query<{ version: unknown }>(CURRENT_VERSION_SQL);
         if (seeded.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing after seed initialization.");
-        initialState = runtimeStateFromRow(seeded.rows[0]);
-        initialVersion = versionFromRow(seeded.rows[0].version);
-      } else {
-        if (result.rowCount !== 1) throw new Error("PostgreSQL runtime state cardinality is invalid.");
-        initialState = runtimeStateFromRow(result.rows[0]);
-        initialVersion = versionFromRow(result.rows[0].version);
+      } else if (result.rowCount !== 1) {
+        throw new Error("PostgreSQL runtime state cardinality is invalid.");
       }
       await assertRuntimeSchemaReady({ query: (text, values) => pool.query(text, values) });
       if (relationalClinicalCore) {
         await relationalClinicalCore.assertReady({ query: (text, values) => pool.query(text, values) }, { allowUnvalidatedSampleMembership: relationalReadiness === "BACKFILL" });
       }
-      return new PostgresStore(pool, connectionString, initialState, initialVersion, relationalClinicalCore, relationalReadiness);
+      const initial = await PostgresStore.readConsistently(pool, (client) => loadEntityState(client));
+      return new PostgresStore(pool, connectionString, initial.state, initial.version, relationalClinicalCore, relationalReadiness);
     } catch (error) {
       await pool.end();
       throw new Error(`Não foi possível abrir o estado PostgreSQL. Execute npm run db:migrate antes de iniciar. ${(error as Error).message}`);
@@ -182,13 +177,11 @@ export class PostgresStore implements StateStore {
   }
 
   async readRealtimeSnapshot(limit: number): Promise<{ state: StoreState; version: number }> {
-    return this.concurrent(async () => {
-      const result = await this.pool.query<{ state: unknown; version: unknown; outbox: OutboxMessage[] }>(REALTIME_OUTBOX_SQL, [outboxReadLimit(limit)]);
-      if (result.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
-      const state = runtimeStateFromRow(result.rows[0]);
-      this.cache.observe(state, versionFromRow(result.rows[0].version));
-      return { state: { ...state, outbox: result.rows[0].outbox.map(outboxFromRow) }, version: versionFromRow(result.rows[0].version) };
-    });
+    return this.concurrent(() => PostgresStore.readConsistently(this.pool, async (client) => {
+      const snapshot = await this.cache.refreshWith(client);
+      const result = await client.query<{ outbox: OutboxMessage[] }>(REALTIME_OUTBOX_SQL, [outboxReadLimit(limit)]);
+      return { state: { ...snapshot.state, outbox: result.rows[0].outbox.map(outboxFromRow) }, version: snapshot.version };
+    }));
   }
 
   async outboxTransaction<T>(query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T> {
@@ -252,6 +245,7 @@ export class PostgresStore implements StateStore {
     if (this.relationalClinicalCore) throw new Error("POSTGRES_RELATIONAL_RETENTION_UNSUPPORTED");
     const now = options.now ?? new Date();
     return this.runExclusiveTransaction(async (client, current) => {
+      await pruneEntityRemovals(client, now);
       const compaction = compactRuntimeState(current, { ...options, now });
       const sessionActivityRowsRemoved = await prunePostgresSessionActivity(client, compaction.retainedSessionIds);
       const outboxMessagesRemoved = await prunePostgresOutbox(client, options, now);
@@ -287,9 +281,7 @@ export class PostgresStore implements StateStore {
       try {
         await client.query("BEGIN");
         await client.query("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ");
-        const snapshot = await client.query<{ state: unknown; version: unknown }>(CURRENT_STATE_SQL);
-        if (snapshot.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
-        const currentState = runtimeStateFromRow(snapshot.rows[0]);
+        const { state: currentState } = await this.cache.refreshWith(client, { exact: true });
         const relational = await this.relationalClinicalCore!.readRequest(relationalClient(client), requestId);
         const report = reconcileRelationalRequest(currentState, requestId, relational);
         await client.query("COMMIT");
@@ -378,10 +370,20 @@ export class PostgresStore implements StateStore {
       const client = await this.pool.connect();
       try {
         await client.query("BEGIN");
-        const locked = await client.query<{ state: unknown; version: unknown }>(LOCKED_STATE_SQL);
+        // Lock by version only; the aggregate comes from the shared cache when it is
+        // current, so a write no longer re-reads and re-parses the whole JSONB row.
+        const locked = await client.query<{ version: unknown }>(LOCKED_VERSION_SQL);
         if (locked.rowCount !== 1) throw new Error("PostgreSQL runtime state row is missing.");
-        const currentState = runtimeStateFromRow(locked.rows[0]);
-        if (options.outboxScope) currentState.outbox = await lockPostgresOutbox(client, options.outboxScope);
+        const lockedVersion = versionFromRow(locked.rows[0].version);
+        const cached = this.cache.current();
+        // Under the row lock nothing else can commit, so a stale cache catches up
+        // by applying only the entities written since its version.
+        const baseState = cached.version === lockedVersion
+          ? cached.state
+          : (await this.cache.refreshWith(client, { exact: true })).state;
+        const currentState = freezeState(options.outboxScope
+          ? { ...baseState, outbox: await lockPostgresOutbox(client, options.outboxScope) }
+          : baseState);
         const previousSessionIds = new Set(currentState.sessions.map((session) => session.id));
         const outcome = await operation(client, currentState);
         const nextState = stateFromRow(outcome.state);
@@ -397,10 +399,12 @@ export class PostgresStore implements StateStore {
         const persistedState = { ...nextState, auditEvents: [], outbox: [] };
         const updated = await client.query<{ version: unknown }>(
           "UPDATE cvg_runtime_state SET state = $1::jsonb, version = version + 1, updated_at = now() WHERE id = 1 RETURNING version",
-          [JSON.stringify(persistedState)]
+          [JSON.stringify(stateHeader(nextState))]
         );
         if (updated.rowCount !== 1) throw new Error("PostgreSQL runtime state update failed.");
         const committedVersion = versionFromRow(updated.rows[0]?.version);
+        // Only the entities whose identity changed are written (structural sharing).
+        await writeEntityState(client, currentState, persistedState, committedVersion);
         const projectionBefore = options.replaceOutboxProjection
           ? { ...currentState, outbox: [] }
           : currentState;
@@ -424,6 +428,22 @@ export class PostgresStore implements StateStore {
         client.release();
       }
     });
+  }
+
+  /** One REPEATABLE READ snapshot for reads that combine several statements. */
+  private static async readConsistently<T>(pool: Pool, read: (client: PoolClient & EntityQueryable) => Promise<T>): Promise<T> {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY");
+      const result = await read(client);
+      await client.query("COMMIT");
+      return result;
+    } catch (error) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   private concurrent<T>(operation: () => Promise<T> | T): Promise<T> {
@@ -458,4 +478,20 @@ export class PostgresStore implements StateStore {
     }
     await projectPostgresOutbox(client, before.outbox, after.outbox);
   }
+}
+
+/** Removal records only serve caches that are behind; a day covers any live process. */
+export const ENTITY_REMOVAL_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+async function pruneEntityRemovals(client: PoolClient, now: Date): Promise<void> {
+  // The floor tells a cache older than the pruned removals to reload every entity.
+  await client.query(
+    `WITH pruned AS (
+       DELETE FROM cvg_runtime_entity_removals WHERE removed_at < $1::timestamptz RETURNING removed_version
+     )
+     UPDATE cvg_runtime_state
+        SET entity_removal_floor = GREATEST(entity_removal_floor, COALESCE((SELECT max(removed_version) FROM pruned), 0))
+      WHERE id = 1`,
+    [new Date(now.getTime() - ENTITY_REMOVAL_RETENTION_MS).toISOString()]
+  );
 }
