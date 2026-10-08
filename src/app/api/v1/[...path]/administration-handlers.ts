@@ -1,5 +1,5 @@
 import { listClinicalReasons } from "../../../../server/application/clinical-reasons";
-import { reauthenticationSchema, initialPasswordSchema, passwordChangeSchema, serviceCreateSchema, servicePatchSchema, userRoleSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, sessionRevokeSchema } from "../../../../server/http/admin-schemas";
+import { reauthenticationSchema, initialPasswordSchema, passwordChangeSchema, serviceCreateSchema, servicePatchSchema, catalogImportSchema, userRoleSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, sessionRevokeSchema } from "../../../../server/http/admin-schemas";
 import { changeInitialPassword, changeOwnPassword, clearSessionCookies, getCookieValue, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
 import { ApiError } from "../../../../server/http/envelope";
 import { reasonCreateSchema, reasonPatchSchema, responseFor, jsonBody, objectBody, commandMeta, publicUser, parseBooleanFilter } from "./route-support";
@@ -99,6 +99,13 @@ export const administrationHandlers = {
       if (!parsed.success)
         throw new ApiError("VALIDATION_ERROR", "Os dados do serviço são inválidos.", 400);
       return responseFor(await service.createDiagnosticService(actor, { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id, 201);
+    } },
+  importDiagnosticServices: { authentication: "session", handle: async ({ request, operation, correlationId, id, service, actor }) => {
+      const body = await objectBody(request);
+      const parsed = catalogImportSchema.safeParse(body);
+      if (!parsed.success)
+        throw new ApiError("VALIDATION_ERROR", "A planilha de importação é inválida: envie o CSV de exames (e, opcionalmente, o de analitos) como texto.", 400);
+      return responseFor(await service.importCatalog(actor, { ...parsed.data, ...commandMeta(request, body, operation) }), correlationId, id);
     } },
   updateDiagnosticService: { authentication: "session", handle: async ({ request, path, operation, correlationId, id, service, actor }) => {
       const body = await objectBody(request);

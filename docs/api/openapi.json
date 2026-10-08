@@ -4834,6 +4834,342 @@
         }
       }
     },
+    "/diagnostic-services/import": {
+      "post": {
+        "operationId": "importDiagnosticServices",
+        "summary": "Validate or apply a catalog import sheet",
+        "description": "Validate or apply a catalog import sheet. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Catalog"
+        ],
+        "security": [
+          {
+            "session": [],
+            "csrfCookie": []
+          }
+        ],
+        "x-required-permissions": [
+          "service.catalog.manage"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "departmentCode must match the actor department or a manager delegated department"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "X-CSRF-Token",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "pattern": "\\S"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogImportRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/importDiagnosticServicesSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated actor is not authorized",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "State, concurrency, or idempotency conflict",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Request media type is not supported",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Semantically invalid command",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/diagnostic-services/{serviceId}": {
       "patch": {
         "operationId": "updateDiagnosticService",
@@ -21448,6 +21784,28 @@
           "category=IMAGING requires workflowType=RADIOLOGY or ULTRASOUND"
         ]
       },
+      "CatalogImportRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "services"
+        ],
+        "properties": {
+          "services": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000000
+          },
+          "analytes": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000000
+          },
+          "dryRun": {
+            "type": "boolean"
+          }
+        }
+      },
       "DiagnosticServicePatch": {
         "type": "object",
         "additionalProperties": false,
@@ -22703,6 +23061,100 @@
           "version": {
             "type": "integer",
             "minimum": 1
+          }
+        }
+      },
+      "CatalogImportReport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "applied",
+          "dryRun",
+          "summary",
+          "rows"
+        ],
+        "properties": {
+          "applied": {
+            "type": "boolean"
+          },
+          "dryRun": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "create",
+              "update",
+              "unchanged",
+              "error"
+            ],
+            "properties": {
+              "create": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "update": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "unchanged": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "error": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "line",
+                "code",
+                "action"
+              ],
+              "properties": {
+                "line": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "code": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 100
+                },
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "CREATE",
+                    "UPDATE",
+                    "UNCHANGED",
+                    "ERROR"
+                  ]
+                },
+                "changes": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                },
+                "errors": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1000
+                  }
+                }
+              }
+            }
           }
         }
       },
@@ -27600,6 +28052,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/DiagnosticService"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "importDiagnosticServicesSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CatalogImportReport"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

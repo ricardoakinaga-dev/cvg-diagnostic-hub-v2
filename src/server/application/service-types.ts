@@ -166,6 +166,22 @@ export interface DiagnosticServicePatchInput extends CommandMeta {
   slaHours?: Record<Priority, number>;
 }
 
+export interface CatalogImportInput extends CommandMeta {
+  services: string;
+  analytes?: string;
+  dryRun?: boolean;
+}
+
+export type CatalogImportAction = "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
+export interface CatalogImportRow { line: number; code: string; action: CatalogImportAction; changes?: string[]; errors?: string[] }
+export interface CatalogImportSummary { create: number; update: number; unchanged: number; error: number }
+export interface CatalogImportReport { rows: CatalogImportRow[]; summary: CatalogImportSummary }
+
+export interface CatalogImportResult extends CatalogImportReport {
+  applied: boolean;
+  dryRun: boolean;
+}
+
 export interface ReasonCodeCreateInput extends CommandMeta {
   type: ReasonCode["type"];
   code: string;
