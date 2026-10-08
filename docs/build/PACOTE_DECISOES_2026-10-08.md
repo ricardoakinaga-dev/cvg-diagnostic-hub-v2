@@ -239,3 +239,35 @@ Justificativa: <por quê>
 Condições ou ressalvas: <prazos, exceções, o que precisa ser revisto e quando>
 Itens destravados no backlog: <PROD-___>
 ```
+
+---
+
+## Ata de 08/10/2026
+
+**Responsável:** Ricardo Akinaga, dono do produto, que assinou as 12 decisões, inclusive as clínicas (D3, D4, D7, D8, D9) e a de privacidade (D5).
+**Registro:** [D-032](../DECISION_LOG.md).
+**Execução:** os efeitos estão no [backlog](PRODUCTION_BACKLOG.md).
+
+| Decisão | Opção escolhida | Consequência técnica | Entrada que ainda falta |
+| --- | --- | --- | --- |
+| D1 Login | Contas do Hub no piloto | Redefinição por link de uso único e lista de senhas vazadas (PROD-202, PROD-203); login institucional reavaliado depois do piloto (PROD-200) | — |
+| D2 Volume | Até 150 exames/dia; RTO 4 h, RPO 15 min | Padrões de memória atuais cobrem cerca de 2 anos; RPO de 15 min exige arquivamento contínuo do banco (WAL) para fora do servidor (PROD-304) e restore cronometrado (PROD-514) | Número exato de exames/dia e pico de usuários simultâneos, para a meta de carga (PROD-110) |
+| D3 Crítico | Notificação no sistema + WhatsApp Business como canal redundante, com escalonamento ao plantão | Canal WhatsApp com confirmação pelo link do Hub (PROD-402, 3 a 4 semanas); política ativada só com a lista aprovada (PROD-401). Sem SMS de reserva: quem está de plantão precisa de internet no celular | Lista de valores e achados críticos por exame; fornecedor da API do WhatsApp e templates aprovados; escala de plantão |
+| D4 Laudos | Padrão atual (executor do setor libera; correção e anulação com motivo e versões) | Nenhuma mudança; cada setor confirma a matriz no UAT (PROD-206, PROD-403) | — |
+| D5 Retenção | 24 meses ativo, depois arquivo; exclusão no fim do prazo legal | Arquivamento de exames concluídos há mais de 24 meses e expurgo no prazo legal, inclusive anexos (PROD-501, PROD-502, PROD-307) | Prazo legal de guarda (jurídico, com base nas regras do CFMV) |
+| D6 Pacientes | Cadastro no Hub no piloto | Procedimento escrito de conferência com o prontuário (PROD-408) | Nome do sistema de prontuário atual, se houver, para a conferência |
+| D7 Prazo | Desde a solicitação, horas corridas | Comportamento atual; calendário e pausas não são necessários (PROD-404) | Horas por prioridade de cada serviço, no catálogo (D10) |
+| D8 Amostra | Código gerado pelo sistema, com etiqueta | Geração do accession, etiqueta com código de barras e leitura no recebimento (PROD-405, 1 a 3 semanas) | Modelo da impressora de etiquetas e do leitor; formato da etiqueta |
+| D9 Alta | Pendências seguem com o solicitante | Já funciona. **Correção:** hoje o sistema não impede nova solicitação em atendimento encerrado e não tem como abrir um novo atendimento para paciente já cadastrado; as duas coisas entram juntas (PROD-406) | — |
+| D10 Catálogo | Planilha-modelo importada com validação | Planilha por serviço e importação repetível em homologação e produção (PROD-407) | Planilhas preenchidas pelos responsáveis técnicos de cada setor |
+| D11 Infraestrutura | Servidor do hospital | Compose ensaiado no servidor local, homologação separada, MinIO e ClamAV locais, backup fora do prédio (PROD-301 a PROD-309) | Especificação do servidor (mínimo 4 vCPU, 8 GB, SSD), local da cópia externa, domínio e certificado, quem opera e quem atende fora do horário |
+| D12 Piloto | Todos os setores (Lab, RX, US, Internação), 6 a 8 semanas | Exige o catálogo completo, o crítico com WhatsApp e as etiquetas prontos antes do início; métricas: tempo até o resultado, pendências atrasadas, recoletas (medidas pelo sistema) e satisfação da equipe (questionário) | Datas, participantes por setor, número de hoje (baseline) de cada métrica |
+
+**Hipótese a confirmar:** com o ultrassom no piloto e nenhuma agenda externa informada, o piloto usa a agenda de procedimentos do próprio Hub (OQ-009).
+
+**Ainda aberta:** a regra para distinguir pacientes homônimos sem expor dados demais (OQ-019, parte de D5) não entrou nesta rodada; até lá vale o alerta de duplicidade do cadastro.
+
+**Riscos aceitos nesta ata:**
+- **Infraestrutura (D11 com D2):** servidor único no hospital com RTO de 4 h. Uma falha de hardware só cabe nesse prazo se houver máquina de reserva e cópia externa testada.
+- **Canal do crítico (D3):** sem SMS de reserva, o WhatsApp depende de dados móveis; o escalonamento ao plantão e a caixa de entrada do Hub são a contingência.
+- **Escopo do piloto (D12):** todos os setores aumentam o escopo e o treinamento e tornam o início dependente de PROD-402, PROD-405 e PROD-407.
