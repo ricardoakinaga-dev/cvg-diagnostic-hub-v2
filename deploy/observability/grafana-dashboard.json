@@ -1,0 +1,287 @@
+{
+  "title": "CVG Diagnostics Hub",
+  "uid": "cvg-hub-overview",
+  "description": "PROD-511: aplicação, outbox, tempo real e capacidade. Métricas do PostgreSQL exigem postgres_exporter (D11).",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "1m",
+  "tags": [
+    "cvg",
+    "prod-511"
+  ],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "label": "Prometheus"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Requisições por segundo",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(rate(http_requests_total{job=\"cvg-hub\"}[5m]))",
+          "legendFormat": "total"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(rate(http_requests_total{job=\"cvg-hub\",status=~\"5..\"}[5m]))",
+          "legendFormat": "5xx"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Latência média por rota (ms)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (route) (rate(http_request_duration_ms_sum{job=\"cvg-hub\"}[5m])) / clamp_min(sum by (route) (rate(http_request_duration_ms_count{job=\"cvg-hub\"}[5m])), 1e-9)",
+          "legendFormat": "{{route}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "Outbox: pendentes e dead letters",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cvg_outbox_pending{job=\"cvg-hub\"}",
+          "legendFormat": "pendentes"
+        },
+        {
+          "refId": "B",
+          "expr": "cvg_outbox_dead_letters{job=\"cvg-hub\"}",
+          "legendFormat": "dead letters"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Outbox: idade da mensagem mais antiga (s)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cvg_outbox_oldest_age_seconds{job=\"cvg-hub\"}",
+          "legendFormat": "idade"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Memória do app",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cvg_process_resident_memory_bytes{job=\"cvg-hub\"}",
+          "legendFormat": "RSS"
+        },
+        {
+          "refId": "B",
+          "expr": "cvg_process_heap_used_bytes{job=\"cvg-hub\"}",
+          "legendFormat": "heap em uso"
+        },
+        {
+          "refId": "C",
+          "expr": "cvg_process_heap_limit_bytes{job=\"cvg-hub\"}",
+          "legendFormat": "limite do heap"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "Tempo real",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 16,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cvg_sse_connections{job=\"cvg-hub\"}",
+          "legendFormat": "conexões SSE"
+        },
+        {
+          "refId": "B",
+          "expr": "sum(increase(cvg_realtime_connection_rejections_total{job=\"cvg-hub\"}[10m]))",
+          "legendFormat": "recusadas (10 min)"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Operação clínica",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cvg_overdue_items{job=\"cvg-hub\"}",
+          "legendFormat": "itens em atraso"
+        },
+        {
+          "refId": "B",
+          "expr": "cvg_critical_results{job=\"cvg-hub\"}",
+          "legendFormat": "resultados críticos liberados"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Readiness e reinícios",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 24,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "cvg_readiness_failures{job=\"cvg-hub\"}",
+          "legendFormat": "falhas de readiness"
+        },
+        {
+          "refId": "B",
+          "expr": "cvg_process_uptime_seconds{job=\"cvg-hub\"}",
+          "legendFormat": "uptime (s)"
+        }
+      ]
+    }
+  ]
+}

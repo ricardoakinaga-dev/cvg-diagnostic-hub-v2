@@ -4,6 +4,7 @@ import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivi
 import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
 import { findById, sessionForTokenHash } from "../domain/state-index";
+import { assertRateLimit } from "./rate-limit";
 
 const SESSION_COOKIE = "cvg_session";
 const CSRF_COOKIE = "cvg_csrf";
@@ -130,13 +131,52 @@ export async function authenticateRequest(
   return { ...user, sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
 }
 
+const PASSWORD_CHANGE_ATTEMPTS = 5;
+const PASSWORD_CHANGE_WINDOW_MS = 15 * 60 * 1000;
+
+function assertPasswordPolicy(password: string): void {
+  if (Array.from(password).length < 12 || Array.from(password).length > 200 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+    throw new ApiError("VALIDATION_ERROR", "Use de 12 a 200 caracteres, com letras e números.", 400);
+  }
+}
+
+/**
+ * Stores the new hash, revokes every live session of the user and issues one
+ * new session, in the caller's transaction. A stolen cookie dies with the old
+ * password; the person changing it stays signed in on the rotated session.
+ */
+function rotateCredentials(
+  state: StoreState,
+  current: User,
+  passwordHash: string,
+  audit: { eventType: string; previousState: string; correlationId: string }
+) {
+  const user = { ...current, passwordHash, mustChangePassword: false, version: current.version + 1 };
+  const sessionToken = randomBytes(32).toString("base64url");
+  const csrfToken = randomBytes(24).toString("base64url");
+  const createdAt = new Date().toISOString();
+  const expiresAt = new Date(Date.parse(createdAt) + SESSION_TTL_MS).toISOString();
+  const session = { id: randomBytes(16).toString("hex"), userId: user.id, tokenHash: hash(sessionToken), csrfTokenHash: hash(csrfToken), createdAt, expiresAt, version: 1 };
+  const revoked = state.sessions.filter((entry) => entry.userId === user.id && !entry.revokedAt).length;
+  return {
+    state: {
+      ...state,
+      users: state.users.map((entry) => entry.id === user.id ? user : entry),
+      sessions: [...state.sessions.map((entry) => entry.userId === user.id && !entry.revokedAt ? { ...entry, revokedAt: createdAt, version: entry.version + 1 } : entry), session],
+      auditEvents: [...state.auditEvents, {
+        id: `audit_${randomBytes(16).toString("hex")}`, eventType: audit.eventType, actorId: user.id, entityType: "USER", entityId: user.id,
+        previousState: audit.previousState, newState: "ACTIVE", correlationId: audit.correlationId, metadata: { sessionsRotated: true, sessionsRevoked: revoked }, occurredAt: createdAt
+      }]
+    },
+    result: { user, sessionToken, csrfToken, expiresAt }
+  };
+}
+
 /** Replace temporary credentials and rotate every session in the same transaction. */
 export async function changeInitialPassword(store: StateStore, request: Request, password: string, correlationId: string) {
   const actor = await authenticateRequest(store, request, { requireCsrf: true, allowPasswordChange: true });
   if (!actor.mustChangePassword) throw new ApiError("INVALID_STATE", "A senha inicial já foi substituída.", 409);
-  if (Array.from(password).length < 12 || Array.from(password).length > 200 || !/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-    throw new ApiError("VALIDATION_ERROR", "Use de 12 a 200 caracteres, com letras e números.", 400);
-  }
+  assertPasswordPolicy(password);
   if (passwordSecurity.verifyPassword(password, actor.passwordHash)) {
     throw new ApiError("VALIDATION_ERROR", "Escolha uma senha diferente da senha inicial.", 400);
   }
@@ -147,21 +187,31 @@ export async function changeInitialPassword(store: StateStore, request: Request,
     if (!current.mustChangePassword || current.passwordHash !== actor.passwordHash) {
       throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
     }
-    const user = { ...current, passwordHash, mustChangePassword: false, version: current.version + 1 };
-    const sessionToken = randomBytes(32).toString("base64url");
-    const csrfToken = randomBytes(24).toString("base64url");
-    const createdAt = new Date().toISOString();
-    const expiresAt = new Date(Date.parse(createdAt) + SESSION_TTL_MS).toISOString();
-    const session = { id: randomBytes(16).toString("hex"), userId: user.id, tokenHash: hash(sessionToken), csrfTokenHash: hash(csrfToken), createdAt, expiresAt, version: 1 };
-    return {
-      state: {
-        ...state,
-        users: state.users.map((entry) => entry.id === user.id ? user : entry),
-        sessions: [...state.sessions.map((entry) => entry.userId === user.id && !entry.revokedAt ? { ...entry, revokedAt: createdAt, version: entry.version + 1 } : entry), session],
-        auditEvents: [...state.auditEvents, { id: `audit_${randomBytes(16).toString("hex")}`, eventType: "InitialPasswordChanged", actorId: user.id, entityType: "USER", entityId: user.id, previousState: "TEMPORARY_PASSWORD", newState: "ACTIVE", correlationId, metadata: { sessionsRotated: true }, occurredAt: createdAt }]
-      },
-      result: { user, sessionToken, csrfToken, expiresAt }
-    };
+    return rotateCredentials(state, current, passwordHash, { eventType: "InitialPasswordChanged", previousState: "TEMPORARY_PASSWORD", correlationId });
+  });
+}
+
+/**
+ * Self-service password change (PROD-201): the current password is checked
+ * outside the transaction (scrypt never holds the global write lock), attempts
+ * are bounded per account, and every other session is revoked.
+ */
+export async function changeOwnPassword(store: StateStore, request: Request, currentPassword: string, newPassword: string, correlationId: string) {
+  const actor = await authenticateRequest(store, request, { requireCsrf: true });
+  await assertRateLimit(`password-change:${actor.id}`, PASSWORD_CHANGE_ATTEMPTS, PASSWORD_CHANGE_WINDOW_MS);
+  assertPasswordPolicy(newPassword);
+  if (!passwordSecurity.verifyPassword(currentPassword, actor.passwordHash)) {
+    throw new ApiError("CURRENT_PASSWORD_INVALID", "A senha atual não confere.", 400);
+  }
+  if (passwordSecurity.verifyPassword(newPassword, actor.passwordHash)) {
+    throw new ApiError("VALIDATION_ERROR", "Escolha uma senha diferente da atual.", 400);
+  }
+  const passwordHash = passwordSecurity.hashPassword(newPassword);
+  return store.transaction((state) => {
+    if (!authorizationSnapshotIsCurrent(state, actor)) throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
+    const current = findById(state.users, actor.id)!;
+    if (current.passwordHash !== actor.passwordHash) throw new ApiError("SESSION_EXPIRED", "Entre novamente para trocar a senha.", 401);
+    return rotateCredentials(state, current, passwordHash, { eventType: "PasswordChanged", previousState: "ACTIVE", correlationId });
   });
 }
 

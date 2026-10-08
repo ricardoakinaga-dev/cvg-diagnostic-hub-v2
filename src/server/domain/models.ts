@@ -449,7 +449,8 @@ export interface AuditMetrics {
 export interface StateStore {
   /** Relational outbox reads never restore delivery history into the snapshot. */
   readOutbox(query: { kind: "replay" | "dead-letter"; limit: number }): Promise<OutboxMessage[]>;
-  readOutboxMetrics(): Promise<{ pending: number; oldestAvailableAt?: Timestamp }>;
+  /** `deadLetters` counts FAILED messages awaiting an operator and is present only when non-zero. */
+  readOutboxMetrics(): Promise<{ pending: number; oldestAvailableAt?: Timestamp; deadLetters?: number }>;
   readRealtimeSnapshot(limit: number): Promise<{ state: StoreState; version: number }>;
   /** Hydrates only a locked message or the first eligible claim candidate. */
   outboxTransaction<T>(query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;

@@ -13,6 +13,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   logout: "LogoutData",
   reauthenticate: "ReauthenticationData",
   changeInitialPassword: "LoginData",
+  changeOwnPassword: "LoginData",
   listUsers: "ManagedUserList",
   listSessions: "ManagedSessionList",
   revokeSession: "ManagedSession",
@@ -117,6 +118,7 @@ export type ApiConditionalRequestRule = Readonly<{
 
 export type ApiAuthorizationCondition =
   | "temporary password must be replaced before any operational action"
+  | "current password must be confirmed; every session of the user is rotated"
   | "only active reasons for clinical actions authorized in the actor department are returned"
   | "granting ADMIN requires recent reauthentication"
   | "deactivating ADMIN requires recent reauthentication"
@@ -186,6 +188,8 @@ export type ApiOperation = Readonly<{
   successDataSchema?: ApiSuccessDataSchema;
   successHeaders: ReadonlyArray<string>;
   errorStatuses: ReadonlyArray<number>;
+  /** An alternative to the session: the Prometheus bearer token on GET /metrics (PROD-511). */
+  serviceTokenScheme?: "metricsBearer";
 }>;
 
 type ApiOperationDraft = Omit<ApiOperation, "authorization">;
@@ -222,6 +226,7 @@ const read = (
     successMediaTypes?: ReadonlyArray<ApiMediaType>;
     successHeaders?: ReadonlyArray<string>;
     errorStatuses?: ReadonlyArray<number>;
+    serviceTokenScheme?: "metricsBearer";
   }> = {}
 ): ApiOperationDraft => Object.freeze({
   method: "GET",
@@ -240,7 +245,8 @@ const read = (
   successStatuses: Object.freeze([200]),
   successMediaTypes: Object.freeze([...(options.successMediaTypes ?? ["application/json"])]),
   successHeaders: Object.freeze([...(options.successHeaders ?? ["x-correlation-id", "cache-control"])]),
-  errorStatuses: Object.freeze([...(options.errorStatuses ?? READ_ERRORS)])
+  errorStatuses: Object.freeze([...(options.errorStatuses ?? READ_ERRORS)]),
+  ...(options.serviceTokenScheme ? { serviceTokenScheme: options.serviceTokenScheme } : {})
 });
 
 const command = (
@@ -304,13 +310,14 @@ const pagination = [
 const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/livez", "getLiveness", "Check process liveness", "Health", { authentication: "public", errorStatuses: PUBLIC_READ_ERRORS }),
   read("/readyz", "getReadiness", "Check dependency readiness", "Health", { authentication: "public", errorStatuses: [429, 500, 503] }),
-  read("/metrics", "getMetrics", "Read Prometheus metrics", "Observability", { successMediaTypes: ["text/plain"], errorStatuses: [401, 404, 429, 500] }),
+  read("/metrics", "getMetrics", "Read Prometheus metrics", "Observability", { successMediaTypes: ["text/plain"], errorStatuses: [401, 404, 429, 500], serviceTokenScheme: "metricsBearer" }),
 
   command("POST", "/session/login", "login", "Create an authenticated session", "Session", jsonBody("LoginRequest"), { authentication: "public", successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
   read("/session/me", "getCurrentSession", "Read the current session", "Session", { errorStatuses: [401, 429, 500] }),
   command("POST", "/session/logout", "logout", "Revoke the current session", "Session", undefined, { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"], errorStatuses: [401, 403, 429, 500] }),
   command("POST", "/session/reauth", "reauthenticate", "Refresh privileged-action authentication", "Session", jsonBody("ReauthenticationRequest"), { errorStatuses: [400, 401, 403, 415, 429, 500] }),
   command("POST", "/session/password", "changeInitialPassword", "Replace a temporary password and rotate sessions", "Session", jsonBody("InitialPasswordRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
+  command("POST", "/session/password/change", "changeOwnPassword", "Change the signed-in user's password and rotate sessions", "Session", jsonBody("PasswordChangeRequest"), { successHeaders: ["x-correlation-id", "cache-control", "set-cookie"] }),
 
   read("/users", "listUsers", "List managed users", "Administration"),
   read("/sessions", "listSessions", "List managed sessions", "Administration"),
@@ -453,6 +460,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   logout: authorization([], SESSION),
   reauthenticate: authorization([], SESSION),
   changeInitialPassword: authorization([], [...SESSION, "temporary password must be replaced before any operational action"]),
+  changeOwnPassword: authorization([], [...SESSION, "current password must be confirmed; every session of the user is rotated"]),
   listClinicalReasons: authorization([], [...ROLE, "only active reasons for clinical actions authorized in the actor department are returned"]),
   listUsers: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only sees operational-role targets in managed departments"]),
   listSessions: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
@@ -534,7 +542,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
 const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getLiveness: [429, 500], getReadiness: [429, 500, 503], getMetrics: [401, 404, 429, 500],
   login: [400, 401, 415, 429, 500], getCurrentSession: [401, 429, 500], logout: [401, 403, 429, 500],
-  changeInitialPassword: [400, 401, 403, 409, 415, 429, 500], listClinicalReasons: [401, 403, 404, 429, 500],
+  changeInitialPassword: [400, 401, 403, 409, 415, 429, 500], changeOwnPassword: [400, 401, 403, 415, 429, 500], listClinicalReasons: [401, 403, 404, 429, 500],
   reauthenticate: [400, 401, 403, 415, 429, 500], listUsers: [401, 404, 429, 500], listSessions: [401, 404, 429, 500],
   createUser: [400, 401, 403, 404, 409, 415, 429, 500], deactivateUser: [400, 401, 403, 404, 409, 415, 429, 500],
   regenerateUserPassword: [400, 401, 403, 404, 409, 415, 429, 500],

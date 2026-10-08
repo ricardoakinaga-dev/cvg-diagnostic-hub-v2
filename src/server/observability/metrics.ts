@@ -1,3 +1,4 @@
+import { getHeapStatistics } from "node:v8";
 import type { AuditMetrics, AuditMetricsQuery, StoreState } from "../domain/models";
 import { auditMetrics } from "../domain/audit-metrics";
 import { outboxMetrics } from "../domain/outbox-read";
@@ -19,6 +20,11 @@ const gauges = new Map<string, number>();
 const allowedGauges = new Set([
   "outbox_pending",
   "outbox_oldest_age_seconds",
+  "outbox_dead_letters",
+  "process_resident_memory_bytes",
+  "process_heap_used_bytes",
+  "process_heap_limit_bytes",
+  "process_uptime_seconds",
   "readiness_failures",
   "sse_connections",
   "realtime_shared_reads_total",
@@ -33,6 +39,11 @@ const allowedGauges = new Set([
 const gaugeHelp = new Map([
   ["outbox_pending", "Pending outbox messages."],
   ["outbox_oldest_age_seconds", "Age in seconds of the oldest pending outbox message."],
+  ["outbox_dead_letters", "Outbox messages that failed delivery and wait for an operator (reprocess or discard)."],
+  ["process_resident_memory_bytes", "Resident set size of the application process."],
+  ["process_heap_used_bytes", "V8 heap in use by the application process."],
+  ["process_heap_limit_bytes", "V8 heap limit (--max-old-space-size); the runtime aggregate lives in this heap."],
+  ["process_uptime_seconds", "Seconds since the application process started."],
   ["readiness_failures", "Readiness checks that failed."],
   ["sse_connections", "Active realtime stream connections."],
   ["realtime_shared_reads_total", "Full runtime-state aggregate reads performed by the shared realtime reader."],
@@ -168,6 +179,8 @@ export function refreshOperationalMetrics(
   const oldestAgeSeconds = oldestAvailableAt === undefined || !Number.isFinite(oldestAvailableAt)
     ? 0 : Math.max(0, (now.getTime() - oldestAvailableAt) / 1_000);
   setGauge("outbox_oldest_age_seconds", oldestAgeSeconds);
+  setGauge("outbox_dead_letters", outbox.deadLetters ?? 0);
+  refreshProcessMetrics();
 
   // Business measures are bounded snapshot gauges; rates and latency need event policy and timestamps.
   setGauge("diagnostic_requests_created", state.requests.length);
@@ -189,6 +202,15 @@ export function refreshOperationalMetrics(
 
   setOptionalGauge("recollection_rate", history.recollectionRate);
   setOptionalGauge("result_view_latency_seconds", history.resultViewLatencySeconds);
+}
+
+/** Memory against the heap limit is the capacity signal of the in-memory aggregate (DEPLOYMENT §6.6). */
+export function refreshProcessMetrics(): void {
+  const memory = process.memoryUsage();
+  setGauge("process_resident_memory_bytes", memory.rss);
+  setGauge("process_heap_used_bytes", memory.heapUsed);
+  setGauge("process_heap_limit_bytes", getHeapStatistics().heap_size_limit);
+  setGauge("process_uptime_seconds", Math.round(process.uptime()));
 }
 
 export function renderPrometheus(): string {

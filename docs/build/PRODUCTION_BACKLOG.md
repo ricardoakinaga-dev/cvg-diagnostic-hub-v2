@@ -45,7 +45,7 @@
 | ID | Pri | Status | Tam. | Entrega e aceite | Depende | Origem |
 | --- | --- | --- | --- | --- | --- | --- |
 | PROD-200 | P0 | BLOCKED | L | **Se D1 = OIDC/AD:** login OIDC (code + PKCE), grupos → roles e departamentos, desativação ao sair do diretório; conta local só para break-glass, com alerta a cada uso. | D1 | P2.A1–A2 |
-| PROD-201 | P0 | BLOCKED | M | **Se D1 = contas locais:** troca de senha self-service (exige a senha atual e revoga as outras sessões). | D1 | F-06, AUD-046 |
+| PROD-201 | P0 | DONE | M | Troca de senha self-service (`POST /session/password/change`): exige a senha atual, verificada fora da transação; limite de 5 tentativas por conta a cada 15 min; política de 12–200 caracteres com letras e números; revoga todas as sessões do usuário e emite uma nova; auditoria `PasswordChanged` sem segredo; formulário em "Minha conta". Feita antes de D1 porque contas locais de emergência existem em qualquer desfecho (PROD-200). | — (D1 decide se vale para todas as contas ou só para break-glass) | F-06, AUD-046, D-031 |
 | PROD-202 | P0 | BLOCKED | M | **Se contas locais:** redefinição pelo ADMIN com token de uso único e expiração curta, com troca obrigatória no primeiro login (inclui a conta criada pelo bootstrap). | D1 | F-06, P2.B2 |
 | PROD-203 | P1 | BLOCKED | S | **Se contas locais:** política de senha com lista de senhas vazadas; lockout progressivo por conta, coordenado com o PROD-107. | D1, PROD-107 | P2.B3–B4 |
 | PROD-205 | P1 | VERIFY | S | Timeout de inatividade de sessão (configurável) e tela "minhas sessões" para o próprio usuário; a revogação administrativa já existe. Aceite: teste de expiração por inatividade. | — | F-05, P2.C1 |
@@ -80,11 +80,11 @@
 | PROD-409 | P2 | BLOCKED | M | Agenda de ultrassom (integração mínima ou procedimento). | D10 | P3.9, OQ-009 |
 | PROD-501 | P0 | BLOCKED | M | Retenção e expurgo clínico (LGPD) conforme D5, cobrindo os anexos no S3. | D5, PROD-111 | P4.3 |
 | PROD-502 | P1 | BLOCKED | M | Exportação e exclusão de dados do titular dentro dos limites legais. | D5 | P4.4 |
-| PROD-503 | P1 | READY | S | Ensaio de migrations a partir de um dump representativo; plano de roll-forward/rollback por migration. | — | P4.5 |
-| PROD-504 | P1 | READY | S | Varredura de logs, bundle e fixtures sem dado pessoal real nem segredo. | — | P4.6 |
-| PROD-511 | P0 | READY | M | Métricas em Prometheus ou equivalente, com dashboards (app, banco, outbox, realtime). | PROD-303 | P5.1 |
+| PROD-503 | P1 | VERIFY | S | Ensaio a partir de dump representativo: banco 014 com 12 meses (55 mil exames), `pg_dump`/`pg_restore` e 015 em 6,9 s sem perda (digest igual). Plano por migration em [DEPLOYMENT §8.1](../operations/DEPLOYMENT.md). Falta repetir com o volume real em homologação. | — (homologação: D11) | P4.5 |
+| PROD-504 | P1 | DONE | S | `npm run privacy:scan` varre os arquivos versionados (e-mail fora de domínio reservado, CPF, CNPJ, telefone e string de conexão com senha para host real), o bundle do navegador (`--bundle .next/static`, inclusive nomes de configuração de servidor) e logs reais (`--logs`, sem nenhum e-mail, cookie de sessão ou bearer). A CI roda os três modos. Placeholder do login trocado para domínio reservado. | — | P4.6, D-031 |
+| PROD-511 | P0 | VERIFY | M | Métricas Prometheus com token de coleta (`METRICS_SCRAPE_TOKEN`), memória do processo contra o heap e dead letters; `deploy/observability/` com scrape, 9 regras testadas com `promtool` e dashboard Grafana, todos verificados na CI. Falta coletar em staging e acrescentar `postgres_exporter` (D11). | PROD-303 (staging) | P5.1, D-031 |
 | PROD-512 | P1 | READY | S | Agregação de logs com busca por `correlationId`. | PROD-303 | P5.2 |
-| PROD-513 | P0 | BLOCKED | M | Alertas com dono e roteamento, cada um disparado em staging (inclui dead-letter, worker parado, backup falho, certificado vencendo). | D2, PROD-511 | P5.3, AUD-020 |
+| PROD-513 | P0 | BLOCKED | M | Alertas com dono e roteamento, cada um disparado em staging (inclui dead-letter, worker parado, backup falho, certificado vencendo). As regras técnicas já existem e são testadas (PROD-511); faltam dono, roteamento, backup e certificado. | D2, PROD-511 | P5.3, AUD-020 |
 | PROD-514 | P0 | BLOCKED | M | Backup de PostgreSQL **e** S3, com restore completo cronometrado contra o RPO/RTO. | D2, PROD-304 | P5.4, AUD-033 |
 | PROD-515 | P1 | BLOCKED | M | Runbooks ensaiados (banco, storage, antivírus, crítico não entregue, rede degradada). | PROD-513 | P5.5 |
 | PROD-516 | P1 | BLOCKED | S | Escala de plantão, contatos de incidente e janela de manutenção. | D11 | P5.6 |
@@ -111,13 +111,13 @@
 | --- | ---: | ---: | ---: | ---: | ---: |
 | W0 Base | 3 | 1 | 2 | 0 | 0 |
 | W1 Escala | 12 | 0 | 7 | 4 | 1 |
-| W2 Identidade | 6 | 0 | 0 | 1 | 5 |
+| W2 Identidade | 6 | 0 | 1 | 1 | 4 |
 | W3 Infra | 9 | 1 | 0 | 2 | 6 |
-| W4 Clínico/dados/operação | 20 | 5 | 0 | 0 | 15 |
+| W4 Clínico/dados/operação | 20 | 2 | 1 | 2 | 15 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **60** | **7** | **9** | **7** | **37** |
+| **Total** | **60** | **4** | **11** | **9** | **36** |
 
-Os 37 itens bloqueados dependem de 12 decisões humanas (D1–D12 do [plano](PRODUCTION_PLAN.md)). Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
+Os 36 itens bloqueados dependem de 12 decisões humanas (D1–D12 do [plano](PRODUCTION_PLAN.md)). Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 
 ## 9. Evidência
 
@@ -219,3 +219,23 @@ Conclusão remota em 05/10/2026 — **PROD-002 DONE**, candidato `63945e7`, [CI 
 Entrega em três passos sobre a `main` `1a03b75`: snapshot congelado e compartilhado, índices por array congelado e uma linha por entidade (migration 015, D-030). Medição HTTP com o lote real clonado ([relatório de escala](../RELATORIO_ESCALA_2026-10-08.md)): a 12 meses (55 mil exames) a lista caiu de 57 s para 124 ms e a escrita de 26,6 s para 208 ms; 160 mil exames (289 MB armazenados) gravam e servem todas as rotas sem o erro `54000`. Os padrões de memória do Compose subiram para `APP_MEM_LIMIT=2g`/`APP_HEAP_MB=1280` e `WORKER_MEM_LIMIT=1g`/`WORKER_HEAP_MB=768`, porque o padrão anterior (1 GB/512 MB) daria OOM entre 6 e 12 meses de dados ([DEPLOYMENT §6.6](../operations/DEPLOYMENT.md)).
 
 Node 22.23.2: typecheck e lint sem avisos; **1.665 unitários + 101 PostgreSQL = 1.766/1.766**; cobertura 97,18% linhas, 95,73% funções e 90,31% branches, `coverage:gate` PASS com as mesmas 22 exceções; documentação, OpenAPI 73/68, rastreabilidade e migrations 001–015 PASS. O teste `symlink cycles retain the original bounded walker result or ELOOP` (`scripts/eslint-glob.test.mjs`) falhou uma vez numa das execuções e passou nas três repetições seguintes; ele não toca o código alterado. O PROD-110 continua `IN_PROGRESS`: o gate da CI (`perf:postgres`) foi adaptado ao novo layout, e a meta com o volume de D2 continua dependendo dessa decisão.
+
+### PROD-201, PROD-504, PROD-511 e PROD-503 — aceite técnico local em 08/10/2026
+
+Itens que não dependem de decisão humana, entregues antes de D1/D2/D11 (D-031):
+- **Troca de senha self-service (PROD-201).**
+- **Token de coleta Prometheus (PROD-511):** inclui as métricas de memória e de dead letter, a configuração em `deploy/observability/` (9 regras testadas com `promtool` e dashboard Grafana) e um teste de contrato que impede uma regra ou um painel de citar métrica inexistente.
+- **Varredura de dados pessoais (PROD-504):** cobre arquivos versionados, bundle do navegador e logs reais, nos três modos ligados à CI.
+- **Ensaio de migration a partir de dump representativo (PROD-503):** 12 meses, 015 em 6,9 s sem perda.
+
+Um Prometheus 3.15 real coletou a pilha de smoke em Compose pela borda TLS com o token: 105 amostras por coleta, limite do heap em 1.304 MB (o `APP_HEAP_MB` do Compose aplicado) e as 9 regras carregadas. O smoke de produção da mesma pilha passou com 27/27.
+
+Node 22.23.2, `npm run validate` com PostgreSQL:
+- typecheck e lint sem avisos;
+- **1.679 unitários + 101 PostgreSQL = 1.780/1.780**;
+- cobertura de 97,21% em linhas, 95,75% em funções e 90,35% em branches, com `coverage:gate` PASS e as mesmas 22 exceções;
+- documentação, OpenAPI 74/69, rastreabilidade 43/43 e migrations 001–015 PASS;
+- `privacy:scan` sem achados nos 598 arquivos versionados;
+- `observability:check` PASS.
+
+O teste `gates a password-required session on /queues without a redirect loop` (`app-shell.test.tsx`) falhou uma vez sob a carga da suíte com cobertura e passou nas quatro repetições isoladas e na execução completa seguinte; ele não toca o código alterado.

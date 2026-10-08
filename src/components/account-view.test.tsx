@@ -70,4 +70,31 @@ describe("AccountView", () => {
     await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "Crie sua senha" })).toBeInTheDocument();
   });
+
+  it("changes the password with the current one, confirms matching entries and reports the outcome", async () => {
+    const user = { id: "user-vet", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "INPATIENT", timezone: "UTC" };
+    const mock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/session/me" ? Promise.resolve({ user }) : Promise.resolve({ user, expiresAt: "2026-10-08T20:00:00.000Z" })) as never);
+    render(<AccountView />);
+    expect(await screen.findByRole("heading", { name: "Alterar senha" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Senha atual"), { target: { value: "Current-secret-1234" } });
+    fireEvent.change(screen.getByLabelText("Nova senha", { exact: true }), { target: { value: "Rotated-secret-5678" } });
+    fireEvent.change(screen.getByLabelText("Confirmar nova senha"), { target: { value: "Different-secret-9012" } });
+    fireEvent.click(screen.getByRole("button", { name: "Alterar senha" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("As senhas novas precisam ser iguais.");
+    expect(mock).toHaveBeenCalledTimes(1);
+
+    mock.mockRejectedValueOnce(new apiClient.ApiClientError(400, { error: { code: "CURRENT_PASSWORD_INVALID", correlationId: "corr-wrong" } }));
+    fireEvent.change(screen.getByLabelText("Confirmar nova senha"), { target: { value: "Rotated-secret-5678" } });
+    fireEvent.click(screen.getByRole("button", { name: "Alterar senha" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("A senha atual não confere."));
+
+    fireEvent.click(screen.getByRole("button", { name: "Alterar senha" }));
+    await waitFor(() => expect(mock).toHaveBeenLastCalledWith("/session/password/change", {
+      method: "POST", body: JSON.stringify({ currentPassword: "Current-secret-1234", newPassword: "Rotated-secret-5678" })
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Senha alterada. As outras sessões foram encerradas.");
+    expect(screen.getByLabelText("Senha atual")).toHaveValue("");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
 });
+

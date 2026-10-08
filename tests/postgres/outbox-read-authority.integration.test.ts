@@ -433,12 +433,14 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
       const old = message("old-processed", { status: "PROCESSED", availableAt: "2026-10-01T12:00:00.000Z" });
       const store = await database.createStore(fixture([...recent, ...protectedRows, old]));
       const beforeProtected = await database.query("SELECT * FROM outbox_messages WHERE status <> 'PROCESSED' ORDER BY id");
-      expect(await store.readOutboxMetrics()).toEqual({ pending: 2, oldestAvailableAt: "2026-10-04T11:58:00.000Z" });
+      // The FAILED message waits for an operator: it is the one dead letter (the DISCARDED one is settled).
+      expect(await store.readOutboxMetrics()).toEqual({ pending: 2, oldestAvailableAt: "2026-10-04T11:58:00.000Z", deadLetters: 1 });
       resetMetrics();
       try {
         refreshOperationalMetrics(await store.readState(), NOW, { recollectionRate: undefined, resultViewLatencySeconds: undefined }, await store.readOutboxMetrics());
         expect(renderPrometheus()).toContain("cvg_outbox_pending 2");
         expect(renderPrometheus()).toContain("cvg_outbox_oldest_age_seconds 120");
+        expect(renderPrometheus()).toContain("cvg_outbox_dead_letters 1\n");
       } finally {
         resetMetrics();
       }
@@ -451,7 +453,7 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
       const reopened = await database.createStore();
       expect((await reopened.readState()).outbox).toEqual([]);
       expect(await reopened.readOutbox({ kind: "dead-letter", limit: 100 })).toEqual(protectedRows.slice(2));
-      expect(await reopened.readOutboxMetrics()).toEqual({ pending: 2, oldestAvailableAt: "2026-10-04T11:58:00.000Z" });
+      expect(await reopened.readOutboxMetrics()).toEqual({ pending: 2, oldestAvailableAt: "2026-10-04T11:58:00.000Z", deadLetters: 1 });
       await expect(reopened.healthcheck()).resolves.toBeUndefined();
     });
     vi.stubEnv("OUTBOX_STATE_RETENTION_MS", "604800000");

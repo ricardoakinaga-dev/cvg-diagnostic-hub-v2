@@ -1010,6 +1010,60 @@ describe("versioned API boundary", () => {
     expect(outboxRead).not.toHaveBeenCalled();
   });
 
+  it("serves metrics to the Prometheus scrape token without a session and never treats it as one", async () => {
+    const token = "prometheus-scrape-token-0123456789abcdef";
+    vi.stubEnv("METRICS_SCRAPE_TOKEN", token);
+    try {
+      const store = await getRuntimeStoreAsync();
+      vi.spyOn(store, "readOutboxMetrics").mockResolvedValue({ pending: 0, deadLetters: 3 });
+      const scraped = await GET(new Request("http://localhost/api/v1/metrics", { headers: { authorization: `Bearer ${token}` } }), params(["metrics"]));
+      const body = await scraped.text();
+      expect(scraped.status).toBe(200);
+      expect(body).toContain("cvg_outbox_dead_letters 3\n");
+      expect(Number(body.match(/^cvg_process_heap_limit_bytes (.+)$/m)?.[1])).toBeGreaterThan(0);
+      expect(Number(body.match(/^cvg_process_resident_memory_bytes (.+)$/m)?.[1])).toBeGreaterThan(0);
+
+      for (const authorization of [`Bearer ${token}x`, `Bearer ${token.slice(1)}`, `Basic ${token}`, token]) {
+        const refused = await GET(new Request("http://localhost/api/v1/metrics", { headers: { authorization } }), params(["metrics"]));
+        expect(refused.status, authorization).toBe(401);
+      }
+      // The token opens nothing else.
+      const other = await GET(new Request("http://localhost/api/v1/session/me", { headers: { authorization: `Bearer ${token}` } }), params(["session", "me"]));
+      expect(other.status).toBe(401);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("ignores a scrape token shorter than the configured minimum", async () => {
+    vi.stubEnv("METRICS_SCRAPE_TOKEN", "too-short");
+    try {
+      const refused = await GET(new Request("http://localhost/api/v1/metrics", { headers: { authorization: "Bearer too-short" } }), params(["metrics"]));
+      expect(refused.status).toBe(401);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("changes the password of the signed-in user and rotates the cookies", async () => {
+    const vet = await login();
+    const change = (body: unknown, auth = vet) => POST(new Request("http://localhost/api/v1/session/password/change", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: auth.cookie, "x-csrf-token": auth.csrf },
+      body: JSON.stringify(body)
+    }), params(["session", "password", "change"]));
+    const malformed = await change({ currentPassword: "x" });
+    expect(malformed.status).toBe(400);
+    const wrong = await change({ currentPassword: "not-the-password-1", newPassword: "Rotated-route-secret-1" });
+    expect(wrong.status).toBe(400);
+    expect((await wrong.json()).error.code).toBe("CURRENT_PASSWORD_INVALID");
+    const changed = await change({ currentPassword: "api-test-password", newPassword: "Rotated-route-secret-1" });
+    expect(changed.status).toBe(200);
+    expect(changed.headers.getSetCookie().some((cookie) => cookie.startsWith("cvg_session="))).toBe(true);
+    const stale = await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]));
+    expect(stale.status).toBe(401);
+  });
+
   it.each(["readAuditMetrics", "readOutboxMetrics"] as const)("fails metrics closed when %s is unavailable", async (method) => {
     const admin = await login("admin@cvg.local");
     const store = await getRuntimeStoreAsync();

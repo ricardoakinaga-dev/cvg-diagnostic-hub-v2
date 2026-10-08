@@ -6,8 +6,10 @@ import { notifyRealtimeMutation } from "../../../../server/observability/realtim
 import { createStructuredLogger, logHttpRequest } from "../../../../server/observability/structured-logger";
 import { assertRateLimit } from "../../../../server/security/rate-limit";
 import { authenticateRequest } from "../../../../server/security/session";
+import { metricsScrapeAuthorized } from "../../../../server/security/metrics-token";
 import { getRuntimeFileStore, getRuntimeStoreAsync } from "../../../../server/store/runtime";
 import { API_HANDLER_REGISTRY } from "./operation-handlers";
+import { metricsResponse } from "./operations-handlers";
 import {
   assertProductionClientIdentity, clientIdentityFor, clientRateLimitKey, correlationFrom,
   errorFor, flushConfiguredLocalOutbox, normalizeRouteError, pathFor, positiveInteger,
@@ -45,6 +47,12 @@ async function dispatchInner(method: string, request: Request, context: RouteCon
     if (handler.authentication === "public") return await handler.handle(handlerContext);
 
     const store = await getRuntimeStoreAsync();
+    // The manifest declares which operation accepts the Prometheus token (GET /metrics only).
+    // It reads aggregate counters; any other credential falls through to the session.
+    if (operation.serviceTokenScheme === "metricsBearer" && metricsScrapeAuthorized(request)) {
+      await assertRateLimit(`metrics-scrape:${rateLimitClientKey}`, positiveInteger(process.env.METRICS_SCRAPE_RATE_LIMIT, 60), 60_000);
+      return await metricsResponse(store, correlationId);
+    }
     let actor: Awaited<ReturnType<typeof authenticateRequest>>;
     try {
       actor = await authenticateRequest(store, request, {

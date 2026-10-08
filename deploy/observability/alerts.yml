@@ -1,0 +1,86 @@
+# Alert rules for the CVG Diagnostics Hub (PROD-511/PROD-513). Thresholds are
+# technical starting points; owners, routing and clinical thresholds (D2, D3,
+# D7) are decided per environment. Every rule names the runbook to follow.
+groups:
+  - name: cvg-hub-availability
+    rules:
+      - alert: CvgHubScrapeDown
+        expr: up{job="cvg-hub"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Prometheus não consegue ler as métricas do Hub há 2 minutos."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#banco-ou-readiness-indisponível"
+      - alert: CvgHubReadinessFailing
+        expr: delta(cvg_readiness_failures[10m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "Verificações de readiness falharam nos últimos 10 minutos (banco, storage ou configuração)."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#banco-ou-readiness-indisponível"
+      - alert: CvgHubServerErrors
+        expr: |
+          sum(rate(http_requests_total{job="cvg-hub",status=~"5.."}[5m]))
+            / clamp_min(sum(rate(http_requests_total{job="cvg-hub"}[5m])), 1e-9) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Mais de 5% das requisições com erro 5xx por 10 minutos."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#triagem-comum"
+      - alert: CvgHubSlowRequests
+        expr: |
+          sum(rate(http_request_duration_ms_sum{job="cvg-hub"}[5m]))
+            / clamp_min(sum(rate(http_request_duration_ms_count{job="cvg-hub"}[5m])), 1e-9) > 1000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Latência média das requisições acima de 1 s por 15 minutos."
+          runbook: "docs/operations/DEPLOYMENT.md#66-memória-e-volume-de-dados"
+
+  - name: cvg-hub-delivery
+    rules:
+      - alert: CvgOutboxStalled
+        expr: cvg_outbox_oldest_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Há notificação pendente há mais de 5 minutos: o worker do outbox pode estar parado (inclui resultado crítico)."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#outbox-atrasado-ou-dead-letter"
+      - alert: CvgOutboxDeadLetters
+        expr: cvg_outbox_dead_letters > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Notificações esgotaram as tentativas e aguardam reprocessamento ou descarte."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#outbox-atrasado-ou-dead-letter"
+      - alert: CvgRealtimeConnectionsRejected
+        expr: increase(cvg_realtime_connection_rejections_total[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Conexões de tempo real recusadas por limite de capacidade nos últimos 10 minutos."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#realtime-degradado"
+
+  - name: cvg-hub-capacity
+    rules:
+      - alert: CvgHeapNearLimit
+        expr: cvg_process_heap_used_bytes / cvg_process_heap_limit_bytes > 0.85
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "O heap do app passa de 85% do limite: o volume de dados pede mais memória (APP_HEAP_MB/APP_MEM_LIMIT)."
+          runbook: "docs/operations/DEPLOYMENT.md#66-memória-e-volume-de-dados"
+      - alert: CvgProcessRestarted
+        expr: cvg_process_uptime_seconds < 300 and on() up{job="cvg-hub"} == 1
+        for: 1m
+        labels:
+          severity: info
+        annotations:
+          summary: "O processo do app reiniciou nos últimos 5 minutos (deploy, OOM ou falha)."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#triagem-comum"

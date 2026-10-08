@@ -1,6 +1,6 @@
 import { listClinicalReasons } from "../../../../server/application/clinical-reasons";
-import { reauthenticationSchema, initialPasswordSchema, serviceCreateSchema, servicePatchSchema, userRoleSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, sessionRevokeSchema } from "../../../../server/http/admin-schemas";
-import { changeInitialPassword, clearSessionCookies, getCookieValue, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
+import { reauthenticationSchema, initialPasswordSchema, passwordChangeSchema, serviceCreateSchema, servicePatchSchema, userRoleSchema, userCreateSchema, userDeactivateSchema, userPasswordSchema, sessionRevokeSchema } from "../../../../server/http/admin-schemas";
+import { changeInitialPassword, changeOwnPassword, clearSessionCookies, getCookieValue, reauthenticateUser, revokeSession, sessionCookies } from "../../../../server/security/session";
 import { ApiError } from "../../../../server/http/envelope";
 import { reasonCreateSchema, reasonPatchSchema, responseFor, jsonBody, objectBody, commandMeta, publicUser, parseBooleanFilter } from "./route-support";
 import type { ApiHandlerGroup } from "./route-support";
@@ -13,6 +13,15 @@ export const administrationHandlers = {
       if (!parsed.success)
         throw new ApiError("VALIDATION_ERROR", "Informe uma nova senha válida.", 400);
       const login = await changeInitialPassword(store, request, parsed.data.password, correlationId);
+      const response = responseFor({ user: publicUser(login.user), expiresAt: login.expiresAt }, correlationId, id);
+      sessionCookies(login).forEach((cookie) => response.headers.append("set-cookie", cookie));
+      return response;
+    } },
+  changeOwnPassword: { authentication: "session", handle: async ({ request, correlationId, id, store }) => {
+      const parsed = passwordChangeSchema.safeParse(await jsonBody(request));
+      if (!parsed.success)
+        throw new ApiError("VALIDATION_ERROR", "Informe a senha atual e uma nova senha válida.", 400);
+      const login = await changeOwnPassword(store, request, parsed.data.currentPassword, parsed.data.newPassword, correlationId);
       const response = responseFor({ user: publicUser(login.user), expiresAt: login.expiresAt }, correlationId, id);
       sessionCookies(login).forEach((cookie) => response.headers.append("set-cookie", cookie));
       return response;

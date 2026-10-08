@@ -56,12 +56,21 @@ export async function lockPostgresOutbox(client: PoolClient, query: OutboxTransa
   }
 }
 
-export async function readPostgresOutboxMetrics(client: SqlQueryable): Promise<{ pending: number; oldestAvailableAt?: string }> {
+export async function readPostgresOutboxMetrics(client: SqlQueryable): Promise<{ pending: number; oldestAvailableAt?: string; deadLetters?: number }> {
   // Only notification deliveries are worker work; domain events are replay history (outboxMessageSettled).
-  const result = await client.query(`SELECT count(*)::text AS pending, min(available_at) AS oldest
-    FROM outbox_messages WHERE status IN ('PENDING', 'PROCESSING') AND consumer_type = 'NOTIFICATION_DELIVERY'`);
-  const row = result.rows[0] as { pending: string; oldest: Date | null };
-  return { pending: Number(row.pending), ...(row.oldest ? { oldestAvailableAt: row.oldest.toISOString() } : {}) };
+  // FAILED messages wait in the dead letter for an operator (reprocess or discard).
+  const awaiting = "status IN ('PENDING', 'PROCESSING') AND consumer_type = 'NOTIFICATION_DELIVERY'";
+  const result = await client.query(`SELECT count(*) FILTER (WHERE ${awaiting})::text AS pending,
+      min(available_at) FILTER (WHERE ${awaiting}) AS oldest,
+      count(*) FILTER (WHERE status = 'FAILED')::text AS dead_letters
+    FROM outbox_messages WHERE status IN ('PENDING', 'PROCESSING', 'FAILED')`);
+  const row = result.rows[0] as { pending: string; oldest: Date | null; dead_letters?: string };
+  const deadLetters = Number(row.dead_letters ?? 0);
+  return {
+    pending: Number(row.pending),
+    ...(row.oldest ? { oldestAvailableAt: row.oldest.toISOString() } : {}),
+    ...(deadLetters > 0 ? { deadLetters } : {})
+  };
 }
 
 export async function prunePostgresOutbox(client: PoolClient, options: RuntimeRetentionOptions, now: Date): Promise<number> {

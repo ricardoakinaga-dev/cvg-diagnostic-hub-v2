@@ -30,7 +30,7 @@ export function LoginForm() {
         <div className="login-brand"><span className="brand-mark">CVG</span><span><strong>Diagnostics</strong><small>HUB OPERACIONAL</small></span></div>
         <div className="login-heading"><p className="eyebrow">Acesso seguro</p><h1>Bom trabalho começa<br /><em>com contexto.</em></h1><p>Entre para acompanhar exames, pendências e resultados no escopo do seu setor.</p></div>
         <form onSubmit={submit} className="login-form">
-          <label>E-mail profissional<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nome@hospital.com" autoComplete="username" required /></label>
+          <label>E-mail profissional<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="nome@hospital.example" autoComplete="username" required /></label>
           <label>Senha<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Sua senha" autoComplete="current-password" required /></label>
           {error && <div className="form-alert" role="alert">{error}</div>}
           <ActionButton className="button-wide" type="submit" state={submitting ? "pending" : "idle"} icon={<Icon name="arrow-right" size={15} />}>{submitting ? "Entrando…" : "Entrar no Hub"}</ActionButton>
