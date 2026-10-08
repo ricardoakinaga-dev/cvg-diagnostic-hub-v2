@@ -67,6 +67,8 @@ Nada aqui é engenharia: cada linha precisa de uma ata com responsável, data e 
 | D12 | Escopo do piloto (setores, usuários, duração), métricas de sucesso e baseline | OQ-020 | Patrocinador + gestão | Fase 7 |
 | D13 | Política de artefatos de processo e de commits | AUD-006, AUD-036 | Produto | Higiene (não bloqueia) |
 
+O [pacote de decisões de 08/10/2026](PACOTE_DECISOES_2026-10-08.md) traz cada decisão em linguagem para os responsáveis, com opções, propostas, o comportamento atual do sistema e um modelo de ata.
+
 **Critério de saída:** D1–D12 com ata. Se D3 ainda não estiver decidida, o piloto pode seguir com `CRITICAL_POLICY_ENABLED=false` e um fluxo de crítico fora do sistema documentado. Essa exceção precisa ser aceita por escrito pela direção clínica.
 
 **Preparação em 05/10/2026 — propostas para o piloto, ainda sem aceite hospitalar:**

@@ -38,6 +38,8 @@ O [relatório de 06/10/2026](RELATORIO_AUDITORIA_2026-10-06.md) registra os acha
 
 A [auditoria de prontidão de 06/10/2026](RELATORIO_AUDITORIA_PRODUCAO_2026-10-06.md) cobre CI, imagens, deploy em Compose, backup/restore ensaiado, integrações e responsividade, com as correções aplicadas na mesma branch.
 
+O [pacote de decisões de 08/10/2026](build/PACOTE_DECISOES_2026-10-08.md) reúne, para os responsáveis do hospital, as 12 decisões (D1–D12) que faltam para a produção, com opções, propostas e o que cada uma destrava.
+
 O [relatório de escala de 08/10/2026](RELATORIO_ESCALA_2026-10-08.md) mede o runtime de 1 a 35 meses de dados depois do snapshot compartilhado, dos índices e do armazenamento por entidade (D-030, migration 015), e registra o dimensionamento de memória.
 
 ## Snapshot executável anterior — auditoria de 04/10/2026

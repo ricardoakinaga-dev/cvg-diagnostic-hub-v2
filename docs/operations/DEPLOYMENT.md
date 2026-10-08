@@ -255,6 +255,23 @@ Cada processo (`app` e `worker`) mantém o agregado de runtime inteiro em memór
 
 Os padrões (`APP_MEM_LIMIT=2g` com `APP_HEAP_MB=1280`, `WORKER_MEM_LIMIT=1g` com `WORKER_HEAP_MB=768`) cobrem cerca de dois anos nesse ritmo. Acima disso, ou com volume maior que o de D2, aumente os quatro valores na mesma proporção. A alternativa é reduzir o conjunto vivo: retenção clínica (D5/PROD-501) ou cutover relacional (PROD-111). Mantenha o heap em cerca de 65% do teto do container. Acompanhe o RSS dos dois processos; um `FATAL ERROR ... heap out of memory` no log indica heap pequeno para o volume atual.
 
+### 6.7 Métricas e alertas (PROD-511)
+
+`GET /api/v1/metrics` expõe métricas Prometheus agregadas, sem conteúdo clínico: requisições, latência, outbox (pendentes, idade da mais antiga, dead letters), tempo real, memória do processo contra o limite do heap e indicadores operacionais. Uma sessão ADMIN lê a rota; para o Prometheus, defina `METRICS_SCRAPE_TOKEN` (32+ caracteres, diferente de todos os outros segredos) e colete com `Authorization: Bearer <token>`. O token só abre essa rota, é comparado em tempo constante e tem limite próprio (`METRICS_SCRAPE_RATE_LIMIT`, padrão 60/min por cliente).
+
+O app só responde atrás da borda em produção, porque o proxy injeta a identidade do cliente. Por isso a coleta é feita no endereço HTTPS público. Os arquivos ficam em `deploy/observability/`:
+
+| Arquivo | Conteúdo |
+| --- | --- |
+| `prometheus.yml` | Coleta a cada 30 s. Troque `hub.example.org` pelo `APP_DOMAIN` e monte o token em `/etc/prometheus/secrets/metrics-scrape-token`. O alvo precisa ser o próprio `APP_DOMAIN`: o Caddy só atende esse host e, para outro nome, responde 200 vazio sem chegar ao app (o Prometheus mostra `up` = 1 com 0 amostras). |
+| `alerts.yml` | 9 regras com severidade e runbook. Disponibilidade: coleta parada, readiness falhando, 5xx > 5%, latência média > 1 s. Entrega: notificação pendente > 5 min, dead letter. Capacidade: conexões de tempo real recusadas, heap > 85% do limite, reinício do processo. |
+| `alerts.test.yml` | Testes `promtool` que provam que cada alerta dispara no seu sinal e não dispara fora dele. |
+| `grafana-dashboard.json` | Painel com requisições, latência por rota, outbox, memória, tempo real, operação clínica e readiness. |
+
+`npm run observability:check` valida a configuração, as regras e os testes com o `promtool` da imagem fixada por digest; a CI roda o mesmo comando. Em 08/10/2026, um Prometheus 3.15 real coletou a pilha de smoke em Compose pela borda TLS com o token: 105 amostras por coleta, heap em 3% de um limite de 1.304 MB e as 9 regras carregadas. O teste `alert-rules-contract.test.ts` falha se uma regra ou um painel citar uma métrica que o app não expõe.
+
+Fica para o ambiente (D2, D11, PROD-513): donos e roteamento dos alertas; disparo de cada um em staging; métricas do PostgreSQL (`postgres_exporter`); validade do certificado e falha de backup (blackbox/cron). Os limiares são pontos de partida técnicos, e os clínicos (atraso de SLA, crítico) dependem de D3 e D7.
+
 ## 7. Papéis de banco separados (PROD-305)
 
 Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:
@@ -274,9 +291,29 @@ Para um **banco gerenciado** em que um administrador já criou os papéis, deixe
 - **Aplicação:** refaça o build na tag anterior (`IMAGE_TAG`) e `up -d`. Se a versão nova aplicou migration, confirme antes que o código anterior aceita o schema novo (o `/readyz` exige a versão de migration esperada pelo código); caso contrário, o rollback é de dados.
 - **Dados:** restaure conforme [BACKUP_RESTORE.md](BACKUP_RESTORE.md). Nunca reexecute `bootstrap` para "consertar" um banco: ele recusa banco inicializado por desenho.
 
+### 8.1 Plano por migration (PROD-503)
+
+O `/readyz` exige que a última migration aplicada seja exatamente a que o código conhece. Por isso, uma versão anterior do app **não sobe** num schema mais novo, mesmo quando a migration só acrescenta estrutura. Depois de qualquer migration, há dois caminhos:
+- **Corrigir para frente (padrão):** uma nova versão com a correção.
+- **Voltar:** restaurar o backup tirado antes do `migrate` e subir a tag anterior. Isso perde o que foi escrito depois do backup.
+
+| Migrations | Natureza | Antes de aplicar | Se der errado |
+| --- | --- | --- | --- |
+| 001–012 | Aditivas: tabelas, colunas, constraints, gatilhos; a 008 preenche `consumer_type` e a 009 valida dados legados | Backup (§4) | Abortam inteiras no erro (o runner aplica cada uma numa transação, com o ledger); corrigir o dado e rodar de novo |
+| 013, 014 | Cutover coordenado: auditoria e outbox saem do snapshot | Parar `proxy`, `app` e `worker` e fazer backup (§4.1) | Abortam inteiras em divergência; depois de aplicadas, voltar exige o restore |
+| 015 | Cutover coordenado: uma linha por entidade (D-030) | Idem | Aborta inteira em chave inválida, duplicada ou cópia divergente; depois de aplicada, voltar exige o restore |
+
+**Ensaio de 08/10/2026 (dump representativo):**
+1. Banco na 014 com 12 meses do lote real clonado: 55 mil exames, 95 MB de snapshot.
+2. `pg_dump -Fc`, com dump de 3,2 MB, e `pg_restore` em outro banco: 3,8 s.
+3. `npm run db:migrate` aplicou a 015 em 6,9 s, incluindo a reconciliação.
+4. Resultado: 258.923 linhas de entidade e digest do estado igual ao original; o store abre e lê.
+
+Com o volume real, repita o ensaio em homologação antes da janela.
+
 ## 9. Limites conhecidos
 
-- Não há troca de senha self-service. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
+- Quem sabe a senha atual a troca em **Minha conta → Alterar senha** (`POST /session/password/change`, PROD-201): as outras sessões são encerradas. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
 - RPO/RTO, roteamento de alertas e failover continuam abertos em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
 - **Backup:** o serviço `backup` do Compose grava um `pg_dump` diário (retenção de 14 dias) no volume `cvg-backups`, como o papel de runtime. É uma rede de segurança no mesmo servidor, não recuperação de desastre: copie o volume para fora da máquina e ensaie o restore ([BACKUP_RESTORE.md](BACKUP_RESTORE.md)). Recuperação para um ponto no tempo (WAL) exige banco gerenciado ou arquivamento de WAL (D2 e D11).
 - **Exames numéricos (hemograma em painel):** não existe tela nem API para criar o template laboratorial versionado; um serviço `NUMERIC_PANEL` só pode ser criado duplicando um que já tenha template. Em uma instalação nova, use serviços narrativos até a decisão D10 definir o catálogo e o carregamento dos templates.
