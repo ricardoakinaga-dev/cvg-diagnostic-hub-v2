@@ -30,6 +30,8 @@ All API errors use a stable envelope:
 | `DUPLICATE_WARNING` | 409 or 200 decision response | show existing context; explicit authorized override |
 | `CONFLICT`, `STALE_VERSION`, `IDEMPOTENCY_KEY_REUSED` | 409 | reload/resolve or reuse same payload |
 | `INVALID_STATE_TRANSITION` | 409 | show current status and allowed next action |
+| `ENCOUNTER_ALREADY_OPEN` | 409 | the patient already has an open encounter; close it before opening another |
+| `ENCOUNTER_CLOSED` | 409 | the encounter is closed; open a new encounter to request exams |
 | `RESULT_RELEASE_BLOCKED`, `CRITICAL_POLICY_MISSING` | 422 | fix content/config; never fake release |
 | `RATE_LIMITED` | 429 | wait/backoff; include Retry-After |
 | `DEPENDENCY_UNAVAILABLE`, `STORAGE_UNAVAILABLE` | 503 | retry safe operation, show degraded state |

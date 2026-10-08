@@ -34,6 +34,8 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getPatient: "Patient",
   getPatientDiagnostics: "PatientDiagnostics",
   listPatientEncounters: "EncounterList",
+  openPatientEncounter: "EncounterOpenResult",
+  closeEncounter: "EncounterCloseResult",
   getEncounter: "Encounter",
   getAdmission: "Admission",
   updateAdmissionContext: "AdmissionContextCommandResult",
@@ -140,6 +142,8 @@ export type ApiAuthorizationCondition =
   | "the result state selects result.view or result.draft.edit_own and attachment.view is always required"
   | "notification must belong to the actor; a manager may use authorized request context"
   | "role must be MANAGER"
+  | "patient must be active and have no open encounter"
+  | "encounter must be OPEN; pending diagnostic items stay with the requester"
   | "delegated MANAGER only sees operational-role targets in managed departments"
   | "delegated MANAGER only creates operational-role targets in managed departments"
   | "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department"
@@ -341,7 +345,9 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/patients/{patientId}", "getPatient", "Read a patient", "Patients"),
   read("/patients/{patientId}/diagnostics", "getPatientDiagnostics", "List a patient's diagnostics", "Patients", { queryParameters: pagination }),
   read("/patients/{patientId}/encounters", "listPatientEncounters", "List a patient's encounters", "Patients"),
+  command("POST", "/patients/{patientId}/encounters", "openPatientEncounter", "Open a new encounter for a registered patient", "Patients", jsonBody("EncounterOpen"), { headers: [IDEMPOTENCY_REQUIRED], successStatus: 201 }),
   read("/encounters/{encounterId}", "getEncounter", "Read an encounter", "Patients"),
+  command("POST", "/encounters/{encounterId}/close", "closeEncounter", "Close an open encounter without cancelling pending exams", "Patients", jsonBody("EncounterClose"), { headers: [IDEMPOTENCY_REQUIRED] }),
   read("/admissions/{admissionId}", "getAdmission", "Read an admission", "Patients"),
   command("POST", "/admissions/{admissionId}/context", "updateAdmissionContext", "Apply an approved admission context transition", "Patients", jsonBody("AdmissionContextCommand"), {
     headers: [IDEMPOTENCY_REQUIRED, IF_MATCH],
@@ -484,6 +490,8 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getPatient: authorization(["patient.view"], PATIENT),
   getPatientDiagnostics: authorization(["patient.view", "diagnostic.timeline.view"], PATIENT),
   listPatientEncounters: authorization(["encounter.view"], PATIENT),
+  openPatientEncounter: authorization(["encounter.manage"], [...PATIENT, "patient must be active and have no open encounter"]),
+  closeEncounter: authorization(["encounter.manage"], [...PATIENT, "encounter must be OPEN; pending diagnostic items stay with the requester"]),
   getEncounter: authorization(["encounter.view"], PATIENT),
   getAdmission: authorization(["admission.view"], PATIENT),
   updateAdmissionContext: authorization(["admission.context.manage"], [...PATIENT, "current and destination departments must remain inside manager delegation and responsibility never grants patient scope"]),
@@ -551,7 +559,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
   createPatient: [400, 401, 404, 409, 415, 429, 500], getPatient: [401, 404, 429, 500], getPatientDiagnostics: [400, 401, 404, 429, 500],
-  listPatientEncounters: [401, 404, 429, 500], getEncounter: [401, 404, 429, 500], getAdmission: [401, 404, 429, 500],
+  listPatientEncounters: [401, 404, 429, 500], openPatientEncounter: [400, 401, 404, 409, 415, 429, 500], closeEncounter: [400, 401, 404, 409, 415, 429, 500], getEncounter: [401, 404, 429, 500], getAdmission: [401, 404, 429, 500],
   updateAdmissionContext: [400, 401, 403, 404, 409, 415, 422, 429, 500, 503],
   listDiagnosticRequests: [400, 401, 404, 429, 500], createDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],
   getDiagnosticRequest: [401, 404, 429, 500], cancelDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],

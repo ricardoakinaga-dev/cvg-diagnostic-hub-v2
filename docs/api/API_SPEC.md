@@ -92,7 +92,9 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
 | `GET /patients/{id}/diagnostics` | `patient.view`, `diagnostic.timeline.view` | CARE/assigned patient scope; paginated |
 | `GET /patients/{id}/encounters` | `encounter.view` | patient scope; returns only that patient's encounters |
+| `POST /patients/{id}/encounters` | `encounter.manage` | patient scope or manager delegation; one open encounter per patient; idempotent |
 | `GET /encounters/{id}` | `encounter.view` | patient/encounter scope |
+| `POST /encounters/{id}/close` | `encounter.manage` | patient scope or manager delegation; encounter must be `OPEN`; never cancels exams; idempotent |
 | `GET /admissions/{id}` | `admission.view` | WARD/CARE scope |
 | `POST /admissions/{id}/context` | `admission.context.manage` | approved D-01 policy, manager delegation, `If-Match`/`expectedVersion` and idempotency |
 | `POST /diagnostic-requests` | `request.create` | duplicate override additionally requires `request.duplicate_override` |
@@ -174,6 +176,12 @@ This table is exhaustive for the planned routes in this document. The executable
 
 The veterinarian or inpatient team may register a patient from the patient area or directly from the request dialog. The server generates an external identifier when omitted, opens the initial encounter, assigns the patient to the actor's care scope and returns `201`. For `INPATIENT`, `ward` and `bed` are required and an admission is created in the same transaction. Reusing the same idempotency key with the same payload returns the original result; a different payload returns `409 IDEMPOTENCY_KEY_REUSED`.
 
+### Open and close encounters
+
+`POST /patients/{patientId}/encounters` (`openPatientEncounter`, `encounter.manage`, `Idempotency-Key` required) body `{ "encounterType": "OUTPATIENT|EMERGENCY|INPATIENT", "ward"?, "bed"?, "reason"? }`. The patient must be active and in the actor's scope (otherwise scoped `404`); a patient with an open encounter returns `409 ENCOUNTER_ALREADY_OPEN`. `INPATIENT` requires `ward` and `bed` and creates the admission in the actor's department; other types reject both. Returns `201` with `{ encounter, admission? }`, audits `EncounterCreated` (+ `AdmissionCreated`) and emits the `EncounterOpened` outbox event.
+
+`POST /encounters/{encounterId}/close` (`closeEncounter`, `encounter.manage`, `Idempotency-Key` required, no `If-Match`) body `{ "reason"? }` (1–500 characters). The encounter must be `OPEN` (`409 INVALID_STATE_TRANSITION` otherwise). Sets `CLOSED` and `closedAt`, discharges an open admission of the encounter (`AdmissionDischarged`) and leaves every diagnostic item untouched (D9). Returns `200` with `{ encounter, admission?, pendingItems }`, audits `EncounterClosed` with `pendingItems` and `reason`, and emits the `EncounterClosed` outbox event.
+
 ### Create request
 
 `POST /diagnostic-requests`
@@ -191,7 +199,7 @@ The veterinarian or inpatient team may register a patient from the patient area 
 }
 ```
 
-Server fills requester/department/time, validates patient/encounter relationship, applies duplicate warning policy and returns `201` with request + item summary. If duplicate needs decision, return a safe `409 DUPLICATE_WARNING` with existing request code/status only if actor may see it; authorized override repeats with `overrideReason` and idempotency key.
+Server fills requester/department/time, validates patient/encounter relationship, applies duplicate warning policy and returns `201` with request + item summary. A request on a `CLOSED` encounter is refused with `409 ENCOUNTER_CLOSED`. If duplicate needs decision, return a safe `409 DUPLICATE_WARNING` with existing request code/status only if actor may see it; authorized override repeats with `overrideReason` and idempotency key.
 
 ### Cancel/reject
 

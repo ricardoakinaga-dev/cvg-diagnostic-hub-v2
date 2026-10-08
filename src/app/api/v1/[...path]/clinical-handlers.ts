@@ -1,6 +1,6 @@
 import { ApiError } from "../../../../server/http/envelope";
 import { assertRateLimit } from "../../../../server/security/rate-limit";
-import { admissionContextSchema, amendResultSchema, attachmentFinalizeSchema, attachmentUploadSchema, cancelSchema, emptyCommandSchema, recollectionSchema, rejectSchema, releaseResultSchema, resultDraftSchema, reviewResultSchema, sampleSchema, scheduleSchema, voidResultSchema } from "../../../../server/http/command-schemas";
+import { admissionContextSchema, amendResultSchema, attachmentFinalizeSchema, attachmentUploadSchema, cancelSchema, emptyCommandSchema, encounterCloseSchema, encounterOpenSchema, recollectionSchema, rejectSchema, releaseResultSchema, resultDraftSchema, reviewResultSchema, sampleSchema, scheduleSchema, voidResultSchema } from "../../../../server/http/command-schemas";
 import { readBytesWithLimit } from "../../../../server/http/request-body";
 import { codePointLength, createRequestSchema, createPatientSchema, responseFor, jsonBody, objectBody, parseCommandBody, commandMeta, positiveInteger, parseLimit, parseItemState, parsePriority, parseBooleanFilter, parseServiceIdentifier, parseDateTimeFilter, parseCursor } from "./route-support";
 import type { ApiHandlerGroup } from "./route-support";
@@ -24,6 +24,16 @@ export const clinicalHandlers = {
     } },
   listPatientEncounters: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       return responseFor(await service.listEncounters(actor, path[1]), correlationId, id);
+    } },
+  openPatientEncounter: { authentication: "session", handle: async ({ request, path, operation, correlationId, id, service, actor }) => {
+      const body = await objectBody(request);
+      const input = parseCommandBody(body, encounterOpenSchema, "Os dados do atendimento são inválidos.");
+      return responseFor(await service.openEncounter(actor, path[1], input, commandMeta(request, body, operation)), correlationId, id, 201);
+    } },
+  closeEncounter: { authentication: "session", handle: async ({ request, path, operation, correlationId, id, service, actor }) => {
+      const body = await objectBody(request);
+      const input = parseCommandBody(body, encounterCloseSchema, "Os dados do encerramento são inválidos.");
+      return responseFor(await service.closeEncounter(actor, path[1], input, commandMeta(request, body, operation)), correlationId, id);
     } },
   getPatient: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       return responseFor(await service.getPatient(actor, path[1]), correlationId, id);

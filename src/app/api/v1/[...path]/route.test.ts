@@ -829,6 +829,36 @@ describe("versioned API boundary", () => {
     expect((await encounters.json()).data).toEqual([expect.objectContaining({ id: body.data.encounter.id, patientId: body.data.patient.id })]);
   });
 
+  it("closes and reopens an encounter and refuses requests on the closed one through the HTTP boundary", async () => {
+    const auth = await login();
+    const post = (path: string[], key: string | undefined, body: unknown) => POST(new Request(`http://localhost/api/v1/${path.join("/")}`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: auth.cookie, "x-csrf-token": auth.csrf, ...(key ? { "idempotency-key": key } : {}) },
+      body: JSON.stringify(body)
+    }), params(path));
+
+    expect((await post(["encounters", "encounter-mel", "close"], undefined, {})).status).toBe(400);
+    expect((await post(["encounters", "encounter-mel", "close"], "api-close-bad", { reason: "" })).status).toBe(400);
+    expect((await post(["encounters", "encounter-mel", "close"], "api-close-extra", { expectedVersion: 1 })).status).toBe(400);
+    const closed = await post(["encounters", "encounter-mel", "close"], "api-close-mel", { reason: "alta" });
+    expect(closed.status).toBe(200);
+    expect((await closed.json()).data).toMatchObject({ encounter: { id: "encounter-mel", status: "CLOSED" }, pendingItems: 0 });
+    expect((await post(["encounters", "encounter-mel", "close"], "api-close-mel-again", {})).status).toBe(409);
+
+    const refused = await post(["diagnostic-requests"], "api-closed-request", { patientId: "patient-mel", encounterId: "encounter-mel", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()).error.code).toBe("ENCOUNTER_CLOSED");
+
+    expect((await post(["patients", "patient-mel", "encounters"], "api-open-bad", { encounterType: "INPATIENT" })).status).toBe(400);
+    expect((await post(["patients", "patient-mel", "encounters"], "api-open-unknown-field", { encounterType: "OUTPATIENT", foo: 1 })).status).toBe(400);
+    const opened = await post(["patients", "patient-mel", "encounters"], "api-open-mel", { encounterType: "OUTPATIENT" });
+    expect(opened.status).toBe(201);
+    expect((await opened.json()).data.encounter).toMatchObject({ patientId: "patient-mel", status: "OPEN" });
+    const duplicate = await post(["patients", "patient-mel", "encounters"], "api-open-mel-2", { encounterType: "OUTPATIENT" });
+    expect(duplicate.status).toBe(409);
+    expect((await duplicate.json()).error.code).toBe("ENCOUNTER_ALREADY_OPEN");
+  });
+
   it("rejects missing, malformed, or conflicting optimistic concurrency guards before mutation", async () => {
     const auth = await login();
     const created = await POST(new Request("http://localhost/api/v1/diagnostic-requests", {

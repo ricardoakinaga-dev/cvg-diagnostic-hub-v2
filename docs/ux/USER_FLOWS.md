@@ -37,6 +37,15 @@ Nova solicitação → Paciente → ＋ Cadastrar paciente → patient + encount
 
 The same form is available as `Novo paciente` in `Meus pacientes`. Inpatient registration adds required ward and bed fields. The server owns identifier generation, duplicate protection, scope assignment, audit and the atomic patient/encounter/admission write; the UI never fabricates a patient ID or encounter.
 
+## 1.2 New encounter for a registered patient
+
+```text
+Meus pacientes → paciente → (sem atendimento aberto) Novo atendimento → tipo (ala e leito se internação) → Abrir atendimento
+Meus pacientes → paciente → (atendimento aberto) Encerrar atendimento → motivo opcional → Encerrar atendimento
+```
+
+The patient page lists the open encounter and the history ("Encerrado em <data>"). Closing says "Os exames pendentes continuam com quem solicitou." and discharges the open admission. The request dialogs list only open encounters; with none they say "Este paciente não tem atendimento aberto. Abra um novo atendimento na página do paciente." with a link. Buttons appear only for VETERINARIAN, INPATIENT_TEAM and MANAGER; the server enforces `encounter.manage`.
+
 ## 2. Laboratory queue
 
 ```text

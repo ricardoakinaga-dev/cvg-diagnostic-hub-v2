@@ -77,6 +77,28 @@ export type PatientCreateResult = {
   admission?: Admission;
 };
 
+export interface EncounterOpenInput {
+  encounterType: StoreState["encounters"][number]["type"];
+  ward?: string;
+  bed?: string;
+  reason?: string;
+}
+
+export type EncounterOpenResult = {
+  encounter: StoreState["encounters"][number];
+  admission?: Admission;
+};
+
+export interface EncounterCloseInput {
+  reason?: string;
+}
+
+export type EncounterCloseResult = {
+  encounter: StoreState["encounters"][number];
+  admission?: Admission;
+  pendingItems: number;
+};
+
 export interface ReceiveSampleInput extends CommandMeta {
   accessionCode: string;
   sampleType: string;
@@ -490,6 +512,7 @@ export interface PatientWorkspaceSummary {
     note?: string;
   };
   currentContext: {
+    hasOpenEncounter: boolean;
     encounterId: string | null;
     admissionId: string | null;
     departmentCode: string | null;

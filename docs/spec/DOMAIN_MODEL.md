@@ -30,6 +30,8 @@
 - `Admission`: período e localização (department/ward/bed) associados a encounter; transferências são eventos.
 - `ExternalReference`: `source_system`, `external_id`, `entity_type`, unique por source/entity.
 
+Ciclo de vida do `Encounter` (D9, D-036): nasce `OPEN` no cadastro do paciente ou em `POST /patients/{id}/encounters` e passa a `CLOSED` em `POST /encounters/{id}/close` (ou na alta aprovada da internação). Um paciente tem no máximo um atendimento `OPEN`; abrir outro exige encerrar o atual (`409 ENCOUNTER_ALREADY_OPEN`). Encerrar dá alta à internação aberta do atendimento, mas **não cancela exames**: os itens pendentes continuam com quem solicitou e o encerramento audita quantos eram (`pendingItems`). Solicitar exame em atendimento `CLOSED` é recusado (`409 ENCOUNTER_CLOSED`).
+
 Invariant: request não cruza patient; encounter deve pertencer ao patient; external reference não é confiada como identidade única sem source.
 
 ### DiagnosticService and policies

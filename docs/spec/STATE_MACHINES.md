@@ -30,6 +30,17 @@ stateDiagram-v2
 
 Não há `request.completed` manual que ignore itens. `MIXED_TERMINAL` pode ser um filtro/summary, não um estado persistido.
 
+### 1.1 Encounter
+
+```mermaid
+stateDiagram-v2
+  [*] --> OPEN: cadastro do paciente ou openPatientEncounter
+  OPEN --> CLOSED: closeEncounter (encounter.manage) ou alta da internação
+  CLOSED --> [*]
+```
+
+`CLOSED` é terminal: um novo atendimento é uma nova entidade. Só pode haver um `OPEN` por paciente (`ENCOUNTER_ALREADY_OPEN`). Encerrar um atendimento já `CLOSED` retorna `409 INVALID_STATE_TRANSITION`. O encerramento dá alta (`AdmissionDischarged`) à internação aberta e não altera nenhum item de exame (D9); `createDiagnosticRequest` em atendimento `CLOSED` retorna `409 ENCOUNTER_CLOSED`.
+
 ## 2. DiagnosticRequestItem
 
 ```mermaid
