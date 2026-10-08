@@ -45,7 +45,7 @@ describe("pre-assigned samples at request creation (D8)", () => {
     expect(request.samples.map((sample) => sample.itemIds)).toEqual([[request.items[0].id], [request.items[1].id]]);
   });
 
-  it("creates no sample for imaging-only requests and numbers samples per UTC day", async () => {
+  it("creates no sample for imaging-only requests and numbers samples per calendar day", async () => {
     const c = setup();
     const imaging = await c.create(["service-xray"]);
     expect(imaging.samples).toEqual([]);
@@ -217,8 +217,8 @@ describe("sample label read", () => {
       requestedAt: request.createdAt,
       label: { widthMm: 50, heightMm: 30, barcode: { symbology: "code128" } }
     });
-    expect(label.label.barcode.svg).toMatch(/^<svg .*<rect /);
-    expect(label.label.barcode.svg).not.toContain("<text");
+    expect(label.label.barcode.bars.length).toBeGreaterThan(10);
+    expect(label.label.barcode.bars.every((bar) => bar.x >= 10 && bar.x + bar.width <= label.label.barcode.modules - 10)).toBe(true);
     process.env.LABEL_WIDTH_MM = "70";
     process.env.LABEL_HEIGHT_MM = "40";
     expect((await c.service.getSampleLabel(c.manager, request.samples[0].id)).label).toMatchObject({ widthMm: 70, heightMm: 40 });

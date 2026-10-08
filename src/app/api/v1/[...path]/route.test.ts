@@ -1064,6 +1064,45 @@ describe("versioned API boundary", () => {
     expect(stale.status).toBe(401);
   });
 
+  it("lets the signed-in user register a masked alert number and an administrator mark them on call", async () => {
+    const vet = await login();
+    const digits = ["11", "9", "8765", "4321"];
+    const contact = (body: unknown) => PUT(new Request("http://localhost/api/v1/session/alert-contact", {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: vet.cookie, "x-csrf-token": vet.csrf },
+      body: JSON.stringify(body)
+    }), params(["session", "alert-contact"]));
+    expect((await contact({ whatsappPhone: digits.join("") })).status).toBe(400);
+    expect((await contact({ whatsappPhone: digits.join(""), consent: true, extra: 1 })).status).toBe(400);
+    const saved = await contact({ whatsappPhone: digits.join(""), consent: true });
+    expect(saved.status).toBe(200);
+    const savedText = await saved.text();
+    expect(savedText).not.toContain(digits[2]);
+    expect(JSON.parse(savedText).data.user.alertContact).toEqual({ maskedPhone: "+55•••••••4321", consentAt: expect.any(String) });
+    const me = await (await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]))).json();
+    expect(me.data.user.alertContact.maskedPhone).toBe("+55•••••••4321");
+
+    const admin = await login("admin@cvg.local");
+    const users = await (await GET(new Request("http://localhost/api/v1/users", { headers: { cookie: admin.cookie } }), params(["users"]))).json();
+    const listed = users.data.find((user: { email: string }) => user.email === "vet@cvg.local");
+    expect(listed).toMatchObject({ alertContactReady: true, onCall: false });
+    const onCall = (body: unknown, idempotencyKey = "route-on-call") => PUT(new Request(`http://localhost/api/v1/users/${listed.id}/on-call`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", cookie: admin.cookie, "x-csrf-token": admin.csrf, "idempotency-key": idempotencyKey },
+      body: JSON.stringify(body)
+    }), params(["users", listed.id, "on-call"]));
+    expect((await onCall({ onCall: true }, "route-on-call-unversioned")).status).toBe(400);
+    const marked = await onCall({ onCall: true, expectedVersion: listed.version });
+    expect(marked.status).toBe(200);
+    expect((await marked.json()).data).toMatchObject({ onCall: true, alertContactReady: true });
+    const meOnCall = await (await GET(new Request("http://localhost/api/v1/session/me", { headers: { cookie: vet.cookie } }), params(["session", "me"]))).json();
+    expect(meOnCall.data.user.onCall).toBe(true);
+
+    const removed = await contact({ whatsappPhone: null });
+    expect(removed.status).toBe(200);
+    expect((await removed.json()).data.user).not.toHaveProperty("alertContact");
+  });
+
   it.each(["readAuditMetrics", "readOutboxMetrics"] as const)("fails metrics closed when %s is unavailable", async (method) => {
     const admin = await login("admin@cvg.local");
     const store = await getRuntimeStoreAsync();

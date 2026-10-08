@@ -10,8 +10,8 @@ import type { ApplicationServiceContext, PatientDiagnosticsAuxiliaryRead } from 
 import * as helpers from "./service-common";
 import { patientAuditScope, readPatientAuditEvents } from "./audit-read";
 import { reprojectRequestForActor } from "./request-projection";
-import { accessionPrefixFromEnv, generateAccessionCodes } from "../domain/accession";
-import { code128Svg } from "../domain/barcode-code128";
+import { accessionPrefixFromEnv, accessionTimeZoneFromEnv, generateAccessionCodes } from "../domain/accession";
+import { code128Geometry } from "../domain/barcode-code128";
 import { labelDimensionsFromEnv } from "../domain/sample-label";
 import { encountersForPatient, findById, itemsForRequest, positionOfId, requestsForPatient } from "../domain/state-index";
 const {
@@ -195,7 +195,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           if (group) group.itemIds.push(item.id);
           else groups.push({ sampleType: catalogType || "A definir", itemIds: [item.id] });
         });
-        const accessionCodes = groups.length ? generateAccessionCodes(originalState, createdAt, accessionPrefixFromEnv(), groups.length) : [];
+        const accessionCodes = groups.length ? generateAccessionCodes(originalState, createdAt, accessionPrefixFromEnv(), groups.length, accessionTimeZoneFromEnv()) : [];
         const samples: Sample[] = groups.map((group, index) => ({ id: id("sample"), requestId, accessionCode: accessionCodes[index], sampleType: group.sampleType, status: "EXPECTED", itemIds: group.itemIds, version: 1 }));
         const sampleByItem = new Map(samples.flatMap((sample) => sample.itemIds.map((itemId) => [itemId, sample.id] as const)));
         const items: DiagnosticItem[] = baseItems.map((item) => ({ ...item, ...(sampleByItem.has(item.id) ? { currentSampleId: sampleByItem.get(item.id) } : {}) }));
@@ -441,7 +441,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         services: visibleItems.map((item) => serviceFor(state, item.serviceId)).map((entry) => ({ code: entry.code, name: entry.name })),
         encounter: { externalId: encounter.externalId },
         requestedAt: request.createdAt,
-        label: { widthMm, heightMm, barcode: { symbology: "code128", svg: code128Svg(sample.accessionCode) } }
+        label: { widthMm, heightMm, barcode: { symbology: "code128", ...code128Geometry(sample.accessionCode) } }
       };
     },
 

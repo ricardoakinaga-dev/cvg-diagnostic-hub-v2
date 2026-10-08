@@ -52,18 +52,25 @@ export function encodeCode128B(text: string): Code128Symbol {
   return { values, checksum, widths, modules: widths.reduce((sum, width) => sum + width, 0) };
 }
 
-/** Renders the symbol as an SVG with one <rect> per bar and a quiet zone on both sides. */
-export function code128Svg(text: string, options: { moduleWidth?: number; height?: number } = {}): string {
+export interface Code128Geometry {
+  /** Total width in modules, quiet zones included; the client scales it to the label. */
+  modules: number;
+  /** One entry per dark bar: start offset and width, in modules. */
+  bars: Array<{ x: number; width: number }>;
+}
+
+/**
+ * The geometry of the symbol with a quiet zone on both sides. The API returns
+ * numbers only and the client draws the <rect>s itself, so no markup produced
+ * on the server is ever injected into the page.
+ */
+export function code128Geometry(text: string): Code128Geometry {
   const { widths, modules } = encodeCode128B(text);
-  const moduleWidth = options.moduleWidth ?? 1;
-  const height = options.height ?? 40;
-  const totalModules = modules + CODE128_QUIET_ZONE_MODULES * 2;
-  const rects: string[] = [];
+  const bars: Array<{ x: number; width: number }> = [];
   let cursor = CODE128_QUIET_ZONE_MODULES;
   widths.forEach((width, index) => {
-    if (index % 2 === 0) rects.push(`<rect x="${cursor * moduleWidth}" y="0" width="${width * moduleWidth}" height="${height}"/>`);
+    if (index % 2 === 0) bars.push({ x: cursor, width });
     cursor += width;
   });
-  const svgWidth = totalModules * moduleWidth;
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${svgWidth} ${height}" width="${svgWidth}" height="${height}" preserveAspectRatio="none" shape-rendering="crispEdges" role="img" aria-label="Código de barras Code 128"><rect x="0" y="0" width="${svgWidth}" height="${height}" fill="#fff"/><g fill="#000">${rects.join("")}</g></svg>`;
+  return { modules: modules + CODE128_QUIET_ZONE_MODULES * 2, bars };
 }

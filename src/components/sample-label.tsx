@@ -55,7 +55,10 @@ export function SampleLabelView({ sampleId }: { sampleId: string }) {
     <p className="sample-label-status">Status da amostra: <strong>{sampleStatusLabels[label.sample.status]}</strong> · etiqueta {widthMm} × {heightMm} mm</p>
     <section className="sample-label-sheet" aria-label={`Etiqueta ${label.sample.accessionCode}`}>
       <strong className="sample-label-code">{label.sample.accessionCode}</strong>
-      <div className="sample-label-barcode" role="img" aria-label={`Código de barras ${label.sample.accessionCode}`} dangerouslySetInnerHTML={{ __html: barcode.svg }} />
+      <svg className="sample-label-barcode" role="img" aria-label={`Código de barras ${label.sample.accessionCode}`} viewBox={`0 0 ${barcode.modules} 40`} preserveAspectRatio="none" shapeRendering="crispEdges">
+        <rect x={0} y={0} width={barcode.modules} height={40} fill="#fff" />
+        {barcode.bars.map((bar) => <rect key={bar.x} x={bar.x} y={0} width={bar.width} height={40} fill="#000" />)}
+      </svg>
       <span className="sample-label-patient">{label.patient.displayName}</span>
       <span className="sample-label-line">{label.patient.species} · {label.patient.externalId}</span>
       <span className="sample-label-line">{label.request.requestCode} · {label.sample.sampleType}</span>

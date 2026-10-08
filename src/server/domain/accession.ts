@@ -27,6 +27,19 @@ export function accessionPrefixFromEnv(environment: Partial<NodeJS.ProcessEnv> =
   return resolveAccessionPrefix(environment.ACCESSION_PREFIX);
 }
 
+export const DEFAULT_ACCESSION_TIME_ZONE = "America/Sao_Paulo";
+
+/** The day in the code is the hospital's calendar day (APP_TIMEZONE), not UTC: a label printed at 22:00 must read today's date. */
+export function accessionTimeZoneFromEnv(environment: Partial<NodeJS.ProcessEnv> = process.env): string {
+  const candidate = environment.APP_TIMEZONE?.trim() || DEFAULT_ACCESSION_TIME_ZONE;
+  try {
+    Intl.DateTimeFormat("en-CA", { timeZone: candidate });
+    return candidate;
+  } catch {
+    throw new Error("APP_TIMEZONE inválido para gerar o accession.");
+  }
+}
+
 export function mod10CheckDigit(payload: string): string {
   let sum = 0;
   [...payload].reverse().forEach((char, index) => {
@@ -52,16 +65,17 @@ export function validateAccessionCheckCharacter(code: string): boolean {
   return match !== null && mod10CheckDigit(`${match[2]}${match[3]}`) === match[4];
 }
 
-function datePart(now: Date | string): string {
+function datePart(now: Date | string, timeZone: string): string {
   const date = typeof now === "string" ? new Date(now) : now;
   if (Number.isNaN(date.getTime())) throw new RangeError("Data inválida para gerar o accession.");
-  return date.toISOString().slice(2, 10).replace(/-/g, "");
+  // en-CA formats as YYYY-MM-DD in the given zone; keep YYMMDD.
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(date).slice(2).replace(/-/g, "");
 }
 
-/** Generates `count` consecutive accessions for the UTC day of `now` with a single scan of the samples. */
-export function generateAccessionCodes(state: Pick<StoreState, "samples">, now: Date | string, prefix: string, count: number): string[] {
+/** Generates `count` consecutive accessions for the calendar day of `now` in `timeZone` with a single scan of the samples. */
+export function generateAccessionCodes(state: Pick<StoreState, "samples">, now: Date | string, prefix: string, count: number, timeZone = "UTC"): string[] {
   const safePrefix = resolveAccessionPrefix(prefix);
-  const day = datePart(now);
+  const day = datePart(now, timeZone);
   const head = `${safePrefix}${day}-`;
   let max = 0;
   for (const sample of state.samples) {
@@ -76,6 +90,6 @@ export function generateAccessionCodes(state: Pick<StoreState, "samples">, now: 
   });
 }
 
-export function generateAccessionCode(state: Pick<StoreState, "samples">, now: Date | string, prefix: string): string {
-  return generateAccessionCodes(state, now, prefix, 1)[0];
+export function generateAccessionCode(state: Pick<StoreState, "samples">, now: Date | string, prefix: string, timeZone = "UTC"): string {
+  return generateAccessionCodes(state, now, prefix, 1, timeZone)[0];
 }

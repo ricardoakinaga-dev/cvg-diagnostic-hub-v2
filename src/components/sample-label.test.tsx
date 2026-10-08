@@ -2,7 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SampleLabel } from "@cvg/contracts";
-import { code128Svg } from "../server/domain/barcode-code128";
+import { code128Geometry } from "../server/domain/barcode-code128";
 import { SampleLabelLink, SampleLabelView } from "./sample-label";
 import * as apiClient from "./api-client";
 
@@ -17,7 +17,7 @@ const label: SampleLabel = {
   services: [{ code: "HEMOGRAM", name: "Hemograma" }, { code: "CRP", name: "Proteína C reativa" }],
   encounter: { externalId: "ATD-THOR-001" },
   requestedAt: "2026-10-08T12:00:00.000Z",
-  label: { widthMm: 60, heightMm: 40, barcode: { symbology: "code128", svg: code128Svg("A261008-00015") } }
+  label: { widthMm: 60, heightMm: 40, barcode: { symbology: "code128", ...code128Geometry("A261008-00015") } }
 };
 
 describe("SampleLabelView", () => {
@@ -40,7 +40,7 @@ describe("SampleLabelView", () => {
     expect(sheet).toHaveTextContent("EX-261008-0001 · EDTA");
     expect(sheet).toHaveTextContent("Hemograma, Proteína C reativa");
     expect(sheet).toHaveTextContent(/Solicitado em .*2026/);
-    expect(screen.getByRole("img", { name: "Código de barras A261008-00015" }).querySelector("svg rect")).not.toBeNull();
+    expect(screen.getByRole("img", { name: "Código de barras A261008-00015" }).querySelectorAll("rect").length).toBeGreaterThan(10);
     expect(screen.getByText("Esperada")).toBeInTheDocument();
     expect(screen.getByText(/Status da amostra:/)).toHaveTextContent("etiqueta 60 × 40 mm");
     expect(container.querySelector("style")?.textContent).toContain("@page { size: 60mm 40mm; margin: 0; }");

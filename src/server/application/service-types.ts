@@ -226,6 +226,18 @@ export interface ManagedUser {
   active: boolean;
   createdAt: string;
   version: number;
+  onCall: boolean;
+  alertContactReady: boolean;
+}
+
+export interface UserOnCallUpdateInput extends CommandMeta {
+  onCall: boolean;
+  reason?: string;
+}
+
+export interface AlertContactUpdateInput {
+  whatsappPhone: string | null;
+  consent?: boolean;
 }
 
 export interface ManagementOverview {
@@ -441,7 +453,7 @@ export interface SampleLabelView {
   services: Array<{ code: string; name: string }>;
   encounter: { externalId: string };
   requestedAt: string;
-  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; svg: string } };
+  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; modules: number; bars: Array<{ x: number; width: number }> } };
 }
 
 export type SampleCommandResult = { sample: Sample; items: DiagnosticItem[]; request: RequestView };

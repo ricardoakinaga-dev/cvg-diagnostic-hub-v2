@@ -257,6 +257,14 @@ export interface SessionUser {
   managedDepartmentCodes?: string[];
   timezone: string;
   mustChangePassword?: boolean;
+  /** PROD-402: the user's own alert number, masked; absent until they register one. */
+  alertContact?: AlertContact;
+  onCall?: boolean;
+}
+
+export interface AlertContact {
+  maskedPhone: string;
+  consentAt: string;
 }
 
 export interface SessionResponse {
@@ -378,6 +386,9 @@ export interface ManagedUser {
   timezone: string;
   createdAt: string;
   version: number;
+  onCall?: boolean;
+  /** Whether the user registered a WhatsApp number for critical alerts; the number itself is never listed. */
+  alertContactReady?: boolean;
 }
 
 export interface AuditEvent {
@@ -569,7 +580,7 @@ export interface SampleLabel {
   services: Array<{ code: string; name: string }>;
   encounter: { externalId: string };
   requestedAt: string;
-  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; svg: string } };
+  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; modules: number; bars: Array<{ x: number; width: number }> } };
 }
 
 export interface DiagnosticRequestDetail {

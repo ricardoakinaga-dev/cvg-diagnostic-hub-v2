@@ -55,7 +55,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 
 | Resource | Endpoints | Primary permission |
 | --- | --- | --- |
-| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change` | authenticated session boundary |
+| Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact` | authenticated session boundary |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
@@ -65,7 +65,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | Reports/attachments | `GET /reports/{id}`, upload session/content/finalize/download | result + file scope |
 | Notifications | `GET /notifications`, `POST /notifications/{id}/acknowledge` | recipient |
 | Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `GET /reason-codes`, admin commands | config permission |
-| Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
+| Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
 | Management control | `GET /management/overview` | `dashboard.view` + `user_role.manage`; one scoped snapshot for requests, pending work, departments and operational indicators |
 | Search | `GET /search` | scoped search |
 | Audit/timeline | `GET /audit-events`, `GET /timeline` | scoped/manager |
@@ -87,6 +87,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /session/logout` | authenticated active session | revokes the current session and clears cookies |
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
+| `PUT /session/alert-contact` | authenticated active session (not a temporary password) | PROD-402: only the user registers their own WhatsApp number for critical-result alerts. `{ whatsappPhone, consent: true }` stores it in E.164 (10 or 11 digits without a country code are read as Brazilian) with the consent time; `{ whatsappPhone: null }` removes both. The response and `GET /session/me` return only `alertContact.maskedPhone` and `consentAt`; the audit event `AlertContactUpdated` never carries the number |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
@@ -146,7 +147,8 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /users` | `user_role.manage` | ADMIN or delegated MANAGER; only manageable users in the actor's scope; safe fields only |
 | `POST /users` | `user_role.manage` | ADMIN or delegated MANAGER; operational roles only for delegated managers; recent reauthentication, reason, confirmation and audit; ADMIN may define `managedDepartmentCodes` for a new MANAGER |
 | `POST /users/{id}/roles` | `user_role.manage` | ADMIN or delegated MANAGER target scope; recent password reauthentication, target `expectedVersion`, reason, confirmation and audit; ADMIN may revise a MANAGER's `managedDepartmentCodes` |
-| `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit |
+| `DELETE /users/{id}` | `user_role.manage` | ADMIN or delegated MANAGER target scope; soft deactivation, session revocation, version guard and audit; also takes the user off call |
+| `PUT /users/{id}/on-call` | `user_role.manage` | PROD-402: ADMIN or delegated MANAGER target scope; `{ onCall, expectedVersion }` with an idempotency key; an inactive user cannot go on call; audits `UserOnCallUpdated`. The user list shows `onCall` and `alertContactReady`, never the number |
 | `GET /management/overview` | `dashboard.view`, `user_role.manage` | active MANAGER only; data is filtered to own department plus explicitly managed diagnostic departments |
 | `GET /dashboard` | `dashboard.view` | department and patient scope; bounded operational indicators only |
 | `GET /audit-events` | `audit.view` | manager/admin or scoped audit policy |
@@ -209,7 +211,7 @@ Cancellation never deletes. Partial item cancellation returns updated aggregate 
 - `POST /diagnostic-items/{id}/start-processing` — expectedVersion.
 - `POST /diagnostic-items/{id}/request-recollection` — reasonCode, note, affected sample ID, expectedVersion.
 - `POST /samples/{id}/receive-replacement` — same optional `accessionCode`/`sampleType` rules; the replacement sample already carries a generated accession from the moment the recollection is requested.
-- `GET /samples/{id}/label` (`getSampleLabel`) — printable label data: `sample` (id, accessionCode, sampleType, status), `request` (id, requestCode, priority), `patient` (id, displayName, species, externalId), `services` (code, name) of the items the reader may see, `encounter.externalId`, `requestedAt` and `label` (`widthMm`/`heightMm` from `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM`, `barcode.symbology` `code128` and `barcode.svg`, bars only, no text). Permission `item.view` with the same request/patient scope as `GET /diagnostic-items/{id}`; a sample outside the scope answers `404 SCOPE_DENIED`. The request view (`RequestView`) now lists the request's `samples`, so the UI shows the code before receipt.
+- `GET /samples/{id}/label` (`getSampleLabel`) — printable label data: `sample` (id, accessionCode, sampleType, status), `request` (id, requestCode, priority), `patient` (id, displayName, species, externalId), `services` (code, name) of the items the reader may see, `encounter.externalId`, `requestedAt` and `label` (`widthMm`/`heightMm` from `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM`, `barcode.symbology` `code128`, `barcode.modules` and `barcode.bars` as x/width geometry that the page draws itself, no markup). Permission `item.view` with the same request/patient scope as `GET /diagnostic-items/{id}`; a sample outside the scope answers `404 SCOPE_DENIED`. The request view (`RequestView`) now lists the request's `samples`, so the UI shows the code before receipt.
 
 Each command verifies service workflow, actor role, patient/request consistency and idempotency. Response returns item, sample chain summary and next actions.
 
@@ -264,7 +266,7 @@ Administrative commands are explicit, audited and protected:
 - `POST/PATCH /sla-policies/{id}`;
 - `POST/PATCH /critical-result-policies/{id}`;
 - `POST /reason-codes` and `PATCH /reason-codes/{id}`;
-- `GET/POST /users`, `POST /users/{id}/roles` and `DELETE /users/{id}`.
+- `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call` and `DELETE /users/{id}`.
 
 No endpoint allows deleting a referenced service, policy or reason; deactivate/version instead. User deletion is also intentionally a soft deactivation: active sessions are revoked and the audit trail remains intact.
 

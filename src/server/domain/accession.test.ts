@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ACCESSION_PATTERN, accessionPrefixFromEnv, generateAccessionCode, generateAccessionCodes, isGeneratedAccessionFormat, mod10CheckDigit, resolveAccessionPrefix, validateAccessionCheckCharacter } from "./accession";
+import { ACCESSION_PATTERN, accessionPrefixFromEnv, accessionTimeZoneFromEnv, generateAccessionCode, generateAccessionCodes, isGeneratedAccessionFormat, mod10CheckDigit, resolveAccessionPrefix, validateAccessionCheckCharacter } from "./accession";
 import type { Sample } from "./models";
 
 const sampleWith = (accessionCode: string): Sample => ({ id: accessionCode, requestId: "r", accessionCode, sampleType: "EDTA", status: "EXPECTED", itemIds: [], version: 1 });
@@ -33,11 +33,22 @@ describe("accession check digit (Mod-10 / Luhn)", () => {
 });
 
 describe("accession generator", () => {
-  it("starts at 0001 per UTC day and increments past the highest existing sequence", () => {
+  it("starts at 0001 per day and increments past the highest existing sequence", () => {
     expect(generateAccessionCode({ samples: [] }, day, "A")).toMatch(/^A261008-0001\d$/);
     const first = generateAccessionCode({ samples: [] }, day, "A");
     const second = generateAccessionCode({ samples: [sampleWith(first), sampleWith("A261008-0007" + mod10CheckDigit("2610080007"))] }, day, "A");
     expect(second).toBe(`A261008-0008${mod10CheckDigit("2610080008")}`);
+  });
+
+  it("uses the hospital calendar day, so a code generated at 22:00 in São Paulo keeps that day", () => {
+    const lateEvening = "2026-10-09T01:30:00.000Z"; // 22:30 of 2026-10-08 in America/Sao_Paulo
+    expect(generateAccessionCode({ samples: [] }, lateEvening, "A", "America/Sao_Paulo")).toMatch(/^A261008-0001\d$/);
+    expect(generateAccessionCode({ samples: [] }, lateEvening, "A")).toMatch(/^A261009-0001\d$/);
+    const existing = sampleWith("A261008-0003" + mod10CheckDigit("2610080003"));
+    expect(generateAccessionCode({ samples: [existing] }, lateEvening, "A", "America/Sao_Paulo")).toBe(`A261008-0004${mod10CheckDigit("2610080004")}`);
+    expect(accessionTimeZoneFromEnv({ APP_TIMEZONE: "Europe/Lisbon" })).toBe("Europe/Lisbon");
+    expect(accessionTimeZoneFromEnv({ APP_TIMEZONE: "" })).toBe("America/Sao_Paulo");
+    expect(() => accessionTimeZoneFromEnv({ APP_TIMEZONE: "Marte/Olympus" })).toThrow(/APP_TIMEZONE/);
   });
 
   it("ignores other days, other prefixes, legacy codes, wrong lengths and invalid check characters", () => {

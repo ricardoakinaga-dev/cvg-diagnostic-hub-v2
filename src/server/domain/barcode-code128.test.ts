@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { CODE128_QUIET_ZONE_MODULES, code128Checksum, code128Svg, encodeCode128B } from "./barcode-code128";
+import { CODE128_QUIET_ZONE_MODULES, code128Checksum, code128Geometry, encodeCode128B } from "./barcode-code128";
 
 describe("Code 128 subset B", () => {
   it("computes the modulo-103 checksum by hand for PJJ123C", () => {
@@ -18,21 +18,15 @@ describe("Code 128 subset B", () => {
     expect(symbol.widths.slice(-7)).toEqual([2, 3, 3, 1, 1, 1, 2]);
   });
 
-  it("renders only <rect> bars, one per bar, with a quiet zone and no text", () => {
+  it("returns one bar per dark run, offset by the quiet zone, inside the total module count", () => {
     const symbol = encodeCode128B("AB");
-    const svg = code128Svg("AB");
-    const bars = (svg.match(/<rect /g) ?? []).length;
-    expect(bars).toBe(1 + (symbol.widths.length + 1) / 2);
-    expect(svg).toContain(`viewBox="0 0 ${symbol.modules + CODE128_QUIET_ZONE_MODULES * 2} 40"`);
-    expect(svg).not.toContain("<text");
-    expect(svg.startsWith("<svg ")).toBe(true);
-    expect(svg).toContain(`<rect x="${CODE128_QUIET_ZONE_MODULES}" y="0" width="2" height="40"/>`);
-  });
-
-  it("honours module width and height options", () => {
-    const svg = code128Svg("AB", { moduleWidth: 2, height: 10 });
-    expect(svg).toContain('height="10"');
-    expect(svg).toContain(`<rect x="${CODE128_QUIET_ZONE_MODULES * 2}" y="0" width="4" height="10"/>`);
+    const geometry = code128Geometry("AB");
+    expect(geometry.bars).toHaveLength((symbol.widths.length + 1) / 2);
+    expect(geometry.modules).toBe(symbol.modules + CODE128_QUIET_ZONE_MODULES * 2);
+    expect(geometry.bars[0]).toEqual({ x: CODE128_QUIET_ZONE_MODULES, width: 2 });
+    const last = geometry.bars[geometry.bars.length - 1];
+    expect(last.x + last.width).toBe(geometry.modules - CODE128_QUIET_ZONE_MODULES);
+    expect(geometry.bars.every((bar, index) => index === 0 || bar.x > geometry.bars[index - 1].x + geometry.bars[index - 1].width)).toBe(true);
   });
 
   it("rejects empty text and characters outside subset B", () => {

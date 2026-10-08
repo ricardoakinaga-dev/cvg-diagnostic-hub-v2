@@ -10,7 +10,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { reprojectCommandRequest, reprojectRequestForActor } from "./request-projection";
 import { findById } from "../domain/state-index";
-import { accessionPrefixFromEnv, generateAccessionCode, isGeneratedAccessionFormat, validateAccessionCheckCharacter } from "../domain/accession";
+import { accessionPrefixFromEnv, accessionTimeZoneFromEnv, generateAccessionCode, isGeneratedAccessionFormat, validateAccessionCheckCharacter } from "../domain/accession";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -194,7 +194,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
           const tubeItems = sample.itemIds.map((itemId) => itemFor(originalState, itemId)).filter((item) => items.some((entry) => entry.id === item.id) || (item.status === "REQUESTED" && item.workflowType === "LABORATORY" && canReceive(originalState, currentActor, item)));
           updatedItems = tubeItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), receivedAt, currentSampleId: sample.id, version: item.version + 1 }));
         } else {
-          const accessionCode = input.accessionCode !== undefined && input.accessionCode.trim() !== "" ? scannedAccessionCode(input.accessionCode) : generateAccessionCode(originalState, receivedAt, accessionPrefixFromEnv());
+          const accessionCode = input.accessionCode !== undefined && input.accessionCode.trim() !== "" ? scannedAccessionCode(input.accessionCode) : generateAccessionCode(originalState, receivedAt, accessionPrefixFromEnv(), accessionTimeZoneFromEnv());
           if (originalState.samples.some((entry) => entry.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
           sample = { id: id("sample"), requestId: request.id, accessionCode, sampleType: resolvedSampleType(input.sampleType), status: "RECEIVED", itemIds: items.map((item) => item.id), receivedAt, receivedBy: currentActor.id, version: 1 };
           updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), receivedAt, currentSampleId: sample.id, version: item.version + 1 }));
@@ -240,7 +240,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const reason = findOrThrow(originalState.reasonCodes.find((entry) => entry.type === "RECOLLECTION" && entry.code === input.reasonCode && entry.active), "VALIDATION_ERROR", "Motivo de recoleta inválido.");
         const rejectionNote = input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : undefined;
         const replacedSample: Sample = { ...sample, status: "REPLACED", rejectionCode: reason.code, rejectionNote, version: sample.version + 1 };
-        const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: generateAccessionCode(originalState, now(), accessionPrefixFromEnv()), sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
+        const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: generateAccessionCode(originalState, now(), accessionPrefixFromEnv(), accessionTimeZoneFromEnv()), sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
         const updatedItems = linkedItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECOLLECTION_REQUIRED", item.workflowType), currentSampleId: replacement.id, version: item.version + 1 }));
         let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples.map((entry) => entry.id === sample.id ? replacedSample : entry), replacement] }, request, updatedItems);
         const requester = findOrThrow(findById(originalState.users, request.requesterId));
@@ -271,7 +271,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         let accessionCode = expected.accessionCode;
         if (placeholder) {
           // Recollections requested before PROD-405 carry a PENDING-xxxx placeholder.
-          accessionCode = input.accessionCode !== undefined && input.accessionCode.trim() !== "" ? scannedAccessionCode(input.accessionCode) : generateAccessionCode(originalState, receivedAt, accessionPrefixFromEnv());
+          accessionCode = input.accessionCode !== undefined && input.accessionCode.trim() !== "" ? scannedAccessionCode(input.accessionCode) : generateAccessionCode(originalState, receivedAt, accessionPrefixFromEnv(), accessionTimeZoneFromEnv());
           if (originalState.samples.some((sample) => sample.accessionCode === accessionCode)) throw new ApiError("CONFLICT", "Accession já utilizado.", 409);
         } else {
           assertMatchesExpected(input.accessionCode, expected);

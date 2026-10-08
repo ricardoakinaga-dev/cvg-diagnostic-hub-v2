@@ -90,6 +90,14 @@ const requestSchemas = {
   },
   ManagedUserDeactivate: strictObject({ expectedVersion, reason: normalizedTextSchema(1, 500), confirm: { type: "boolean", const: true } }),
   ManagedUserPasswordReset: strictObject({ expectedVersion }),
+  UserOnCallUpdate: strictObject({ onCall: { type: "boolean" }, expectedVersion, reason: normalizedTextSchema(1, 500) }, ["onCall"]),
+  AlertContactUpdate: {
+    ...strictObject({
+      whatsappPhone: { oneOf: [{ ...stringSchema(1, 40), pattern: "^[0-9+()\\s.-]+$", "x-runtime-validation": "normalized to E.164; 10 or 11 digits without a country code are a Brazilian number with area code" }, { type: "null" }] },
+      consent: { type: "boolean", const: true }
+    }, ["whatsappPhone"]),
+    "x-cross-field-constraints": ["a non-null whatsappPhone requires consent=true", "whatsappPhone=null removes the number and its consent"]
+  },
   UserRoleUpdate: {
     ...strictObject({
       role: { type: "string", enum: roleCodes }, departmentCode: normalizedDepartmentCodeSchema,
@@ -218,13 +226,18 @@ const aggregateStatusSchema = { type: "string", enum: ["REQUESTED", "IN_PROGRESS
 const resultVersionStateSchema = { type: "string", enum: ["DRAFT", "RELEASED", "SUPERSEDED", "VOIDED"] };
 const arrayOf = (schema, options = {}) => ({ type: "array", items: schema, ...options });
 
-const publicUserSchema = strictObject({
+const userIdentityProperties = {
   id: identifier, email: { type: "string", format: "email", maxLength: 320 }, displayName: stringSchema(1, 160),
   role: { type: "string", enum: roleCodes }, departmentCode: stringSchema(1, 60),
   managedDepartmentCodes: arrayOf(stringSchema(1, 60), { maxItems: 20 }), timezone: stringSchema(1, 80), mustChangePassword: { type: "boolean" }
+};
+const publicUserSchema = strictObject({
+  ...userIdentityProperties, onCall: { type: "boolean" },
+  alertContact: strictObject({ maskedPhone: stringSchema(8, 20), consentAt: timestamp }, ["maskedPhone", "consentAt"])
 }, ["id", "email", "displayName", "role", "departmentCode", "timezone"]);
 const managedUserSchema = strictObject({
-  ...publicUserSchema.properties, serviceCodes: arrayOf(normalizedCatalogCodeSchema, { maxItems: 200 }), active: { type: "boolean" }, createdAt: timestamp, version: positiveVersion
+  ...userIdentityProperties, serviceCodes: arrayOf(normalizedCatalogCodeSchema, { maxItems: 200 }), active: { type: "boolean" }, createdAt: timestamp, version: positiveVersion,
+  onCall: { type: "boolean" }, alertContactReady: { type: "boolean" }
 }, ["id", "email", "displayName", "role", "departmentCode", "timezone", "active", "createdAt", "version"]);
 const patientSchema = strictObject({
   id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), breed: stringSchema(1, 100),
@@ -336,7 +349,7 @@ const sampleLabelSchema = strictObject({
   requestedAt: timestamp,
   label: strictObject({
     widthMm: { type: "number", minimum: 20, maximum: 150 }, heightMm: { type: "number", minimum: 20, maximum: 150 },
-    barcode: strictObject({ symbology: { type: "string", const: "code128" }, svg: stringSchema(1, 20000) }, ["symbology", "svg"])
+    barcode: strictObject({ symbology: { type: "string", const: "code128" }, modules: { type: "integer", minimum: 1, maximum: 2000 }, bars: arrayOf(strictObject({ x: { type: "integer", minimum: 0 }, width: { type: "integer", minimum: 1, maximum: 4 } }, ["x", "width"]), { maxItems: 400 }) }, ["symbology", "modules", "bars"])
   }, ["widthMm", "heightMm", "barcode"])
 }, ["sample", "request", "patient", "services", "encounter", "requestedAt", "label"]);
 const itemViewSchema = strictObject({
@@ -692,8 +705,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 74/69 since PROD-201 added POST /session/password/change; 75/70 since PROD-405 added GET /samples/{sampleId}/label (2026-10-08).
-  if (API_OPERATIONS.length !== 75 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 70) throw new Error("The audited API surface must remain exactly 75 operations across 70 paths.");
+  // 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
+  if (API_OPERATIONS.length !== 76 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 71) throw new Error("The audited API surface must remain exactly 76 operations across 71 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {
