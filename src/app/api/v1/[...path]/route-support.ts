@@ -202,7 +202,8 @@ export const REQUEST_HEADER_VALIDATORS = Object.freeze({
   "idempotency-key": (value: string) => codePointLength(value) >= 1 && codePointLength(value) <= 200 && /\S/.test(value),
   "if-match": (value: string) => /^(?:[1-9][0-9]{0,14}|"[1-9][0-9]{0,14}"|W\/"[1-9][0-9]{0,14}")$/.test(value),
   "last-event-id": (value: string) => codePointLength(value) >= 1 && codePointLength(value) <= 200,
-  "x-duplicate-override": (value: string) => value === "true"
+  "x-duplicate-override": (value: string) => value === "true",
+  "x-hub-signature-256": (value: string) => /^sha256=[0-9a-fA-F]{64}$/.test(value)
 } satisfies Record<ApiOperation["requestHeaders"][number]["name"], (value: string) => boolean>);
 export function validateRequestHeaders(request: Request, operation: ApiOperation): void {
   for (const header of operation.requestHeaders) {

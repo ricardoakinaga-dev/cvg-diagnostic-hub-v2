@@ -161,8 +161,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(78);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 73);
+    expect(API_OPERATIONS).toHaveLength(80);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 74);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 

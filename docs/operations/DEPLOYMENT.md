@@ -286,6 +286,40 @@ Qualquer leitor que funcione como teclado (digita o código e envia Enter) e qua
 
 O que o hospital ainda precisa informar: o **modelo da impressora** e o **tamanho real da etiqueta** (para ajustar `LABEL_WIDTH_MM`/`LABEL_HEIGHT_MM` e validar a margem de impressão) e o **modelo do leitor** (para confirmar que envia Enter ao final e lê Code 128). Até lá, os padrões de 50 × 30 mm valem como estimativa.
 
+### 6.9 Canal WhatsApp do resultado crítico (PROD-402)
+
+Pela decisão D3, o resultado crítico é avisado no Hub e também pelo WhatsApp Business, como canal redundante e sem SMS de reserva. A confirmação continua sendo feita no Hub.
+
+**O que sai na mensagem:** um template aprovado pela Meta, da categoria UTILITY, em `pt_BR`.
+- O corpo recebe só o protocolo da solicitação (`{{1}}`).
+- O botão de URL recebe o caminho do Hub (`https://APP_DOMAIN/{{1}}`, por exemplo `results/<id>`).
+- Nenhum dado clínico, nome de paciente ou valor de exame vai na mensagem.
+- Sugestão de corpo para aprovar: "Hub CVG: há um resultado crítico aguardando a sua confirmação. Protocolo {{1}}. Abra o Hub para ver e confirmar."
+
+**Quem recebe:** só quem cadastrou o próprio celular em **Minha conta**, com consentimento (§9).
+- O número é conferido de novo no envio. Quem removeu o número ou já confirmou o alerta não recebe.
+- Sem número cadastrado, a notificação registra `SKIPPED/NO_CONTACT` e o alerta fica só no Hub.
+
+**Como ligar:**
+1. Na Meta, criar o app, a conta WhatsApp Business e o número remetente. Aprovar o template.
+2. Preencher `WHATSAPP_PHONE_NUMBER_ID`, `WHATSAPP_ACCESS_TOKEN` (token permanente de usuário do sistema) e `WHATSAPP_TEMPLATE_NAME` no `.env.production`.
+   - O app e o worker leem o mesmo bloco do Compose.
+   - Com `WHATSAPP_ENABLED=true` e a configuração incompleta, o worker não sobe (`WHATSAPP_CONFIG_INVALID:<variável>`).
+3. Liberar a saída HTTPS do servidor para `graph.facebook.com:443`.
+4. Para os relatórios de entrega, gerar `WHATSAPP_VERIFY_TOKEN` (aleatório) e copiar o app secret para `WHATSAPP_APP_SECRET`. Na Meta, configurar o webhook `https://APP_DOMAIN/api/v1/webhooks/whatsapp` com o mesmo verify token e assinar o campo `messages`.
+   - Sem os dois segredos, a rota responde 404.
+   - O `POST` só é aceito com `X-Hub-Signature-256` válido sobre o corpo exato.
+5. Ligar `WHATSAPP_ENABLED=true` junto com a política crítica (`CRITICAL_POLICY_*`) e fazer um teste com um crítico de homologação.
+
+**Servidor só na rede interna (D11):** o envio funciona, desde que haja saída para a Meta. Os relatórios de entrega e leitura só chegam se o webhook for alcançável pela internet. Sem eles, o alerta fica em `SENT`. O escalonamento depende da confirmação no Hub, não do status do WhatsApp.
+
+**Estados no campo `whatsapp` da notificação:**
+- `QUEUED` → `SENT` → `DELIVERED` → `READ`;
+- `FAILED`, com o código da Meta;
+- `SKIPPED`: `NO_CONTACT`, `SETTLED` ou `CHANNEL_DISABLED`.
+
+Cada mudança gera um evento de auditoria (`CriticalAlertWhatsApp*`) sem o número. Desligar o canal faz os alertas na fila serem encerrados como `CHANNEL_DISABLED`. Falhas de credencial ou de template vão para o dead letter (runbook "WhatsApp do crítico").
+
 ## 7. Papéis de banco separados (PROD-305)
 
 Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:
@@ -316,6 +350,7 @@ O `/readyz` exige que a última migration aplicada seja exatamente a que o códi
 | 001–012 | Aditivas: tabelas, colunas, constraints, gatilhos; a 008 preenche `consumer_type` e a 009 valida dados legados | Backup (§4) | Abortam inteiras no erro (o runner aplica cada uma numa transação, com o ledger); corrigir o dado e rodar de novo |
 | 013, 014 | Cutover coordenado: auditoria e outbox saem do snapshot | Parar `proxy`, `app` e `worker` e fazer backup (§4.1) | Abortam inteiras em divergência; depois de aplicadas, voltar exige o restore |
 | 015 | Cutover coordenado: uma linha por entidade (D-030) | Idem | Aborta inteira em chave inválida, duplicada ou cópia divergente; depois de aplicada, voltar exige o restore |
+| 016 | Aditiva (rolling): a rota do outbox passa a aceitar `notification.whatsapp` (PROD-402) | Backup (§4) | Só troca uma constraint; as linhas existentes continuam válidas. Para voltar, restaurar o backup ou deixar o canal desligado |
 
 **Ensaio de 08/10/2026 (dump representativo):**
 1. Banco na 014 com 12 meses do lote real clonado: 55 mil exames, 95 MB de snapshot.

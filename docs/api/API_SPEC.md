@@ -57,6 +57,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | --- | --- | --- |
 | Session | `POST /session/login`, `GET /session/me`, `POST /session/logout`, `POST /session/reauth`, `POST /session/password`, `POST /session/password/change`, `PUT /session/alert-contact` | authenticated session boundary |
 | Observability | `GET /metrics` | `health.readiness`, or the Prometheus bearer token |
+| Webhooks | `GET /webhooks/whatsapp`, `POST /webhooks/whatsapp` | public, gated by configuration and Meta's signature |
 | Patients | `GET /patients`, `POST /patients`, `GET /patients/{id}`, `GET /patients/{id}/diagnostics`, `GET /patients/{id}/encounters` | scoped view/create |
 | Encounters/admissions | `GET /encounters/{id}`, `GET /admissions/{id}`, `POST /admissions/{id}/context` | scoped view; approved context policy for mutation |
 | Diagnostic requests | `POST /diagnostic-requests`, `GET /diagnostic-requests`, `GET /diagnostic-requests/{id}` | create/view scope |
@@ -88,6 +89,8 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `POST /session/reauth` | authenticated active session | current password and step-up timestamp; never returns credentials |
 | `POST /session/password/change` | authenticated active session (not a temporary password) | PROD-201: current password checked outside the transaction (`CURRENT_PASSWORD_INVALID` otherwise), 5 attempts per account per 15 minutes, new password of 12–200 characters with letters and digits and different from the current one; revokes every session of the user, issues new session and CSRF cookies and audits `PasswordChanged` without secrets |
 | `PUT /session/alert-contact` | authenticated active session (not a temporary password) | PROD-402: only the user registers their own WhatsApp number for critical-result alerts. `{ whatsappPhone, consent: true }` stores it in E.164 (10 or 11 digits without a country code are read as Brazilian) with the consent time; `{ whatsappPhone: null }` removes both. The response and `GET /session/me` return only `alertContact.maskedPhone` and `consentAt`; the audit event `AlertContactUpdated` never carries the number |
+| `GET /webhooks/whatsapp` | public | PROD-402: 404 unless `WHATSAPP_ENABLED=true` with `WHATSAPP_VERIFY_TOKEN` and `WHATSAPP_APP_SECRET`; answers Meta's `hub.challenge` as `text/plain` only for `hub.mode=subscribe` with the matching verify token (403 otherwise) |
+| `POST /webhooks/whatsapp` | public | PROD-402: same gate; requires `X-Hub-Signature-256` = HMAC-SHA256 of the exact body under the app secret (401 otherwise); reads only delivery statuses, moves the notification's `whatsapp` status forward (`SENT` → `DELIVERED` → `READ`, or `FAILED`) and audits it; unknown message ids are ignored; returns `{ received, applied }` |
 | `GET /patients` | `patient.view` | only authorized patient search fields |
 | `POST /patients` | `patient.create` | VETERINARIAN or INPATIENT_TEAM; creates the patient and an open initial encounter, with ward/bed required only for inpatient |
 | `GET /patients/{id}` | `patient.view` | CARE/assigned or manager request/item department scope; no local ADMIN patient scope |
