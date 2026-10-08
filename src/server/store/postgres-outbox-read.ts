@@ -57,16 +57,19 @@ export async function lockPostgresOutbox(client: PoolClient, query: OutboxTransa
 }
 
 export async function readPostgresOutboxMetrics(client: SqlQueryable): Promise<{ pending: number; oldestAvailableAt?: string }> {
+  // Only notification deliveries are worker work; domain events are replay history (outboxMessageSettled).
   const result = await client.query(`SELECT count(*)::text AS pending, min(available_at) AS oldest
-    FROM outbox_messages WHERE status IN ('PENDING', 'PROCESSING')`);
+    FROM outbox_messages WHERE status IN ('PENDING', 'PROCESSING') AND consumer_type = 'NOTIFICATION_DELIVERY'`);
   const row = result.rows[0] as { pending: string; oldest: Date | null };
   return { pending: Number(row.pending), ...(row.oldest ? { oldestAvailableAt: row.oldest.toISOString() } : {}) };
 }
 
 export async function prunePostgresOutbox(client: PoolClient, options: RuntimeRetentionOptions, now: Date): Promise<number> {
   const { hotWindow, retentionMs } = outboxRetentionPolicy(options);
-  const result = await client.query(`DELETE FROM outbox_messages WHERE status = 'PROCESSED' AND id NOT IN (
-    SELECT id FROM outbox_messages WHERE status = 'PROCESSED' AND available_at >= $1::timestamptz - $2::double precision * interval '1 millisecond'
+  // Settled = processed, or a domain event (no worker consumer). Same window and hot set for both.
+  const settled = "(status = 'PROCESSED' OR (status = 'PENDING' AND consumer_type = 'DOMAIN_EVENT'))";
+  const result = await client.query(`DELETE FROM outbox_messages WHERE ${settled} AND id NOT IN (
+    SELECT id FROM outbox_messages WHERE ${settled} AND available_at >= $1::timestamptz - $2::double precision * interval '1 millisecond'
     ORDER BY event_position DESC LIMIT $3)`, [now.toISOString(), retentionMs, hotWindow]);
   return result.rowCount ?? 0;
 }

@@ -249,8 +249,13 @@ describe("WorkItemsView", () => {
     expect(screen.getByRole("button", { name: "Abrir RX de tórax — Thor" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Estado: Amostra recebida" })).toBeDisabled();
     expect(screen.getAllByRole("button", { name: "Nova solicitação" }).length).toBeGreaterThan(0);
-    act(() => { fireEvent.keyDown(window, { key: "c" }); });
-    expect(await screen.findByRole("dialog", { name: "Solicitar exames" })).toBeInTheDocument();
+    // The shortcut listener is a passive effect of the commit that loaded the
+    // session; under CPU load the list can be found before it runs (DEP-AUD-01).
+    // Opening the dialog is idempotent, so press again until it is armed.
+    await waitFor(() => {
+      act(() => { fireEvent.keyDown(window, { key: "c" }); });
+      expect(screen.getByRole("dialog", { name: "Solicitar exames" })).toBeInTheDocument();
+    });
   });
 
   it("opens a remembered request before the examination list finishes loading", async () => {

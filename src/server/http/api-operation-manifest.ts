@@ -570,7 +570,9 @@ export const API_OPERATIONS: ReadonlyArray<ApiOperation> = Object.freeze(operati
   const errorStatuses = ERROR_STATUSES_BY_OPERATION[operation.operationId as keyof typeof ERROR_STATUSES_BY_OPERATION];
   if (!operationAuthorization) throw new Error(`${operation.method} ${operation.path} is missing explicit authorization metadata.`);
   if (!errorStatuses) throw new Error(`${operation.method} ${operation.path} is missing explicit error statuses.`);
-  const requestBoundaryErrors = Object.freeze([...new Set([400, ...errorStatuses])].sort((left, right) => left - right));
+  // Every operation can meet an unavailable dependency (database, distributed rate limit) and
+  // answers 503 DEPENDENCY_UNAVAILABLE, retryable, instead of a generic 500.
+  const requestBoundaryErrors = Object.freeze([...new Set([400, 503, ...errorStatuses])].sort((left, right) => left - right));
   const enriched = { ...operation, authorization: operationAuthorization, errorStatuses: requestBoundaryErrors };
   if (!operation.successMediaTypes.includes("application/json")) return Object.freeze(enriched);
   const successDataSchema = API_SUCCESS_DATA_SCHEMAS[operation.operationId as keyof typeof API_SUCCESS_DATA_SCHEMAS];

@@ -42,7 +42,7 @@ Stop criteria: qualquer divergência, migration drift, autoridade ambígua, rest
 
 ## Outbox atrasado ou dead-letter
 
-1. Consultar `cvg_outbox_pending`, `cvg_outbox_oldest_age_seconds` e contadores de falha; não editar linhas diretamente.
+1. Consultar `cvg_outbox_pending`, `cvg_outbox_oldest_age_seconds` e contadores de falha; não editar linhas diretamente. As duas métricas contam só entregas de notificação: eventos de domínio são histórico de replay do tempo real, não têm consumidor no worker e saem pela retenção (desde 07/10/2026).
 2. Separar `PROCESSING` com lease ativo de `PENDING` elegível e `FAILED` dead-letter.
 3. Confirmar `consumerType`, `routingKey`, correlação e tentativas; nunca reprocessar um evento em outro consumidor.
 4. Validar o sink durável e sua confirmação antes de aumentar workers ou retry.

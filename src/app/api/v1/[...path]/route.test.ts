@@ -292,11 +292,37 @@ describe("versioned API boundary", () => {
     }
   });
 
+  it("gives the shared client address a larger login budget than one account, so a shift change behind NAT is not locked out", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "memory");
+    vi.stubEnv("TRUST_PROXY", "true");
+    vi.stubEnv("TRUST_PROXY_SHARED_SECRET", "proxy-secret");
+    vi.stubEnv("LOGIN_RATE_LIMIT", "2");
+    resetRateLimits();
+    const login = (email: string) => POST(new Request("http://localhost/api/v1/session/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-forwarded-for": "198.51.100.40", "x-cvg-proxy-secret": "proxy-secret" },
+      body: JSON.stringify({ email, password: "wrong-password-for-budget" })
+    }), params(["session", "login"]));
+    try {
+      // Five staff members behind one address each fail once: none is throttled by the address.
+      for (const email of ["vet@cvg.local", "lab@cvg.local", "rx@cvg.local", "us@cvg.local", "manager@cvg.local"]) {
+        expect((await login(email)).status).toBe(401);
+      }
+      // One account guessing repeatedly still meets its own budget.
+      expect((await login("vet@cvg.local")).status).toBe(401);
+      expect((await login("vet@cvg.local")).status).toBe(429);
+    } finally {
+      resetRateLimits();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("keeps forwarded headers from changing rate-limit identity without the trusted proxy secret", async () => {
     vi.stubEnv("RATE_LIMIT_MODE", "memory");
     vi.stubEnv("TRUST_PROXY", "true");
     vi.stubEnv("TRUST_PROXY_SHARED_SECRET", "proxy-secret");
     vi.stubEnv("LOGIN_RATE_LIMIT", "1");
+    vi.stubEnv("LOGIN_CLIENT_RATE_LIMIT", "1");
     resetRateLimits();
 
     const malformedLogin = (headers: Record<string, string>) => POST(new Request("http://localhost/api/v1/session/login", {

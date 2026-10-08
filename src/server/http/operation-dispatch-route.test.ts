@@ -181,6 +181,7 @@ describe("manifest dispatcher through real clinical HTTP commands", () => {
     vi.stubEnv("TRUST_PROXY", "true");
     vi.stubEnv("TRUST_PROXY_SHARED_SECRET", "dispatch-proxy-secret");
     vi.stubEnv("LOGIN_RATE_LIMIT", "1");
+    vi.stubEnv("LOGIN_CLIENT_RATE_LIMIT", "1");
     const login = (address: string, secret: string, body: unknown) => command(["session", "login"], body, {
       "x-forwarded-for": address, "x-cvg-proxy-secret": secret
     });

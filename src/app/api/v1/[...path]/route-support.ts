@@ -130,7 +130,24 @@ export function errorFor(error: unknown, correlationId: string, id: string): Nex
   nextResponse.headers.set("cache-control", "no-store");
   return nextResponse;
 }
+// Network failures and PostgreSQL connection/shutdown/timeout SQLSTATEs (classes 08, 53300, 57P0x, 57014).
+const DEPENDENCY_ERROR_CODES = new Set(["ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EPIPE", "EHOSTUNREACH", "ENOTFOUND", "EAI_AGAIN", "53300", "57P01", "57P02", "57P03", "57014"]);
+const DEPENDENCY_ERROR_MESSAGE = /connection terminated|timeout exceeded when trying to connect|query read timeout|ECONNREFUSED|ECONNRESET|ETIMEDOUT/i;
+
+/** A database outage is a retryable 503, not an unexpected 500. */
+export function isDependencyUnavailable(error: unknown, depth = 0): boolean {
+  if (!error || typeof error !== "object" || depth > 5) return false;
+  const candidate = error as { code?: unknown; message?: unknown; cause?: unknown };
+  const code = typeof candidate.code === "string" ? candidate.code : "";
+  if (DEPENDENCY_ERROR_CODES.has(code) || /^08[0-9A-Z]{3}$/.test(code)) return true;
+  if (typeof candidate.message === "string" && DEPENDENCY_ERROR_MESSAGE.test(candidate.message)) return true;
+  return isDependencyUnavailable(candidate.cause, depth + 1);
+}
+
 export function normalizeRouteError(error: unknown): unknown {
+  if (!(error instanceof ApiError) && isDependencyUnavailable(error)) {
+    return new ApiError("DEPENDENCY_UNAVAILABLE", "Uma dependência do serviço está indisponível. Tente novamente em instantes.", 503, { retryable: true });
+  }
   if (error instanceof RealtimeUnavailableError) {
     return error.reason === "capacity"
       ? new ApiError("REALTIME_CAPACITY", "O canal em tempo real atingiu sua capacidade operacional. Tente novamente.", 429, { retryable: true })

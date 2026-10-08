@@ -46,8 +46,10 @@ describe("bounded metrics", () => {
     resetMetrics();
     const state = createDemoState();
     state.outbox = [
-      { id: "outbox-one", eventType: "one", aggregateType: "Patient", aggregateId: "patient-secret", payload: {}, consumerType: "DOMAIN_EVENT", routingKey: "domain.one", status: "PENDING", attempts: 0, availableAt: "2026-08-20T09:59:00.000Z", correlationId: "corr-one" },
-      { id: "outbox-two", eventType: "two", aggregateType: "Patient", aggregateId: "patient-secret", payload: {}, consumerType: "DOMAIN_EVENT", routingKey: "domain.two", status: "PROCESSING", attempts: 1, availableAt: "2026-08-20T09:59:30.000Z", correlationId: "corr-two" },
+      { id: "outbox-one", eventType: "one", aggregateType: "Patient", aggregateId: "patient-secret", payload: { notificationId: "notification-one" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app", status: "PENDING", attempts: 0, availableAt: "2026-08-20T09:59:00.000Z", correlationId: "corr-one" },
+      { id: "outbox-two", eventType: "two", aggregateType: "Patient", aggregateId: "patient-secret", payload: { notificationId: "notification-two" }, consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.in_app", status: "PROCESSING", attempts: 1, availableAt: "2026-08-20T09:59:30.000Z", correlationId: "corr-two" },
+      // Replay history with no worker consumer: never counted as pending work.
+      { id: "outbox-domain", eventType: "domain", aggregateType: "Patient", aggregateId: "patient-secret", payload: {}, consumerType: "DOMAIN_EVENT", routingKey: "domain.domain", status: "PENDING", attempts: 0, availableAt: "2026-08-20T09:00:00.000Z", correlationId: "corr-domain" },
       { id: "outbox-three", eventType: "three", aggregateType: "Patient", aggregateId: "patient-secret", payload: {}, consumerType: "DOMAIN_EVENT", routingKey: "domain.three", status: "PROCESSED", attempts: 1, availableAt: "2026-08-20T09:58:00.000Z", correlationId: "corr-three" }
     ];
 

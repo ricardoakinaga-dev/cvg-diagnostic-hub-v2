@@ -1,4 +1,5 @@
 import { Pool, type PoolClient } from "pg";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 const CHANNEL = "cvg_runtime_state_changed";
 const RETRY_MS = 5_000;
@@ -13,7 +14,7 @@ export class PostgresStateInvalidation {
   private closing?: Promise<void>;
 
   constructor(connectionString: string, private readonly invalidate: () => void) {
-    this.pool = new Pool({ connectionString, max: 1, application_name: "cvg-runtime-state-cache", connectionTimeoutMillis: 5_000 });
+    this.pool = new Pool({ connectionString, max: 1, application_name: "cvg-runtime-state-cache", ...runtimePoolTimeouts() });
     this.pool.on("error", () => this.invalidate());
     this.connect();
   }

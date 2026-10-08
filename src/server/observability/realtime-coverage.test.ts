@@ -35,6 +35,7 @@ import {
   type RealtimeNotificationPool
 } from "./realtime";
 import { createRealtimeResponse, type RealtimeAccessPolicy } from "./realtime-stream";
+import { runtimePoolTimeouts } from "../domain/database-timeouts";
 
 const REALTIME_ENV_KEYS = [
   "REALTIME_NOTIFICATION_ADAPTER",
@@ -236,7 +237,8 @@ describe("realtime public contract coverage", () => {
     expect(postgresPool.options).toEqual([{
       connectionString: "postgresql://db.example/cvg",
       max: 10,
-      idleTimeoutMillis: 30_000
+      idleTimeoutMillis: 30_000,
+      ...runtimePoolTimeouts()
     }]);
 
     await closeRealtimeNotificationAdapter();

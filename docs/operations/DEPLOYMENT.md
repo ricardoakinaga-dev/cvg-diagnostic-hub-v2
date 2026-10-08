@@ -231,6 +231,18 @@ no veredito `health` que o próprio worker grava: um ciclo falho isolado é
 restart continua dependendo de `restart: unless-stopped` em caso de saída do
 processo.
 
+### 6.5 Limites de login e timeouts do banco
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `LOGIN_RATE_LIMIT` | `10` | Tentativas por minuto por conta (par e-mail + cliente), com backoff progressivo alimentado só por senha errada. |
+| `LOGIN_CLIENT_RATE_LIMIT` | `60` | Tentativas por minuto por endereço de cliente, somando todas as contas. Estações atrás do mesmo NAT compartilham esse orçamento: dimensione acima dos logins de uma troca de turno. |
+| `DB_CONNECT_TIMEOUT_MS` | `5000` | Espera máxima por uma conexão do pool. |
+| `DB_STATEMENT_TIMEOUT_MS` | `30000` | `statement_timeout` no servidor; o cliente desiste 5 s depois, mesmo com o servidor congelado. |
+| `DB_IDLE_IN_TRANSACTION_TIMEOUT_MS` | `60000` | Encerra uma transação parada que segure a trava global de escrita. |
+
+Com o banco indisponível, toda rota responde `503 DEPENDENCY_UNAVAILABLE` com `retryable: true`, em vez de 500 ou de uma requisição pendurada; `/readyz` também responde 503.
+
 ## 7. Papéis de banco separados (PROD-305)
 
 Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:

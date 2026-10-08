@@ -30,8 +30,12 @@ export const publicHandlers = {
   login: { authentication: "public", handle: async ({ request, correlationId, id, rateLimitClientKey, clientIdentity }) => {
       const store = await getRuntimeStoreAsync();
       const loginRateLimit = positiveInteger(process.env.LOGIN_RATE_LIMIT, 10);
+      // The per-address budget stops sprays across accounts; the per-account budget below
+      // (with backoff) stops guessing. Hospital workstations often share one egress
+      // address, so the address budget is larger: a shift change must not lock everyone out.
+      const clientLoginRateLimit = positiveInteger(process.env.LOGIN_CLIENT_RATE_LIMIT, Math.max(60, loginRateLimit));
       if (clientIdentity.key)
-        await assertRateLimit(`login-client:${clientIdentity.key}`, loginRateLimit, 60000);
+        await assertRateLimit(`login-client:${clientIdentity.key}`, clientLoginRateLimit, 60000);
       const parsed = loginSchema.safeParse(await jsonBody(request));
       if (!parsed.success)
         throw new ApiError("VALIDATION_ERROR", "Informe e-mail e senha válidos.", 400);

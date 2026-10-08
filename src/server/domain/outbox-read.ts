@@ -1,4 +1,28 @@
-import type { OutboxMessage } from "./models";
+import { outboxEnvelopeFor, type OutboxMessage } from "./models";
+
+/**
+ * Domain events have no consumer in the outbox worker (the durable sink only
+ * delivers notifications); they exist as realtime replay history. They are
+ * settled as written: never pending work, and pruned like processed messages.
+ * Counting them as pending made outbox_pending grow forever.
+ */
+export function outboxMessageSettled(message: OutboxMessage): boolean {
+  if (message.status === "PROCESSED") return true;
+  return message.status === "PENDING" && consumerTypeOf(message) === "DOMAIN_EVENT";
+}
+
+export function outboxMessageAwaitsDelivery(message: OutboxMessage): boolean {
+  return (message.status === "PENDING" || message.status === "PROCESSING") && consumerTypeOf(message) === "NOTIFICATION_DELIVERY";
+}
+
+function consumerTypeOf(message: OutboxMessage): string {
+  try {
+    return outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey).consumerType;
+  } catch {
+    // An unroutable message is never silently dropped: it stays visible as pending work.
+    return "NOTIFICATION_DELIVERY";
+  }
+}
 
 export function outboxReadLimit(value: number, maximum = 100): number {
   if (!Number.isSafeInteger(value) || value < 1) throw new Error("OUTBOX_READ_LIMIT_INVALID");
@@ -13,7 +37,7 @@ export function outboxPage(messages: OutboxMessage[], query: { kind: "replay" | 
 }
 
 export function outboxMetrics(messages: OutboxMessage[]): { pending: number; oldestAvailableAt?: string } {
-  const pending = messages.filter((message) => message.status === "PENDING" || message.status === "PROCESSING");
+  const pending = messages.filter(outboxMessageAwaitsDelivery);
   const oldest = pending.map((message) => Date.parse(message.availableAt)).filter(Number.isFinite).sort((a, b) => a - b)[0];
   return { pending: pending.length, ...(oldest === undefined ? {} : { oldestAvailableAt: new Date(oldest).toISOString() }) };
 }

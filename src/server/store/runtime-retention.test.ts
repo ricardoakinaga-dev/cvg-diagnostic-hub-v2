@@ -172,4 +172,20 @@ describe("runtime snapshot retention", () => {
     expect(result.state.outbox.map((message) => message.id)).toEqual(["live-0", "live-1", "live-2"]);
     expect(result.summary.outboxMessagesRemoved).toBe(0);
   });
+
+  it("prunes old domain events (replay history with no worker consumer) but never pending notification deliveries", () => {
+    const state = createDemoState("retention-domain-outbox-password");
+    const now = new Date("2026-10-07T12:00:00.000Z");
+    const base = { aggregateType: "DiagnosticRequest", aggregateId: "request-1", attempts: 0, correlationId: "corr" };
+    const outbox = [
+      { ...base, id: "domain-old", eventType: "DiagnosticRequestCreated", payload: {}, consumerType: "DOMAIN_EVENT" as const, routingKey: "domain.DiagnosticRequestCreated", status: "PENDING" as const, availableAt: "2026-10-05T12:00:00.000Z" },
+      { ...base, id: "delivery-old", eventType: "ResultReleased", payload: { notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY" as const, routingKey: "notification.in_app", status: "PENDING" as const, availableAt: "2026-10-05T12:00:00.000Z" },
+      { ...base, id: "domain-recent", eventType: "DiagnosticRequestCreated", payload: {}, consumerType: "DOMAIN_EVENT" as const, routingKey: "domain.DiagnosticRequestCreated", status: "PENDING" as const, availableAt: "2026-10-07T11:59:00.000Z" }
+    ];
+
+    const result = compactRuntimeState({ ...state, outbox }, { now, outboxRetentionMs: 60 * 60 * 1000 });
+
+    expect(result.state.outbox.map((message) => message.id)).toEqual(["delivery-old", "domain-recent"]);
+    expect(result.summary.outboxMessagesRemoved).toBe(1);
+  });
 });
