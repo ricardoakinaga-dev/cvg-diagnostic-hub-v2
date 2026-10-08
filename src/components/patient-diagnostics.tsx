@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ItemState, PatientDiagnosticsResult, PatientWorkspaceSample } from "@cvg/contracts";
+import type { ItemState, PatientDiagnosticsResult, PatientWorkspaceSample, SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { EncounterCloseDialog, EncounterOpenDialog, encounterTypeLabels } from "./encounter-actions";
 import { EmptyState, ErrorState, PartialNotice, StaleNotice } from "./feedback-states";
 import { PatientArchive } from "./patient-archive";
 import { PriorityBadge, StatusBadge, statusLabel } from "./status-badge";
@@ -96,7 +97,8 @@ const eventLabels: Record<string, string> = {
   NotificationAcknowledged: "Notificação reconhecida",
   CriticalNotificationSuperseded: "Notificação crítica atualizada",
   PatientCreated: "Paciente cadastrado",
-  EncounterCreated: "Atendimento registrado"
+  EncounterCreated: "Atendimento registrado",
+  EncounterClosed: "Atendimento encerrado"
 };
 
 function eventLabel(eventType: string): string {
@@ -166,6 +168,8 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
   const [paginationError, setPaginationError] = useState("");
   const [compactTimeline, setCompactTimeline] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 560px)").matches);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
+  const [canManageEncounters, setCanManageEncounters] = useState(false);
+  const [encounterDialog, setEncounterDialog] = useState<"open" | "close" | null>(null);
   const loadVersion = useRef(0);
   const load = useCallback(async () => {
     const version = loadVersion.current + 1;
@@ -221,6 +225,11 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     };
   }, [load]);
   useEffect(() => {
+    void apiFetch<SessionResponse>("/session/me")
+      .then((session) => setCanManageEncounters(["VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session?.user?.role)))
+      .catch(() => setCanManageEncounters(false));
+  }, []);
+  useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia("(max-width: 560px)");
     const update = () => setCompactTimeline(media.matches);
@@ -246,6 +255,8 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
   const workspaceState = stale ? "stale" : degraded ? "degraded" : "ready";
   const contextStatusLabel = stale ? "Snapshot anterior preservado" : degraded ? "Leitura parcial" : "Snapshot atual";
   const currentEncounter = activeData.encounters.find((encounter) => encounter.id === context.encounterId);
+  const encounterHistory = activeData.encounters.filter((encounter) => encounter.id !== currentEncounter?.id);
+  const encounterChanged = () => { setEncounterDialog(null); void load(); };
   const contextHeading = context.admissionId
     ? [context.ward, context.bed].filter(Boolean).join(" · ") || "Internação sem acomodação informada"
     : encounterContextLabel(currentEncounter?.type);
@@ -295,6 +306,18 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
       </article>
     </section>
 
+    <section className="panel workspace-encounters-card" aria-label="Atendimentos do paciente">
+      <div className="panel-heading">
+        <div><p className="eyebrow">Atendimentos</p><h2>{context.hasOpenEncounter ? "Atendimento aberto" : "Sem atendimento aberto"}</h2></div>
+        {canManageEncounters && (context.hasOpenEncounter && currentEncounter
+          ? <button type="button" className="button button-ghost" onClick={() => setEncounterDialog("close")}>Encerrar atendimento</button>
+          : !context.hasOpenEncounter && <button type="button" className="button button-primary" onClick={() => setEncounterDialog("open")}>Novo atendimento</button>)}
+      </div>
+      {currentEncounter && <p className="workspace-encounter-line"><strong>{currentEncounter.externalId}</strong> · {encounterTypeLabels[currentEncounter.type]} · Em aberto desde {formatSnapshotDate(currentEncounter.openedAt)}</p>}
+      {!context.hasOpenEncounter && <p className="panel-empty-copy">Abra um novo atendimento para solicitar exames para este paciente.</p>}
+      {encounterHistory.length > 0 && <ul className="workspace-encounter-history" aria-label="Histórico de atendimentos">{encounterHistory.map((encounter) => <li key={encounter.id}><strong>{encounter.externalId}</strong> · {encounterTypeLabels[encounter.type]} · {encounter.status === "CLOSED" ? `Encerrado em ${formatSnapshotDate(encounter.closedAt)}` : `Em aberto desde ${formatSnapshotDate(encounter.openedAt)}`}</li>)}</ul>}
+    </section>
+
     <section className="workspace-summary-grid" aria-label="Resumo do paciente">
       <article className="panel workspace-metric"><span>Solicitações</span><strong>{summary.requestCount}</strong><small>protocolos no escopo</small></article>
       <article className="panel workspace-metric"><span>Itens ativos</span><strong>{summary.activeItemCount}</strong><small>de {summary.itemCount} {summary.itemCount === 1 ? "item visível" : "itens visíveis"}</small></article>
@@ -341,6 +364,8 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
         </>}
       </section>
     </div>
+    {encounterDialog === "open" && <EncounterOpenDialog patientId={patientId} onClose={() => setEncounterDialog(null)} onOpened={encounterChanged} />}
+    {encounterDialog === "close" && currentEncounter && <EncounterCloseDialog encounter={currentEncounter} onClose={() => setEncounterDialog(null)} onClosed={encounterChanged} />}
     <PatientArchive patientId={patientId} />
   </div>;
 }

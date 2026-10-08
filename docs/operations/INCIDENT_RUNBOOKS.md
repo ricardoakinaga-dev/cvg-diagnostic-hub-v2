@@ -68,7 +68,11 @@ O WhatsApp é redundante: o alerta do Hub e a confirmação continuam valendo. N
    - `WHATSAPP_TIMEOUT` ou `WHATSAPP_NETWORK`: conferir a saída para `graph.facebook.com:443`.
 3. `FAILED` com `WHATSAPP_API_131026` não vai para o dead letter: o número não usa WhatsApp. Peça à pessoa para corrigir o número em **Minha conta**.
 4. Webhook recusando (401 em `/api/v1/webhooks/whatsapp`): conferir se `WHATSAPP_APP_SECRET` é o app secret atual. Um 404 indica canal desligado ou segredo ausente.
-5. Para desligar o canal: `WHATSAPP_ENABLED=false` no app e no worker. Os alertas na fila são encerrados como `SKIPPED/CHANNEL_DISABLED`, e o crítico segue só no Hub.
+5. O crítico não escalou:
+   - conferir se o worker tem a política (`CRITICAL_POLICY_ENABLED`, `VERSION`, `APPROVAL_REF`, `APPROVED_AT` e os limiares);
+   - procurar `critical.escalation` ou `critical.escalation_error` no log do worker;
+   - ver os eventos `CriticalResultEscalated` da notificação do solicitante. A regra `NONE` quer dizer que ninguém do setor estava de plantão ou gerenciando.
+6. Para desligar o canal: `WHATSAPP_ENABLED=false` no app e no worker. Os alertas na fila são encerrados como `SKIPPED/CHANNEL_DISABLED`, e o crítico segue só no Hub.
 
 ## Storage, upload ou scanner AV indisponível
 

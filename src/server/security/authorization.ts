@@ -41,6 +41,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   MANAGER: [
     ...commonRead,
     "admission.context.manage",
+    "encounter.manage",
     "request.create",
     "request.cancel",
     "request.duplicate_override",
@@ -74,6 +75,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   VETERINARIAN: [
     ...commonRead,
     "patient.create",
+    "encounter.manage",
     "request.create",
     "request.cancel",
     "request.duplicate_override",
@@ -85,6 +87,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   INPATIENT_TEAM: [
     ...commonRead,
     "patient.create",
+    "encounter.manage",
     "request.create",
     "request.cancel",
     "request.duplicate_override",

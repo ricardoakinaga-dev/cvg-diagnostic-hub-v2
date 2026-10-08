@@ -119,6 +119,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         const patient = findOrThrow(findById(originalState.patients, input.patientId));
         const encounter = findOrThrow(findById(originalState.encounters, input.encounterId));
         if (encounter.patientId !== patient.id) throw new ApiError("VALIDATION_ERROR", "Atendimento não pertence ao paciente informado.", 400);
+        if (encounter.status === "CLOSED") throw new ApiError("ENCOUNTER_CLOSED", "Atendimento encerrado: abra um novo atendimento para solicitar exames.", 409);
         const admission = input.admissionId ? findOrThrow(findById(originalState.admissions, input.admissionId)) : undefined;
         if (admission && admission.encounterId !== encounter.id) throw new ApiError("VALIDATION_ERROR", "Internação não pertence ao atendimento informado.", 400);
         const services = input.items.map((entry) => serviceFor(originalState, entry.serviceId));
@@ -272,13 +273,13 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         : undefined;
       const encounters = encountersForPatient(state, patient.id)
         .filter((encounter) => !scopedEncounterIds || scopedEncounterIds.has(encounter.id))
-        .map((encounter) => ({ ...encounter }));
+        .map((encounter) => ({ ...encounter }))
+        .sort((left, right) => Number(right.status === "OPEN") - Number(left.status === "OPEN") || right.openedAt.localeCompare(left.openedAt) || left.id.localeCompare(right.id));
       const encounterIds = new Set(encounters.map((encounter) => encounter.id));
       const admissions = state.admissions
         .filter((admission) => encounterIds.has(admission.encounterId) && canAccessResource(currentActor, "admission.view", { patientId: patient.id, departmentCode: admission.departmentCode }))
         .map((admission) => ({ ...admission }));
-      const activeEncounter = [...encounters]
-        .sort((left, right) => Number(right.status === "OPEN") - Number(left.status === "OPEN") || right.openedAt.localeCompare(left.openedAt) || left.id.localeCompare(right.id))[0];
+      const activeEncounter = encounters.find((encounter) => encounter.status === "OPEN");
       const currentAdmission = activeEncounter
         ? admissions
           .filter((admission) => admission.encounterId === activeEncounter.id)
@@ -400,6 +401,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           asOf,
           dataQuality,
           currentContext: {
+            hasOpenEncounter: activeEncounter !== undefined,
             encounterId: activeEncounter?.id ?? null,
             admissionId: currentAdmission?.id ?? null,
             departmentCode: currentAdmission?.departmentCode ?? null,

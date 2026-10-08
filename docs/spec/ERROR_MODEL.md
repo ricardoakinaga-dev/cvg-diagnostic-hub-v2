@@ -32,6 +32,8 @@ All API errors use a stable envelope:
 | `INVALID_STATE_TRANSITION` | 409 | show current status and allowed next action |
 | `ACCESSION_MISMATCH` | 409 | the code read is not the expected sample's; read the right label |
 | `ACCESSION_INVALID` | 400 | wrong check character in a generated accession; read the label again or type the code |
+| `ENCOUNTER_ALREADY_OPEN` | 409 | the patient already has an open encounter; close it before opening another |
+| `ENCOUNTER_CLOSED` | 409 | the encounter is closed; open a new encounter to request exams |
 | `RESULT_RELEASE_BLOCKED`, `CRITICAL_POLICY_MISSING` | 422 | fix content/config; never fake release |
 | `RATE_LIMITED` | 429 | wait/backoff; include Retry-After |
 | `DEPENDENCY_UNAVAILABLE`, `STORAGE_UNAVAILABLE` | 503 | retry safe operation, show degraded state |

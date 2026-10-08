@@ -107,4 +107,19 @@ describe("NotificationsView", () => {
     await waitFor(() => expect(screen.getByText("Nenhuma notificação nesta visão")).toBeInTheDocument());
     expect(attempts).toBe(2);
   });
+  it("tells where a critical alert also went and why it reached this person (PROD-402)", async () => {
+    const critical = [
+      { id: "root", category: "CRITICAL", priority: "URGENT", title: "Resultado crítico requer confirmação", body: "Thor · PCR", createdAt: "2026-08-20T13:05:00.000Z", state: "DELIVERED" as const, deepLink: "/results/result-1", version: 2, whatsapp: { status: "READ", updatedAt: "2026-08-20T13:06:00.000Z" }, escalation: { level: 2, lastEscalatedAt: "2026-08-20T13:35:00.000Z" } },
+      { id: "copy", category: "CRITICAL", priority: "URGENT", title: "Resultado crítico sem confirmação", body: "Thor · PCR", createdAt: "2026-08-20T13:20:00.000Z", state: "DELIVERED" as const, deepLink: "/results/result-1", version: 2, escalationOf: "root", escalation: { level: 1, lastEscalatedAt: "2026-08-20T13:20:00.000Z" }, whatsapp: { status: "SKIPPED", updatedAt: "2026-08-20T13:20:00.000Z", errorCode: "NO_CONTACT" } }
+    ];
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path.includes("filter=UNREAD") ? [] : critical) as never);
+    render(<NotificationsView />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Resultado crítico requer confirmação/ }));
+    expect(await screen.findByText("WhatsApp: lido.")).toBeInTheDocument();
+    expect(screen.getByText(/já foi escalonado 2 vezes/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^Resultado crítico sem confirmação/ }));
+    expect(await screen.findByText(/ninguém confirmou o resultado crítico no prazo/)).toBeInTheDocument();
+    expect(screen.getByText("WhatsApp: não enviado.")).toBeInTheDocument();
+    expect(screen.getByText(/já foi escalonado uma vez/)).toBeInTheDocument();
+  });
 });

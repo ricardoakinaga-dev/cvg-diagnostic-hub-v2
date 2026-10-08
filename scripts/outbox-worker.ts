@@ -9,6 +9,7 @@ import { closeRealtimeNotificationAdapter } from "../src/server/observability/re
 import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
+import { runCriticalEscalation } from "../src/server/application/critical-escalation";
 import { createWhatsAppAlertResolver, createWhatsAppOutboxSink } from "../src/server/operations/whatsapp-outbox-sink";
 
 const once = process.argv.includes("--once") || process.env.OUTBOX_ONCE === "true";
@@ -60,9 +61,22 @@ async function runArchive(): Promise<void> {
   }
 }
 
+// PROD-402: an unacknowledged critical result climbs the policy ladder; the new notifications
+// are delivered by the batch that follows in the same cycle.
+async function runEscalation(): Promise<void> {
+  try {
+    const summary = await runCriticalEscalation(await getRuntimeStoreAsync());
+    if (summary.due > 0) console.log(JSON.stringify({ event: "critical.escalation", ...summary }));
+  } catch (error) {
+    console.error(JSON.stringify({ event: "critical.escalation_error", errorCode: "CRITICAL_ESCALATION_FAILED" }));
+    throw error;
+  }
+}
+
 async function runCycle(sink: ConfiguredOutboxSink): Promise<void> {
   try {
     await runRetention();
+    await runEscalation();
     await runArchive();
     const summary = await runOnce(sink);
     const lastResult: OutboxHeartbeatResult = outboxCycleHeartbeatResult(summary);
