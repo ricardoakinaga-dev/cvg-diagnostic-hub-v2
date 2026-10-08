@@ -10,6 +10,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import { decodeQueueCursor, encodeQueueCursor } from "./queue-pagination";
 import * as helpers from "./service-common";
 import { auditScopeForActor, requestAuditScope } from "./audit-read";
+import { encountersForPatient, findById, samplesForItem } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -133,7 +134,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       requirePatientPermission(state, currentActor, "patient.view", patientId);
-      const patient = findOrThrowScoped(state.patients.find((entry) => entry.id === patientId));
+      const patient = findOrThrowScoped(findById(state.patients, patientId));
       return patient;
     },
 
@@ -141,14 +142,14 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       requirePatientPermission(state, currentActor, "encounter.view", patientId);
-      const patient = findOrThrowScoped(state.patients.find((entry) => entry.id === patientId));
-      return state.encounters.filter((encounter) => encounter.patientId === patient.id).map((encounter) => ({ ...encounter }));
+      const patient = findOrThrowScoped(findById(state.patients, patientId));
+      return encountersForPatient(state, patient.id).map((encounter) => ({ ...encounter }));
     },
 
     async getEncounter(actor: User, encounterId: string) {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const encounter = findOrThrowScoped(state.encounters.find((entry) => entry.id === encounterId));
+      const encounter = findOrThrowScoped(findById(state.encounters, encounterId));
       requirePatientPermission(state, currentActor, "encounter.view", encounter.patientId);
       return encounter;
     },
@@ -156,8 +157,8 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
     async getAdmission(actor: User, admissionId: string): Promise<Admission> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      const admission = findOrThrowScoped(state.admissions.find((entry) => entry.id === admissionId));
-      const encounter = findOrThrowScoped(state.encounters.find((entry) => entry.id === admission.encounterId));
+      const admission = findOrThrowScoped(findById(state.admissions, admissionId));
+      const encounter = findOrThrowScoped(findById(state.encounters, admission.encounterId));
       requirePatientPermission(state, currentActor, "admission.view", encounter.patientId);
       if (!canAccessResource(currentActor, "admission.view", { patientId: encounter.patientId, departmentCode: admission.departmentCode })) {
         throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
@@ -286,9 +287,9 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const pageItems = afterCursor.slice(0, limit);
       const page = pageItems.map((item) => {
         const request = requestFor(state, item.requestId);
-        const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
+        const patient = findOrThrow(findById(state.patients, request.patientId));
         const service = serviceFor(state, item.serviceId);
-        const procedure = item.procedureId ? state.procedures.find((entry) => entry.id === item.procedureId) : undefined;
+        const procedure = item.procedureId ? findById(state.procedures, item.procedureId) : undefined;
         const overdue = new Date(item.dueAt).getTime() < currentTime && !["COMPLETED", "CANCELLED", "REJECTED"].includes(item.status);
         const operationalContext = operationalContextFor(item, service, asOf, request.requestingDepartmentCode);
         return {
@@ -362,13 +363,13 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         actorsByEntityId.set(entityId, actors);
       }
       for (const { request, visibleItems } of visibleRequests) {
-        const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
-        const requester = state.users.find((user) => user.id === request.requesterId);
+        const patient = findOrThrow(findById(state.patients, request.patientId));
+        const requester = findById(state.users, request.requesterId);
         const visibleEntityIds = new Set([request.id, ...visibleItems.map((item) => item.id)]);
         const reviewerFields = [...visibleEntityIds]
           .flatMap((entityId) => [...(actorsByEntityId.get(entityId) ?? [])])
           .flatMap((actorId) => {
-            const user = state.users.find((entry) => entry.id === actorId);
+            const user = findById(state.users, actorId);
             return [actorId, user?.displayName ?? "", user?.email ?? ""];
           });
         const requestFields = [request.requestCode, patient.displayName, patient.ownerLabel, patient.externalId, request.requesterId, requester?.displayName ?? "", requester?.email ?? "", ...reviewerFields];
@@ -392,7 +393,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         if (requestedTypes.has("ITEM")) {
           for (const item of visibleItems) {
             const service = serviceFor(state, item.serviceId);
-            const sampleFields = state.samples.filter((sample) => sample.itemIds.includes(item.id)).map((sample) => sample.accessionCode);
+            const sampleFields = samplesForItem(state, item.id).map((sample) => sample.accessionCode);
             const itemRank = rankFor([item.id, item.departmentCode, service.id, service.code, service.name, ...sampleFields]);
             if (itemRank === undefined) continue;
             ranked.push({
@@ -475,7 +476,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const attention = activeItems
         .map((item) => {
           const request = requestFor(state, item.requestId);
-          const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
+          const patient = findOrThrow(findById(state.patients, request.patientId));
           const service = serviceFor(state, item.serviceId);
           const operationalContext = operationalContextFor(item, service, asOf, request.requestingDepartmentCode);
           return {
@@ -540,7 +541,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const terminalStatuses = new Set<ItemState>(["COMPLETED", "CANCELLED", "REJECTED"]);
       const visibleItems = state.items
         .filter((item) => managerCanAccessDepartment(currentActor, item.departmentCode))
-        .map((item) => ({ item, request: requestFor(state, item.requestId), service: findOrThrow(state.services.find((entry) => entry.id === item.serviceId)) }));
+        .map((item) => ({ item, request: requestFor(state, item.requestId), service: findOrThrow(findById(state.services, item.serviceId)) }));
       const activeItems = visibleItems.filter(({ item }) => !terminalStatuses.has(item.status));
       const visibleRequestIds = new Set(visibleItems.map(({ request }) => request.id));
       const overdueItems = activeItems.filter(({ item }) => Date.parse(item.dueAt) < currentTime);
@@ -578,7 +579,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         .map((request) => ({
           id: request.id,
           requestCode: request.requestCode,
-          patient: findOrThrow(state.patients.find((patient) => patient.id === request.patientId)).displayName,
+          patient: findOrThrow(findById(state.patients, request.patientId)).displayName,
           aggregateStatus: request.aggregateStatus,
           priority: request.priority,
           updatedAt: request.updatedAt,
@@ -603,7 +604,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           id: item.id,
           requestId: request.id,
           requestCode: request.requestCode,
-          patient: findOrThrow(state.patients.find((patient) => patient.id === request.patientId)).displayName,
+          patient: findOrThrow(findById(state.patients, request.patientId)).displayName,
           service: service.name,
           departmentCode: item.departmentCode,
           status: item.status,

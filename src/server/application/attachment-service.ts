@@ -8,6 +8,7 @@ import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
+import { findById } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -102,7 +103,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        const version = findOrThrow(originalState.resultVersions.find((entry) => entry.id === versionId));
+        const version = findOrThrow(findById(originalState.resultVersions, versionId));
         const result = resultFor(originalState, version.resultId);
         const view = resultView(originalState, result);
         const metadata = assertAttachmentMetadata(input);
@@ -126,7 +127,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const attachment = attachmentFor(state, attachmentId);
-      const version = findOrThrow(state.resultVersions.find((entry) => entry.id === attachment.resultVersionId));
+      const version = findOrThrow(findById(state.resultVersions, attachment.resultVersionId));
       const result = resultFor(state, version.resultId);
       const view = resultView(state, result);
       requirePermission(currentActor, "attachment.finalize", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
@@ -143,7 +144,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
       const claimed = await store.transaction((state) => {
         const currentActor = requireActiveUser(state, actor);
         const attachment = attachmentFor(state, attachmentId);
-        const version = findOrThrow(state.resultVersions.find((entry) => entry.id === attachment.resultVersionId));
+        const version = findOrThrow(findById(state.resultVersions, attachment.resultVersionId));
         const result = resultFor(state, version.resultId);
         const view = resultView(state, result);
         requirePermission(currentActor, "attachment.finalize", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
@@ -179,7 +180,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
         const updated = await store.transaction((state) => {
           const currentActor = requireActiveUser(state, actor);
           const attachment = attachmentFor(state, attachmentId);
-          const version = findOrThrow(state.resultVersions.find((entry) => entry.id === attachment.resultVersionId));
+          const version = findOrThrow(findById(state.resultVersions, attachment.resultVersionId));
           const result = resultFor(state, version.resultId);
           const view = resultView(state, result);
           requirePermission(currentActor, "attachment.finalize", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
@@ -232,7 +233,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
         const attachment = attachmentFor(originalState, attachmentId);
-        const version = findOrThrow(originalState.resultVersions.find((entry) => entry.id === attachment.resultVersionId));
+        const version = findOrThrow(findById(originalState.resultVersions, attachment.resultVersionId));
         const result = resultFor(originalState, version.resultId);
         const view = resultView(originalState, result);
         requirePermission(currentActor, "attachment.finalize", { departmentCode: view.service.departmentCode, serviceCode: view.service.code });
@@ -256,7 +257,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const attachment = attachmentFor(state, attachmentId);
-      const version = findOrThrow(state.resultVersions.find((entry) => entry.id === attachment.resultVersionId));
+      const version = findOrThrow(findById(state.resultVersions, attachment.resultVersionId));
       const result = resultFor(state, version.resultId);
       const view = resultView(state, result);
       const resource = { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code };
@@ -276,7 +277,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
       const auditedAttachment = await store.transaction((currentState) => {
         const auditedActor = requireActiveUser(currentState, currentActor);
         const currentAttachment = attachmentFor(currentState, attachment.id);
-        const currentVersion = findOrThrow(currentState.resultVersions.find((entry) => entry.id === currentAttachment.resultVersionId));
+        const currentVersion = findOrThrow(findById(currentState.resultVersions, currentAttachment.resultVersionId));
         const currentResult = resultFor(currentState, currentVersion.resultId);
         const currentView = resultView(currentState, currentResult);
         const currentResource = { patientId: currentView.request.patientId, departmentCode: currentView.service.departmentCode, serviceCode: currentView.service.code };

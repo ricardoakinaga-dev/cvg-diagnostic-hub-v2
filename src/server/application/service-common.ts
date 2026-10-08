@@ -6,6 +6,7 @@ import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, Rec
 import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { aggregateRequestStatus, transitionItem } from "../domain/state-machine";
+import { findById, idempotencyRecordFor, itemsForRequest, notificationForDedupe, positionOfId, requestsForPatient, resultVersionsForResult } from "../domain/state-index";
 import { legacyServiceSlaPolicy, startSlaClock } from "./sla-policy";
 import { criticalPolicyFromEnvironment } from "./critical-result-policy";
 export { transitionItem };
@@ -210,9 +211,10 @@ export function requireRecentReauthentication(actor: User): void {
 }
 
 export function requireActiveUser(state: StoreState, actor: User): User {
-  const current = state.users.find((user) => user.id === actor.id);
+  const current = findById(state.users, actor.id);
   if (current?.mustChangePassword) throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
-  const session = actor.sessionId ? state.sessions.find((entry) => entry.id === actor.sessionId && entry.userId === actor.id) : undefined;
+  const sessionById = findById(state.sessions, actor.sessionId);
+  const session = sessionById?.userId === actor.id ? sessionById : undefined;
   if (
     !current
     || !current.active
@@ -264,7 +266,7 @@ export function requireItemPermission(state: StoreState, actor: User, permission
 }
 
 export function hasServicePatientContext(state: StoreState, actor: User, patientId: string): boolean {
-  return state.requests.some((request) => request.patientId === patientId && request.itemIds.some((itemId) => canViewItem(state, actor, itemFor(state, itemId))));
+  return requestsForPatient(state, patientId).some((request) => request.itemIds.some((itemId) => canViewItem(state, actor, itemFor(state, itemId))));
 }
 
 export function hasManagerRequestContext(state: StoreState, actor: User, request: DiagnosticRequest): boolean {
@@ -272,7 +274,7 @@ export function hasManagerRequestContext(state: StoreState, actor: User, request
 }
 
 export function hasManagerPatientContext(state: StoreState, actor: User, patientId: string): boolean {
-  return state.requests.some((request) => request.patientId === patientId && hasManagerRequestContext(state, actor, request));
+  return requestsForPatient(state, patientId).some((request) => hasManagerRequestContext(state, actor, request));
 }
 
 export function requirePatientPermission(state: StoreState, actor: User, permission: Permission, patientId: string): void {
@@ -282,7 +284,11 @@ export function requirePatientPermission(state: StoreState, actor: User, permiss
     return;
   }
   if (isExecutorRole(actor)) {
-    const visibleItem = state.items.find((item) => requestFor(state, item.requestId).patientId === patientId && canViewItem(state, actor, item));
+    // First visible item in item order, as the former scan over state.items chose it.
+    const visibleItem = requestsForPatient(state, patientId)
+      .flatMap((request) => itemsForRequest(state, request.id))
+      .filter((item) => canViewItem(state, actor, item))
+      .sort((left, right) => positionOfId(state.items, left.id) - positionOfId(state.items, right.id))[0];
     if (!visibleItem) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
     requireItemPermission(state, actor, permission, visibleItem);
     return;
@@ -355,7 +361,7 @@ export function notificationFor(
   state: StoreState,
   notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version">
 ): StoreState {
-  if (state.notifications.some((item) => item.dedupeKey === notification.dedupeKey && item.recipientUserId === notification.recipientUserId)) {
+  if (notificationForDedupe(state, notification.recipientUserId, notification.dedupeKey)) {
     return state;
   }
   const nextNotification: Notification = {
@@ -380,7 +386,7 @@ export function withIdempotency<T>(
     return { found: false, state };
   }
   const payloadHash = hashPayload(payload);
-  const existing = state.idempotency.find((record) => record.actorId === actorId && record.scope === scope && record.key === key);
+  const existing = idempotencyRecordFor(state, actorId, scope, key);
   if (existing) {
     if (existing.payloadHash !== payloadHash) {
       throw new ApiError("IDEMPOTENCY_KEY_REUSED", "A chave de repetição já foi usada com outro conteúdo.", 409);
@@ -393,7 +399,7 @@ export function withIdempotency<T>(
 export function saveIdempotency(state: StoreState, actorId: string, scope: string, key: string | undefined, response: unknown, payload: unknown): StoreState {
   if (!key) return state;
   const payloadHash = hashPayload(payload);
-  const exists = state.idempotency.some((record) => record.actorId === actorId && record.scope === scope && record.key === key);
+  const exists = idempotencyRecordFor(state, actorId, scope, key) !== undefined;
   if (!exists) {
     return {
       ...state,
@@ -440,23 +446,24 @@ export function validateServiceResultSchema(
 }
 
 export function serviceFor(state: StoreState, serviceId: string): DiagnosticService {
-  return findOrThrow(state.services.find((service) => service.id === serviceId && service.active), "NOT_FOUND", "Serviço diagnóstico indisponível.");
+  const service = findById(state.services, serviceId);
+  return findOrThrow(service?.active ? service : undefined, "NOT_FOUND", "Serviço diagnóstico indisponível.");
 }
 
 export function requestFor(state: StoreState, requestId: string): DiagnosticRequest {
-  return findOrThrow(state.requests.find((request) => request.id === requestId));
+  return findOrThrow(findById(state.requests, requestId));
 }
 
 export function itemFor(state: StoreState, itemId: string): DiagnosticItem {
-  return findOrThrow(state.items.find((item) => item.id === itemId));
+  return findOrThrow(findById(state.items, itemId));
 }
 
 export function resultFor(state: StoreState, resultId: string): Result {
-  return findOrThrow(state.results.find((result) => result.id === resultId));
+  return findOrThrow(findById(state.results, resultId));
 }
 
 export function procedureFor(state: StoreState, procedureId: string): Procedure {
-  return findOrThrow(state.procedures.find((procedure) => procedure.id === procedureId));
+  return findOrThrow(findById(state.procedures, procedureId));
 }
 
 export function scheduleWindow(input: ScheduleInput): { startsAt: string; endsAt: string; resource: string } {
@@ -491,7 +498,7 @@ export function activeReason(state: StoreState, type: "CANCEL" | "REJECT" | "AME
 }
 
 export function attachmentFor(state: StoreState, attachmentId: string): Attachment {
-  return findOrThrow(state.attachments.find((attachment) => attachment.id === attachmentId));
+  return findOrThrow(findById(state.attachments, attachmentId));
 }
 
 export function publicAttachment(attachment: Attachment): PublicAttachment {
@@ -514,7 +521,7 @@ export async function deleteStoredObject(storage: FileStore, storageKey: string)
 
 export async function releaseUploadClaim(store: StateStore, attachmentId: string, claimToken: string): Promise<void> {
   await store.transaction((state) => {
-    const attachment = state.attachments.find((entry) => entry.id === attachmentId);
+    const attachment = findById(state.attachments, attachmentId);
     if (!attachment || attachment.uploadClaimToken !== claimToken) return { state, result: undefined };
     const released = { ...attachment, uploadClaimToken: undefined, uploadClaimExpiresAt: undefined };
     return {
@@ -576,11 +583,11 @@ export function detectedMime(content: Uint8Array): string | undefined {
 }
 
 export function requestView(state: StoreState, request: DiagnosticRequest): RequestView {
-  const patient = findOrThrow(state.patients.find((item) => item.id === request.patientId));
-  const encounter = findOrThrow(state.encounters.find((item) => item.id === request.encounterId));
+  const patient = findOrThrow(findById(state.patients, request.patientId));
+  const encounter = findOrThrow(findById(state.encounters, request.encounterId));
   const items = request.itemIds.map((itemId) => {
     const item = itemFor(state, itemId);
-    const procedure = item.procedureId ? state.procedures.find((entry) => entry.id === item.procedureId) : undefined;
+    const procedure = findById(state.procedures, item.procedureId);
     return { ...item, service: serviceFor(state, item.serviceId), ...(procedure ? { procedureVersion: procedure.version } : {}) };
   });
   return { ...request, patient, encounter, items };
@@ -601,65 +608,65 @@ export function canViewRequest(state: StoreState, actor: User, request: Diagnost
 }
 
 export function requestForAuditEvent(state: StoreState, event: AuditEvent): DiagnosticRequest | undefined {
-  if (event.entityType === "DiagnosticRequest") return state.requests.find((request) => request.id === event.entityId);
+  if (event.entityType === "DiagnosticRequest") return findById(state.requests, event.entityId);
   if (event.entityType === "DiagnosticRequestItem") {
-    const item = state.items.find((entry) => entry.id === event.entityId);
-    return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
+    const item = findById(state.items, event.entityId);
+    return item ? findById(state.requests, item.requestId) : undefined;
   }
   if (event.entityType === "Sample") {
-    const sample = state.samples.find((entry) => entry.id === event.entityId);
-    return sample ? state.requests.find((request) => request.id === sample.requestId) : undefined;
+    const sample = findById(state.samples, event.entityId);
+    return sample ? findById(state.requests, sample.requestId) : undefined;
   }
   if (event.entityType === "Result" || event.entityType === "ResultVersion") {
     const resultId = event.entityType === "Result"
       ? event.entityId
-      : state.resultVersions.find((version) => version.id === event.entityId)?.resultId;
-    const result = resultId ? state.results.find((entry) => entry.id === resultId) : undefined;
-    const item = result ? state.items.find((entry) => entry.id === result.itemId) : undefined;
-    return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
+      : findById(state.resultVersions, event.entityId)?.resultId;
+    const result = resultId ? findById(state.results, resultId) : undefined;
+    const item = result ? findById(state.items, result.itemId) : undefined;
+    return item ? findById(state.requests, item.requestId) : undefined;
   }
   if (event.entityType === "Procedure" || event.entityType === "ProcedureSchedule") {
-    const procedureId = event.entityType === "Procedure" ? event.entityId : state.schedules.find((schedule) => schedule.id === event.entityId)?.procedureId;
-    const procedure = procedureId ? state.procedures.find((entry) => entry.id === procedureId) : undefined;
-    const item = procedure ? state.items.find((entry) => entry.id === procedure.itemId) : undefined;
-    return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
+    const procedureId = event.entityType === "Procedure" ? event.entityId : findById(state.schedules, event.entityId)?.procedureId;
+    const procedure = procedureId ? findById(state.procedures, procedureId) : undefined;
+    const item = procedure ? findById(state.items, procedure.itemId) : undefined;
+    return item ? findById(state.requests, item.requestId) : undefined;
   }
   if (event.entityType === "Attachment") {
-    const attachment = state.attachments.find((entry) => entry.id === event.entityId);
-    const resultVersion = attachment ? state.resultVersions.find((version) => version.id === attachment.resultVersionId) : undefined;
-    const result = resultVersion ? state.results.find((entry) => entry.id === resultVersion.resultId) : undefined;
-    const item = result ? state.items.find((entry) => entry.id === result.itemId) : undefined;
-    return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
+    const attachment = findById(state.attachments, event.entityId);
+    const resultVersion = attachment ? findById(state.resultVersions, attachment.resultVersionId) : undefined;
+    const result = resultVersion ? findById(state.results, resultVersion.resultId) : undefined;
+    const item = result ? findById(state.items, result.itemId) : undefined;
+    return item ? findById(state.requests, item.requestId) : undefined;
   }
   return undefined;
 }
 
 export function auditEventItem(state: StoreState, event: AuditEvent): DiagnosticItem | undefined {
   const itemId = auditEventItemIds(state, event)[0];
-  return itemId ? state.items.find((item) => item.id === itemId) : undefined;
+  return itemId ? findById(state.items, itemId) : undefined;
 }
 
 export function auditEventItemIds(state: StoreState, event: AuditEvent): string[] {
-  if (event.entityType === "DiagnosticRequestItem") return state.items.some((item) => item.id === event.entityId) ? [event.entityId] : [];
-  if (event.entityType === "Sample") return state.samples.find((entry) => entry.id === event.entityId)?.itemIds ?? [];
+  if (event.entityType === "DiagnosticRequestItem") return findById(state.items, event.entityId) ? [event.entityId] : [];
+  if (event.entityType === "Sample") return findById(state.samples, event.entityId)?.itemIds ?? [];
   let itemId: string | undefined;
-  if (event.entityType === "Result") itemId = state.results.find((result) => result.id === event.entityId)?.itemId;
+  if (event.entityType === "Result") itemId = findById(state.results, event.entityId)?.itemId;
   if (event.entityType === "ResultVersion") {
-    const resultId = state.resultVersions.find((version) => version.id === event.entityId)?.resultId;
-    itemId = resultId ? state.results.find((result) => result.id === resultId)?.itemId : undefined;
+    const resultId = findById(state.resultVersions, event.entityId)?.resultId;
+    itemId = resultId ? findById(state.results, resultId)?.itemId : undefined;
   }
-  if (event.entityType === "Procedure") itemId = state.procedures.find((procedure) => procedure.id === event.entityId)?.itemId;
+  if (event.entityType === "Procedure") itemId = findById(state.procedures, event.entityId)?.itemId;
   if (event.entityType === "ProcedureSchedule") {
-    const procedureId = state.schedules.find((schedule) => schedule.id === event.entityId)?.procedureId;
-    itemId = procedureId ? state.procedures.find((procedure) => procedure.id === procedureId)?.itemId : undefined;
+    const procedureId = findById(state.schedules, event.entityId)?.procedureId;
+    itemId = procedureId ? findById(state.procedures, procedureId)?.itemId : undefined;
   }
   if (event.entityType === "Attachment") {
-    const attachment = state.attachments.find((entry) => entry.id === event.entityId);
-    const resultVersion = attachment ? state.resultVersions.find((version) => version.id === attachment.resultVersionId) : undefined;
-    const result = resultVersion ? state.results.find((entry) => entry.id === resultVersion.resultId) : undefined;
+    const attachment = findById(state.attachments, event.entityId);
+    const resultVersion = attachment ? findById(state.resultVersions, attachment.resultVersionId) : undefined;
+    const result = resultVersion ? findById(state.results, resultVersion.resultId) : undefined;
     itemId = result?.itemId;
   }
-  return itemId && state.items.some((item) => item.id === itemId) ? [itemId] : [];
+  return itemId && findById(state.items, itemId) ? [itemId] : [];
 }
 
 export function auditEventDepartmentCode(state: StoreState, event: AuditEvent): string | undefined {
@@ -670,47 +677,47 @@ export function canViewManagementAudit(state: StoreState, actor: User, event: Au
   if (actor.role !== "MANAGER") return false;
   if (event.entityType === "ReasonCode") return true;
   if (event.entityType === "DiagnosticService") {
-    const service = state.services.find((entry) => entry.id === event.entityId);
+    const service = findById(state.services, event.entityId);
     return Boolean(service && managerCanAccessDepartment(actor, service.departmentCode));
   }
   if (event.entityType === "User") {
-    const user = state.users.find((entry) => entry.id === event.entityId);
+    const user = findById(state.users, event.entityId);
     return Boolean(user && canManageUserTarget(actor, user.role, user.departmentCode));
   }
   return false;
 }
 
 export function requestForNotification(state: StoreState, notification: Notification): DiagnosticRequest | undefined {
-  if (notification.entityType === "REQUEST") return state.requests.find((request) => request.id === notification.entityId);
+  if (notification.entityType === "REQUEST") return findById(state.requests, notification.entityId);
   if (notification.entityType === "ITEM") {
-    const item = state.items.find((entry) => entry.id === notification.entityId);
-    return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
+    const item = findById(state.items, notification.entityId);
+    return item ? findById(state.requests, item.requestId) : undefined;
   }
   if (notification.entityType === "SAMPLE") {
-    const sample = state.samples.find((entry) => entry.id === notification.entityId);
-    return sample ? state.requests.find((request) => request.id === sample.requestId) : undefined;
+    const sample = findById(state.samples, notification.entityId);
+    return sample ? findById(state.requests, sample.requestId) : undefined;
   }
-  const version = state.resultVersions.find((entry) => entry.id === notification.entityId);
-  const result = version ? state.results.find((entry) => entry.id === version.resultId) : undefined;
-  const item = result ? state.items.find((entry) => entry.id === result.itemId) : undefined;
-  return item ? state.requests.find((request) => request.id === item.requestId) : undefined;
+  const version = findById(state.resultVersions, notification.entityId);
+  const result = version ? findById(state.results, version.resultId) : undefined;
+  const item = result ? findById(state.items, result.itemId) : undefined;
+  return item ? findById(state.requests, item.requestId) : undefined;
 }
 
 export function resultView(state: StoreState, result: Result): ResultView {
   const item = itemFor(state, result.itemId);
   const request = requestFor(state, item.requestId);
-  const patient = findOrThrow(state.patients.find((entry) => entry.id === request.patientId));
+  const patient = findOrThrow(findById(state.patients, request.patientId));
   const service = serviceFor(state, item.serviceId);
   const currentVersion = findOrThrow(
-    state.resultVersions.find((version) => version.id === result.currentVersionId) ??
-      state.resultVersions.filter((version) => version.resultId === result.id).sort((left, right) => right.sequence - left.sequence)[0]
+    findById(state.resultVersions, result.currentVersionId) ??
+      [...resultVersionsForResult(state, result.id)].sort((left, right) => right.sequence - left.sequence)[0]
   );
   return { result, version: currentVersion, item, request, patient, service };
 }
 
 export function visibleResultVersions(state: StoreState, resultId: string): ResultVersion[] {
-  return state.resultVersions
-    .filter((version) => version.resultId === resultId && ["RELEASED", "SUPERSEDED"].includes(version.status))
+  return resultVersionsForResult(state, resultId)
+    .filter((version) => ["RELEASED", "SUPERSEDED"].includes(version.status))
     .sort((left, right) => right.sequence - left.sequence);
 }
 
