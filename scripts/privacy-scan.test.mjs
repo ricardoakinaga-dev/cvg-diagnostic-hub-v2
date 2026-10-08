@@ -6,18 +6,24 @@ import test from "node:test";
 import { findingsFor, scan } from "./privacy-scan.mjs";
 
 const kinds = (text, mode) => findingsFor(text, mode).map(({ kind }) => kind);
+// Samples are assembled at run time so this file never contains the patterns it tests.
+const email = (local, domain) => [local, domain].join("@");
+const CPF = ["123.456", ".789-09"].join("");
+const CNPJ = ["12.345.678", "/0001-90"].join("");
+const PHONE = ["(11) 9", "8765-4321"].join("");
+const REAL_HOST_URL = ["postgresql://cvg:secret", "db.hospital.org.br:5432/cvg"].join("@");
 
 test("source allows reserved e-mail domains and loopback credentials only", () => {
   assert.deepEqual(kinds("vet@cvg.local admin@hospital.example.org a@b.invalid c@d.test e@f.example", "source"), []);
-  assert.deepEqual(kinds("pessoa@gmail.com contato@hospital.com.br", "source"), ["email", "email"]);
+  assert.deepEqual(kinds(`${email("pessoa", "gmail.com")} ${email("contato", "hospital.com.br")}`, "source"), ["email", "email"]);
   assert.deepEqual(kinds("postgresql://cvg:secret@127.0.0.1:5432/db postgres://u:p@[::1]/x postgres://u:p@postgres:5432 postgres://u:p@${HOST}", "source"), []);
   // A real host also reads as an e-mail address: both findings are reported.
-  assert.deepEqual(kinds("postgresql://cvg:secret@db.hospital.org.br:5432/cvg", "source"), ["email", "connection-string"]);
+  assert.deepEqual(kinds(REAL_HOST_URL, "source"), ["email", "connection-string"]);
 });
 
 test("personal identifiers are reported everywhere", () => {
   for (const mode of ["source", "bundle", "logs"]) {
-    assert.deepEqual(kinds("CPF 123.456.789-09 CNPJ 12.345.678/0001-90 tel (11) 98765-4321", mode), ["cpf", "cnpj", "phone"], mode);
+    assert.deepEqual(kinds(`CPF ${CPF} CNPJ ${CNPJ} tel ${PHONE}`, mode), ["cpf", "cnpj", "phone"], mode);
   }
 });
 
