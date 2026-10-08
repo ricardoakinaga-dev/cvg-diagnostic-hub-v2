@@ -272,6 +272,18 @@ O app só responde atrás da borda em produção, porque o proxy injeta a identi
 
 Fica para o ambiente (D2, D11, PROD-513): donos e roteamento dos alertas; disparo de cada um em staging; métricas do PostgreSQL (`postgres_exporter`); validade do certificado e falha de backup (blackbox/cron). Os limiares são pontos de partida técnicos, e os clínicos (atraso de SLA, crítico) dependem de D3 e D7.
 
+### 6.8 Arquivamento clínico (PROD-501)
+
+Decisão D5: solicitações concluídas há mais de 24 meses saem do agregado ativo e passam a `cvg_clinical_archive` (consulta somente leitura por paciente e por solicitação); o expurgo no prazo legal existe e fica desligado até o jurídico definir o prazo. O job roda no worker, depois da retenção técnica. Detalhes, ensaio e expurgo em [CLINICAL_ARCHIVE](CLINICAL_ARCHIVE.md).
+
+| Variável | Padrão | Efeito |
+| --- | --- | --- |
+| `ARCHIVE_ACTIVE_MONTHS` | `24` | Meses de permanência no agregado ativo. `0` desliga o arquivamento. |
+| `ARCHIVE_INTERVAL_MS` | `86400000` (24 h; mínimo 1 h) | Cadência do job no worker. |
+| `ARCHIVE_PURGE_AFTER_MONTHS` | vazio | Prazo legal em meses a partir do arquivamento. Vazio ou `0`: nenhum expurgo; ao definir, o worker também remove os anexos do S3. |
+
+Sob demanda: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm worker npm run runtime:archive -- --dry-run` (ensaio; `--apply` aplica, `--purge` exige o prazo legal definido). Cada lote grava um evento `ClinicalRecordsArchived` só com contagens.
+
 ## 7. Papéis de banco separados (PROD-305)
 
 Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:

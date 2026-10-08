@@ -6,6 +6,7 @@ import { resetRateLimits } from "../../../../server/security/rate-limit";
 import * as rateLimitSecurity from "../../../../server/security/rate-limit";
 import { ApiError } from "../../../../server/http/envelope";
 import { syntheticHemogramContent } from "../../../../server/store/fixtures";
+import { ARCHIVE_NOW, withCompletedRequest } from "../../../../test/archive-fixtures";
 import * as structuredLogger from "../../../../server/observability/structured-logger";
 
 process.env.APP_DATA_MODE = "memory";
@@ -1540,6 +1541,31 @@ describe("versioned API boundary", () => {
     }), params(["audit-events"]));
     expect(audit.status).toBe(200);
     expect((await audit.json()).data.length).toBeGreaterThan(0);
+  });
+
+  it("reads archived exams by patient and by request, read-only and scoped", async () => {
+    const store = await getRuntimeStoreAsync();
+    await store.transaction((state) => ({ state: withCompletedRequest(state, "old"), result: undefined }));
+    expect((await store.archiveClinicalRecords({ now: ARCHIVE_NOW })).requestsArchived).toBe(1);
+    const vet = await login();
+
+    const listed = await GET(new Request("http://localhost/api/v1/patients/patient-thor/archive?limit=10", { headers: { cookie: vet.cookie } }), params(["patients", "patient-thor", "archive"]));
+    expect(listed.status).toBe(200);
+    const listedBody = await listed.json();
+    expect(listedBody.data).toEqual([expect.objectContaining({ requestId: "request-old", requestCode: "EX-old", attachmentCount: 1 })]);
+
+    const detail = await GET(new Request("http://localhost/api/v1/archive/requests/request-old", { headers: { cookie: vet.cookie } }), params(["archive", "requests", "request-old"]));
+    expect(detail.status).toBe(200);
+    expect((await detail.json()).data).toMatchObject({ readOnly: true, request: { requestCode: "EX-old" }, items: expect.any(Array) });
+
+    const badLimit = await GET(new Request("http://localhost/api/v1/patients/patient-thor/archive?limit=0", { headers: { cookie: vet.cookie } }), params(["patients", "patient-thor", "archive"]));
+    expect(badLimit.status).toBe(400);
+    const missing = await GET(new Request("http://localhost/api/v1/archive/requests/request-missing", { headers: { cookie: vet.cookie } }), params(["archive", "requests", "request-missing"]));
+    expect(missing.status).toBe(404);
+    const unauthenticated = await GET(new Request("http://localhost/api/v1/archive/requests/request-old"), params(["archive", "requests", "request-old"]));
+    expect(unauthenticated.status).toBe(401);
+    const writes = await POST(new Request("http://localhost/api/v1/archive/requests/request-old", { method: "POST", headers: { cookie: vet.cookie, "x-csrf-token": vet.csrf } }), params(["archive", "requests", "request-old"]));
+    expect(writes.status).toBeGreaterThanOrEqual(400);
   });
 
   it("returns the dashboard indicator contract with scope metadata", async () => {

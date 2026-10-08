@@ -89,6 +89,7 @@ describe("AppShell", () => {
     ["/indicators", "Indicadores"],
     ["/results/result-1", "Resultado"],
     ["/requests/request-1", "Solicitação"],
+    ["/archive/request-1", "Arquivo clínico"],
     ["/management?view=requests", "Solicitações"],
     ["/other", "CVG"]
   ])("keeps the page breadcrumb coherent on %s", async (path, label) => {

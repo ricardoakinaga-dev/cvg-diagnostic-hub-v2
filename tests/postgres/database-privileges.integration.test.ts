@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createDemoState } from "../../src/server/store/fixtures";
 import {
   APPEND_ONLY_RUNTIME_TABLES,
+  ARCHIVE_RUNTIME_TABLES,
   buildRuntimeRoleGrants,
   RUNTIME_PRIVILEGE_PROBES,
   rolesFromConnectionStrings,
@@ -100,12 +101,16 @@ describe("database role separation", () => {
       .toEqual({ migrator: "cvg_migrator", runtime: "cvg_runtime" });
   });
 
-  it("keeps the append-only table list as the only runtime restriction", () => {
+  it("keeps the append-only and archive table lists as the only runtime restrictions", () => {
     expect(APPEND_ONLY_RUNTIME_TABLES).toEqual(["audit_events"]);
     const statements = buildRuntimeRoleGrants({ migrator: "cvg_migrator", runtime: "cvg_runtime" }).join("\n");
     expect(statements).toMatch(/REVOKE UPDATE, DELETE, TRUNCATE ON TABLE audit_events FROM cvg_runtime/);
     expect(statements).toMatch(/GRANT SELECT, INSERT ON TABLE audit_events TO cvg_runtime/);
     expect(statements).toMatch(/REVOKE CREATE ON SCHEMA public FROM cvg_runtime/);
+    // The clinical archive is the only other restricted table: no rewrite, no truncate.
+    expect(ARCHIVE_RUNTIME_TABLES).toEqual(["cvg_clinical_archive", "cvg_clinical_archive_batches"]);
+    expect(statements).toMatch(/GRANT SELECT, INSERT, DELETE ON TABLE cvg_clinical_archive TO cvg_runtime/);
+    expect(statements).toMatch(/REVOKE UPDATE, TRUNCATE ON TABLE cvg_clinical_archive_batches FROM cvg_runtime/);
   });
 });
 

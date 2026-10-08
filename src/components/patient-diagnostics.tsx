@@ -6,6 +6,7 @@ import type { ItemState, PatientDiagnosticsResult, PatientWorkspaceSample } from
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, PartialNotice, StaleNotice } from "./feedback-states";
+import { PatientArchive } from "./patient-archive";
 import { PriorityBadge, StatusBadge, statusLabel } from "./status-badge";
 import { Icon } from "./ui-icons";
 
@@ -338,5 +339,6 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
         </>}
       </section>
     </div>
+    <PatientArchive patientId={patientId} />
   </div>;
 }

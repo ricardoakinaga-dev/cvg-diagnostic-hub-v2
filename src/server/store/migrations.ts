@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "015_runtime_entity_rows";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "016_clinical_archive";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -24,7 +24,8 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "012_session_activity",
   "013_audit_read_authority",
   "014_outbox_read_authority",
-  "015_runtime_entity_rows"
+  "015_runtime_entity_rows",
+  "016_clinical_archive"
 ] as const;
 
 /**
@@ -47,7 +48,8 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "012_session_activity": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5",
   "013_audit_read_authority": "9b5ca0a5b3107e4cbe5770081bea50c6b1de3ff1f9fc44cc878a794dea463d98",
   "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031",
-  "015_runtime_entity_rows": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f"
+  "015_runtime_entity_rows": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f",
+  "016_clinical_archive": "bdf61ee5da3619bf1fc0ae0e1a0a113b655998ceda837e55a679cf9b62f92697"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";

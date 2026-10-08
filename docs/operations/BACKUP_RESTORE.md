@@ -10,7 +10,7 @@ O contrato local de manifesto/checksum/plano dry-run está registrado no packet 
 
 ## 1. Scope
 
-Backup must cover PostgreSQL data, object storage attachments, encryption/key metadata required to decrypt, configuration needed to rebuild and documented external references. The local manifest contract records these categories and marks uncaptured object inventory as `NOT_CAPTURED`; it does not collect provider data automatically. A database-only backup is insufficient for released result attachments.
+Backup must cover PostgreSQL data, object storage attachments, encryption/key metadata required to decrypt, configuration needed to rebuild and documented external references. The local manifest contract records these categories and marks uncaptured object inventory as `NOT_CAPTURED`; it does not collect provider data automatically. A database-only backup is insufficient for released result attachments. Clinical records archived after 24 months (`cvg_clinical_archive`, `cvg_clinical_archive_batches`; [CLINICAL_ARCHIVE](CLINICAL_ARCHIVE.md)) live in PostgreSQL, so they are part of the database backup and of its restore; their attachment objects stay in object storage until the legal-period purge.
 
 ## 2. Proposed pilot targets
 

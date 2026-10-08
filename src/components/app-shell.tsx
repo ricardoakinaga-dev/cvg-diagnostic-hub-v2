@@ -72,6 +72,7 @@ function legacyCrumbs(pathname: string, view: string | null, hash: string): Crum
   if (pathname.startsWith("/system")) return [{ label: "Sistema", icon: "settings" }];
   if (pathname.startsWith("/indicators")) return [{ label: "Indicadores", icon: "analytics" }];
   if (pathname.startsWith("/results/")) return [{ label: "Exames", href: "/queues", icon: "layers" }, { label: "Resultado" }];
+  if (pathname.startsWith("/archive/")) return [{ label: "Pacientes", href: "/patients", icon: "paw" }, { label: "Arquivo clínico" }];
   if (pathname.startsWith("/requests/")) return [{ label: "Exames", href: "/queues", icon: "layers" }, { label: "Solicitação" }];
   if (pathname.startsWith("/management") || pathname === "/") {
     const labels: Record<string, string> = { requests: "Solicitações", pending: "Pendências", stats: "Estatísticas" };

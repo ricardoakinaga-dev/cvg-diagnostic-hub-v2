@@ -354,6 +354,36 @@ const resultVersionSchema = strictObject({
   releasedBy: identifier, amendmentReason: stringSchema(1, 500), supersedesId: identifier, critical: { type: "boolean" },
   needsReReview: { type: "boolean" }, version: positiveVersion
 }, ["id", "resultId", "sequence", "status", "content", "narrative", "authorId", "createdAt", "critical", "needsReReview", "version"]);
+const clinicalArchiveEntrySchema = strictObject({
+  requestId: identifier, requestCode: stringSchema(1, 100), patientId: identifier, encounterId: identifier,
+  requestingDepartmentCode: stringSchema(1, 60), archivedAt: timestamp, completedAt: timestamp,
+  services: arrayOf(strictObject({ code: stringSchema(1, 100), name: stringSchema(1, 120), departmentCode: stringSchema(1, 60) }, ["code", "name", "departmentCode"]), { maxItems: 100 }),
+  attachmentCount: nonNegativeInteger
+}, ["requestId", "requestCode", "patientId", "encounterId", "requestingDepartmentCode", "archivedAt", "completedAt", "services", "attachmentCount"]);
+const archivedResultVersionSchema = strictObject({
+  id: identifier, sequence: positiveVersion, status: { type: "string", enum: ["RELEASED", "SUPERSEDED", "VOIDED"] },
+  content: { anyOf: [schemaReference("StructuredLaboratoryResultContent"), schemaReference("JsonObject")] }, narrative: boundedString,
+  conclusion: { type: "string", maxLength: 5000 }, releasedAt: timestamp, critical: { type: "boolean" }, amendmentReason: stringSchema(1, 500)
+}, ["id", "sequence", "status", "content", "narrative", "critical"]);
+const archivedRequestViewSchema = strictObject({
+  readOnly: { type: "boolean", const: true }, archivedAt: timestamp,
+  request: strictObject({
+    id: identifier, requestCode: stringSchema(1, 100), patientId: identifier, encounterId: identifier, requestingDepartmentCode: stringSchema(1, 60),
+    priority: prioritySchema, aggregateStatus: aggregateStatusSchema, createdAt: timestamp, updatedAt: timestamp
+  }, ["id", "requestCode", "patientId", "encounterId", "requestingDepartmentCode", "priority", "aggregateStatus", "createdAt", "updatedAt"]),
+  patient: { oneOf: [strictObject({ id: identifier, displayName: stringSchema(1, 200), species: stringSchema(1, 100), externalId: stringSchema(1, 100) }, ["id", "displayName", "species", "externalId"]), { type: "null" }] },
+  items: arrayOf(strictObject({
+    id: identifier, service: strictObject({ code: stringSchema(1, 100), name: stringSchema(1, 120) }, ["code", "name"]), departmentCode: stringSchema(1, 60),
+    status: { type: "string", enum: itemStates }, priority: prioritySchema, requestedAt: timestamp, completedAt: timestamp,
+    cancellationReason: stringSchema(1, 500), rejectionReason: stringSchema(1, 2000), note: { type: "string", maxLength: 2000 },
+    results: arrayOf(strictObject({ id: identifier, lifecycleStatus: { type: "string", enum: ["DRAFT", "RELEASED", "VOIDED"] }, versions: arrayOf(schemaReference("ArchivedResultVersion")) }, ["id", "lifecycleStatus", "versions"]))
+  }, ["id", "service", "departmentCode", "status", "priority", "requestedAt", "results"])),
+  samples: arrayOf(strictObject({
+    id: identifier, accessionCode: accessionCodeSchema, sampleType: stringSchema(1, 100),
+    status: { type: "string", enum: ["EXPECTED", "RECEIVED", "REJECTED", "REPLACED"] }, collectedAt: timestamp, receivedAt: timestamp
+  }, ["id", "accessionCode", "sampleType", "status"])),
+  attachments: arrayOf(strictObject({ id: identifier, resultVersionId: identifier, safeName: stringSchema(1, 120), detectedMime: stringSchema(1, 100), sizeBytes: { type: "integer", minimum: 1 } }, ["id", "resultVersionId", "safeName", "detectedMime", "sizeBytes"]))
+}, ["readOnly", "archivedAt", "request", "patient", "items", "samples", "attachments"]);
 const resultViewSchema = strictObject({
   result: schemaReference("Result"), version: schemaReference("ResultVersion"), item: schemaReference("DiagnosticItem"),
   request: schemaReference("RequestView"), patient: schemaReference("Patient"), service: schemaReference("DiagnosticService")
@@ -460,6 +490,10 @@ const responseDataSchemas = {
   }, ["asOf", "currentContext", "summary"]),
   PatientDiagnostics: strictObject({ patient: schemaReference("Patient"), encounters: arrayOf(schemaReference("Encounter")), admissions: arrayOf(schemaReference("Admission")), items: arrayOf(schemaReference("PatientWorkspaceRequestView")), events: arrayOf(schemaReference("AuditEvent")), nextActions: arrayOf(schemaReference("PatientNextAction")), workspace: schemaReference("PatientWorkspaceSummary"), nextCursor: schemaReference("Cursor"), limit: schemaReference("Limit"), total: nonNegativeInteger }, ["patient", "encounters", "admissions", "items", "events", "nextActions", "workspace", "limit", "total"]),
   PatientNextAction: strictObject({ id: identifier, requestId: identifier, requestCode: identifier, itemId: identifier, label: nonBlankStringSchema(1, 240), deepLink: nonBlankStringSchema(1, 240), status: { type: "string", enum: itemStates }, priority: { type: "string", enum: ["ROUTINE", "URGENT", "EMERGENCY"] }, dueAt: strictDateTime, departmentCode: normalizedDepartmentCodeSchema }, ["id", "requestId", "requestCode", "itemId", "label", "deepLink", "status", "priority", "dueAt", "departmentCode"]),
+  ClinicalArchiveEntry: clinicalArchiveEntrySchema,
+  ClinicalArchiveEntryList: arrayOf(schemaReference("ClinicalArchiveEntry")),
+  ArchivedResultVersion: archivedResultVersionSchema,
+  ArchivedRequestView: archivedRequestViewSchema,
   EncounterList: arrayOf(schemaReference("Encounter")),
   RequestViewList: arrayOf(schemaReference("RequestView")),
   ItemCommandResult: strictObject({ item: schemaReference("DiagnosticItem"), request: schemaReference("RequestView") }, ["item", "request"]),
@@ -677,8 +711,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 74/69 since PROD-201 added POST /session/password/change (2026-10-08).
-  if (API_OPERATIONS.length !== 74 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 69) throw new Error("The audited API surface must remain exactly 74 operations across 69 paths.");
+  // 76/71 since PROD-501 added the archive reads (2026-10-08); 74/69 after PROD-201 added POST /session/password/change.
+  if (API_OPERATIONS.length !== 76 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 71) throw new Error("The audited API surface must remain exactly 76 operations across 71 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

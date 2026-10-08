@@ -520,3 +520,30 @@ export type PatientDiagnosticsResult = {
   total: number;
 };
 export type ReportView = ResultView & { attachments: PublicAttachment[] };
+
+/** Read-only view of an archived request (PROD-501): released versions only, never drafts. */
+export type ArchivedRequestView = {
+  readOnly: true;
+  archivedAt: string;
+  request: Pick<DiagnosticRequest, "id" | "requestCode" | "patientId" | "encounterId" | "requestingDepartmentCode" | "priority" | "aggregateStatus" | "createdAt" | "updatedAt">;
+  patient: { id: string; displayName: string; species: string; externalId: string } | null;
+  items: Array<{
+    id: string;
+    service: { code: string; name: string };
+    departmentCode: string;
+    status: ItemState;
+    priority: Priority;
+    requestedAt: string;
+    completedAt?: string;
+    cancellationReason?: string;
+    rejectionReason?: string;
+    note?: string;
+    results: Array<{
+      id: string;
+      lifecycleStatus: Result["lifecycleStatus"];
+      versions: Array<Pick<ResultVersion, "id" | "sequence" | "status" | "content" | "narrative" | "conclusion" | "releasedAt" | "critical" | "amendmentReason">>;
+    }>;
+  }>;
+  samples: Array<Pick<Sample, "id" | "accessionCode" | "sampleType" | "status" | "collectedAt" | "receivedAt">>;
+  attachments: Array<Pick<Attachment, "id" | "resultVersionId" | "safeName" | "detectedMime" | "sizeBytes">>;
+};
