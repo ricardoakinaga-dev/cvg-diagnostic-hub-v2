@@ -306,6 +306,18 @@ Pela decisão D3, o resultado crítico é avisado no Hub e também pelo WhatsApp
 
 Cada mudança gera um evento de auditoria (`CriticalAlertWhatsApp*`) sem o número. Desligar o canal faz os alertas na fila serem encerrados como `CHANNEL_DISABLED`. Falhas de credencial ou de template vão para o dead letter (runbook "WhatsApp do crítico").
 
+**Escalonamento ao plantão:** quem roda é o worker, a cada ciclo, só com a política crítica ativa.
+- Se ninguém confirmou o crítico, a cada limiar de `CRITICAL_POLICY_ESCALATION_AFTER_MS` (padrão 15, 30 e 60 min após a liberação) o Hub avisa o próximo degrau de `CRITICAL_POLICY_RECIPIENT_RULES`. Cada degrau é a primeira regra que alcança alguém ainda não avisado.
+- A D3 pede o plantão primeiro. Uma escada que segue isso: `REQUESTER,ON_CALL,RESPONSIBLE,DEPARTMENT_MANAGER`.
+- Plantão: todos os profissionais ativos do setor solicitante marcados com **Colocar no plantão**.
+- Gestor: quem gerencia o setor solicitante, mesmo lotado em outro setor.
+- Só entra quem pode confirmar notificações; ADMIN e VIEWER ficam de fora.
+- Cada pessoa avisada recebe a própria notificação crítica, no Hub e pelo WhatsApp se tiver número cadastrado.
+- Veterinários e equipe de internação passam a ter o paciente no escopo para abrir o resultado. A concessão fica auditada (`CriticalEscalationPatientAccessGranted`).
+- A confirmação de qualquer pessoa interrompe a escalada.
+- Esgotada a escada, o nível fica registrado com a regra `NONE` e o crítico continua pendente no painel de gestão, contado uma vez por resultado.
+- Toda subida gera `CriticalResultEscalated` na auditoria e uma linha `critical.escalation` no log do worker.
+
 ## 7. Papéis de banco separados (PROD-305)
 
 Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:

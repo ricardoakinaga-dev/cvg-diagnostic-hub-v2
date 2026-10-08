@@ -147,11 +147,6 @@ export function resolveCriticalRecipients(
   policy: CriticalResultPolicy
 ): CriticalRecipientCandidate[] {
   validateCriticalResultPolicy(policy);
-  const departmentCode = normalizedCode(context.departmentCode, "departmentCode");
-  const activeCandidates = context.candidates
-    .filter((candidate) => candidate.active && normalizedCode(candidate.departmentCode, "candidate.departmentCode") === departmentCode)
-    .sort((left, right) => left.userId.localeCompare(right.userId));
-
   const selected: CriticalRecipientCandidate[] = [];
   const selectedIds = new Set<string>();
   const add = (candidate: CriticalRecipientCandidate | undefined) => {
@@ -161,19 +156,46 @@ export function resolveCriticalRecipients(
   };
 
   for (const rule of policy.recipientRules) {
-    if (rule === "REQUESTER") add(activeCandidates.find((candidate) => candidate.userId === context.requesterId));
-    if (rule === "RESPONSIBLE") add(activeCandidates.find((candidate) => candidate.userId === context.responsibleUserId));
-    if (rule === "ON_CALL") add(activeCandidates.find((candidate) => candidate.onCall === true));
-    if (rule === "DEPARTMENT_MANAGER") {
-      activeCandidates
-        .filter((candidate) => candidate.role === "MANAGER" && (candidate.managedDepartmentCodes ?? [candidate.departmentCode]).some((code) => normalizedCode(code, "managedDepartmentCode") === departmentCode))
-        .forEach(add);
-    }
-    if (rule === "ADMIN_FALLBACK") activeCandidates.filter((candidate) => candidate.role === "ADMIN").forEach(add);
+    const found = candidatesForRule(rule, context);
+    (rule === "ON_CALL" ? found.slice(0, 1) : found).forEach(add);
   }
 
   if (selected.length === 0) throw new Error("CRITICAL_RECIPIENTS_UNAVAILABLE");
   return policy.requireDistinctRecipients ? selected : selected.slice(0, 1);
+}
+
+/**
+ * PROD-402 escalation ladder: the first rule, in policy order, that reaches someone not notified yet.
+ * Every on-call professional of the department is reached. Nobody left is an answer, not an error.
+ */
+export function nextCriticalRecipients(
+  context: CriticalRecipientContext,
+  policy: CriticalResultPolicy,
+  alreadyNotified: ReadonlySet<string>
+): { rule: CriticalRecipientRule; recipients: CriticalRecipientCandidate[] } | undefined {
+  validateCriticalResultPolicy(policy);
+  for (const rule of policy.recipientRules) {
+    const fresh = candidatesForRule(rule, context).filter((candidate) => !alreadyNotified.has(candidate.userId));
+    if (fresh.length > 0) return { rule, recipients: policy.requireDistinctRecipients ? fresh : fresh.slice(0, 1) };
+  }
+  return undefined;
+}
+
+/**
+ * Everyone must belong to the department, except a manager: they are found through the departments they
+ * manage, whatever their own department code.
+ */
+function candidatesForRule(rule: CriticalRecipientRule, context: CriticalRecipientContext): CriticalRecipientCandidate[] {
+  const departmentCode = normalizedCode(context.departmentCode, "departmentCode");
+  const active = context.candidates.filter((candidate) => candidate.active).sort((left, right) => left.userId.localeCompare(right.userId));
+  const inDepartment = active.filter((candidate) => normalizedCode(candidate.departmentCode, "candidate.departmentCode") === departmentCode);
+  if (rule === "REQUESTER") return inDepartment.filter((candidate) => candidate.userId === context.requesterId);
+  if (rule === "RESPONSIBLE") return inDepartment.filter((candidate) => candidate.userId === context.responsibleUserId);
+  if (rule === "ON_CALL") return inDepartment.filter((candidate) => candidate.onCall === true);
+  if (rule === "DEPARTMENT_MANAGER") {
+    return active.filter((candidate) => candidate.role === "MANAGER" && (candidate.managedDepartmentCodes ?? [candidate.departmentCode]).some((code) => normalizedCode(code, "managedDepartmentCode") === departmentCode));
+  }
+  return inDepartment.filter((candidate) => candidate.role === "ADMIN");
 }
 
 export function planCriticalEscalation(

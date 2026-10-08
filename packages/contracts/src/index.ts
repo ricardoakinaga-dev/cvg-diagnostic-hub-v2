@@ -418,6 +418,10 @@ export interface Notification {
   acknowledgedBy?: string;
   attempts: number;
   version: number;
+  /** PROD-402: redundant WhatsApp alert of a critical notification. */
+  whatsapp?: { status: "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "SKIPPED"; updatedAt: string; messageId?: string; errorCode?: string };
+  escalation?: { level: number; lastEscalatedAt: string };
+  escalationOf?: string;
 }
 
 export type AggregateStatus =

@@ -551,8 +551,10 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           const priorityRank: Record<Priority, number> = { EMERGENCY: 0, URGENT: 1, ROUTINE: 2 };
           return priorityRank[left.item.priority] - priorityRank[right.item.priority] || left.item.dueAt.localeCompare(right.item.dueAt);
         });
+      // One pending critical per result version: escalated copies (PROD-402) and an acknowledgement by any recipient count once.
+      const acknowledgedCritical = new Set(state.notifications.filter((notification) => notification.category === "CRITICAL" && notification.state === "ACKNOWLEDGED").map((notification) => notification.entityId));
       const critical = state.notifications.filter((notification) => {
-        if (notification.category !== "CRITICAL" || notification.state === "ACKNOWLEDGED" || notification.state === "SUPERSEDED") return false;
+        if (notification.category !== "CRITICAL" || notification.escalationOf !== undefined || notification.state === "ACKNOWLEDGED" || notification.state === "SUPERSEDED" || acknowledgedCritical.has(notification.entityId)) return false;
         const request = requestForNotification(state, notification);
         return Boolean(request && request.itemIds.some((itemId) => managerCanAccessDepartment(currentActor, itemFor(state, itemId).departmentCode)));
       }).length;

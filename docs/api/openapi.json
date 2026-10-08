@@ -26406,6 +26406,30 @@
                 "maxLength": 100
               }
             }
+          },
+          "escalation": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "level",
+              "lastEscalatedAt"
+            ],
+            "properties": {
+              "level": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8
+              },
+              "lastEscalatedAt": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "escalationOf": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
           }
         }
       },
