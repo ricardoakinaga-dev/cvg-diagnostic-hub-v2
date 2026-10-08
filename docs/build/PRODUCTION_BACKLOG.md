@@ -75,7 +75,7 @@
 | PROD-404 | P1 | DONE | M | Calendário e pausas de SLA: não necessários, D7 decidiu prazo desde a solicitação em horas corridas (comportamento atual). | — | P3.4, OQ-006 |
 | PROD-405 | P1 | READY | M–L | Accession gerado pelo sistema, etiqueta com código de barras e leitura no recebimento (D8). | Modelo de impressora e leitor | P3.5, OQ-008 |
 | PROD-406 | P1 | READY | M | Abrir novo atendimento para paciente já cadastrado e recusar solicitação em atendimento encerrado (hoje nenhum dos dois existe); pendências seguem com o solicitante (D9, já funciona). | — | P3.6, OQ-007 |
-| PROD-407 | P0 | READY | M | Catálogo de produção por planilha-modelo importada com validação, repetível em homologação e produção (D10). | Planilhas preenchidas pelos setores | P3.7, OQ-016 |
+| PROD-407 | P0 | VERIFY | M | Catálogo de produção por planilha-modelo importada com validação, repetível em homologação e produção (D10). Entregue: modelo, importação validada e repetível (API, tela e CLI); falta: planilhas preenchidas pelos setores. Runbook em [CATALOG_IMPORT.md](../operations/CATALOG_IMPORT.md). | Planilhas preenchidas pelos setores | P3.7, OQ-016 |
 | PROD-408 | P0 | READY | S | Cadastro de pacientes no Hub durante o piloto (D6): procedimento escrito de conferência com o prontuário. | — | P3.8, OQ-011 |
 | PROD-409 | P2 | VERIFY | M | Agenda de ultrassom: o piloto usa a agenda de procedimentos do Hub (hipótese da ata, a confirmar). | Confirmação do setor de US | P3.9, OQ-009 |
 | PROD-501 | P0 | READY | M | Arquivamento de exames concluídos há mais de 24 meses e expurgo no prazo legal, inclusive anexos no S3 (D5). | Prazo legal de guarda (jurídico) para o expurgo | P4.3 |

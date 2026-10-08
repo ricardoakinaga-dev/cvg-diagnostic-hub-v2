@@ -64,7 +64,7 @@ List endpoints accept `limit` (default 25, max 100), opaque keyset `cursor`, `so
 | Results | `GET /results/{id}`, `GET /results/{id}/versions` | result scope |
 | Reports/attachments | `GET /reports/{id}`, upload session/content/finalize/download | result + file scope |
 | Notifications | `GET /notifications`, `POST /notifications/{id}/acknowledge` | recipient |
-| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `GET /reason-codes`, admin commands | config permission |
+| Catalog | `GET /diagnostic-services`, `GET /diagnostic-services/{serviceId}/result-template`, `POST /diagnostic-services/import`, `GET /reason-codes`, admin commands | config permission |
 | Users and roles | `GET/POST /users`, `POST /users/{id}/roles`, `PUT /users/{id}/on-call`, `DELETE /users/{id}` | `user_role.manage` (ADMIN or delegated MANAGER scope); credentials are never returned; changes require reauthentication and audit; ADMIN can configure a MANAGER's `managedDepartmentCodes` |
 | Management control | `GET /management/overview` | `dashboard.view` + `user_role.manage`; one scoped snapshot for requests, pending work, departments and operational indicators |
 | Search | `GET /search` | scoped search |
@@ -135,6 +135,7 @@ Every endpoint below performs a server-side check for each listed canonical perm
 | `GET /diagnostic-services/{serviceId}/result-template` | `service.catalog.view` | executor service scope; returns the configured versioned template only |
 | `GET /diagnostic-services?includeInactive=true` | `service.catalog.manage` | admin/delegated manager scope; inactive values remain visible only for configuration |
 | `POST /diagnostic-services` | `service.catalog.manage` | admin/delegated manager policy; creates a versioned catalog entry |
+| `POST /diagnostic-services/import` | `service.catalog.manage` | admin/delegated manager policy checked per department of each sheet row; `Idempotency-Key` required; see [Catalog import](#catalog-import-post-diagnostic-servicesimport) |
 | `PATCH /diagnostic-services/{id}` | `service.catalog.manage` | admin/delegated manager policy; all editable fields are versioned, while referenced structural changes fail safely with `CATALOG_IN_USE` |
 | `POST /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
 | `PATCH /sla-policies/{id}` | `sla_policy.manage` | **planned/policy-gated**; not exposed by the current runtime manifest until D-04 is approved |
@@ -260,7 +261,7 @@ Result release cannot reference attachment with `PENDING`, `FAILED` or `QUARANTI
 
 Administrative commands are explicit, audited and protected:
 
-- `POST /diagnostic-services` and `PATCH /diagnostic-services/{id}`;
+- `POST /diagnostic-services`, `PATCH /diagnostic-services/{id}` and `POST /diagnostic-services/import`;
 - `POST/PATCH /sla-policies/{id}`;
 - `POST/PATCH /critical-result-policies/{id}`;
 - `POST /reason-codes` and `PATCH /reason-codes/{id}`;
@@ -275,3 +276,12 @@ No endpoint allows deleting a referenced service, policy or reason; deactivate/v
 - Error code list is shared with frontend types.
 - Commands emit the event names in [`../spec/REALTIME.md`](../spec/REALTIME.md) and [`../spec/STATE_MACHINES.md`](../spec/STATE_MACHINES.md).
 - Integration tests exercise API middleware, persistence, authorization and outbox—not only service methods.
+
+### Catalog import (`POST /diagnostic-services/import`)
+
+Operation `importDiagnosticServices` (tag Catalog) validates or applies the catalog CSV templates described in [CATALOG_IMPORT.md](../operations/CATALOG_IMPORT.md) (D-035). Body (`CatalogImportRequest`, JSON, strict): `services` (CSV text, 1 to 1,000,000 characters), `analytes` (optional CSV text) and `dryRun` (optional boolean). The headers must include `Idempotency-Key`; the body is subject to the 1 MiB JSON limit.
+
+- Response `data` (`CatalogImportReport`): `{ applied, dryRun, summary: { create, update, unchanged, error }, rows: [{ line, code, action: CREATE|UPDATE|UNCHANGED|ERROR, changes?, errors? }] }`. `line` is the line of the CSV file.
+- `dryRun: true` only plans and never writes. A real run applies every row in one transaction and only when no row is `ERROR`; otherwise nothing is written and the response is `422 CATALOG_IMPORT_INVALID` whose `error.details.importReport` carries the same report with `applied: false`.
+- Permission `service.catalog.manage` is evaluated per department of each row: a delegated MANAGER gets `ERROR` rows for other departments. Structural changes of an exam referenced by items are `ERROR` rows with the `CATALOG_IN_USE` message.
+- Re-sending the same sheet returns only `UNCHANGED` rows and writes nothing. Each created or changed service emits its usual audit event (`DiagnosticServiceCreated` or `DiagnosticServiceUpdated`, with `source: CATALOG_IMPORT`) and the run emits one `CatalogImported` summary event.

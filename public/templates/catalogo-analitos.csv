@@ -1,0 +1,4 @@
+﻿codigo_exame;codigo_analito;nome;tipo_valor;unidade;obrigatorio;ordem;referencia_minima;referencia_maxima;observacao
+EXEMPLO_HEMOGRAMA;HEMOGLOBINA;Exemplo - Hemoglobina (apague esta linha);NUMERIC;g/dL;sim;1;12;18;Exemplo: faixa para cães adultos - confirmar com a responsável técnica
+EXEMPLO_HEMOGRAMA;LEUCOCITOS;Exemplo - Leucócitos (apague esta linha);NUMERIC;10^9/L;sim;2;;;Faixa pendente de aprovação clínica
+EXEMPLO_HEMOGRAMA;OBSERVACAO;Exemplo - Observação técnica (apague esta linha);TEXT;;não;3;;;
