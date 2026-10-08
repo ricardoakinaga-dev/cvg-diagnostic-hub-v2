@@ -18,6 +18,12 @@ const IDENTIFIER_PATTERN = /^[a-z_][a-z0-9_]{0,62}$/;
 export const APPEND_ONLY_RUNTIME_TABLES = ["audit_events"] as const;
 
 /**
+ * The clinical archive (PROD-501) is written once and removed only by the
+ * purge: the runtime may read, add and delete rows but never rewrite one.
+ */
+export const ARCHIVE_RUNTIME_TABLES = ["cvg_clinical_archive", "cvg_clinical_archive_batches"] as const;
+
+/**
  * Grants the runtime data access over whatever the schema actually contains,
  * and nothing else. The statements are idempotent so the script can run on
  * every deploy: grants are cumulative and the revocations are repeated.
@@ -56,7 +62,9 @@ export function buildRuntimeRoleGrants(roles: DatabasePrivilegeRoles): readonly 
     END
     $cvg$`,
     ...APPEND_ONLY_RUNTIME_TABLES.map((table) => `GRANT SELECT, INSERT ON TABLE ${table} TO ${runtime}`),
-    ...APPEND_ONLY_RUNTIME_TABLES.map((table) => `REVOKE UPDATE, DELETE, TRUNCATE ON TABLE ${table} FROM ${runtime}`)
+    ...APPEND_ONLY_RUNTIME_TABLES.map((table) => `REVOKE UPDATE, DELETE, TRUNCATE ON TABLE ${table} FROM ${runtime}`),
+    ...ARCHIVE_RUNTIME_TABLES.map((table) => `GRANT SELECT, INSERT, DELETE ON TABLE ${table} TO ${runtime}`),
+    ...ARCHIVE_RUNTIME_TABLES.map((table) => `REVOKE UPDATE, TRUNCATE ON TABLE ${table} FROM ${runtime}`)
   ];
 }
 
@@ -103,5 +111,9 @@ export const RUNTIME_PRIVILEGE_PROBES: readonly RuntimePrivilegeProbe[] = [
   { statement: "TRUNCATE audit_events", expectedSqlState: "42501" },
   { statement: "ALTER TABLE audit_events DISABLE TRIGGER audit_events_append_only_guard", expectedSqlState: "42501" },
   { statement: "DROP TABLE cvg_runtime_state", expectedSqlState: "42501" },
+  { statement: "DROP TABLE cvg_clinical_archive", expectedSqlState: "42501" },
+  { statement: "ALTER TABLE cvg_clinical_archive ADD COLUMN runtime_escape text", expectedSqlState: "42501" },
+  { statement: "UPDATE cvg_clinical_archive SET data = '{}'::jsonb", expectedSqlState: "42501" },
+  { statement: "TRUNCATE cvg_clinical_archive_batches", expectedSqlState: "42501" },
   { statement: "CREATE TABLE runtime_privilege_escape (id integer)", expectedSqlState: "42501" }
 ];

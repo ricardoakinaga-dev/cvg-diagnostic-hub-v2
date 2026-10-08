@@ -35,6 +35,10 @@ function createRacingStore(readState: StoreState, transactionState: StoreState) 
       readSessionActivity: delegate.readSessionActivity.bind(delegate),
       touchSessionActivity: delegate.touchSessionActivity.bind(delegate),
       compactRuntimeState: delegate.compactRuntimeState.bind(delegate),
+      archiveClinicalRecords: delegate.archiveClinicalRecords.bind(delegate),
+      readClinicalArchive: delegate.readClinicalArchive.bind(delegate),
+      readArchivedRequest: delegate.readArchivedRequest.bind(delegate),
+      purgeClinicalArchive: delegate.purgeClinicalArchive.bind(delegate),
       transaction: transaction as StateStore["transaction"]
     } satisfies StateStore,
     transaction
@@ -241,6 +245,10 @@ describe("secure server sessions", () => {
       readSessionActivity: store.readSessionActivity.bind(store),
       touchSessionActivity: store.touchSessionActivity.bind(store),
       compactRuntimeState: store.compactRuntimeState.bind(store),
+      archiveClinicalRecords: store.archiveClinicalRecords.bind(store),
+      readClinicalArchive: store.readClinicalArchive.bind(store),
+      readArchivedRequest: store.readArchivedRequest.bind(store),
+      purgeClinicalArchive: store.purgeClinicalArchive.bind(store),
       transaction: store.transaction.bind(store)
     };
     const request = new Request("http://localhost/api/v1/me", {

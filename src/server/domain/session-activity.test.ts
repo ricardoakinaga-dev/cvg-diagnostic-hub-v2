@@ -35,6 +35,10 @@ function storeRecordingTouches(): { store: StateStore; touches: { sessionId: str
       return backing.touchSessionActivity(activity);
     },
     compactRuntimeState: backing.compactRuntimeState.bind(backing),
+    archiveClinicalRecords: backing.archiveClinicalRecords.bind(backing),
+    readClinicalArchive: backing.readClinicalArchive.bind(backing),
+    readArchivedRequest: backing.readArchivedRequest.bind(backing),
+    purgeClinicalArchive: backing.purgeClinicalArchive.bind(backing),
     transaction: backing.transaction.bind(backing)
   };
   return { store, touches };

@@ -31,6 +31,10 @@ function countingStore(): { store: StateStore; reads: () => number } {
     readSessionActivity: backing.readSessionActivity.bind(backing),
     touchSessionActivity: backing.touchSessionActivity.bind(backing),
     compactRuntimeState: backing.compactRuntimeState.bind(backing),
+    archiveClinicalRecords: backing.archiveClinicalRecords.bind(backing),
+    readClinicalArchive: backing.readClinicalArchive.bind(backing),
+    readArchivedRequest: backing.readArchivedRequest.bind(backing),
+    purgeClinicalArchive: backing.purgeClinicalArchive.bind(backing),
     transaction: backing.transaction.bind(backing)
   };
   return { store, reads: () => reads };

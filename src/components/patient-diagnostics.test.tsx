@@ -43,6 +43,16 @@ describe("PatientDiagnostics workspace", () => {
     vi.restoreAllMocks();
   });
 
+  it("offers the clinical archive collapsed and loads it only on demand", async () => {
+    const fetch = vi.spyOn(apiClient, "apiFetch").mockResolvedValue(workspace as never);
+    render(<PatientDiagnostics patientId="patient-thor" />);
+
+    expect(await screen.findByTestId("patient-archive")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expandir arquivo" })).toHaveAttribute("aria-expanded", "false");
+    // The role lookup of the encounter actions (/session/me) is not an archive read.
+    expect(fetch.mock.calls.map(([path]) => path).filter((path) => path !== "/session/me")).toEqual(["/patients/patient-thor/diagnostics?limit=50"]);
+  });
+
   it("renders contextual identity, server-owned next action and linked resources", async () => {
     vi.spyOn(apiClient, "apiFetch").mockResolvedValue(workspace as never);
     render(<PatientDiagnostics patientId="patient-thor" />);

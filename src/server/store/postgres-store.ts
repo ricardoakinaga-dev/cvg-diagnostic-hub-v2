@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { PostgresStateCache } from "./postgres-state-cache";
 import { freezeState } from "./immutable-state";
 import { Pool, type PoolClient } from "pg";
-import { outboxEnvelopeFor, type AuditEntity, type AuditMetrics, type AuditMetricsQuery, type AuditReadPage, type AuditReadQuery, type AuditTransactionReader, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User } from "../domain/models";
+import { outboxEnvelopeFor, type ClinicalArchiveEntry, type ClinicalArchiveOptions, type ClinicalArchivePurgeOptions, type ClinicalArchivePurgeSummary, type ClinicalArchiveQuery, type ClinicalArchiveRow, type ClinicalArchiveSummary, type AuditEntity, type AuditMetrics, type AuditMetricsQuery, type AuditReadPage, type AuditReadQuery, type AuditTransactionReader, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User } from "../domain/models";
 import { auditEventsForReset, postgresAuditTransactionReader, readPostgresAuditActors, readPostgresAuditEvents, readPostgresAuditMetrics } from "./postgres-audit-read";
 import type { OutboxMessage, OutboxTransactionQuery } from "../domain/models";
 import { outboxReadLimit } from "../domain/outbox-read";
@@ -28,6 +28,8 @@ import {
 import { projectDurableNotificationRows } from "./postgres-notification-projection";
 import { readPostgresAuthorizationSnapshot } from "./postgres-authorization-read";
 import { prunePostgresSessionActivity, readPostgresSessionActivity, touchPostgresSessionActivity } from "./postgres-session-activity";
+import { archiveAuditEvent, archiveEntries, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
+import { insertClinicalArchive, purgeClinicalArchiveRows, readArchivedRequestRows, readClinicalArchiveRows } from "./postgres-clinical-archive";
 import { compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import {
   RelationalClinicalCoreAdapter,
@@ -254,6 +256,57 @@ export class PostgresStore implements StateStore {
         state: retentionRemovedAnything(summary)
           ? { ...compaction.state, auditEvents: [...compaction.state.auditEvents, runtimeRetentionAuditEvent(summary, now)] }
           : compaction.state,
+        result: summary
+      };
+    });
+  }
+
+  /**
+   * D5. The moved entities are inserted into cvg_clinical_archive and leave the
+   * aggregate in the same transaction: the normal entity diff records their
+   * removals, so every other process drops them incrementally. Dry runs only
+   * read the cached aggregate.
+   */
+  async archiveClinicalRecords(options: ClinicalArchiveOptions = {}): Promise<ClinicalArchiveSummary> {
+    if (this.relationalClinicalCore) throw new Error("POSTGRES_RELATIONAL_ARCHIVE_UNSUPPORTED");
+    const now = options.now ?? new Date();
+    const preview = planClinicalArchive(await this.readState(), { ...options, now });
+    if (options.dryRun || preview.partition.requestIds.length === 0) return archiveSummary(preview);
+    return this.runExclusiveTransaction(async (client, current) => {
+      const plan = planClinicalArchive(current, { ...options, now });
+      if (plan.partition.requestIds.length === 0) return { state: current, result: archiveSummary(plan) };
+      const batchId = newArchiveBatchId(now);
+      await insertClinicalArchive(client, plan, { id: batchId, archivedAt: now, actor: options.actor });
+      const summary = { ...archiveSummary(plan, batchId), batchId };
+      return {
+        state: { ...plan.partition.state, auditEvents: [...plan.partition.state.auditEvents, archiveAuditEvent(summary, now, options.actor)] },
+        result: summary
+      };
+    });
+  }
+
+  async readClinicalArchive(query: ClinicalArchiveQuery): Promise<ClinicalArchiveEntry[]> {
+    return this.concurrent(async () => {
+      const [rows, snapshot] = await Promise.all([readClinicalArchiveRows(this.pool, query), this.cache.read()]);
+      return archiveEntries(rows, snapshot.state.services);
+    });
+  }
+
+  async readArchivedRequest(requestId: string): Promise<ClinicalArchiveRow[] | undefined> {
+    return this.concurrent(() => readArchivedRequestRows(this.pool, requestId));
+  }
+
+  /** Deletes archive rows past the legal period; the caller removes the returned attachment objects. */
+  async purgeClinicalArchive(options: ClinicalArchivePurgeOptions = {}): Promise<ClinicalArchivePurgeSummary> {
+    if (this.relationalClinicalCore) throw new Error("POSTGRES_RELATIONAL_ARCHIVE_UNSUPPORTED");
+    const now = options.now ?? new Date();
+    const cutoff = purgeCutoff(now, options.purgeAfterMonths);
+    if (!cutoff) return { requestsPurged: 0, entitiesPurged: 0, attachmentKeys: [] };
+    if (options.dryRun) return this.concurrent(() => purgeClinicalArchiveRows(this.pool, cutoff, false));
+    return this.runExclusiveTransaction(async (client, current) => {
+      const summary = await purgeClinicalArchiveRows(client, cutoff, true);
+      return {
+        state: summary.entitiesPurged > 0 ? { ...current, auditEvents: [...current.auditEvents, purgeAuditEvent(summary, now)] } : current,
         result: summary
       };
     });

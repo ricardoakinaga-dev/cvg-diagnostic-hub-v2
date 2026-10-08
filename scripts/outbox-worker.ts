@@ -4,8 +4,9 @@ import { createOutboxSinkFromEnv, type ConfiguredOutboxSink, type OutboxProcessS
 import { nextOutboxHeartbeatErrorCount, outboxCycleHeartbeatResult, resolveOutboxHeartbeatFile, writeOutboxHeartbeat, type OutboxHeartbeat, type OutboxHeartbeatResult } from "../src/server/operations/outbox-heartbeat";
 import { pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { createRuntimeRetentionSchedule, runScheduledRuntimeRetention } from "../src/server/operations/runtime-retention-job";
+import { clinicalArchiveConfig, createClinicalArchiveSchedule, runScheduledClinicalArchive } from "../src/server/operations/clinical-archive-job";
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
-import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
+import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
 import { runCriticalEscalation } from "../src/server/application/critical-escalation";
@@ -17,6 +18,9 @@ const heartbeatFile = resolveOutboxHeartbeatFile();
 // PROD-103: retention runs on its own cadence inside the worker. It used to be
 // dead code, so the snapshot grew without bound in production.
 const retentionSchedule = createRuntimeRetentionSchedule();
+// PROD-501 (D5): archiving after the active window, with its own daily cadence.
+const archiveConfig = clinicalArchiveConfig();
+const archiveSchedule = createClinicalArchiveSchedule(archiveConfig.intervalMs);
 let stopping = false;
 let consecutiveCycleErrors = 0;
 
@@ -46,6 +50,17 @@ async function runRetention(): Promise<void> {
   }
 }
 
+async function runArchive(): Promise<void> {
+  try {
+    const store = await getRuntimeStoreAsync();
+    // Objects are only removed after a purge, which needs the legal period to be configured.
+    await runScheduledClinicalArchive(store, archiveSchedule, { config: archiveConfig, fileStore: archiveConfig.purgeAfterMonths ? getRuntimeFileStore() : undefined });
+  } catch (error) {
+    console.error(JSON.stringify({ event: "clinical.archive_error", errorCode: "CLINICAL_ARCHIVE_FAILED" }));
+    throw error;
+  }
+}
+
 // PROD-402: an unacknowledged critical result climbs the policy ladder; the new notifications
 // are delivered by the batch that follows in the same cycle.
 async function runEscalation(): Promise<void> {
@@ -62,6 +77,7 @@ async function runCycle(sink: ConfiguredOutboxSink): Promise<void> {
   try {
     await runRetention();
     await runEscalation();
+    await runArchive();
     const summary = await runOnce(sink);
     const lastResult: OutboxHeartbeatResult = outboxCycleHeartbeatResult(summary);
     const heartbeat = await updateHeartbeat(lastResult);

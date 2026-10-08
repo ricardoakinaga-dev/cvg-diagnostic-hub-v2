@@ -1,10 +1,11 @@
-import type { AuditEntity, AuditMetrics, AuditMetricsQuery, AuditReadPage, AuditReadQuery, AuditTransactionReader, RuntimeRetentionOptions, RuntimeRetentionSummary, SessionActivity, StateStore, StoreState } from "../domain/models";
+import type { ClinicalArchiveEntry, ClinicalArchiveOptions, ClinicalArchivePurgeOptions, ClinicalArchivePurgeSummary, ClinicalArchiveQuery, ClinicalArchiveRow, ClinicalArchiveSummary, AuditEntity, AuditMetrics, AuditMetricsQuery, AuditReadPage, AuditReadQuery, AuditTransactionReader, RuntimeRetentionOptions, RuntimeRetentionSummary, SessionActivity, StateStore, StoreState } from "../domain/models";
 import { auditPage } from "./audit-read";
 import { auditMetrics } from "../domain/audit-metrics";
 import { outboxMetrics, outboxPage } from "../domain/outbox-read";
 import type { OutboxTransactionQuery } from "../domain/models";
 import { activityRowsAfterPrune, compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import { freezeState } from "./immutable-state";
+import { archiveAuditEvent, archiveEntries, archiveRows, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
 
 function cloneState(state: StoreState): StoreState {
   return structuredClone(state);
@@ -21,6 +22,8 @@ export class MemoryStore implements StateStore {
   private state: StoreState;
   private queue: Promise<unknown> = Promise.resolve();
   private readonly activity = new Map<string, SessionActivity>();
+  /** The clinical archive (D5) that PostgreSQL keeps in cvg_clinical_archive. */
+  private archive: ClinicalArchiveRow[] = [];
   /** Mirrors the runtime state row version that PostgreSQL bumps per write. */
   private version = 1;
 
@@ -121,6 +124,57 @@ export class MemoryStore implements StateStore {
     return run;
   }
 
+  async archiveClinicalRecords(options: ClinicalArchiveOptions = {}): Promise<ClinicalArchiveSummary> {
+    const now = options.now ?? new Date();
+    const run = this.queue.then(() => {
+      const plan = planClinicalArchive(this.state, { ...options, now });
+      if (options.dryRun || plan.partition.requestIds.length === 0) return archiveSummary(plan);
+      const batchId = newArchiveBatchId(now);
+      const summary = { ...archiveSummary(plan, batchId), batchId };
+      this.archive = [...this.archive, ...archiveRows(plan, batchId, now)];
+      this.state = freezeState({ ...plan.partition.state, auditEvents: [...plan.partition.state.auditEvents, archiveAuditEvent(summary, now, options.actor)] });
+      this.version += 1;
+      return summary;
+    });
+    this.queue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
+  async readClinicalArchive(query: ClinicalArchiveQuery): Promise<ClinicalArchiveEntry[]> {
+    const state = await this.readState();
+    const requests = new Set(this.archive
+      .filter((row) => row.collection === "requests" && (query.patientId === undefined || row.data.patientId === query.patientId) && (query.requestId === undefined || row.requestId === query.requestId))
+      .map((row) => row.requestId));
+    return archiveEntries(this.archive.filter((row) => requests.has(row.requestId)), state.services).slice(0, query.limit);
+  }
+
+  async readArchivedRequest(requestId: string): Promise<ClinicalArchiveRow[] | undefined> {
+    await this.readState();
+    const rows = this.archive.filter((row) => row.requestId === requestId);
+    return rows.some((row) => row.collection === "requests") ? structuredClone(rows) : undefined;
+  }
+
+  async purgeClinicalArchive(options: ClinicalArchivePurgeOptions = {}): Promise<ClinicalArchivePurgeSummary> {
+    const now = options.now ?? new Date();
+    const cutoff = purgeCutoff(now, options.purgeAfterMonths);
+    const run = this.queue.then(() => {
+      const due = cutoff ? this.archive.filter((row) => Date.parse(row.archivedAt) <= cutoff.getTime()) : [];
+      const summary: ClinicalArchivePurgeSummary = {
+        requestsPurged: new Set(due.filter((row) => row.collection === "requests").map((row) => row.requestId)).size,
+        entitiesPurged: due.length,
+        attachmentKeys: due.filter((row) => row.collection === "attachments").map((row) => String(row.data.storageKey))
+      };
+      if (options.dryRun || due.length === 0) return summary;
+      const purged = new Set(due);
+      this.archive = this.archive.filter((row) => !purged.has(row));
+      this.state = freezeState({ ...this.state, auditEvents: [...this.state.auditEvents, purgeAuditEvent(summary, now)] });
+      this.version += 1;
+      return summary;
+    });
+    this.queue = run.then(() => undefined, () => undefined);
+    return run;
+  }
+
   async transaction<T>(
     operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }
   ): Promise<T> {
@@ -148,6 +202,7 @@ export class MemoryStore implements StateStore {
   }
 
   async reset(state: StoreState): Promise<void> {
+    this.archive = [];
     await this.transaction(() => ({ state: cloneState(state), result: undefined }));
   }
 
