@@ -8,6 +8,7 @@ import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client"
 import { EmptyState, ErrorState, PartialNotice, StaleNotice } from "./feedback-states";
 import { PatientArchive } from "./patient-archive";
 import { PriorityBadge, StatusBadge, statusLabel } from "./status-badge";
+import { SampleLabelLink } from "./sample-label";
 import { Icon } from "./ui-icons";
 
 type SampleSummary = PatientWorkspaceSample;
@@ -64,6 +65,7 @@ const eventLabels: Record<string, string> = {
   DiagnosticItemCancelled: "Exame cancelado",
   DiagnosticItemRejected: "Exame rejeitado",
   DiagnosticItemResultAvailable: "Resultado disponível",
+  SampleExpected: "Amostra gerada",
   SampleReceived: "Amostra recebida",
   SampleRejected: "Amostra rejeitada",
   SampleRecollectionRequested: "Recoleta solicitada",
@@ -320,7 +322,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
               <div className="workspace-item-operation"><span><small>Próxima ação</small><strong>{operation.nextAction.label}</strong></span><span><small>Responsável</small><strong>{operation.currentOwner.label}</strong></span><span><small>Prazo</small><strong className={operation.escalationLevel === "URGENT" || operation.escalationLevel === "ATTENTION" ? "text-danger" : ""}>{formatSnapshotDate(operation.expectedBy ?? undefined)}</strong></span></div>
               <div className="workspace-item-links">
                 {operation.blockedBy && <span className="workspace-inline-note">Bloqueado: {operation.blockedBy.label}</span>}
-                {auxiliaryDataUnavailable ? <span className="workspace-inline-note workspace-inline-note-unavailable">Amostra indisponível nesta leitura</span> : sample && <span className="workspace-inline-note">Amostra {sample.accessionCode} · {sampleLabels[sample.status]}</span>}
+                {auxiliaryDataUnavailable ? <span className="workspace-inline-note workspace-inline-note-unavailable">Amostra indisponível nesta leitura</span> : sample && <span className="workspace-inline-note">Amostra {sample.accessionCode} · {sampleLabels[sample.status]} · <SampleLabelLink sampleId={sample.id} accessionCode={sample.accessionCode} /></span>}
                 {auxiliaryDataUnavailable ? <span className="workspace-inline-note workspace-inline-note-unavailable">Resultado indisponível nesta leitura</span> : result ? <Link className="text-link" href={`/results/${result.id}`}>Resultado liberado{result.needsReReview ? " · revisar" : ""} <Icon name="arrow-right" size={15} /></Link> : <span className="workspace-inline-note">Resultado ainda não disponível</span>}
                 {auxiliaryDataUnavailable ? <span className="workspace-inline-note workspace-inline-note-unavailable">Anexos indisponíveis nesta leitura</span> : item.workspaceContext.attachments.length > 0 && <span className="workspace-inline-note">{item.workspaceContext.attachments.length} anexo{item.workspaceContext.attachments.length === 1 ? "" : "s"} limpo{item.workspaceContext.attachments.length === 1 ? "" : "s"}</span>}
               </div>

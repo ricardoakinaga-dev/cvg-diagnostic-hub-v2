@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import type { StateStore, StoreState, User } from "../domain/models";
+import { CRITICAL_ALERT_WHATSAPP_EVENT, outboxEnvelopeFor, type OutboxMessage, type StateStore, type StoreState, type User } from "../domain/models";
 import { requireActiveUser, requirePermission } from "../application/service-common";
 import { ApiError } from "../http/envelope";
 import { MemoryStore } from "../store/memory-store";
-import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, discardDeadLetterMessage, InProcessEventBus, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "./outbox";
+import { createOutboxSinkFromEnv, createPostgresOutboxSink, createSafeConsoleSink, discardDeadLetterMessage, InProcessEventBus, isWhatsAppRoute, listDeadLetterMessages, processOutboxBatch, reprocessDeadLetterMessage } from "./outbox";
 import type { DeadLetterCommand, OutboxSink, OutboxSqlExecutor } from "./outbox";
 
 function authorizeAdmin(actor: User) {
@@ -717,5 +717,95 @@ describe("durable outbox processing", () => {
 
     expect(summary).toMatchObject({ claimed: 1, processed: 0, retried: 1, failed: 0 });
     expect(store.getState().outbox[0]).toMatchObject({ status: "PENDING", lastError: expect.stringContaining("OUTBOX_SINK_UNCONFIRMED") });
+  });
+});
+
+describe("WhatsApp critical-alert route (PROD-402)", () => {
+  const at = new Date("2026-08-20T10:01:00.000Z");
+
+  function whatsAppState(notificationState: "PENDING" | "DELIVERED" = "PENDING"): StoreState {
+    const state = stateWithMessage();
+    state.notifications = [{ id: "notification-critical", category: "CRITICAL", priority: "URGENT", recipientUserId: "user-vet", entityType: "RESULT_VERSION", entityId: "result-version-1", deepLink: "/results/result-1", title: "Resultado crítico", body: "Confirme.", dedupeKey: "release:result-version-1:user-vet", state: notificationState, createdAt: "2026-08-20T10:00:00.000Z", attempts: 0, version: 1, whatsapp: { status: "QUEUED", updatedAt: "2026-08-20T10:00:00.000Z" } }];
+    state.outbox[0] = {
+      ...state.outbox[0], id: "outbox-whatsapp", eventType: CRITICAL_ALERT_WHATSAPP_EVENT, aggregateType: "Notification", aggregateId: "notification-critical",
+      payload: { notificationId: "notification-critical", recipientUserId: "user-vet", requestCode: "REQ-1", linkPath: "results/result-1" },
+      consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.whatsapp"
+    };
+    return state;
+  }
+
+  const confirmed = (channel?: { status: "SENT" | "SKIPPED" | "FAILED"; messageId?: string; errorCode?: string }) => ({ publish: vi.fn(async () => ({ confirmed: true as const, durability: "DURABLE" as const, sink: "whatsapp", deliveryId: channel?.messageId ?? "whatsapp-1", ...(channel ? { channel } : {}) })) });
+
+  it("derives the WhatsApp route from the alert event and rejects it for any other event", () => {
+    expect(outboxEnvelopeFor(CRITICAL_ALERT_WHATSAPP_EVENT, { notificationId: "n-1" })).toEqual({ consumerType: "NOTIFICATION_DELIVERY", routingKey: "notification.whatsapp" });
+    expect(() => outboxEnvelopeFor("ResultReleased", { notificationId: "n-1" }, "NOTIFICATION_DELIVERY", "notification.whatsapp")).toThrow(/OUTBOX_ROUTE_MISMATCH/);
+    expect(() => outboxEnvelopeFor(CRITICAL_ALERT_WHATSAPP_EVENT, { notificationId: "n-1" }, "NOTIFICATION_DELIVERY", "notification.in_app")).toThrow(/OUTBOX_ROUTE_MISMATCH/);
+    expect(isWhatsAppRoute(whatsAppState().outbox[0])).toBe(true);
+    expect(isWhatsAppRoute(stateWithMessage().outbox[0])).toBe(false);
+    expect(isWhatsAppRoute({ ...stateWithMessage().outbox[0], consumerType: "BROKEN" } as unknown as OutboxMessage)).toBe(false);
+  });
+
+  it("records the provider message id without touching the in-app state or the notification version", async () => {
+    const store = new MemoryStore(whatsAppState());
+    const sink = confirmed({ status: "SENT", messageId: "wamid.1" });
+
+    const summary = await processOutboxBatch(store, sink, { now: () => at, batchSize: 1 });
+
+    expect(summary).toMatchObject({ processed: 1 });
+    expect(store.getState().notifications[0]).toMatchObject({ state: "PENDING", version: 1, whatsapp: { status: "SENT", messageId: "wamid.1", updatedAt: at.toISOString() } });
+    expect(store.getState().auditEvents.at(-1)).toMatchObject({ eventType: "CriticalAlertWhatsAppSent", entityId: "notification-critical", previousState: "QUEUED", newState: "SENT", metadata: { outboxId: "outbox-whatsapp", channel: "WHATSAPP" } });
+  });
+
+  it("settles skipped and refused alerts with their reason, and a confirmation without channel as sent", async () => {
+    for (const [channel, expected] of [
+      [{ status: "SKIPPED", errorCode: "NO_CONTACT" }, { status: "SKIPPED", errorCode: "NO_CONTACT", event: "CriticalAlertWhatsAppSkipped" }],
+      [{ status: "FAILED", errorCode: "WHATSAPP_API_131026" }, { status: "FAILED", errorCode: "WHATSAPP_API_131026", event: "CriticalAlertWhatsAppFailed" }],
+      [undefined, { status: "SENT", event: "CriticalAlertWhatsAppSent" }]
+    ] as const) {
+      const store = new MemoryStore(whatsAppState());
+      await processOutboxBatch(store, confirmed(channel), { now: () => at, batchSize: 1 });
+      const { event, ...whatsapp } = expected;
+      expect(store.getState().notifications[0].whatsapp).toEqual({ ...whatsapp, updatedAt: at.toISOString() });
+      expect(store.getState().auditEvents.at(-1)).toMatchObject({ eventType: event, metadata: expect.objectContaining({ channel: "WHATSAPP" }) });
+      expect(store.getState().outbox[0].status).toBe("PROCESSED");
+    }
+  });
+
+  it("keeps the alert queued while retrying and marks it failed with the error code when dead-lettered", async () => {
+    const store = new MemoryStore(whatsAppState("DELIVERED"));
+    const sink = { publish: vi.fn(async () => { throw new Error("WHATSAPP_API_190"); }) };
+
+    await processOutboxBatch(store, sink, { now: () => at, batchSize: 1, maxAttempts: 2 });
+    expect(store.getState().notifications[0]).toMatchObject({ state: "DELIVERED", whatsapp: { status: "QUEUED" } });
+
+    await processOutboxBatch(store, sink, { now: () => new Date(at.getTime() + 60_000), batchSize: 1, maxAttempts: 2 });
+    expect(store.getState().outbox[0]).toMatchObject({ status: "FAILED", lastError: "WHATSAPP_API_190" });
+    expect(store.getState().notifications[0]).toMatchObject({ state: "DELIVERED", version: 1, whatsapp: { status: "FAILED", errorCode: "WHATSAPP_API_190" } });
+  });
+
+  it("settles a WhatsApp message whose notification no longer exists", async () => {
+    const state = whatsAppState();
+    state.notifications = [];
+    const store = new MemoryStore(state);
+    await processOutboxBatch(store, confirmed({ status: "SENT", messageId: "wamid.2" }), { now: () => at, batchSize: 1 });
+    expect(store.getState().outbox[0].status).toBe("PROCESSED");
+    expect(store.getState().auditEvents).toHaveLength(0);
+  });
+
+  it("routes WhatsApp alerts to their own sink next to the PostgreSQL in-app delivery", async () => {
+    const query = vi.fn(async () => ({ rows: [{ id: "delivery-in_app-notification-1", status: "DELIVERED" }], rowCount: 1 }));
+    const whatsapp = confirmed({ status: "SENT", messageId: "wamid.3" });
+    const sink = createOutboxSinkFromEnv({ NODE_ENV: "production", OUTBOX_SINK: "postgres", DATABASE_URL: "postgresql://db.example/cvg" }, { sql: { query }, whatsapp });
+    const inApp = { ...stateWithMessage().outbox[0], payload: { notificationId: "notification-1" }, consumerType: "NOTIFICATION_DELIVERY" as const, routingKey: "notification.in_app" };
+    const alert = whatsAppState().outbox[0];
+
+    expect(sink).toMatchObject({ kind: "postgres", durability: "DURABLE" });
+    expect(sink.supportsRoute?.(alert)).toBe(true);
+    expect(sink.supportsRoute?.(inApp)).toBe(true);
+    expect(sink.supportsRoute?.(stateWithMessage().outbox[0])).toBe(false);
+    await expect(sink.publish(alert)).resolves.toMatchObject({ sink: "whatsapp", deliveryId: "wamid.3" });
+    await expect(sink.publish(inApp)).resolves.toMatchObject({ sink: "postgres" });
+    expect(whatsapp.publish).toHaveBeenCalledTimes(1);
+    expect(query).toHaveBeenCalledTimes(1);
   });
 });

@@ -15,7 +15,6 @@
     { "file": "src/features/diagnostics/exam-queue.tsx", "reason": "Queue pagination and realtime recovery branches require browser interaction coverage." },
     { "file": "src/server/application/operational-context.ts", "reason": "Defensive operational-context fallbacks are policy-dependent and require scenario fixtures." },
     { "file": "src/server/application/registry-service.ts", "reason": "Registry conflict and context branches require broader clinical fixture combinations." },
-    { "file": "src/server/domain/models.ts", "reason": "Pure model normalization and legacy envelope branches are exercised through persistence suites." },
     { "file": "src/server/operations/recovery-manifest.ts", "reason": "Corrupt-manifest and filesystem failure branches require destructive recovery drills." },
     { "file": "src/server/storage/malware-scanner.ts", "reason": "External scanner transport and policy branches require a scanner test service." },
     { "file": "src/server/store/migrations.ts", "reason": "Migration rollback and malformed metadata branches require disposable PostgreSQL execution." },

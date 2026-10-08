@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "016_clinical_archive";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "017_clinical_archive";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -25,7 +25,8 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "013_audit_read_authority",
   "014_outbox_read_authority",
   "015_runtime_entity_rows",
-  "016_clinical_archive"
+  "016_outbox_whatsapp_route",
+  "017_clinical_archive"
 ] as const;
 
 /**
@@ -49,7 +50,8 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "013_audit_read_authority": "9b5ca0a5b3107e4cbe5770081bea50c6b1de3ff1f9fc44cc878a794dea463d98",
   "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031",
   "015_runtime_entity_rows": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f",
-  "016_clinical_archive": "bdf61ee5da3619bf1fc0ae0e1a0a113b655998ceda837e55a679cf9b62f92697"
+  "016_outbox_whatsapp_route": "c63d12c24dd13482eae00d9ed87aac9fba53fbbc7609df23b78e81a3603fa77c",
+  "017_clinical_archive": "43aeca4eaea8b4724fd49edfa824644e4a4ea874b67570b8191d386147dae6cf"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -216,6 +218,7 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
         FROM pg_constraint
        WHERE conrelid = 'outbox_messages'::regclass
          AND conname = 'outbox_messages_route_consistency_check'
+         AND pg_get_constraintdef(oid) ILIKE '%notification.whatsapp%'
     )
   ) AS outbox_routing_ready,
   (

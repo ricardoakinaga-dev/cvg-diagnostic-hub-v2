@@ -112,10 +112,14 @@ describe("OpenAPI schemas against real route responses", () => {
     expectResponseMatches("/diagnostic-services/{serviceId}/result-template", "get", template.status, await template.json());
 
     const itemId = createdBody.data.items[0].id as string;
+    const sampleId = createdBody.data.samples[0].id as string;
+    const labelResponse = await GET(new Request(`http://localhost/api/v1/samples/${sampleId}/label`, { headers: { cookie: lab.cookie } }), params(["samples", sampleId, "label"]));
+    expect(labelResponse.status).toBe(200);
+    expectResponseMatches("/samples/{sampleId}/label", "get", labelResponse.status, await labelResponse.json());
     const receive = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/receive-sample`, {
       method: "POST",
       headers: { "content-type": "application/json", cookie: lab.cookie, "x-csrf-token": lab.csrf, "idempotency-key": "openapi-runtime-receive" },
-      body: JSON.stringify({ accessionCode: "ACC-OPENAPI-1", sampleType: "EDTA", expectedVersion: createdBody.data.items[0].version })
+      body: JSON.stringify({ sampleType: "EDTA", expectedVersion: createdBody.data.items[0].version })
     }), params(["diagnostic-items", itemId, "receive-sample"]));
     const receivedBody = await receive.json();
     const start = await POST(new Request(`http://localhost/api/v1/diagnostic-items/${itemId}/start-processing`, {

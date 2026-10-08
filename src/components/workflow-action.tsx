@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { ItemState, QueueItem, ReasonCode, ResultView, SessionRole } from "@cvg/contracts";
+import type { ItemState, QueueItem, ReasonCode, ResultView, SampleLabel, SessionRole } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { Icon } from "./ui-icons";
@@ -139,6 +139,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   const [notice, setNotice] = useState("");
   const [accessionCode, setAccessionCode] = useState("");
   const [sampleType, setSampleType] = useState("EDTA");
+  const [expectedSample, setExpectedSample] = useState<SampleLabel["sample"] | null>(null);
   const [narrative, setNarrative] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -155,6 +156,21 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   useEffect(() => {
     if (open && !reasonLoading) firstFieldNodeRef.current?.focus();
   }, [open, selectedAction, reasonLoading]);
+
+  // D8: a pre-assigned sample already carries the code printed on the label.
+  const receiving = selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT";
+  const expectedSampleId = receiving ? item.currentSampleId : undefined;
+  useEffect(() => {
+    if (!open || !expectedSampleId) return;
+    let active = true;
+    void apiFetch<SampleLabel>(`/samples/${expectedSampleId}/label`).then((label) => {
+      if (!active || label.sample.status !== "EXPECTED") return;
+      setExpectedSample(label.sample);
+      // Keep what the user already typed; the catalog type replaces only the untouched default.
+      setSampleType((current) => current !== "EDTA" ? current : label.sample.sampleType === "A definir" ? "" : label.sample.sampleType);
+    }).catch(() => { /* the expected code is a convenience; the server still validates the receipt */ });
+    return () => { active = false; };
+  }, [open, expectedSampleId]);
 
   const reasonType = selectedAction === "REQUEST_RECOLLECTION" ? "RECOLLECTION" : selectedAction === "CANCEL" ? "CANCEL" : selectedAction === "REJECT" ? "REJECT" : selectedAction === "AMEND" ? "AMEND" : undefined;
   useEffect(() => {
@@ -199,8 +215,8 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
       setPendingAction(null);
       return;
     }
-    if ((selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT") && !accessionCode.trim()) {
-      setError("Informe o accession da amostra.");
+    if (receiving && !sampleType.trim() && (!expectedSample || expectedSample.sampleType === "A definir")) {
+      setError("Informe o tipo de amostra.");
       setPendingAction(null);
       return;
     }
@@ -232,7 +248,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
         await apiFetch(`/results/${item.currentResultId}/amend`, { method: "POST", body: JSON.stringify({ narrative: narrative.trim(), content: view.version.content, conclusion: view.version.conclusion, reason: reasons.find((reason) => reason.code === reasonCode)?.label, critical: view.version.critical, expectedVersion: view.result.version }) });
       } else if (selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT") {
         const path = selectedAction === "RECEIVE_SAMPLE" ? `/diagnostic-items/${item.id}/receive-sample` : `/samples/${item.currentSampleId}/receive-replacement`;
-        await apiFetch(path, { method: "POST", body: JSON.stringify({ accessionCode: accessionCode.trim().toUpperCase(), sampleType, expectedVersion: item.version }) });
+        await apiFetch(path, { method: "POST", body: JSON.stringify({ ...(accessionCode.trim() ? { accessionCode: accessionCode.trim().toUpperCase() } : {}), ...(sampleType.trim() ? { sampleType: sampleType.trim() } : {}), expectedVersion: item.version }) });
       } else if (selectedAction === "SCHEDULE") {
         await apiFetch(`/diagnostic-items/${item.id}/schedule`, { method: "POST", body: JSON.stringify({ startsAt: apiDateTime(startsAt), endsAt: apiDateTime(endsAt), resource: resource.trim(), expectedVersion: item.version }) });
       } else if (selectedAction === "RESCHEDULE" && item.procedureId && item.procedureVersion) {
@@ -292,8 +308,9 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
       {open && selectedAction && <form id={formId} className="workflow-form" aria-label={actionLabel[selectedAction]} onSubmit={(event) => void submit(event)}>
         {reasonType && <h3>{actionLabel[selectedAction]}</h3>}
         {selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT" ? <>
-          <label>Accession<input ref={setFirstFieldRef} value={accessionCode} onChange={(event) => setAccessionCode(event.target.value)} autoComplete="off" placeholder="ACC-2026-001" /></label>
-          <label>Tipo de amostra<input value={sampleType} onChange={(event) => setSampleType(event.target.value)} /></label>
+          {expectedSample && <p className="workflow-expected-sample">Amostra esperada: <strong className="mono">{expectedSample.accessionCode}</strong></p>}
+          <label>Accession<input ref={setFirstFieldRef} value={accessionCode} onChange={(event) => setAccessionCode(event.target.value)} autoComplete="off" placeholder={expectedSample ? "Leia o código de barras ou deixe em branco" : "Leia o código de barras ou digite o accession"} /></label>
+          <label>Tipo de amostra<input value={sampleType} onChange={(event) => setSampleType(event.target.value)} placeholder="EDTA" /></label>
         </> : null}
         {selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE" ? <>
           <label>Início<input ref={setFirstFieldRef} type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>

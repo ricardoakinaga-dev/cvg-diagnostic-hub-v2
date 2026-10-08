@@ -2,7 +2,7 @@ import type { ArchivedCollection, ClinicalArchivePurgeSummary, ClinicalArchiveQu
 import type { ClinicalArchivePlan } from "../domain/clinical-archive";
 import type { EntityQueryable } from "./postgres-entity-state";
 
-/** Narrow SQL for the clinical archive (migration 016). Rows are written in the writer's transaction. */
+/** Narrow SQL for the clinical archive (migration 017). Rows are written in the writer's transaction. */
 const INSERT_BATCH_SIZE = 2_000;
 /** Bounds one purge transaction; the daily job simply continues on its next run. */
 export const PURGE_REQUEST_LIMIT = 5_000;

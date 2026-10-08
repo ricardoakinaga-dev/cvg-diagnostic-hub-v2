@@ -78,8 +78,10 @@ export type PatientCreateResult = {
 };
 
 export interface ReceiveSampleInput extends CommandMeta {
-  accessionCode: string;
-  sampleType: string;
+  /** Scanned or typed code; optional when the item has a system-generated sample. */
+  accessionCode?: string;
+  /** Defaults to the expected sample's type (catalog sampleType). */
+  sampleType?: string;
 }
 
 export interface RecollectionInput extends CommandMeta {
@@ -145,6 +147,7 @@ export interface DiagnosticServiceCreateInput extends CommandMeta {
   departmentCode: string;
   workflowType: WorkflowType;
   requiresSample: boolean;
+  sampleType?: string;
   requiresSchedule: boolean;
   allowsAttachment: boolean;
   resultSchema: DiagnosticService["resultSchema"];
@@ -157,11 +160,28 @@ export interface DiagnosticServicePatchInput extends CommandMeta {
   departmentCode?: string;
   workflowType?: WorkflowType;
   requiresSample?: boolean;
+  sampleType?: string | null;
   requiresSchedule?: boolean;
   active?: boolean;
   allowsAttachment?: boolean;
   resultSchema?: DiagnosticService["resultSchema"];
   slaHours?: Record<Priority, number>;
+}
+
+export interface CatalogImportInput extends CommandMeta {
+  services: string;
+  analytes?: string;
+  dryRun?: boolean;
+}
+
+export type CatalogImportAction = "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
+export interface CatalogImportRow { line: number; code: string; action: CatalogImportAction; changes?: string[]; errors?: string[] }
+export interface CatalogImportSummary { create: number; update: number; unchanged: number; error: number }
+export interface CatalogImportReport { rows: CatalogImportRow[]; summary: CatalogImportSummary }
+
+export interface CatalogImportResult extends CatalogImportReport {
+  applied: boolean;
+  dryRun: boolean;
 }
 
 export interface ReasonCodeCreateInput extends CommandMeta {
@@ -222,6 +242,18 @@ export interface ManagedUser {
   active: boolean;
   createdAt: string;
   version: number;
+  onCall: boolean;
+  alertContactReady: boolean;
+}
+
+export interface UserOnCallUpdateInput extends CommandMeta {
+  onCall: boolean;
+  reason?: string;
+}
+
+export interface AlertContactUpdateInput {
+  whatsappPhone: string | null;
+  consent?: boolean;
 }
 
 export interface ManagementOverview {
@@ -410,6 +442,8 @@ export interface RequestView extends DiagnosticRequest {
   patient: StoreState["patients"][number];
   encounter: StoreState["encounters"][number];
   items: Array<DiagnosticItem & { service: DiagnosticService; procedureVersion?: number }>;
+  /** Samples linked to the visible items, including system-generated EXPECTED ones. */
+  samples: Sample[];
 }
 
 export interface ResultView {
@@ -426,6 +460,16 @@ export interface ItemView {
   request: DiagnosticRequest;
   patient: StoreState["patients"][number];
   service: DiagnosticService;
+}
+
+export interface SampleLabelView {
+  sample: { id: string; accessionCode: string; sampleType: string; status: Sample["status"] };
+  request: { id: string; requestCode: string; priority: DiagnosticRequest["priority"] };
+  patient: { id: string; displayName: string; species: string; externalId: string };
+  services: Array<{ code: string; name: string }>;
+  encounter: { externalId: string };
+  requestedAt: string;
+  label: { widthMm: number; heightMm: number; barcode: { symbology: "code128"; modules: number; bars: Array<{ x: number; width: number }> } };
 }
 
 export type SampleCommandResult = { sample: Sample; items: DiagnosticItem[]; request: RequestView };
@@ -478,7 +522,7 @@ export interface PatientWorkspaceItemContext {
   attachments: PatientWorkspaceAttachmentSummary[];
 }
 
-export type PatientWorkspaceRequestView = Omit<RequestView, "items"> & {
+export type PatientWorkspaceRequestView = Omit<RequestView, "items" | "samples"> & {
   items: Array<RequestView["items"][number] & { workspaceContext: PatientWorkspaceItemContext }>;
 };
 

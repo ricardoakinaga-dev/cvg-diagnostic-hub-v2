@@ -109,7 +109,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("016_clinical_archive");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("017_clinical_archive");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -171,7 +171,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["016_clinical_archive"],
+      applied: ["017_clinical_archive"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);
@@ -587,9 +587,22 @@ describe("015 runtime entity rows migration", () => {
   });
 });
 
-describe("016 clinical archive migration", () => {
+describe("016 outbox WhatsApp route migration", () => {
+  it("widens only the notification route check and keeps the previous app's rows valid", async () => {
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations/016_outbox_whatsapp_route.sql"), "utf8");
+
+    expect(isCoordinatedCutover(sql)).toBe(false);
+    expect(sql).toMatch(/DROP CONSTRAINT outbox_messages_route_consistency_check;/);
+    expect(sql).toMatch(/consumer_type = 'NOTIFICATION_DELIVERY' AND routing_key IN \('notification\.in_app', 'notification\.whatsapp'\)/);
+    expect(sql).toMatch(/consumer_type = 'DOMAIN_EVENT' AND routing_key LIKE 'domain\.%'/);
+    expect(sql).toMatch(/UPDATE relational_schema_markers SET schema_version = '016_outbox_whatsapp_route'/i);
+    expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE|DELETE FROM|UPDATE outbox_messages)\b/i);
+  });
+});
+
+describe("017 clinical archive migration", () => {
   it("is additive, outside the runtime aggregate, and guarded by the entity collection list", async () => {
-    const sql = await readFile(path.resolve(process.cwd(), "db/migrations/016_clinical_archive.sql"), "utf8");
+    const sql = await readFile(path.resolve(process.cwd(), "db/migrations/017_clinical_archive.sql"), "utf8");
 
     expect(isCoordinatedCutover(sql)).toBe(false);
     expect(sql).toMatch(/CREATE TABLE cvg_clinical_archive_batches/i);
@@ -598,7 +611,7 @@ describe("016 clinical archive migration", () => {
     expect(sql).toMatch(/CREATE INDEX cvg_clinical_archive_request_idx ON cvg_clinical_archive \(request_id\)/i);
     expect(sql).toMatch(/CREATE INDEX cvg_clinical_archive_archived_at_idx ON cvg_clinical_archive \(archived_at\)/i);
     expect(sql).toMatch(/purge_after timestamptz/i);
-    expect(sql).toMatch(/UPDATE relational_schema_markers SET schema_version = '016_clinical_archive'/i);
+    expect(sql).toMatch(/UPDATE relational_schema_markers SET schema_version = '017_clinical_archive'/i);
     expect(sql).not.toMatch(/\b(?:DROP TABLE|DROP COLUMN|TRUNCATE TABLE|DELETE FROM|ALTER TABLE cvg_runtime)\b/i);
   });
 });

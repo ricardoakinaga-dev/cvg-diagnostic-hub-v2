@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { outboxEnvelopeFor, OUTBOX_NOTIFICATION_ROUTING_KEY, type Notification, type OutboxMessage, type StateStore, type StoreState } from "../domain/models";
+import { outboxEnvelopeFor, OUTBOX_NOTIFICATION_ROUTING_KEY, OUTBOX_WHATSAPP_ROUTING_KEY, type Notification, type NotificationChannelDelivery, type OutboxMessage, type StateStore, type StoreState } from "../domain/models";
 
 class OutboxApiError extends Error {
   public readonly code: string;
@@ -31,6 +31,8 @@ export interface OutboxDeliveryConfirmation {
   durability: OutboxSinkDurability;
   sink: string;
   deliveryId: string;
+  /** PROD-402: outcome of an external channel; the message is settled even when the channel skipped or refused it. */
+  channel?: { status: "SENT" | "SKIPPED" | "FAILED"; messageId?: string; errorCode?: string };
 }
 
 export interface OutboxSink {
@@ -62,6 +64,8 @@ export interface OutboxSinkConfiguration {
 export interface OutboxSinkFactoryOptions {
   logger?: (line: string) => void;
   sql?: OutboxSqlExecutor;
+  /** PROD-402: consumes notification.whatsapp next to the in-app PostgreSQL delivery. */
+  whatsapp?: OutboxSink;
 }
 
 export interface PostgresOutboxSinkOptions {
@@ -248,7 +252,26 @@ export function createOutboxSinkFromEnv(
     return createSafeConsoleSink(options.logger, environment);
   }
   if (!options.sql) throw new Error("OUTBOX_POSTGRES_EXECUTOR_REQUIRED: o sink PostgreSQL exige um executor SQL conectado.");
-  return createPostgresOutboxSink(options.sql, { channel: configuration.channel });
+  const postgres = createPostgresOutboxSink(options.sql, { channel: configuration.channel });
+  return options.whatsapp ? routeWhatsAppAlongside(postgres, options.whatsapp) : postgres;
+}
+
+/** One worker, two durable consumers: the in-app projection and the WhatsApp channel. */
+function routeWhatsAppAlongside(inApp: ConfiguredOutboxSink, whatsapp: OutboxSink): ConfiguredOutboxSink {
+  return {
+    kind: inApp.kind,
+    durability: inApp.durability,
+    supportsRoute: (message) => isWhatsAppRoute(message) || postgresSupportsRoute(message),
+    publish: (message) => isWhatsAppRoute(message) ? whatsapp.publish(message) : inApp.publish(message)
+  };
+}
+
+export function isWhatsAppRoute(message: OutboxMessage): boolean {
+  try {
+    return outboxEnvelopeFor(message.eventType, message.payload, message.consumerType, message.routingKey).routingKey === OUTBOX_WHATSAPP_ROUTING_KEY;
+  } catch {
+    return false;
+  }
 }
 
 export function createPostgresOutboxSink(
@@ -308,7 +331,7 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
       routedMessage = { ...claimed.message, ...outboxEnvelopeFor(claimed.message.eventType, claimed.message.payload, claimed.message.consumerType, claimed.message.routingKey) };
       const confirmation = await sink.publish(routedMessage);
       assertDeliveryConfirmation(confirmation, allowSyntheticDelivery);
-      const finished = await finishMessage(store, routedMessage, claimed.leaseMs, (message) => ({ ...message, status: "PROCESSED", lockedAt: undefined, workerId: undefined, claimToken: undefined, lastError: undefined }), now());
+      const finished = await finishMessage(store, routedMessage, claimed.leaseMs, (message) => ({ ...message, status: "PROCESSED", lockedAt: undefined, workerId: undefined, claimToken: undefined, lastError: undefined }), now(), confirmation);
       if (finished) summary.processed += 1;
     } catch (error) {
       const permanentlyFailed = claimed.message.attempts >= maxAttempts;
@@ -328,7 +351,7 @@ export async function processOutboxBatch(store: StateStore, sink: OutboxSink, op
         discardedAt: undefined,
         discardedBy: undefined,
         discardReason: undefined
-      }), now());
+      }), now(), undefined, safeMessage);
       if (!finished) continue;
       if (permanentlyFailed) summary.failed += 1;
       else summary.retried += 1;
@@ -503,7 +526,7 @@ async function claimNext(store: StateStore, currentTime: Date, workerId: string,
   });
 }
 
-async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs: number, update: (message: OutboxMessage) => OutboxMessage, currentTime: Date): Promise<boolean> {
+async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs: number, update: (message: OutboxMessage) => OutboxMessage, currentTime: Date, confirmation?: OutboxDeliveryConfirmation, failure?: string): Promise<boolean> {
   return store.outboxTransaction({ kind: "message", id: claimed.id }, (state) => {
     const current = state.outbox.find((message) => message.id === claimed.id);
     const ownsUnexpiredLease = current
@@ -515,6 +538,7 @@ async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs:
     if (!ownsUnexpiredLease) return { state, result: false };
     const updatedMessage = update(claimed);
     const outbox = state.outbox.map((message) => message.id === claimed.id ? updatedMessage : message);
+    if (isWhatsAppRoute(claimed)) return { state: recordWhatsAppOutcome({ ...state, outbox }, claimed, updatedMessage, currentTime, confirmation, failure), result: true };
     const notificationId = typeof claimed.payload.notificationId === "string" ? claimed.payload.notificationId : undefined;
     const deliveryNotification = notificationId ? state.notifications.find((notification) => notification.id === notificationId && notification.state === "PENDING") : undefined;
     const nextNotificationState: Notification["state"] | undefined = updatedMessage.status === "PROCESSED" ? "DELIVERED" : updatedMessage.status === "FAILED" ? "FAILED" : undefined;
@@ -526,6 +550,26 @@ async function finishMessage(store: StateStore, claimed: OutboxMessage, leaseMs:
       : state.auditEvents;
     return { state: { ...state, outbox, notifications, auditEvents }, result: true };
   });
+}
+
+/**
+ * The WhatsApp alert annotates its notification without bumping the version: an acknowledgement prepared
+ * against the in-app notification must not conflict with the delivery report of the redundant channel.
+ */
+function recordWhatsAppOutcome(state: StoreState, claimed: OutboxMessage, updated: OutboxMessage, currentTime: Date, confirmation?: OutboxDeliveryConfirmation, failure?: string): StoreState {
+  const notificationId = typeof claimed.payload.notificationId === "string" ? claimed.payload.notificationId : undefined;
+  const notification = notificationId ? state.notifications.find((entry) => entry.id === notificationId) : undefined;
+  if (!notification || (updated.status !== "PROCESSED" && updated.status !== "FAILED")) return state;
+  const updatedAt = currentTime.toISOString();
+  const whatsapp: NotificationChannelDelivery = updated.status === "FAILED"
+    ? { status: "FAILED", updatedAt, errorCode: failure?.split(":")[0] ?? "OUTBOX_SINK_FAILED" }
+    : { status: confirmation?.channel?.status ?? "SENT", updatedAt, ...(confirmation?.channel?.messageId ? { messageId: confirmation.channel.messageId } : {}), ...(confirmation?.channel?.errorCode ? { errorCode: confirmation.channel.errorCode } : {}) };
+  const eventType = { SENT: "CriticalAlertWhatsAppSent", SKIPPED: "CriticalAlertWhatsAppSkipped", FAILED: "CriticalAlertWhatsAppFailed" }[whatsapp.status as "SENT" | "SKIPPED" | "FAILED"];
+  return {
+    ...state,
+    notifications: state.notifications.map((entry) => entry.id === notification.id ? { ...entry, whatsapp } : entry),
+    auditEvents: [...state.auditEvents, { id: `audit-${claimed.id}-whatsapp-${whatsapp.status.toLowerCase()}-${randomUUID()}`, eventType, entityType: "Notification", entityId: notification.id, previousState: notification.whatsapp?.status, newState: whatsapp.status, correlationId: claimed.correlationId, metadata: { outboxId: claimed.id, channel: "WHATSAPP", ...(whatsapp.errorCode ? { errorCode: whatsapp.errorCode } : {}) }, occurredAt: updatedAt }]
+  };
 }
 
 function normalizeError(error: unknown): string {

@@ -63,7 +63,8 @@ describe("PatientDiagnostics workspace", () => {
     expect(screen.getByText("UTI 1 · Box 03")).toBeInTheDocument();
     expect(screen.getByText("Internação")).toBeInTheDocument();
     expect(screen.getAllByText("Revisar resultado", { exact: true })).toHaveLength(2);
-    expect(screen.getByText("Amostra ACC-1 · Recebida")).toBeInTheDocument();
+    expect(screen.getByText(/Amostra ACC-1 · Recebida/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Etiqueta da amostra ACC-1" })).toHaveAttribute("href", "/samples/sample-1/label");
     expect(screen.getByRole("link", { name: /Resultado liberado · revisar/ })).toHaveAttribute("href", "/results/result-1");
     expect(screen.getByText("laudo.pdf")).toBeInTheDocument();
     expect(screen.getByText("Resultado liberado", { exact: true })).toBeInTheDocument();

@@ -8,6 +8,8 @@ import { clinicalArchiveConfig, createClinicalArchiveSchedule, runScheduledClini
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
 import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
+import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
+import { createWhatsAppAlertResolver, createWhatsAppOutboxSink } from "../src/server/operations/whatsapp-outbox-sink";
 
 const once = process.argv.includes("--once") || process.env.OUTBOX_ONCE === "true";
 const intervalMs = positiveInteger(process.env.OUTBOX_INTERVAL_MS, 5_000);
@@ -149,9 +151,13 @@ function createWorkerSink(): WorkerSink {
           }
         }
       : undefined;
+    // PROD-402: an enabled but incomplete WhatsApp configuration stops the worker at startup.
+    const whatsapp = createWhatsAppOutboxSink(whatsAppCloudConfigFromEnv(process.env), async (notificationId, recipientUserId) =>
+      createWhatsAppAlertResolver(await getRuntimeStoreAsync())(notificationId, recipientUserId));
     const sink = createOutboxSinkFromEnv(process.env, {
       logger: (line) => console.log(line),
-      sql
+      sql,
+      whatsapp
     });
     return {
       sink,

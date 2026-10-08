@@ -3,7 +3,7 @@
 -- database, until the legal retention period (configured later) allows a purge.
 -- Additive: the archive lives outside cvg_runtime_entities and the aggregate
 -- contract, so no cutover is needed. Self-contained: it does not depend on any
--- migration after 015.
+-- migration after 016_outbox_whatsapp_route (it only reads cvg_runtime_entity_collections from 015).
 
 CREATE TABLE cvg_clinical_archive_batches (
   id text NOT NULL,
@@ -38,7 +38,7 @@ CREATE INDEX cvg_clinical_archive_archived_at_idx ON cvg_clinical_archive (archi
 -- Per-patient consultation reads the request rows only.
 CREATE INDEX cvg_clinical_archive_patient_idx ON cvg_clinical_archive ((data->>'patientId'), (data->>'updatedAt') DESC) WHERE collection = 'requests';
 
-UPDATE relational_schema_markers SET schema_version = '016_clinical_archive' WHERE marker_key = 'RELATIONAL_CLINICAL_CORE_EXPAND_V1';
+UPDATE relational_schema_markers SET schema_version = '017_clinical_archive' WHERE marker_key = 'RELATIONAL_CLINICAL_CORE_EXPAND_V1';
 
 COMMENT ON TABLE cvg_clinical_archive IS 'Clinical entities of requests archived after the active window (D5). One row per entity, grouped by request_id; position keeps the original collection order. Removed only by the purge job after the legal retention period.';
 COMMENT ON TABLE cvg_clinical_archive_batches IS 'One row per archive run: cutoff, counts and actor. The audit trail records the batch id, never the request ids.';

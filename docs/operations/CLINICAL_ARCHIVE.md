@@ -85,7 +85,7 @@ Depois do expurgo confirmado no banco, o job chama `FileStore.remove` para cada 
 
 ## 7. Banco, papéis e backup
 
-- Migration `016_clinical_archive` cria `cvg_clinical_archive` e `cvg_clinical_archive_batches` (aditiva, sem cutover; o registro de versões do runtime avança para ela). O papel `cvg_runtime` recebe `SELECT`, `INSERT` e `DELETE` nas duas tabelas e **não** pode `UPDATE`, `TRUNCATE`, `ALTER` nem `DROP` (`db:roles`; teste de privilégios negativos em `tests/postgres`).
+- Migration `017_clinical_archive` cria `cvg_clinical_archive` e `cvg_clinical_archive_batches` (aditiva, sem cutover; o registro de versões do runtime avança para ela). O papel `cvg_runtime` recebe `SELECT`, `INSERT` e `DELETE` nas duas tabelas e **não** pode `UPDATE`, `TRUNCATE`, `ALTER` nem `DROP` (`db:roles`; teste de privilégios negativos em `tests/postgres`).
 - As linhas arquivadas fazem parte do banco: entram no `pg_dump` do backup diário e na restauração ([BACKUP_RESTORE](BACKUP_RESTORE.md)).
 - O runtime relacional em sombra (`createWithRelationalClinicalCore`) não suporta arquivamento nem expurgo e recusa as chamadas.
 

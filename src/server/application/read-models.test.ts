@@ -173,7 +173,7 @@ describe("authorized read models", () => {
     await expect(service.listQueuePage(lab, "LABORATORY", { cursor: Buffer.from("invalid").toString("base64url") })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     expect((await service.dashboard(manager)).totalActive).toBe(0);
 
-    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-READ-1", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "read-model-receive" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "read-model-receive" });
     await service.requestRecollection(lab, received.sample.id, { reasonCode: "HEMOLYZED", expectedVersion: received.items[0].version, idempotencyKey: "read-model-recollect" });
     expect((await service.listNotifications(actor, "ACTIONABLE")).items).toHaveLength(1);
     expect((await service.listNotifications(actor, "UNREAD")).items).toHaveLength(1);
@@ -247,7 +247,7 @@ describe("authorized read models", () => {
 
     const labRequest = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "action-lab-request" });
     expect((await service.listQueue(lab, "LABORATORY"))[0].nextAction).toBe("Receber amostra");
-    const received = await service.receiveSample(lab, [labRequest.items[0].id], { accessionCode: "ACC-ACTION-1", sampleType: "EDTA", expectedVersion: labRequest.items[0].version, idempotencyKey: "action-receive" });
+    const received = await service.receiveSample(lab, [labRequest.items[0].id], { sampleType: "EDTA", expectedVersion: labRequest.items[0].version, idempotencyKey: "action-receive" });
     expect((await service.listQueue(lab, "LABORATORY"))[0].nextAction).toBe("Iniciar processamento");
     await service.startProcessing(lab, labRequest.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "action-start" });
     expect((await service.listQueue(lab, "LABORATORY"))[0].nextAction).toBe("Registrar resultado");
@@ -279,7 +279,7 @@ describe("authorized read models", () => {
     if (!vet || !lab) throw new Error("fixture actors missing");
 
     const request = await service.createRequest(vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "dashboard-new-result-request" });
-    const received = await service.receiveSample(lab, [request.items[0].id], { accessionCode: "ACC-DASH-NEW", sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "dashboard-new-result-receive" });
+    const received = await service.receiveSample(lab, [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "dashboard-new-result-receive" });
     const started = await service.startProcessing(lab, request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "dashboard-new-result-start" });
     const draft = await service.createResultDraft(lab, request.items[0].id, { narrative: "Dashboard", content: syntheticHemogramContent(), expectedVersion: started.item.version, idempotencyKey: "dashboard-new-result-draft" });
     const released = await service.releaseResult(lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "dashboard-new-result-release" });
