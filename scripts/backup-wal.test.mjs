@@ -462,9 +462,8 @@ test("ship-offsite.sh defines the offsitecrypt remote from the passphrase files,
   });
   assert.equal(result.status, 0, result.stderr);
   // The variables the script exports are what rclone sees: type crypt over the wrapped remote, obscured passphrases.
-  const probe = spawnSync("sh", ["-c", `. ${path.join(root, "deploy/backup/secrets-env.sh")}; configure_offsite_crypt; env | grep '^RCLONE_CONFIG_OFFSITECRYPT_' | sort`], {
-    encoding: "utf8", env: { PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_CRYPT_REMOTE: "s3:cvg-offsite/hospital", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password"), OFFSITE_CRYPT_SALT_FILE: path.join(f.dir, "crypt_salt") }
-  });
+  const helpersDir = path.join(root, "deploy/backup");
+  const probe = sh("scripts/test-helpers/secrets-env-probe.sh", ["configure"], { PATH: `${f.bin}:${process.env.PATH}`, BACKUP_HELPERS_DIR: helpersDir, OFFSITE_CRYPT_REMOTE: "s3:cvg-offsite/hospital", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password"), OFFSITE_CRYPT_SALT_FILE: path.join(f.dir, "crypt_salt") });
   assert.equal(probe.status, 0, probe.stderr);
   assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_TYPE=crypt/);
   assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_REMOTE=s3:cvg-offsite\/hospital/);
@@ -472,10 +471,10 @@ test("ship-offsite.sh defines the offsitecrypt remote from the passphrase files,
   assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_PASSWORD2=obscured-salt-from-the-vault/);
   assert.doesNotMatch(probe.stdout, /OFFSITE_CRYPT_PASSWORD=passphrase/);
   // Missing wrapped remote or unreadable passphrase file: refused before any copy.
-  const missing = spawnSync("sh", ["-c", `. ${path.join(root, "deploy/backup/secrets-env.sh")}; configure_offsite_crypt`], { encoding: "utf8", env: { PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password") } });
+  const missing = sh("scripts/test-helpers/secrets-env-probe.sh", ["configure"], { PATH: `${f.bin}:${process.env.PATH}`, BACKUP_HELPERS_DIR: helpersDir, OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password") });
   assert.notEqual(missing.status, 0);
   assert.match(missing.stderr, /OFFSITE_CRYPT_REMOTE missing/);
-  const unreadable = spawnSync("sh", ["-c", `. ${path.join(root, "deploy/backup/secrets-env.sh")}; configure_offsite_crypt`], { encoding: "utf8", env: { PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_CRYPT_REMOTE: "s3:x", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "absent") } });
+  const unreadable = sh("scripts/test-helpers/secrets-env-probe.sh", ["configure"], { PATH: `${f.bin}:${process.env.PATH}`, BACKUP_HELPERS_DIR: helpersDir, OFFSITE_CRYPT_REMOTE: "s3:x", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "absent") });
   assert.notEqual(unreadable.status, 0);
   assert.match(unreadable.stderr, /SECRET_FILE_UNREADABLE:OFFSITE_CRYPT_PASSWORD/);
   rmSync(f.dir, { recursive: true, force: true });
@@ -484,19 +483,18 @@ test("ship-offsite.sh defines the offsitecrypt remote from the passphrase files,
 test("backup-loop.sh and ship-offsite.sh read *_FILE secrets and refuse a conflicting pair (PROD-302)", () => {
   const dir = temp();
   writeFileSync(path.join(dir, "pw"), "runtime-password-from-file\n");
-  const helper = path.join(root, "deploy/backup/secrets-env.sh");
-  const loaded = spawnSync("sh", ["-c", `. ${helper}; load_file_secrets PGPASSWORD PGBACKUP_PASSWORD && printf '%s|%s' "$PGPASSWORD" "\${PGBACKUP_PASSWORD:-unset}"`], { encoding: "utf8", env: { PATH: process.env.PATH, PGPASSWORD_FILE: path.join(dir, "pw"), PGBACKUP_PASSWORD_FILE: "" } });
+  const helpersDir = path.join(root, "deploy/backup");
+  const loaded = sh("scripts/test-helpers/secrets-env-probe.sh", ["load", "PGPASSWORD", "PGBACKUP_PASSWORD"], { BACKUP_HELPERS_DIR: helpersDir, PGPASSWORD_FILE: path.join(dir, "pw"), PGBACKUP_PASSWORD_FILE: "" });
   assert.equal(loaded.status, 0, loaded.stderr);
-  assert.equal(loaded.stdout, "runtime-password-from-file|unset");
-  const conflict = spawnSync("sh", ["-c", `. ${helper}; load_file_secrets PGPASSWORD`], { encoding: "utf8", env: { PATH: process.env.PATH, PGPASSWORD: "other", PGPASSWORD_FILE: path.join(dir, "pw") } });
+  assert.match(loaded.stdout, /^PGPASSWORD=runtime-password-from-file$/m);
+  assert.doesNotMatch(loaded.stdout, /^PGBACKUP_PASSWORD=/m, "an empty NAME_FILE leaves NAME unset");
+  const conflict = sh("scripts/test-helpers/secrets-env-probe.sh", ["load", "PGPASSWORD"], { BACKUP_HELPERS_DIR: helpersDir, PGPASSWORD: "other", PGPASSWORD_FILE: path.join(dir, "pw") });
   assert.notEqual(conflict.status, 0);
   assert.match(conflict.stderr, /SECRET_CONFLICT:PGPASSWORD/);
   // backup-loop.sh itself: the password file satisfies the mandatory PGPASSWORD.
-  const loop = spawnSync("sh", ["-c", `. "${path.join(root, "deploy/backup/backup-loop.sh")}"; printf '%s' "$PGPASSWORD"`], {
-    encoding: "utf8", env: { PATH: process.env.PATH, BACKUP_LOOP_SOURCE_ONLY: "1", BACKUP_HELPERS_DIR: path.join(root, "deploy/backup"), PGHOST: "x", PGUSER: "x", PGPASSWORD_FILE: path.join(dir, "pw"), PGDATABASE: "x", BACKUP_DIRECTORY: path.join(dir, "b"), WAL_ARCHIVE_DIRECTORY: path.join(dir, "w") }
-  });
+  const loop = sh("scripts/test-helpers/secrets-env-probe.sh", ["backup-loop"], { BACKUP_LOOP_SOURCE_ONLY: "1", BACKUP_HELPERS_DIR: helpersDir, PGHOST: "x", PGUSER: "x", PGPASSWORD_FILE: path.join(dir, "pw"), PGDATABASE: "x", BACKUP_DIRECTORY: path.join(dir, "b"), WAL_ARCHIVE_DIRECTORY: path.join(dir, "w") });
   assert.equal(loop.status, 0, loop.stderr);
-  assert.equal(loop.stdout, "runtime-password-from-file");
+  assert.match(loop.stdout, /^PGPASSWORD=runtime-password-from-file$/m);
   rmSync(dir, { recursive: true, force: true });
 });
 
