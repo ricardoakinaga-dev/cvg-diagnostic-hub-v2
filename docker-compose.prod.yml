@@ -158,8 +158,13 @@ services:
     restart: "no"
 
   # One-shot: creates the first ADMIN on an empty database. Refuses to run
-  # against an initialized database. Not started by `up`.
+  # against an initialized database. Not started by `up`. Also runs the
+  # emergency reset-link command. Both print a single-use reset link, so the
+  # service has no log driver: the line reaches only the terminal of
+  # `docker compose run`, never a json-file on the host or a log collector.
   bootstrap:
+    logging:
+      driver: none
     image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
     profiles: ["bootstrap"]
     command: ["node_modules/.bin/tsx", "scripts/bootstrap-admin.ts"]

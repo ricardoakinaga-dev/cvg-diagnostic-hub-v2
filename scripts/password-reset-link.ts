@@ -7,7 +7,10 @@ async function main(): Promise<void> {
   const { email } = parseResetLinkArgs(process.argv.slice(2));
   const store = await getRuntimeStoreAsync();
   const { userId, resetUrl, expiresAt } = await issueResetLinkByEmail(store, email);
-  console.log(JSON.stringify({ event: "password_reset_link.issued", userId, resetUrl, expiresAt }));
+  // The JSON event carries no secret: the link goes to the operator on its own line (the Compose service has no log driver).
+  console.log(JSON.stringify({ event: "password_reset_link.issued", userId, expiresAt }));
+  console.log(`Link de redefinição (uso único, expira em ${expiresAt}):`);
+  console.log(resetUrl);
 }
 
 void main()

@@ -11,9 +11,11 @@ async function main(): Promise<void> {
     timezone: process.env.BOOTSTRAP_ADMIN_TIMEZONE
   });
   if (resetUrl) {
-    // The link is the only way in; it is printed once, expires and works a single time.
-    console.log(JSON.stringify({ event: "bootstrap.completed", adminId, resetUrl, expiresAt }));
-    console.log("Abra o link para definir a senha do administrador antes que ele expire; ele funciona uma única vez.");
+    // The link is the only way in; it is printed once, expires and works a single time. The JSON event carries no
+    // secret: the link goes to the operator on its own line (the Compose service has no log driver).
+    console.log(JSON.stringify({ event: "bootstrap.completed", adminId, expiresAt }));
+    console.log(`Abra o link para definir a senha do administrador antes de ${expiresAt}; ele funciona uma única vez:`);
+    console.log(resetUrl);
   } else {
     console.log(JSON.stringify({ event: "bootstrap.completed", adminId }));
     console.log("Remova BOOTSTRAP_ADMIN_PASSWORD do ambiente e do secret store após o primeiro login.");
