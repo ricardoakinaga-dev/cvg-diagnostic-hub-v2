@@ -110,8 +110,10 @@ describe("critical result policy", () => {
     expect(planCriticalEscalation(base, policy(), new Date("2026-09-05T10:14:59.999Z"))).toBeUndefined();
     const first = planCriticalEscalation(base, policy(), new Date("2026-09-05T10:15:00.000Z"));
     expect(first).toMatchObject({ level: 1, dueAt: "2026-09-05T10:15:00.000Z", idempotencyKey: "critical-escalation:notification-critical-1:1" });
-    expect(planCriticalEscalation({ ...base, escalationLevel: 1, lastEscalatedAt: first?.dueAt }, policy(), new Date("2026-09-05T10:30:00.000Z"))).toMatchObject({ level: 2 });
-    expect(planCriticalEscalation({ ...base, escalationLevel: 0, lastEscalatedAt: "2026-09-05T10:15:00.000Z" }, policy(), new Date("2026-09-05T10:30:00.000Z"))).toBeUndefined();
+    expect(planCriticalEscalation({ ...base, escalationLevel: 1 }, policy(), new Date("2026-09-05T10:29:59.999Z"))).toBeUndefined();
+    expect(planCriticalEscalation({ ...base, escalationLevel: 1 }, policy(), new Date("2026-09-05T10:30:00.000Z"))).toMatchObject({ level: 2 });
+    // AUD-01: a late worker that only reached level 1 at 10:40 owes level 2 (due 10:30) right away.
+    expect(planCriticalEscalation({ ...base, escalationLevel: 1 }, policy(), new Date("2026-09-05T10:40:00.000Z"))).toMatchObject({ level: 2, dueAt: "2026-09-05T10:30:00.000Z" });
     expect(planCriticalEscalation({ ...base, escalationLevel: 3 }, policy(), new Date("2026-09-05T12:00:00.000Z"))).toBeUndefined();
     expect(planCriticalEscalation({ ...base, state: "ACKNOWLEDGED" }, policy(), new Date("2026-09-05T12:00:00.000Z"))).toBeUndefined();
     expect(() => planCriticalEscalation({ ...base, escalationLevel: 99 }, policy(), new Date("2026-09-05T12:00:00.000Z"))).toThrow("CRITICAL_ESCALATION_LEVEL_INVALID");
