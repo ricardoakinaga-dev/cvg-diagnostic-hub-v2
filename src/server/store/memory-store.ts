@@ -5,7 +5,7 @@ import { outboxMetrics, outboxPage } from "../domain/outbox-read";
 import type { OutboxTransactionQuery } from "../domain/models";
 import { activityRowsAfterPrune, compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import { freezeState } from "./immutable-state";
-import { archiveAuditEvent, archiveEntries, archiveRows, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
+import { archiveAuditEvent, archiveEntries, assertBoundedArchiveQuery, archiveRows, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
 
 function cloneState(state: StoreState): StoreState {
   return structuredClone(state);
@@ -141,6 +141,7 @@ export class MemoryStore implements StateStore {
   }
 
   async readClinicalArchive(query: ClinicalArchiveQuery): Promise<ClinicalArchiveEntry[]> {
+    assertBoundedArchiveQuery(query);
     const state = await this.readState();
     const requests = new Set(this.archive
       .filter((row) => row.collection === "requests" && (query.patientId === undefined || row.data.patientId === query.patientId) && (query.requestId === undefined || row.requestId === query.requestId))

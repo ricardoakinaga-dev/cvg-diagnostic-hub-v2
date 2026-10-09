@@ -124,7 +124,9 @@ describe("clinical archive on disposable PostgreSQL (PROD-501)", () => {
       })]);
       expect((await store.readClinicalArchive({ limit: 10 })).map((entry) => entry.requestId)).toEqual(["request-old", "request-mel"]);
       expect((await store.readClinicalArchive({ limit: 1 })).map((entry) => entry.requestId)).toEqual(["request-old"]);
-      expect((await store.readClinicalArchive({})).map((entry) => entry.requestId)).toEqual(["request-old", "request-mel"]);
+      await expect(store.readClinicalArchive({})).rejects.toThrow("CLINICAL_ARCHIVE_QUERY_UNBOUNDED");
+      await expect(store.readClinicalArchive({ limit: 0 })).rejects.toThrow("CLINICAL_ARCHIVE_QUERY_INVALID_LIMIT");
+      expect((await store.readClinicalArchive({ patientId: "patient-mel" })).map((entry) => entry.requestId)).toEqual(["request-mel"]);
       expect((await store.readClinicalArchive({ requestId: "request-mel", limit: 5 })).map((entry) => entry.patientId)).toEqual(["patient-mel"]);
       expect(await store.readClinicalArchive({ patientId: "patient-mel-2", limit: 5 })).toEqual([]);
 

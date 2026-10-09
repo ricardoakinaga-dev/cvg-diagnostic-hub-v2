@@ -28,7 +28,7 @@ import {
 import { projectDurableNotificationRows } from "./postgres-notification-projection";
 import { readPostgresAuthorizationSnapshot } from "./postgres-authorization-read";
 import { prunePostgresSessionActivity, readPostgresSessionActivity, touchPostgresSessionActivity } from "./postgres-session-activity";
-import { archiveAuditEvent, archiveEntries, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
+import { archiveAuditEvent, archiveEntries, assertBoundedArchiveQuery, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
 import { insertClinicalArchive, purgeClinicalArchiveRows, readArchivedRequestRows, readClinicalArchiveRows } from "./postgres-clinical-archive";
 import { compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import {
@@ -286,6 +286,7 @@ export class PostgresStore implements StateStore {
   }
 
   async readClinicalArchive(query: ClinicalArchiveQuery): Promise<ClinicalArchiveEntry[]> {
+    assertBoundedArchiveQuery(query);
     return this.concurrent(async () => {
       const [rows, snapshot] = await Promise.all([readClinicalArchiveRows(this.pool, query), this.cache.read()]);
       return archiveEntries(rows, snapshot.state.services);
