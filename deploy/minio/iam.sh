@@ -54,7 +54,9 @@ fi
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 export MC_CONFIG_DIR="$work/mc"
-# Credentials go through the environment of mc, never through the command line (visible in `ps`).
+# The root credential goes through the environment of mc (MC_HOST_root), never through argv. The secret of the user
+# being created has to go in argv of `mc admin user add` (mc has no stdin form): it is visible in `ps` only inside this
+# single-use container, which runs read-only, without capabilities and exits right after.
 MC_HOST_root="$(printf 'http://%s:%s@%s' "$ROOT_USER" "$ROOT_PASSWORD" "${ENDPOINT#http://}")"
 case "$ENDPOINT" in https://*) MC_HOST_root="$(printf 'https://%s:%s@%s' "$ROOT_USER" "$ROOT_PASSWORD" "${ENDPOINT#https://}")" ;; esac
 export MC_HOST_root
@@ -80,13 +82,16 @@ mc --quiet admin policy create root cvg-app "$work/cvg-app.json" >/dev/null
 mc --quiet admin policy create root cvg-offsite "$work/cvg-offsite.json" >/dev/null
 
 ensure_user() { # name secret policy
-  if mc --quiet admin user info root "$1" >/dev/null 2>&1; then
-    # Rotation: the secret follows what the environment (or the secret file) says now.
-    mc --quiet admin user add root "$1" "$2" >/dev/null
-  else
-    mc --quiet admin user add root "$1" "$2" >/dev/null
-  fi
+  # Create or rotate: the secret follows what the environment (or the secret file) says now.
+  mc --quiet admin user add root "$1" "$2" >/dev/null
+  # `attach` fails when the policy is already attached; any other failure is caught by the check below, which reads
+  # the user back and refuses to finish unless the policy is really attached.
   mc --quiet admin policy attach root "$3" --user "$1" >/dev/null 2>&1 || true
+  attached="$(mc admin user info --json root "$1" 2>/dev/null | tr -d ' \n' | sed -n 's/.*"policyName":"\([^"]*\)".*/\1/p')"
+  case ",$attached," in
+    *",$3,"*) ;;
+    *) echo "{\"event\":\"storage_iam.refused\",\"reason\":\"policy $3 not attached to user $1 (attached: ${attached:-none})\"}" >&2; exit 1 ;;
+  esac
   mc --quiet admin user enable root "$1" >/dev/null
 }
 ensure_user "$APP_USER" "$APP_SECRET" cvg-app
