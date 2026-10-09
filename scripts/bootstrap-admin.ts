@@ -1,4 +1,7 @@
 import { bootstrapProductionDatabase } from "../src/server/store/production-bootstrap";
+import { loadFileSecrets } from "../src/server/security/file-secrets";
+// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
+loadFileSecrets();
 
 async function main(): Promise<void> {
   const connectionString = process.env.DATABASE_URL;

@@ -6,6 +6,9 @@
 //   npm run storage:init -- --verify     # verify only, never changes the bucket (except a probe object it removes)
 import { CreateBucketCommand, HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { hardenBucket, objectUrl, verifyBucket, type BucketHardeningOptions } from "../src/server/storage/bucket-hardening";
+import { loadFileSecrets } from "../src/server/security/file-secrets";
+// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
+loadFileSecrets();
 
 const endpoint = required(process.env.STORAGE_ENDPOINT, "STORAGE_ENDPOINT");
 const bucket = required(process.env.STORAGE_BUCKET, "STORAGE_BUCKET");

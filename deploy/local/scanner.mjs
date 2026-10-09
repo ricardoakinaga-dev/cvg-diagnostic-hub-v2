@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:https";
 import { createConnection } from "node:net";
 
-const apiKey = process.env.MALWARE_SCANNER_API_KEY;
+// PROD-302: the key may come from a Docker secret file (MALWARE_SCANNER_API_KEY_FILE); both set with different values is refused.
+const apiKeyFromFile = process.env.MALWARE_SCANNER_API_KEY_FILE ? readFileSync(process.env.MALWARE_SCANNER_API_KEY_FILE, "utf8").replace(/\r?\n$/, "") : undefined;
+if (apiKeyFromFile !== undefined && process.env.MALWARE_SCANNER_API_KEY && process.env.MALWARE_SCANNER_API_KEY !== apiKeyFromFile) {
+  throw new Error("SECRET_CONFLICT:MALWARE_SCANNER_API_KEY: set the variable or the file, not both.");
+}
+const apiKey = apiKeyFromFile ?? process.env.MALWARE_SCANNER_API_KEY;
 if (!apiKey || apiKey.length < 32) throw new Error("Scanner API key must contain 32 or more characters.");
 const expectedAuthorization = createHash("sha256").update(`Bearer ${apiKey}`).digest();
 const maxBytes = 25 * 1024 * 1024;

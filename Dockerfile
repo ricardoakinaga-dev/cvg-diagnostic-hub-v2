@@ -100,6 +100,6 @@ USER node
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=5 \
-  CMD ["node", "-e", "const headers = {'x-cvg-proxy-secret': process.env.TRUST_PROXY_SHARED_SECRET ?? '', 'x-forwarded-for': '127.0.0.1'}; Promise.all(['/api/v1/livez', '/api/v1/readyz'].map(async path => { const response = await fetch('http://127.0.0.1:3000' + path, {headers}); if (!response.ok) throw new Error(path + ':' + response.status); })).catch(() => process.exit(1))"]
+  CMD ["node", "-e", "const secret = process.env.TRUST_PROXY_SHARED_SECRET || (process.env.TRUST_PROXY_SHARED_SECRET_FILE ? require('fs').readFileSync(process.env.TRUST_PROXY_SHARED_SECRET_FILE, 'utf8').replace(/\\r?\\n$/, '') : ''); const headers = {'x-cvg-proxy-secret': secret, 'x-forwarded-for': '127.0.0.1'}; Promise.all(['/api/v1/livez', '/api/v1/readyz'].map(async path => { const response = await fetch('http://127.0.0.1:3000' + path, {headers}); if (!response.ok) throw new Error(path + ':' + response.status); })).catch(() => process.exit(1))"]
 
 CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
