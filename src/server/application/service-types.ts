@@ -197,7 +197,8 @@ export interface CatalogImportInput extends CommandMeta {
 }
 
 export type CatalogImportAction = "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
-export interface CatalogImportRow { line: number; code: string; action: CatalogImportAction; changes?: string[]; errors?: string[] }
+export interface CatalogImportRemovedAnalyte { code: string; label: string; required: boolean }
+export interface CatalogImportRow { line: number; code: string; action: CatalogImportAction; changes?: string[]; errors?: string[]; removedAnalytes?: CatalogImportRemovedAnalyte[] }
 export interface CatalogImportSummary { create: number; update: number; unchanged: number; error: number }
 export interface CatalogImportReport { rows: CatalogImportRow[]; summary: CatalogImportSummary }
 

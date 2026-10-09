@@ -122,4 +122,20 @@ describe("catalog import command (D10)", () => {
     await expect(service.importCatalog(admin, { services: SHEET, analytes: ANALYTES, idempotencyKey: "reuse" })).resolves.toMatchObject({ applied: true });
     await expect(service.importCatalog(admin, { services: SHEET, idempotencyKey: "reuse" })).rejects.toMatchObject({ code: "IDEMPOTENCY_KEY_REUSED" });
   });
+
+  it("AUD-07: a part that omits a previous analyte reports the removal in the dry run and in the applied report", async () => {
+    const { store, service, admin } = setup();
+    const services = [SERVICE_HEADER, "URINALYSIS;Urinálise;LABORATORY;LABORATORY;LABORATORY;sim;Urina;não;não;NUMERIC_PANEL;8;4;2;sim"].join("\n");
+    const part = (line: string) => [ANALYTE_HEADER, line].join("\n");
+    await service.importCatalog(admin, { services, analytes: part("URINALYSIS;FIRST;Primeiro;numerico;g/mL;sim;1;;;"), idempotencyKey: "v-part-1" });
+    const second = part("URINALYSIS;SECOND;Segundo;numerico;g/mL;sim;2;;;");
+    const dry = await service.importCatalog(admin, { services, analytes: second, dryRun: true, idempotencyKey: "v-part-dry" });
+    expect(dry.rows[0]).toMatchObject({ code: "URINALYSIS", action: "UPDATE", removedAnalytes: [{ code: "FIRST", label: "Primeiro", required: true }] });
+    expect(dry.rows[0]!.changes!.some((line) => /analitos removidos: FIRST \(obrigatório\)/.test(line))).toBe(true);
+    const applied = await service.importCatalog(admin, { services, analytes: second, idempotencyKey: "v-part-2" });
+    expect(applied.applied).toBe(true);
+    expect(applied.rows[0]).toMatchObject({ removedAnalytes: [{ code: "FIRST", label: "Primeiro", required: true }] });
+    const panel = store.getState().services.find((entry) => entry.code === "URINALYSIS")!.resultTemplate!;
+    expect(panel.analytes.map((analyte) => analyte.code)).toEqual(["SECOND"]);
+  });
 });
