@@ -34,6 +34,12 @@ test("formats the report table, outcome line and JSON summary", () => {
   assert.match(text, /\{"mode":"dry-run","create":1,"update":0,"unchanged":1,"error":1\}/);
   assert.equal(catalogImportExitCode(report), 1);
 
+  const losing = { rows: [{ line: 2, code: "URINALYSIS", action: "UPDATE" as const, changes: ["analitos removidos: FIRST (obrigatório)"], removedAnalytes: [{ code: "FIRST", label: "Primeiro", required: true }] }], summary: { create: 0, update: 1, unchanged: 0, error: 0 } };
+  const warned = formatCatalogImportReport(losing, false);
+  assert.match(warned, /analitos removidos: FIRST \(obrigatório\)/);
+  assert.match(warned, /Atenção: 1 exame perde analitos/);
+  assert.match(formatCatalogImportReport({ ...losing, rows: [...losing.rows, ...losing.rows] }, false), /Atenção: 2 exames perdem analitos/);
+
   const ok = { rows: [{ line: 2, code: "A", action: "UPDATE" as const, changes: ["nome: x → y"] }], summary: { create: 0, update: 1, unchanged: 0, error: 0 } };
   assert.match(formatCatalogImportReport(ok, false), /Use --apply para aplicar/);
   assert.match(formatCatalogImportReport({ ...ok, applied: true }, true), /Importação aplicada\.\n\{"mode":"apply"/);
