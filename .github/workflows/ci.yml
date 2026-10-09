@@ -15,7 +15,8 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    # Coverage (~9 min) plus the PostgreSQL suite and the log stack check: 10 to 15 min depending on the runner.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -48,6 +49,8 @@ jobs:
       - run: npm run validate:migrations
       # PROD-511: Prometheus config and alert rules valid, and every alert proven to fire.
       - run: npm run observability:check
+      # PROD-512: the log stack collects a selected project, finds a line by correlationId and serves it in Grafana.
+      - run: npm run logs:check
       - run: npm run security:scan
       # PROD-504: no personal data in tracked files, the client bundle or real logs.
       - run: npm run privacy:scan
@@ -115,7 +118,7 @@ jobs:
   perf-postgres:
     name: Real HTTP/PostgreSQL/SSE benchmark
     runs-on: ubuntu-24.04
-    timeout-minutes: 15
+    timeout-minutes: 25
     services:
       postgres:
         image: postgres:16-alpine
@@ -149,8 +152,18 @@ jobs:
       - name: Run real HTTP/PostgreSQL/SSE benchmark
         shell: bash
         run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres.log
-      - name: Scan the benchmark server log for personal data
-        run: npm run privacy:scan -- --logs logs/perf-postgres.log
+      # PROD-110: the same workload over 12 months of synthetic clinical history at the D2 rate (150 exams a day,
+      # about 55 thousand exams), read by a veterinarian, a laboratory technician and a manager. The ceilings are
+      # wider than the PRD targets: this run catches gross regressions at the real volume (RELATORIO_CARGA_2026-10-09).
+      - name: Run the benchmark over 12 months of D2 clinical volume
+        shell: bash
+        env:
+          PERF_POSTGRES_CLINICAL_MONTHS: "12"
+          PERF_POSTGRES_P95_CEILING_FACTOR: "4"
+          PERF_POSTGRES_REPORT: logs/perf-postgres-12m.json
+        run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres-12m.log
+      - name: Scan the benchmark server logs for personal data
+        run: npm run privacy:scan -- --logs logs/perf-postgres.log logs/perf-postgres-12m.log
       - name: Upload PostgreSQL benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v7

@@ -252,6 +252,34 @@ describe("planCatalogImport", () => {
     expect(onlyRemoval.rows[0]!.removedAnalytes).toEqual([{ code: "GONE_REQ", label: "Obrigatório", required: true }]);
   });
 
+  it("echoes at most 40 characters of a bad cell and keeps every message and code within the contract caps", () => {
+    const huge = "A".repeat(20_000);
+    const row = (overrides: Record<string, string>) => {
+      const fields: Record<string, string> = { codigo: "AUDIT_PANEL", nome: "Painel", categoria: "LABORATORY", setor: "LABORATORY", fluxo: "LABORATORY", exige_amostra: "sim", tipo_amostra: "EDTA", exige_agenda: "não", permite_anexo: "não", esquema_resultado: "NARRATIVE", sla_rotina_h: "8", sla_urgente_h: "4", sla_emergencia_h: "2", ativo: "sim", ...overrides };
+      return SERVICE_HEADER.split(";").map((column) => fields[column]).join(";");
+    };
+    const cases: Array<Record<string, string>> = [{ categoria: huge }, { exige_amostra: huge }, { sla_rotina_h: huge }, { codigo: huge }];
+    for (const overrides of cases) {
+      const [parsed] = parseCatalogSheet(serviceSheet(row(overrides))).rows;
+      expect(parsed!.errors.length).toBeGreaterThan(0);
+      for (const message of parsed!.errors) expect(Array.from(message).length).toBeLessThan(300);
+      expect(Array.from(parsed!.code).length).toBeLessThanOrEqual(100);
+    }
+    const [categoria] = parseCatalogSheet(serviceSheet(row({ categoria: huge }))).rows[0]!.errors;
+    expect(categoria).toContain(`"${"A".repeat(40)}…"`);
+    const decimal = parseAnalyteSheet(analyteSheet(`HEMOGRAM;HB;Hemoglobina;numerico;g/dL;sim;1;${huge};;`)).rows[0]!.errors;
+    expect(decimal.every((message) => Array.from(message).length < 300)).toBe(true);
+    // A header full of long unknown columns names five of them and counts the rest.
+    const header = parseCatalogSheet([`${SERVICE_HEADER};${Array.from({ length: 12 }, (_, index) => `${"X".repeat(5_000)}${index}`).join(";")}`, row({})].join("\n"));
+    expect(Array.from(header.fatal!).length).toBeLessThanOrEqual(1000);
+    expect(header.fatal).toContain("… e mais 7 coluna(s) desconhecida(s).");
+    // Worst case (only junk columns, every expected one missing, junk repeated): still one line within the cap.
+    const junk = Array.from({ length: 20 }, () => "Y".repeat(500)).join(";");
+    const worst = parseCatalogSheet(`${junk};${junk}\nA`);
+    expect(Array.from(worst.fatal!).length).toBeLessThanOrEqual(1000);
+    expect(worst.fatal).toContain('Coluna obrigatória ausente no cabeçalho: "codigo".');
+  });
+
   it("keeps the analyte lists of a large panel replacement within the contract cap of a changes line", () => {
     const panel = "PANEL_L;Painel L;LABORATORY;LABORATORY;LABORATORY;sim;;não;não;NUMERIC_PANEL;8;4;2;sim";
     const code = (prefix: string, index: number) => `${prefix}_${String(index).padStart(3, "0")}_${"X".repeat(50)}`;

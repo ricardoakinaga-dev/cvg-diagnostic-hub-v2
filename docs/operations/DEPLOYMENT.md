@@ -437,7 +437,7 @@ O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco 
 
 O servidor do hospital deixa de compilar imagens. O workflow [`release.yml`](../../.github/workflows/release.yml) roda depois de cada CI verde num push para `main`:
 
-1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`) e a operacional (`<prefixo>-ops:sha-…`), ambas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH com correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das duas, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
+1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`), a operacional (`<prefixo>-ops:sha-…`) e a do armazenamento de objetos do modo on-prem (`<prefixo>-minio:sha-…`, MinIO compilado da fonte fixada em `deploy/minio/Dockerfile`, §12), todas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH com correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das três, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
 2. **promote-staging:** move a tag `staging` das duas imagens para essa release, sem aprovação (homologação automática).
 3. **promote-production:** move a tag `production`. O job usa o ambiente `production` do GitHub e espera a aprovação de quem estiver em *required reviewers*. Antes de mover a tag ele confere, pela API, que o ambiente tem revisores obrigatórios; se não tiver, falha.
 
@@ -447,7 +447,7 @@ Tag por commit é imutável por convenção: o `deploy.sh` recusa `latest`, `sta
 
 O `deploy.sh` faz, nesta ordem:
 
-1. baixa as duas imagens da release;
+1. baixa todas as imagens dos arquivos de Compose usados: as da release (app, ops e, com o overlay on-prem, o MinIO da mesma tag, `MINIO_IMAGE_TAG`) e as públicas fixadas, para que o `up -d --no-build` não precise compilar nem buscar nada sozinho;
 2. recusa a imagem cujo rótulo não é o commit da tag (`release.revision_mismatch`);
 3. faz o backup (`run --rm --no-deps backup --once`; sem backup, sem deploy);
 4. roda `up -d --no-build`, em que o `migrate` executa antes de `app` e `worker` serem recriados;

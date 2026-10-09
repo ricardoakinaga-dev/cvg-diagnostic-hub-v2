@@ -37,10 +37,14 @@ export async function readPostgresAuditEvents(sql: SqlQueryable, query: AuditRea
 }
 
 /** ID-only matching preserves the existing reviewer search contract. */
-export async function readPostgresAuditActors(sql: SqlQueryable, entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]> {
-  if (!entities.length) return [];
-  const result = await sql.query(`SELECT DISTINCT entity_id AS "entityId", actor_id AS "actorId"
-    FROM audit_events WHERE entity_id = ANY($1::text[]) AND actor_id IS NOT NULL`, [[...new Set(entities.map((entity) => entity.entityId))]]);
+export async function readPostgresAuditActors(sql: SqlQueryable, entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]> {
+  if (!entities.length || actorIds?.length === 0) return [];
+  const entityIds = [...new Set(entities.map((entity) => entity.entityId))];
+  const result = actorIds
+    ? await sql.query(`SELECT DISTINCT entity_id AS "entityId", actor_id AS "actorId"
+      FROM audit_events WHERE actor_id = ANY($2::text[]) AND entity_id = ANY($1::text[])`, [entityIds, [...new Set(actorIds)]])
+    : await sql.query(`SELECT DISTINCT entity_id AS "entityId", actor_id AS "actorId"
+      FROM audit_events WHERE entity_id = ANY($1::text[]) AND actor_id IS NOT NULL`, [entityIds]);
   return result.rows as { entityId: string; actorId: string }[];
 }
 

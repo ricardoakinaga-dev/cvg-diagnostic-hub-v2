@@ -519,6 +519,8 @@ export interface ClinicalArchiveQuery {
    * no patient, no request and no limit is refused (`assertBoundedArchiveQuery`).
    */
   readonly limit?: number;
+  /** Skips this many requests of the same order first (paging a patient's archive); a non-negative integer. */
+  readonly offset?: number;
 }
 
 export interface ClinicalArchiveEntry {
@@ -568,7 +570,8 @@ export interface StateStore {
   readStateVersion(): Promise<number>;
   /** Scoped historical reads; PostgreSQL reads the append-only table. */
   readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage>;
-  readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]>;
+  /** Distinct (entity, actor) pairs of these entities; with `actorIds`, only those actors (the search passes the users that match). */
+  readAuditActors(entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]>;
   readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics>;
   /**
    * Narrow authorization read. Implementations must answer from indexed single

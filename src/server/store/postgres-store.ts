@@ -194,8 +194,8 @@ export class PostgresStore implements StateStore {
     return this.concurrent(() => readPostgresAuditEvents(this.pool, query));
   }
 
-  async readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]> {
-    return this.concurrent(() => readPostgresAuditActors(this.pool, entities));
+  async readAuditActors(entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]> {
+    return this.concurrent(() => readPostgresAuditActors(this.pool, entities, actorIds));
   }
 
   async readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics> {

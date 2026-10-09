@@ -17,7 +17,7 @@ Global search must find a request without knowing the patient and must prevent a
 | external ID | exact/prefix | source system label; no blind trust |
 | service/item name/code | text/filter | scope-limited |
 | department | exact/filter | operational |
-| requester/reviewer | name/exact | privacy-limited |
+| requester/reviewer | name/exact | privacy-limited; a reviewer is a **user** who acted on the request or a visible item (audit trail), matched by user id, name or e-mail; the audit trail is read only for the users that match the query (D-046) |
 | status/priority/date/SLA | filters | cursor results |
 
 ## 3. API behavior
