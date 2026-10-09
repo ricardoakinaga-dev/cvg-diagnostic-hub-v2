@@ -12,7 +12,7 @@
 # mistake, an empty volume or a wrong mount can therefore never reach the destination (AUD-04: `sync --max-delete`
 # emptied the remote from an empty /backups and eroded it across cycles). On top of that a cycle is REFUSED
 # (status error, event offsite.refused) when /backups holds no valid recent backup: a non-empty cvg-*.dump or
-# base/<stamp>/base.tar.gz whose newest mtime is at most OFFSITE_MAX_BACKUP_AGE_SECONDS old (default 2 x
+# base/<stamp>/base.tar.gz (never one still in a .partial directory) whose newest mtime is at most OFFSITE_MAX_BACKUP_AGE_SECONDS old (default 2 x
 # BACKUP_INTERVAL_SECONDS). WAL is copied first and also in a refused cycle (immutable, never harmful).
 # Retention of the remote belongs to the destination (lifecycle rule) or to a separate operator step.
 # Every cycle rewrites offsite-status.json; check-offsite.sh reads it.
@@ -45,10 +45,13 @@ previous_success() {
   echo "${value:-0}"
 }
 
-# Prints the newest mtime (epoch) among valid backup artifacts; prints 0 when there is none.
+# Prints the newest mtime (epoch) among valid backup artifacts; prints 0 when there is none. Only finished artifacts
+# count, the same set the copy below ships: a base backup still being written lives in base/<stamp>.partial/ (renamed
+# after gzip -t) and a dump in progress is cvg-<stamp>.dump.partial, so neither can make a cycle look fresh (REM-02).
 newest_backup_epoch() {
   newest=0
   for artifact in "$BACKUP_DIRECTORY"/cvg-*.dump "$BACKUP_DIRECTORY"/base/*/base.tar.gz; do
+    case "$artifact" in *.partial/*) continue ;; esac
     [ -f "$artifact" ] && [ -s "$artifact" ] || continue
     mtime="$(stat -c %Y "$artifact" 2>/dev/null || echo 0)"
     if [ "$mtime" -gt "$newest" ]; then newest="$mtime"; fi
