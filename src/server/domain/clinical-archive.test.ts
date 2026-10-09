@@ -67,12 +67,13 @@ describe("memory store clinical archive", () => {
     expect(thor).toEqual([{
       requestId: "request-old", requestCode: "EX-old", patientId: "patient-thor", encounterId: "encounter-thor", requestingDepartmentCode: "INPATIENT",
       archivedAt: ARCHIVE_NOW.toISOString(), completedAt: "2024-06-01T12:00:00.000Z",
-      services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY" }, { code: "XRAY_THORAX", name: "RX de tórax", departmentCode: "RADIOLOGY" }],
+      services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY", attachmentCount: 1 }, { code: "XRAY_THORAX", name: "RX de tórax", departmentCode: "RADIOLOGY", attachmentCount: 0 }],
       attachmentCount: 1
     }]);
     const all = await store.readClinicalArchive({ limit: 10 });
     expect(all.map((entry) => entry.requestId)).toEqual(["request-old", "request-older-mel"]);
     expect((await store.readClinicalArchive({ limit: 1 })).map((entry) => entry.requestId)).toEqual(["request-old"]);
+    expect((await store.readClinicalArchive({})).map((entry) => entry.requestId)).toEqual(["request-old", "request-older-mel"]);
     expect((await store.readClinicalArchive({ requestId: "request-older-mel", limit: 5 })).map((entry) => entry.patientId)).toEqual(["patient-mel"]);
     expect(await store.readClinicalArchive({ patientId: "patient-mel-2", limit: 5 })).toEqual([]);
   });
@@ -153,7 +154,7 @@ describe("clinical archive helpers", () => {
     const rows: ClinicalArchiveRow[] = archiveRows(plan, "batch-1", ARCHIVE_NOW).filter((row) => row.requestId === "request-old");
     const withLater = rows.map((row) => (row.collection === "items" && row.entityKey === "item-rx-old" ? { ...row, data: { ...row.data, completedAt: "2024-07-01T12:00:00.000Z" } } : row));
     const [entry] = archiveEntries(withLater, []);
-    expect(entry.services).toEqual([{ code: "service-hemogram", name: "service-hemogram", departmentCode: "LABORATORY" }, { code: "service-xray", name: "service-xray", departmentCode: "RADIOLOGY" }]);
+    expect(entry.services).toEqual([{ code: "service-hemogram", name: "service-hemogram", departmentCode: "LABORATORY", attachmentCount: 1 }, { code: "service-xray", name: "service-xray", departmentCode: "RADIOLOGY", attachmentCount: 0 }]);
     expect(entry.completedAt).toBe("2024-07-01T12:00:00.000Z");
     // Two items of the same service are listed once.
     const duplicated = withLater.map((row) => (row.collection === "items" ? { ...row, data: { ...row.data, serviceId: "service-hemogram" } } : row));

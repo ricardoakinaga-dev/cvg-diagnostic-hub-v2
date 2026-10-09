@@ -514,7 +514,8 @@ export interface ClinicalArchiveRow {
 export interface ClinicalArchiveQuery {
   readonly patientId?: string;
   readonly requestId?: string;
-  readonly limit: number;
+  /** Newest requests first; without a limit, every matching request (callers scope before they page). */
+  readonly limit?: number;
 }
 
 export interface ClinicalArchiveEntry {
@@ -525,8 +526,8 @@ export interface ClinicalArchiveEntry {
   requestingDepartmentCode: string;
   archivedAt: Timestamp;
   completedAt: Timestamp;
-  /** One entry per distinct service of the archived items; departmentCode is the item's. */
-  services: { code: string; name: string; departmentCode: string }[];
+  /** One entry per distinct service of the archived items; departmentCode is the item's; attachmentCount is the service's share. */
+  services: { code: string; name: string; departmentCode: string; attachmentCount: number }[];
   attachmentCount: number;
 }
 

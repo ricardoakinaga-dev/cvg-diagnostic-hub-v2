@@ -157,8 +157,10 @@ describe("PostgresStore clinical archive", () => {
     });
 
     const entries = await store.readClinicalArchive({ patientId: "patient-thor", limit: 5 });
-    expect(entries).toEqual([expect.objectContaining({ requestId: "request-old", archivedAt: "2026-10-08T12:00:00.000Z", services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY" }] })]);
+    expect(entries).toEqual([expect.objectContaining({ requestId: "request-old", archivedAt: "2026-10-08T12:00:00.000Z", services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY", attachmentCount: 0 }] })]);
     expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("data->>'patientId' = $1"), ["patient-thor", null, 5]);
+    await store.readClinicalArchive({ patientId: "patient-thor" });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("LIMIT $3::int"), ["patient-thor", null, null]);
     const rows = await store.readArchivedRequest("request-old");
     expect(rows?.map((row) => row.collection)).toEqual(["requests", "items"]);
     await store.close();
