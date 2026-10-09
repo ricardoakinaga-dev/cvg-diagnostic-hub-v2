@@ -73,8 +73,9 @@ for file in "${compose_files[@]}"; do [[ -f "$file" ]] || { echo "--compose-file
 
 # Compose reads IMAGE_PREFIX and IMAGE_TAG from the shell before the env file, so the release wins over any
 # value left in .env.
-# MINIO_IMAGE_TAG: the on-prem overlay's object storage image is released with the same commit tag (D-045, D-050).
-export IMAGE_PREFIX="$prefix" IMAGE_TAG="$tag" MINIO_IMAGE_TAG="$tag"
+# MINIO_IMAGE_TAG and MC_IMAGE_TAG: the on-prem overlay's object storage and storage client (storage-iam) images are
+# released with the same commit tag (D-045, D-050, D-051).
+export IMAGE_PREFIX="$prefix" IMAGE_TAG="$tag" MINIO_IMAGE_TAG="$tag" MC_IMAGE_TAG="$tag"
 compose_args=(compose -p "$project")
 for file in "${compose_files[@]}"; do compose_args+=(-f "$file"); done
 compose_args+=(--env-file "$env_file")
