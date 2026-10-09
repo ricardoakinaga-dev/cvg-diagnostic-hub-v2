@@ -1,0 +1,96 @@
+# Log aggregation (PROD-512, D-047): one stack per server, separate from the application projects, collecting the
+# container logs of every Compose project whose name matches CVG_LOG_PROJECT_REGEX (default: cvg-hml and cvg-prod)
+# and serving them in Grafana, where a correlationId leads to every line of that request or job.
+#
+#   docker compose -p cvg-obs -f docker-compose.observability.yml --env-file /etc/cvg-hub/obs.env up -d
+#
+# Nothing here is reachable from outside the host: Grafana listens on 127.0.0.1 only (reach it through the VPN or an
+# SSH tunnel, PROD-309) and Loki has no published port. The collector never touches the Docker socket directly: it
+# reads container metadata and logs through a proxy that only allows GET on /containers and /networks (no exec,
+# no start, no POST).
+# The application logs carry no clinical content (allowlisted fields, privacy:scan); the bootstrap service has
+# `logging: none`, so a password reset link never reaches this stack.
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: ${LOG_MAX_SIZE:-10m}
+    max-file: ${LOG_MAX_FILE:-5}
+
+services:
+  docker-proxy:
+    logging: *default-logging
+    image: tecnativa/docker-socket-proxy:v0.4.1@sha256:3400c429c5f9e1b21d62130fb93b16e2e772d4fb7695bd52fc2b743800b9fe9e
+    restart: unless-stopped
+    mem_limit: 64m
+    environment:
+      # Read-only: container list, inspect and logs, and the network list the discovery reads for its labels.
+      # Every other section and every POST (start, exec, create...) stay denied.
+      CONTAINERS: "1"
+      NETWORKS: "1"
+      POST: "0"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks: [collector]
+
+  loki:
+    logging: *default-logging
+    image: grafana/loki:3.7.2@sha256:191d4fdfb7264f16989f0a57f320872620a5a7c2ceeec6229212c4190ec49b86
+    restart: unless-stopped
+    mem_limit: ${LOKI_MEM_LIMIT:-1g}
+    command: ["-config.file=/etc/loki/loki.yml", "-config.expand-env=true"]
+    environment:
+      LOKI_RETENTION_PERIOD: ${LOKI_RETENTION_PERIOD:-720h}
+    volumes:
+      - ./deploy/observability/loki.yml:/etc/loki/loki.yml:ro
+      - cvg-loki:/loki
+    networks: [collector, query]
+
+  alloy:
+    logging: *default-logging
+    image: grafana/alloy:v1.15.0@sha256:579582bce40049f2e27bd1e445000689c907a41f0495cb0d0c7f65609316ba7c
+    restart: unless-stopped
+    mem_limit: ${ALLOY_MEM_LIMIT:-256m}
+    command: ["run", "--server.http.listen-addr=127.0.0.1:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    environment:
+      CVG_LOG_PROJECT_REGEX: ${CVG_LOG_PROJECT_REGEX:-cvg-(hml|prod)}
+    volumes:
+      - ./deploy/observability/alloy.alloy:/etc/alloy/config.alloy:ro
+      - cvg-alloy:/var/lib/alloy/data
+    depends_on: [docker-proxy, loki]
+    networks: [collector]
+
+  grafana:
+    logging: *default-logging
+    image: grafana/grafana:12.4.2@sha256:83749231c3835e390a3144e5e940203e42b9589761f20ef3169c716e734ad505
+    restart: unless-stopped
+    mem_limit: ${GRAFANA_MEM_LIMIT:-512m}
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SECURITY_COOKIE_SECURE: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PLUGINS_PREINSTALL_DISABLED: "true"
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    volumes:
+      - ./deploy/observability/grafana/datasources.yml:/etc/grafana/provisioning/datasources/cvg.yml:ro
+      - cvg-grafana:/var/lib/grafana
+    depends_on: [loki]
+    networks: [query]
+
+networks:
+  # The collector side (proxy, Alloy, Loki ingest) and the query side (Loki, Grafana) are separate: Grafana cannot
+  # reach the Docker proxy.
+  collector:
+  query:
+
+volumes:
+  cvg-loki:
+  cvg-alloy:
+  cvg-grafana:

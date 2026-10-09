@@ -39,6 +39,7 @@
     "db:relational-backfill": "tsx scripts/relational-backfill.ts",
     "validate:migrations": "tsx scripts/validate-migrations.ts",
     "observability:check": "bash scripts/check-observability.sh",
+    "logs:check": "bash scripts/check-log-aggregation.sh",
     "privacy:scan": "node scripts/privacy-scan.mjs",
     "outbox:worker": "tsx scripts/outbox-worker.ts",
     "runtime:retention": "tsx scripts/runtime-retention.ts",
