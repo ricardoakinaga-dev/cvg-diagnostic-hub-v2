@@ -135,9 +135,8 @@ function firstFive(problems: readonly string[], noun: string): string[] {
   return problems.length <= 5 ? [...problems] : [...problems.slice(0, 5), `… e mais ${problems.length - 5} ${noun}.`];
 }
 
-/** A whole-sheet message is one report line: kept within its 1000-character contract cap. */
-const MAX_REPORT_MESSAGE = 1000;
-const capped = (message: string): string => Array.from(message).length <= MAX_REPORT_MESSAGE ? message : `${Array.from(message).slice(0, MAX_REPORT_MESSAGE - 1).join("")}…`;
+/** A whole-sheet message is one report line: kept within the same contract cap as a `changes` line. */
+const capped = (message: string): string => Array.from(message).length <= MAX_CATALOG_CHANGE_LENGTH ? message : `${Array.from(message).slice(0, MAX_CATALOG_CHANGE_LENGTH - 1).join("")}…`;
 
 function parseBoolean(raw: string, column: string, errors: string[], fallback?: boolean): boolean {
   const value = fold(raw);
@@ -331,6 +330,25 @@ const SLA_LABELS: Array<[Priority, string]> = [["ROUTINE", "sla_rotina_h"], ["UR
 
 const show = (value: unknown): string => value === undefined || value === "" ? "(vazio)" : typeof value === "boolean" ? (value ? "sim" : "não") : String(value);
 
+/** Longest line the report contract accepts (CatalogImportReport.rows[].changes[] and errors[], maxLength). */
+export const MAX_CATALOG_CHANGE_LENGTH = 1000;
+
+/**
+ * "prefix: a, b, c" within the contract cap: entries that do not fit become "… e mais N". Only the
+ * analyte lists can grow past it (a panel of 60+ long codes); the full removed list stays in `removedAnalytes`.
+ */
+function listChange(prefix: string, entries: readonly string[]): string {
+  const fits = (line: string) => Array.from(line).length <= MAX_CATALOG_CHANGE_LENGTH;
+  const full = `${prefix}: ${entries.join(", ")}`;
+  if (fits(full)) return full;
+  const shown: string[] = [];
+  for (const entry of entries) {
+    if (!fits(`${prefix}: ${[...shown, entry, `… e mais ${entries.length - shown.length - 1}`].join(", ")}`)) break;
+    shown.push(entry);
+  }
+  return `${prefix}: ${[...shown, `… e mais ${entries.length - shown.length}`].join(", ")}`;
+}
+
 function errorRow(line: number, code: string, ...errors: string[]): CatalogImportRow { return { line, code, action: "ERROR", errors }; }
 
 /** Compares the sheet against the current catalog. The sheet is authoritative only for the fields it carries. */
@@ -435,8 +453,8 @@ export function planCatalogImport(state: StoreState, sheet: ParsedSheet<CatalogS
         const previousCodes = new Set((existing.resultTemplate?.analytes ?? []).map((analyte) => analyte.code));
         removedAnalytes = (existing.resultTemplate?.analytes ?? []).filter((analyte) => !nextCodes.has(analyte.code)).map((analyte) => ({ code: analyte.code, label: analyte.label, required: analyte.required }));
         const added = template.analytes.filter((analyte) => !previousCodes.has(analyte.code)).map((analyte) => analyte.code);
-        if (added.length > 0) changes.push(`analitos incluídos: ${added.join(", ")}`);
-        if (removedAnalytes.length > 0) changes.push(`analitos removidos: ${removedAnalytes.map((analyte) => analyte.required ? `${analyte.code} (obrigatório)` : analyte.code).join(", ")}`);
+        if (added.length > 0) changes.push(listChange("analitos incluídos", added));
+        if (removedAnalytes.length > 0) changes.push(listChange("analitos removidos", removedAnalytes.map((analyte) => analyte.required ? `${analyte.code} (obrigatório)` : analyte.code)));
       }
       if (structural && referenced.has(existing.id)) errors.push(IN_USE_MESSAGE);
     } else {

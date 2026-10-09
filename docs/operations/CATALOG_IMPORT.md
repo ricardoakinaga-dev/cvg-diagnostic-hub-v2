@@ -120,7 +120,7 @@ Acrescente `--apply` para gravar. `--no-deps` evita que o Compose reexecute o `m
 | `A linha tem N colunas; o cabeçalho tem M` | Há ponto e vírgula dentro de um texto sem aspas, ou uma coluna a mais ou a menos. |
 | `Linha de exemplo do modelo` | Apague a linha de exemplo ou troque o código `EXEMPLO_...`. |
 | `A estrutura deste serviço já está referenciada por solicitações` | O exame já foi solicitado; reverta a coluna estrutural para o valor atual. |
-| `analitos removidos` | A planilha não trouxe analitos que o painel atual tem: confira se a planilha trouxe todos os analitos do exame. Se a remoção for intencional, siga em frente. |
+| `analitos removidos` | A planilha não trouxe analitos que o painel atual tem: confira se a planilha trouxe todos os analitos do exame. Se a remoção for intencional, siga em frente. Uma lista que passa de 1000 caracteres termina em `… e mais N`; a lista completa continua em `removedAnalytes` (tela "Remove: ..." e CLI). |
 | `O esquema NUMERIC_PANEL exige linhas de analitos` | Preencha a planilha de analitos para esse exame. |
 | `o exame X não consta na planilha de exames` | Inclua o exame na planilha de exames (mesmo que sem mudança) ou corrija o código no analito. |
 | `Você não tem permissão para gerenciar o catálogo do setor` | A linha é de um setor que o seu perfil não administra; peça ao ADMIN ou ao gestor do setor. |

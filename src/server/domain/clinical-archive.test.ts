@@ -73,7 +73,10 @@ describe("memory store clinical archive", () => {
     const all = await store.readClinicalArchive({ limit: 10 });
     expect(all.map((entry) => entry.requestId)).toEqual(["request-old", "request-older-mel"]);
     expect((await store.readClinicalArchive({ limit: 1 })).map((entry) => entry.requestId)).toEqual(["request-old"]);
-    expect((await store.readClinicalArchive({})).map((entry) => entry.requestId)).toEqual(["request-old", "request-older-mel"]);
+    // Neither patient, request nor page: refused instead of loading the whole archive.
+    await expect(store.readClinicalArchive({})).rejects.toThrow("CLINICAL_ARCHIVE_QUERY_UNBOUNDED");
+    for (const limit of [0, -1, 1.5]) await expect(store.readClinicalArchive({ limit })).rejects.toThrow("CLINICAL_ARCHIVE_QUERY_INVALID_LIMIT");
+    expect((await store.readClinicalArchive({ patientId: "patient-mel" })).map((entry) => entry.requestId)).toEqual(["request-older-mel"]);
     expect((await store.readClinicalArchive({ requestId: "request-older-mel", limit: 5 })).map((entry) => entry.patientId)).toEqual(["patient-mel"]);
     expect(await store.readClinicalArchive({ patientId: "patient-mel-2", limit: 5 })).toEqual([]);
   });

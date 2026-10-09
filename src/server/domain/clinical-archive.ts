@@ -5,6 +5,7 @@ import {
   type ClinicalArchiveEntry,
   type ClinicalArchiveOptions,
   type ClinicalArchivePurgeSummary,
+  type ClinicalArchiveQuery,
   type ClinicalArchiveRow,
   type ClinicalArchiveSummary,
   type DiagnosticService,
@@ -95,6 +96,15 @@ export function purgeAuditEvent(summary: ClinicalArchivePurgeSummary, now: Date)
     },
     occurredAt: now.toISOString()
   };
+}
+
+/**
+ * Both stores refuse an archive read that is neither per patient, per request nor a page: an open query would
+ * load the whole archive (years of records) into one response. A limit must be a positive integer.
+ */
+export function assertBoundedArchiveQuery(query: ClinicalArchiveQuery): void {
+  if (query.limit !== undefined && (!Number.isSafeInteger(query.limit) || query.limit <= 0)) throw new Error("CLINICAL_ARCHIVE_QUERY_INVALID_LIMIT");
+  if (query.patientId === undefined && query.requestId === undefined && query.limit === undefined) throw new Error("CLINICAL_ARCHIVE_QUERY_UNBOUNDED");
 }
 
 /** Months after archiving; anything but a positive integer means "never purge". */

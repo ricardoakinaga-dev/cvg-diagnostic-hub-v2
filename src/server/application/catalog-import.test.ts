@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import { CsvSyntaxError, detectDelimiter, parseAnalyteSheet, parseCatalogSheet, parseCsv, planCatalogImport } from "./catalog-import";
+import { CsvSyntaxError, detectDelimiter, MAX_CATALOG_CHANGE_LENGTH, parseAnalyteSheet, parseCatalogSheet, parseCsv, planCatalogImport } from "./catalog-import";
 
 const SERVICE_HEADER = "codigo;nome;categoria;setor;fluxo;exige_amostra;tipo_amostra;exige_agenda;permite_anexo;esquema_resultado;sla_rotina_h;sla_urgente_h;sla_emergencia_h;ativo";
 const ANALYTE_HEADER = "codigo_exame;codigo_analito;nome;tipo_valor;unidade;obrigatorio;ordem;referencia_minima;referencia_maxima;observacao";
@@ -278,6 +278,26 @@ describe("planCatalogImport", () => {
     const worst = parseCatalogSheet(`${junk};${junk}\nA`);
     expect(Array.from(worst.fatal!).length).toBeLessThanOrEqual(1000);
     expect(worst.fatal).toContain('Coluna obrigatória ausente no cabeçalho: "codigo".');
+  });
+
+  it("keeps the analyte lists of a large panel replacement within the contract cap of a changes line", () => {
+    const panel = "PANEL_L;Painel L;LABORATORY;LABORATORY;LABORATORY;sim;;não;não;NUMERIC_PANEL;8;4;2;sim";
+    const code = (prefix: string, index: number) => `${prefix}_${String(index).padStart(3, "0")}_${"X".repeat(50)}`;
+    const lines = (prefix: string, required: boolean) => Array.from({ length: 70 }, (_, index) => `PANEL_L;${code(prefix, index)};Analito ${index};texto;;${required ? "sim" : "não"};${index + 1};;;`);
+    const base = state();
+    const first = planCatalogImport(base, parseCatalogSheet(serviceSheet(panel)), parseAnalyteSheet(analyteSheet(...lines("OLD", true))));
+    const stored = { ...base, services: [...base.services, { id: "service-l", ...first.writes[0]!.next, version: 1 }] };
+    const plan = planCatalogImport(stored, parseCatalogSheet(serviceSheet(panel)), parseAnalyteSheet(analyteSheet(...lines("NEW", false))));
+    const changes = plan.rows[0]!.changes!;
+    for (const line of changes) expect(Array.from(line).length).toBeLessThanOrEqual(MAX_CATALOG_CHANGE_LENGTH);
+    const removed = changes.find((line) => line.startsWith("analitos removidos: "))!;
+    const included = changes.find((line) => line.startsWith("analitos incluídos: "))!;
+    const shownRemoved = removed.split(", ").length - 1;
+    expect(removed).toMatch(new RegExp(`^analitos removidos: ${code("OLD", 0)} \\(obrigatório\\), .*, … e mais ${70 - shownRemoved}$`));
+    expect(included).toMatch(/, … e mais \d+$/);
+    // The structured list keeps every removed analyte for the screen and the CLI.
+    expect(plan.rows[0]!.removedAnalytes).toHaveLength(70);
+    expect(plan.writes[0]!.changes).toEqual(changes);
   });
 
   it("replaces the fixture panel (synthetic ranges) by the sheet panel with a version bump", () => {
