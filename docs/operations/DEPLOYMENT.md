@@ -343,11 +343,12 @@ Cada mudança gera um evento de auditoria (`CriticalAlertWhatsApp*`) sem o núme
 - Se ninguém confirmou o crítico, a cada limiar de `CRITICAL_POLICY_ESCALATION_AFTER_MS` (padrão 15, 30 e 60 min após a liberação) o Hub avisa o próximo degrau de `CRITICAL_POLICY_RECIPIENT_RULES`. Cada degrau é a primeira regra que alcança alguém ainda não avisado.
 - A D3 pede o plantão primeiro. Uma escada que segue isso: `REQUESTER,ON_CALL,RESPONSIBLE,DEPARTMENT_MANAGER`.
 - Plantão: todos os profissionais ativos do setor solicitante marcados com **Colocar no plantão**.
-- Gestor: quem gerencia o setor solicitante, mesmo lotado em outro setor.
-- Só entra quem pode confirmar notificações; ADMIN e VIEWER ficam de fora.
+- Gestor: quem gerencia o setor solicitante, mesmo lotado em outro setor, e também o setor do exame (sem ele, o gestor não abre o resultado).
+- Só entra quem consegue abrir o resultado, depois da concessão de paciente abaixo. ADMIN e VIEWER ficam de fora, um executor só entra se tiver o exame no seu escopo e um gestor só se gerenciar o setor do exame. Quem não consegue abrir é pulado, e o degrau vai para a próxima regra.
 - Cada pessoa avisada recebe a própria notificação crítica, no Hub e pelo WhatsApp se tiver número cadastrado.
 - Veterinários e equipe de internação passam a ter o paciente no escopo para abrir o resultado. A concessão fica auditada (`CriticalEscalationPatientAccessGranted`).
-- A confirmação de qualquer pessoa interrompe a escalada.
+- A confirmação de qualquer pessoa que consiga abrir o resultado interrompe a escalada. Quem perdeu o acesso (por exemplo, mudou de perfil depois de avisado) recebe `SCOPE_DENIED` ao confirmar, e a escalada continua.
+- Worker parado além de um limiar: ao voltar, ele sobe um nível por ciclo até alcançar o relógio. Nenhum nível é pulado nem repetido.
 - Esgotada a escada, o nível fica registrado com a regra `NONE` e o crítico continua pendente no painel de gestão, contado uma vez por resultado.
 - Toda subida gera `CriticalResultEscalated` na auditoria e uma linha `critical.escalation` no log do worker.
 

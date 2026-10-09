@@ -45,7 +45,6 @@ export interface CriticalEscalationSnapshot {
   readonly state: "PENDING" | "DELIVERED" | "SEEN" | "ESCALATED" | "ACKNOWLEDGED" | "FAILED" | "SUPERSEDED";
   readonly acknowledgedAt?: string;
   readonly escalationLevel: number;
-  readonly lastEscalatedAt?: string;
 }
 
 export interface CriticalEscalationDecision {
@@ -214,8 +213,9 @@ export function planCriticalEscalation(
   const nextThreshold = policy.escalationAfterMs[snapshot.escalationLevel];
   if (nextThreshold === undefined || currentTime - createdAt > 30 * 24 * 60 * 60 * 1_000) return undefined;
   const dueAtMs = createdAt + nextThreshold;
+  // The persisted level is the only progress marker: a worker that comes back late climbs one level per cycle
+  // until it catches up with the clock (AUD-01), instead of comparing the late run time with the next threshold.
   if (currentTime < dueAtMs) return undefined;
-  if (snapshot.lastEscalatedAt && Date.parse(snapshot.lastEscalatedAt) >= dueAtMs) return undefined;
   const level = snapshot.escalationLevel + 1;
   return {
     notificationId: snapshot.notificationId,

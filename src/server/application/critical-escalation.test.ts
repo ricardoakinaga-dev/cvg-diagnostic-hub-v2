@@ -75,6 +75,53 @@ describe("critical result escalation (PROD-402)", () => {
     expect(await runCriticalEscalation(store, { policy, now: at(240) })).toEqual({ due: 0, notified: 0 });
   });
 
+  it("catches up one level per cycle when the first run comes after several thresholds (AUD-01)", async () => {
+    const { store, root, at, notificationsOf } = await releasedCritical();
+    expect(await runCriticalEscalation(store, { policy, now: at(40) })).toEqual({ due: 1, notified: 1 });
+    expect(notificationsOf("user-vet-on-call")).toHaveLength(1);
+    // The next cycle owes the 30-minute level: it is not blocked by the late run time of the first one.
+    expect(await runCriticalEscalation(store, { policy, now: at(40) })).toEqual({ due: 1, notified: 1 });
+    expect(notificationsOf("user-manager")).toHaveLength(1);
+    expect(await runCriticalEscalation(store, { policy, now: at(41) })).toEqual({ due: 0, notified: 0 });
+    expect(await runCriticalEscalation(store, { policy, now: at(61) })).toEqual({ due: 1, notified: 0 });
+    expect(await runCriticalEscalation(store, { policy, now: at(240) })).toEqual({ due: 0, notified: 0 });
+    expect(store.getState().notifications.find((entry) => entry.id === root.id)!.escalation!.level).toBe(3);
+    expect(notificationsOf("user-vet-on-call")).toHaveLength(1);
+    expect(notificationsOf("user-manager")).toHaveLength(1);
+  });
+
+  it("skips recipients who could not open the result and refuses a confirmation from them (AUD-02)", async () => {
+    const { store, service, at, notificationsOf, onCall, released } = await releasedCritical();
+    // An executor on call in the requesting department, without the exam's service, never receives the critical result.
+    await store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === onCall.id ? { ...user, role: "RADIOLOGY_TEAM" as const, serviceCodes: [], version: user.version + 1 } : user) }, result: undefined }));
+    expect(await runCriticalEscalation(store, { policy, now: at(16) })).toEqual({ due: 1, notified: 1 });
+    expect(notificationsOf(onCall.id)).toHaveLength(0);
+    expect(store.getState().auditEvents.filter((event) => event.eventType === "CriticalResultEscalated").at(-1)).toMatchObject({ metadata: { rule: "DEPARTMENT_MANAGER", recipients: "1" } });
+    const manager = store.getState().users.find((user) => user.id === "user-manager")!;
+    await expect(service.getResult(manager, released.result.id)).resolves.toMatchObject({ result: { id: released.result.id } });
+
+    // A manager of the requesting department alone cannot open the laboratory result, so the ladder ends instead.
+    const second = await releasedCritical();
+    await second.store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === "user-manager" ? { ...user, managedDepartmentCodes: ["INPATIENT"] } : user).filter((user) => user.id !== second.onCall.id) }, result: undefined }));
+    expect(await runCriticalEscalation(second.store, { policy, now: at(16) })).toEqual({ due: 1, notified: 0 });
+    expect(second.notificationsOf("user-manager")).toHaveLength(0);
+  });
+
+  it("does not let a recipient who lost access to the result stop the climb (AUD-02)", async () => {
+    const { store, service, at, notificationsOf, onCall, released } = await releasedCritical();
+    await runCriticalEscalation(store, { policy, now: at(16) });
+    await processOutboxBatch(store, new InProcessEventBus(), { now: () => at(17), batchSize: 50, allowSyntheticDelivery: true });
+    const escalated = notificationsOf(onCall.id)[0];
+    // The on-call professional moves to an imaging team after being notified.
+    await store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === onCall.id ? { ...user, role: "RADIOLOGY_TEAM" as const, serviceCodes: [], version: user.version + 1 } : user) }, result: undefined }));
+    const actor = store.getState().users.find((user) => user.id === onCall.id)!;
+    await expect(service.getResult(actor, released.result.id)).rejects.toMatchObject({ code: "SCOPE_DENIED" });
+    await expect(service.acknowledgeNotification(actor, escalated.id, { expectedVersion: escalated.version, reason: "Sem abrir o resultado.", confirm: true, idempotencyKey: "blind-ack" })).rejects.toMatchObject({ status: 404, code: "SCOPE_DENIED" });
+    expect(store.getState().notifications.find((entry) => entry.id === escalated.id)!.state).not.toBe("ACKNOWLEDGED");
+    expect(await runCriticalEscalation(store, { policy, now: at(31) })).toEqual({ due: 1, notified: 1 });
+    expect(notificationsOf("user-manager")).toHaveLength(1);
+  });
+
   it("stops as soon as any recipient acknowledges the result", async () => {
     const { store, service, at, notificationsOf, onCall } = await releasedCritical();
     await runCriticalEscalation(store, { policy, now: at(16) });
