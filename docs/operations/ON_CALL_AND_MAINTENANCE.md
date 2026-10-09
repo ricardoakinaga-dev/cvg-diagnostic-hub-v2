@@ -66,14 +66,15 @@ Atividades que usam a janela:
 
 | Atividade | Onde está o procedimento |
 | --- | --- |
-| Atualização comum (backup antes, pull, build, `up -d`) | [DEPLOYMENT §4](DEPLOYMENT.md) |
-| Atualização com migrations coordenadas: parar `proxy app worker backup`, backup `--once`, build, `migrate`, `up -d` | [DEPLOYMENT §4.1](DEPLOYMENT.md) (cutover) |
+| Release pelo pipeline: homologação recebe sozinha; produção só depois da aprovação do ambiente `production` e aplica pelo `deploy/release/deploy.sh` (backup, migrate, `up`, saúde) | [DEPLOYMENT §11](DEPLOYMENT.md#11-pipeline-de-release-prod-303) |
+| Release com migrations de cutover coordenado: `deploy/release/deploy.sh --maintenance` (para `proxy app worker backup`, backup, `migrate` sozinho, `up`) | [DEPLOYMENT §11](DEPLOYMENT.md#11-pipeline-de-release-prod-303) e [§4.1](DEPLOYMENT.md) |
+| Atualização manual, sem o pipeline (backup antes, `up -d`) | [DEPLOYMENT §4](DEPLOYMENT.md) |
 | Verificação após o deploy | [DEPLOYMENT §5](DEPLOYMENT.md) |
 | Rollback, se necessário | [DEPLOYMENT §8](DEPLOYMENT.md) |
 | Ensaio de restore (mensal em homologação, trimestral no servidor real) | [BACKUP_RESTORE §5](BACKUP_RESTORE.md) |
 | Conferência do backup e da cópia externa | [DEPLOYMENT §10](DEPLOYMENT.md) |
 
-A pipeline de implantação com aprovação (PROD-303) ainda não existe; até lá o deploy é manual pelos passos acima. Não há, hoje, opção `--maintenance` documentada nos scripts de deploy: o modo de manutenção é parar os serviços como no §4.1.
+Produção só recebe uma release dentro da janela: quem aprova o ambiente `production` no GitHub faz isso no horário combinado, e o timer do servidor aplica a release em até 5 minutos. Uma release com migration de cutover coordenado (§4.1) sempre usa `--maintenance` e a janela. Enquanto o pipeline não estiver ligado (`RELEASE_PUBLISH_ENABLED`), o deploy é manual pelo §4.
 
 ## 6. Preenchimento pendente
 
