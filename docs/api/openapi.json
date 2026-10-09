@@ -26213,6 +26213,33 @@
                     "minLength": 1,
                     "maxLength": 1000
                   }
+                },
+                "removedAnalytes": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "code",
+                      "label",
+                      "required"
+                    ],
+                    "properties": {
+                      "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 60
+                      },
+                      "label": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120
+                      },
+                      "required": {
+                        "type": "boolean"
+                      }
+                    }
+                  }
                 }
               }
             }

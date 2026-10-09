@@ -1,6 +1,6 @@
 import type { LaboratoryAnalyteDefinition, LaboratoryPanelTemplate, LaboratoryValueType, Priority, WorkflowType } from "@cvg/contracts";
 import type { DiagnosticService, StoreState } from "../domain/models";
-import type { CatalogImportAction, CatalogImportReport, CatalogImportRow, CatalogImportSummary } from "./service-types";
+import type { CatalogImportRemovedAnalyte, CatalogImportAction, CatalogImportReport, CatalogImportRow, CatalogImportSummary } from "./service-types";
 import { validateServiceDefinition, validateServiceResultSchema, validatedSlaHours } from "./service-common";
 
 /**
@@ -259,7 +259,7 @@ export function parseAnalyteSheet(text: string): ParsedSheet<CatalogAnalyteRow> 
   });
 }
 
-export type { CatalogImportAction, CatalogImportReport, CatalogImportRow, CatalogImportSummary };
+export type { CatalogImportRemovedAnalyte, CatalogImportAction, CatalogImportReport, CatalogImportRow, CatalogImportSummary };
 
 export interface CatalogImportWrite {
   action: "CREATE" | "UPDATE";
@@ -395,6 +395,7 @@ export function planCatalogImport(state: StoreState, sheet: ParsedSheet<CatalogS
     }
 
     const changes: string[] = [];
+    let removedAnalytes: CatalogImportRemovedAnalyte[] = [];
     let structural = false;
     if (existing) {
       for (const [field, label] of FIELD_LABELS) {
@@ -406,7 +407,15 @@ export function planCatalogImport(state: StoreState, sheet: ParsedSheet<CatalogS
       for (const [priority, label] of SLA_LABELS) {
         if (existing.slaHours[priority] !== wanted.slaHours[priority]) changes.push(`${label}: ${existing.slaHours[priority]} → ${wanted.slaHours[priority]}`);
       }
-      if (templateChanged && template) changes.push(`painel de analitos: versão ${existing.resultTemplate?.version ?? 0} → ${template.version} (${template.analytes.length} analitos)`);
+      if (templateChanged && template) {
+        changes.push(`painel de analitos: versão ${existing.resultTemplate?.version ?? 0} → ${template.version} (${template.analytes.length} analitos)`);
+        const nextCodes = new Set(template.analytes.map((analyte) => analyte.code));
+        const previousCodes = new Set((existing.resultTemplate?.analytes ?? []).map((analyte) => analyte.code));
+        removedAnalytes = (existing.resultTemplate?.analytes ?? []).filter((analyte) => !nextCodes.has(analyte.code)).map((analyte) => ({ code: analyte.code, label: analyte.label, required: analyte.required }));
+        const added = template.analytes.filter((analyte) => !previousCodes.has(analyte.code)).map((analyte) => analyte.code);
+        if (added.length > 0) changes.push(`analitos incluídos: ${added.join(", ")}`);
+        if (removedAnalytes.length > 0) changes.push(`analitos removidos: ${removedAnalytes.map((analyte) => analyte.required ? `${analyte.code} (obrigatório)` : analyte.code).join(", ")}`);
+      }
       if (structural && referenced.has(existing.id)) errors.push(IN_USE_MESSAGE);
     } else {
       changes.push("novo exame");
@@ -424,7 +433,7 @@ export function planCatalogImport(state: StoreState, sheet: ParsedSheet<CatalogS
       changes,
       next: { code, name, category, departmentCode, workflowType, requiresSample, ...(sampleType ? { sampleType } : {}), requiresSchedule, allowsAttachment, active, resultSchema, ...(kept ? { resultTemplate: kept } : {}), slaHours: { ...slaHours } }
     });
-    rows.push({ line: parsed.line, code: wanted.code, action: existing ? "UPDATE" : "CREATE", changes });
+    rows.push({ line: parsed.line, code: wanted.code, action: existing ? "UPDATE" : "CREATE", changes, ...(removedAnalytes.length > 0 ? { removedAnalytes } : {}) });
   }
   return finish([...rows, ...analyteIssueRows], writes);
 }
