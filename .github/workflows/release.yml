@@ -1,0 +1,210 @@
+# PROD-303: release pipeline. A green CI on a push to main builds the app and ops images once, audits them with
+# Trivy, pushes them with the commit tag and moves the "staging" channel; the "production" channel only moves
+# after the approval of the production environment. The hospital server follows a channel with
+# deploy/release/pull-release.sh (pull model: no inbound access to the server, DEPLOYMENT §11).
+#
+# Off until the repository variable RELEASE_PUBLISH_ENABLED is "true" (D-045). RELEASE_IMAGE_PREFIX overrides the
+# default ghcr.io/<owner>/cvg-hub; any other registry needs the RELEASE_REGISTRY_USERNAME/PASSWORD secrets.
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CVG Diagnostics Hub CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: cvg-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, audit and publish images
+    if: >-
+      vars.RELEASE_PUBLISH_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' ||
+       github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      prefix: ${{ steps.release.outputs.prefix }}
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          persist-credentials: false
+      - name: Name the release
+        id: release
+        env:
+          CONFIGURED_PREFIX: ${{ vars.RELEASE_IMAGE_PREFIX }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          set -Eeuo pipefail
+          commit="$(git rev-parse HEAD)"
+          prefix="${CONFIGURED_PREFIX:-ghcr.io/${OWNER,,}/cvg-hub}"
+          {
+            echo "commit=$commit"
+            echo "prefix=$prefix"
+            echo "tag=sha-${commit:0:12}"
+            echo "created=$(git show -s --format=%cI HEAD)"
+          } >> "$GITHUB_OUTPUT"
+      - name: Build application and operational images
+        env:
+          PREFIX: ${{ steps.release.outputs.prefix }}
+          TAG: ${{ steps.release.outputs.tag }}
+          COMMIT: ${{ steps.release.outputs.commit }}
+          CREATED: ${{ steps.release.outputs.created }}
+          SOURCE: ${{ github.server_url }}/${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          labels=(--label "org.opencontainers.image.revision=$COMMIT" --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.created=$CREATED")
+          docker build --pull "${labels[@]}" --tag "$PREFIX:$TAG" .
+          docker build --target ops "${labels[@]}" --tag "$PREFIX-ops:$TAG" .
+          mkdir -p release
+      - name: Audit application image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.prefix }}:${{ steps.release.outputs.tag }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: Audit operational image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.prefix }}-ops:${{ steps.release.outputs.tag }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+      - name: Generate the application image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.prefix }}:${{ steps.release.outputs.tag }}
+          format: cyclonedx
+          output: release/cvg-hub.cdx.json
+      - name: Generate the operational image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.prefix }}-ops:${{ steps.release.outputs.tag }}
+          format: cyclonedx
+          output: release/cvg-hub-ops.cdx.json
+      - name: Log in to the registry
+        env:
+          PREFIX: ${{ steps.release.outputs.prefix }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.RELEASE_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.RELEASE_REGISTRY_PASSWORD }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -Eeuo pipefail
+          registry="${PREFIX%%/*}"
+          if [[ "$registry" == ghcr.io ]]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          else
+            [[ -n "$REGISTRY_USERNAME" && -n "$REGISTRY_PASSWORD" ]] || { echo "RELEASE_REGISTRY_USERNAME/PASSWORD are required for $registry" >&2; exit 1; }
+            printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry" --username "$REGISTRY_USERNAME" --password-stdin
+          fi
+      - name: Push with the commit tag
+        env:
+          PREFIX: ${{ steps.release.outputs.prefix }}
+          TAG: ${{ steps.release.outputs.tag }}
+          COMMIT: ${{ steps.release.outputs.commit }}
+        run: |
+          set -Eeuo pipefail
+          docker push --quiet "$PREFIX:$TAG"
+          docker push --quiet "$PREFIX-ops:$TAG"
+          app_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX:$TAG")"
+          ops_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-ops:$TAG")"
+          printf '{"commit":"%s","tag":"%s","app":"%s","ops":"%s"}\n' "$COMMIT" "$TAG" "$app_digest" "$ops_digest" > release/manifest.json
+          {
+            echo "### Release $TAG"
+            echo
+            echo "| Image | Digest |"
+            echo "| --- | --- |"
+            echo "| app | \`$app_digest\` |"
+            echo "| ops | \`$ops_digest\` |"
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload release manifest and SBOMs
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ steps.release.outputs.tag }}
+          path: release/
+          retention-days: 90
+
+  promote-staging:
+    name: Promote to the staging channel
+    needs: publish
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: staging
+    permissions:
+      packages: write
+    steps:
+      - name: Point the staging tag at this release
+        env:
+          PREFIX: ${{ needs.publish.outputs.prefix }}
+          TAG: ${{ needs.publish.outputs.tag }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.RELEASE_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.RELEASE_REGISTRY_PASSWORD }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -Eeuo pipefail
+          registry="${PREFIX%%/*}"
+          if [[ "$registry" == ghcr.io ]]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          else
+            printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry" --username "$REGISTRY_USERNAME" --password-stdin
+          fi
+          docker buildx imagetools create --tag "$PREFIX:staging" "$PREFIX:$TAG"
+          docker buildx imagetools create --tag "$PREFIX-ops:staging" "$PREFIX-ops:$TAG"
+          echo "staging -> $TAG" >> "$GITHUB_STEP_SUMMARY"
+
+  promote-production:
+    name: Promote to the production channel (approval)
+    needs: [publish, promote-staging]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production
+    permissions:
+      actions: read
+      packages: write
+    steps:
+      - name: Refuse a production environment without required reviewers
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -Eeuo pipefail
+          reviewers="$(gh api "repos/$REPOSITORY/environments/production" --jq '[.protection_rules[]? | select(.type == "required_reviewers")] | length')"
+          if [[ "$reviewers" -lt 1 ]]; then
+            echo "The production environment has no required reviewers: configure them before promoting (DEPLOYMENT §11)." >&2
+            exit 1
+          fi
+      - name: Point the production tag at this release
+        env:
+          PREFIX: ${{ needs.publish.outputs.prefix }}
+          TAG: ${{ needs.publish.outputs.tag }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REGISTRY_USERNAME: ${{ secrets.RELEASE_REGISTRY_USERNAME }}
+          REGISTRY_PASSWORD: ${{ secrets.RELEASE_REGISTRY_PASSWORD }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -Eeuo pipefail
+          registry="${PREFIX%%/*}"
+          if [[ "$registry" == ghcr.io ]]; then
+            printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$ACTOR" --password-stdin
+          else
+            printf '%s' "$REGISTRY_PASSWORD" | docker login "$registry" --username "$REGISTRY_USERNAME" --password-stdin
+          fi
+          docker buildx imagetools create --tag "$PREFIX:production" "$PREFIX:$TAG"
+          docker buildx imagetools create --tag "$PREFIX-ops:production" "$PREFIX-ops:$TAG"
+          echo "production -> $TAG" >> "$GITHUB_STEP_SUMMARY"

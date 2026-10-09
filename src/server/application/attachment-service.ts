@@ -9,6 +9,7 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { findById } from "../domain/state-index";
+import { reportAttachmentScan } from "../security/attachment-scan-signal";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -176,6 +177,7 @@ export function createAttachmentService({ store, storage, scanner }: Application
         await releaseUploadClaim(store, attachmentId, claimToken).catch(() => undefined);
         throw new ApiError("STORAGE_UNAVAILABLE", "O armazenamento privado não está disponível.", 503, { retryable: true });
       }
+      reportAttachmentScan(scanStatus, { attachmentId, resultVersionId: claimed.attachment.resultVersionId, declaredMime: claimed.attachment.detectedMime, detectedMime: detected ?? "application/octet-stream", sizeBytes: bytes.byteLength });
       try {
         const updated = await store.transaction((state) => {
           const currentActor = requireActiveUser(state, actor);
