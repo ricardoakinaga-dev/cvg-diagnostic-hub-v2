@@ -61,6 +61,7 @@ The following identifiers are the authorization contract used by the API specifi
 | `critical_result_policy.manage` | Manage critical-result policies | admin/manager policy |
 | `reason_code.manage` | Manage reason codes | admin/manager policy |
 | `user_role.manage` | Provision, update and deactivate operational users/roles | admin or delegated manager target scope |
+| `patient.data_export` | Export a patient's records for the data subject (LGPD, PROD-502, D-048) | ADMIN only, after a recent reauthentication; every export audited (`PatientDataExported`); the only patient read an ADMIN has |
 | `queue.view` | View operational queue | DEPARTMENT |
 | `dashboard.view` | View operational indicators | DEPARTMENT/manager |
 | `diagnostic.timeline.view` | View patient diagnostic timeline | CARE/assigned |
