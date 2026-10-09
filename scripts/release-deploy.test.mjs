@@ -21,6 +21,7 @@ for failing in \${FAKE_FAIL:-}; do
 done
 case "$1" in
   compose)
+    [[ "$args" == *" pull "* ]] && echo "minio=\${MINIO_IMAGE_TAG:-}" >> "$FAKE_LOG.env"
     [[ "$args" == *" ps -q app "* ]] && echo app-container
     [[ "$args" == *" ps -q worker "* ]] && echo worker-container
     exit 0 ;;
@@ -98,7 +99,7 @@ test("a rolling deploy pulls, checks the commit, backs up, starts and records th
   // Compose sees the release, not whatever IMAGE_TAG the env file had.
   assert.ok(log.every((line) => line.startsWith(`${PREFIX}:${TAG}|`)));
   assert.deepEqual(log.map(commandOf), [
-    "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test pull migrate app worker",
+    "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test pull",
     `image inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} ${PREFIX}:${TAG}`,
     `image inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} ${PREFIX}-ops:${TAG}`,
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test run --rm --no-deps backup --once",
@@ -111,6 +112,8 @@ test("a rolling deploy pulls, checks the commit, backs up, starts and records th
   assert.equal(readFileSync(path.join(ws.state, "cvg-hml.current"), "utf8"), `${TAG}\n`);
   assert.match(readFileSync(path.join(ws.state, "cvg-hml.history"), "utf8"), new RegExp(`^\\d{4}-\\d\\d-\\d\\dT\\S+Z ${TAG}\\n$`));
   assert.deepEqual(events(result.stdout).map((entry) => entry.event), ["release.started", "release.deployed"]);
+  // The on-prem object storage image is pulled with the release tag too.
+  assert.equal(readFileSync(`${ws.log}.env`, "utf8"), `minio=${TAG}\n`);
   assert.equal(events(result.stdout)[1].previous, "none");
 
   const again = deploy(ws, ["--compose-file", "docker-compose.prod.yml", "--compose-file", "docker-compose.prod.yml"]);
@@ -124,7 +127,7 @@ test("--maintenance stops the runtime before the backup and migrates alone befor
   const result = deploy(ws, ["--maintenance"]);
   assert.equal(result.status, 0, result.stderr);
   const steps = calls(ws).map(commandOf).filter((line) => line.startsWith("compose")).map((line) => line.split(" --env-file .env.test ")[1]);
-  assert.deepEqual(steps.slice(0, 5), ["pull migrate app worker", "stop proxy app worker backup", "run --rm --no-deps backup --once", "run --rm migrate", "up -d --no-build"]);
+  assert.deepEqual(steps.slice(0, 5), ["pull", "stop proxy app worker backup", "run --rm --no-deps backup --once", "run --rm migrate", "up -d --no-build"]);
 });
 
 test("an image built from another commit stops the deploy before the backup", () => {
@@ -140,7 +143,7 @@ test("an image built from another commit stops the deploy before the backup", ()
 
 test("no backup, no migrate: each failing step stops the deploy with its own event", () => {
   for (const [failing, event, notCalled] of [
-    ["pull_migrate", "release.pull_failed", / backup /],
+    [".env.test_pull", "release.pull_failed", / backup /],
     ["backup_--once", "release.backup_failed", / up /],
     ["up_-d", "release.up_failed", / ps /]
   ]) {
