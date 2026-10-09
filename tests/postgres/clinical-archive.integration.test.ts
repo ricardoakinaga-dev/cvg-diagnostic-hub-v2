@@ -120,10 +120,11 @@ describe("clinical archive on disposable PostgreSQL (PROD-501)", () => {
       const thor = await store.readClinicalArchive({ patientId: "patient-thor", limit: 10 });
       expect(thor).toEqual([expect.objectContaining({
         requestId: "request-old", requestCode: "EX-old", patientId: "patient-thor", attachmentCount: 1, archivedAt: ARCHIVE_NOW.toISOString(),
-        services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY" }, { code: "XRAY_THORAX", name: "RX de tórax", departmentCode: "RADIOLOGY" }]
+        services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY", attachmentCount: 1 }, { code: "XRAY_THORAX", name: "RX de tórax", departmentCode: "RADIOLOGY", attachmentCount: 0 }]
       })]);
       expect((await store.readClinicalArchive({ limit: 10 })).map((entry) => entry.requestId)).toEqual(["request-old", "request-mel"]);
       expect((await store.readClinicalArchive({ limit: 1 })).map((entry) => entry.requestId)).toEqual(["request-old"]);
+      expect((await store.readClinicalArchive({})).map((entry) => entry.requestId)).toEqual(["request-old", "request-mel"]);
       expect((await store.readClinicalArchive({ requestId: "request-mel", limit: 5 })).map((entry) => entry.patientId)).toEqual(["patient-mel"]);
       expect(await store.readClinicalArchive({ patientId: "patient-mel-2", limit: 5 })).toEqual([]);
 

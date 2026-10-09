@@ -59,6 +59,70 @@ describe("archive reads", () => {
     await expect(service.getArchivedRequest(restricted, "request-old")).rejects.toMatchObject({ status: 404 });
   });
 
+  it("gives a manager only the items of the delegated department, in the list summary and in the detail (AUD-05)", async () => {
+    const { service, actor, store } = await archivedStore((state) => {
+      const labResult = state.results.find((entry) => entry.id === "result-old")!;
+      const labVersion = state.resultVersions.find((entry) => entry.id === "version-old-2")!;
+      return {
+        ...state,
+        users: state.users.map((user) => user.email === "manager@cvg.local" ? { ...user, departmentCode: "LABORATORY", managedDepartmentCodes: ["LABORATORY"] } : user),
+        results: [...state.results, { ...labResult, id: "result-rx-old", itemId: "item-rx-old", currentVersionId: "version-rx-old" }],
+        resultVersions: [...state.resultVersions, { ...labVersion, id: "version-rx-old", resultId: "result-rx-old", narrative: "Narrativa privada da radiologia." }]
+      };
+    });
+    const manager = actor("manager@cvg.local");
+    const [entry] = await service.listPatientArchive(manager, "patient-thor");
+    expect(entry.services.map((item) => item.departmentCode)).toEqual(["LABORATORY"]);
+    expect(entry.attachmentCount).toBe(1);
+    const archived = await service.getArchivedRequest(manager, "request-old");
+    expect(archived.items.map((item) => item.departmentCode)).toEqual(["LABORATORY"]);
+    expect(JSON.stringify(archived)).not.toContain("Narrativa privada da radiologia.");
+    expect(archived.samples).toHaveLength(1);
+    expect(archived.attachments).toHaveLength(1);
+    // The inverse delegation sees the radiology narrative and none of the laboratory artefacts.
+    const rxManager = { ...manager, departmentCode: "RADIOLOGY", managedDepartmentCodes: ["RADIOLOGY"] };
+    await store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => (user.id === manager.id ? rxManager : user)) }, result: undefined }));
+    const rx = await service.getArchivedRequest(rxManager, "request-old");
+    expect(rx.items.map((item) => item.departmentCode)).toEqual(["RADIOLOGY"]);
+    expect(JSON.stringify(rx)).toContain("Narrativa privada da radiologia.");
+    expect(JSON.stringify(rx)).not.toContain("Versão final.");
+    expect(rx.samples).toEqual([]);
+    expect(rx.attachments).toEqual([]);
+    expect((await service.listPatientArchive(rxManager, "patient-thor"))[0]).toMatchObject({ services: [expect.objectContaining({ code: "XRAY_THORAX" })], attachmentCount: 0 });
+    // A manager of the requesting department keeps the request, with no items, as in the active aggregate.
+    const inpatient = { ...manager, departmentCode: "INPATIENT", managedDepartmentCodes: ["INPATIENT"] };
+    await store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => (user.id === manager.id ? inpatient : user)) }, result: undefined }));
+    expect((await service.listPatientArchive(inpatient, "patient-thor"))[0]).toMatchObject({ requestCode: "EX-old", services: [], attachmentCount: 0 });
+    expect((await service.getArchivedRequest(inpatient, "request-old")).items).toEqual([]);
+  });
+
+  it("shows an executor only the services of their own scope in the list summary (AUD-05)", async () => {
+    const { service, actor } = await archivedStore();
+    const [forLab] = await service.listPatientArchive(actor("lab@cvg.local"), "patient-thor");
+    expect(forLab.services.map((item) => item.code)).toEqual(["HEMOGRAM"]);
+    expect(forLab.attachmentCount).toBe(1);
+    const [forRx] = await service.listPatientArchive(actor("rx@cvg.local"), "patient-thor");
+    expect(forRx.services.map((item) => item.code)).toEqual(["XRAY_THORAX"]);
+    expect(forRx.attachmentCount).toBe(0);
+    const [forVet] = await service.listPatientArchive(actor("vet@cvg.local"), "patient-thor");
+    expect(forVet.services.map((item) => item.code)).toEqual(["HEMOGRAM", "XRAY_THORAX"]);
+    expect(forVet.attachmentCount).toBe(1);
+  });
+
+  it("applies the scope before the limit, so a newer foreign record never hides an older visible one (AUD-08)", async () => {
+    const { service, actor } = await archivedStore((state) => {
+      let next = withCompletedRequest(state, "lab-old", { at: "2024-04-01T12:00:00.000Z" });
+      next = withCompletedRequest(next, "rx-new", { at: "2024-07-01T12:00:00.000Z" });
+      return { ...next, items: next.items.map((item) => item.requestId === "request-rx-new" ? { ...item, departmentCode: "RADIOLOGY", serviceId: "service-xray", workflowType: "RADIOLOGY" as const } : item) };
+    });
+    const lab = actor("lab@cvg.local");
+    expect((await service.listPatientArchive(lab, "patient-thor", { limit: 1 })).map((entry) => entry.requestId)).toEqual(["request-old"]);
+    expect((await service.listPatientArchive(lab, "patient-thor", { limit: 2 })).map((entry) => entry.requestId)).toEqual(["request-old", "request-lab-old"]);
+    expect((await service.listPatientArchive(lab, "patient-thor")).map((entry) => entry.requestId)).toEqual(["request-old", "request-lab-old"]);
+    // A radiology-only executor still finds the newest record first.
+    expect((await service.listPatientArchive(actor("rx@cvg.local"), "patient-thor", { limit: 1 })).map((entry) => entry.requestId)).toEqual(["request-rx-new"]);
+  });
+
   it("uses the active aggregate for scope when the patient also has current exams", async () => {
     const { service, actor } = await archivedStore((state) => withCompletedRequest(state, "current", { at: "2026-10-01T12:00:00.000Z" }));
     expect(await service.listPatientArchive(actor("lab@cvg.local"), "patient-thor")).toHaveLength(1);

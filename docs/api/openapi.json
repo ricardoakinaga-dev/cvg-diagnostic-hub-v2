@@ -29736,7 +29736,8 @@
               "required": [
                 "code",
                 "name",
-                "departmentCode"
+                "departmentCode",
+                "attachmentCount"
               ],
               "properties": {
                 "code": {
@@ -29753,6 +29754,10 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 60
+                },
+                "attachmentCount": {
+                  "type": "integer",
+                  "minimum": 0
                 }
               }
             },
