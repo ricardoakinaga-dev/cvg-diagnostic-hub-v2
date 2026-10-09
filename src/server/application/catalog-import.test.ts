@@ -231,6 +231,27 @@ describe("planCatalogImport", () => {
     expect(rename.writes[0]!.next.resultTemplate).toMatchObject({ name: "Painel Y", version: 2 });
   });
 
+  it("lists the analytes removed and included by a panel replacement, and nothing when the panel is unchanged", () => {
+    const panel = "PANEL_R;Painel R;LABORATORY;LABORATORY;LABORATORY;sim;;não;não;NUMERIC_PANEL;8;4;2;sim";
+    const full = analyteSheet("PANEL_R;KEEP_A;Mantido A;numerico;g/dL;sim;1;;;", "PANEL_R;KEEP_B;Mantido B;texto;;não;2;;;", "PANEL_R;GONE_OPT;Opcional;texto;;não;3;;;", "PANEL_R;GONE_REQ;Obrigatório;numerico;g/dL;sim;4;;;");
+    const base = state();
+    const first = planCatalogImport(base, parseCatalogSheet(serviceSheet(panel)), parseAnalyteSheet(full));
+    expect(first.rows[0]).not.toHaveProperty("removedAnalytes");
+    const stored = { ...base, services: [...base.services, { id: "service-r", ...first.writes[0]!.next, version: 1 }] };
+    const next = analyteSheet("PANEL_R;KEEP_A;Mantido A;numerico;g/dL;sim;1;;;", "PANEL_R;KEEP_B;Mantido B;texto;;não;2;;;", "PANEL_R;NEW_C;Novo C;texto;;não;5;;;");
+    const plan = planCatalogImport(stored, parseCatalogSheet(serviceSheet(panel)), parseAnalyteSheet(next));
+    expect(plan.rows[0]).toMatchObject({
+      action: "UPDATE",
+      removedAnalytes: [{ code: "GONE_OPT", label: "Opcional", required: false }, { code: "GONE_REQ", label: "Obrigatório", required: true }]
+    });
+    expect(plan.rows[0]!.changes).toEqual(["painel de analitos: versão 1 → 2 (3 analitos)", "analitos incluídos: NEW_C", "analitos removidos: GONE_OPT, GONE_REQ (obrigatório)"]);
+    const unchanged = planCatalogImport(stored, parseCatalogSheet(serviceSheet(panel)), parseAnalyteSheet(full));
+    expect(unchanged.rows[0]).toEqual({ line: 2, code: "PANEL_R", action: "UNCHANGED" });
+    const onlyRemoval = planCatalogImport(stored, parseCatalogSheet(serviceSheet(panel)), parseAnalyteSheet(analyteSheet("PANEL_R;KEEP_A;Mantido A;numerico;g/dL;sim;1;;;", "PANEL_R;KEEP_B;Mantido B;texto;;não;2;;;", "PANEL_R;GONE_OPT;Opcional;texto;;não;3;;;")));
+    expect(onlyRemoval.rows[0]!.changes?.some((line) => line.startsWith("analitos incluídos"))).toBe(false);
+    expect(onlyRemoval.rows[0]!.removedAnalytes).toEqual([{ code: "GONE_REQ", label: "Obrigatório", required: true }]);
+  });
+
   it("replaces the fixture panel (synthetic ranges) by the sheet panel with a version bump", () => {
     const plan = planCatalogImport(state(), parseCatalogSheet(serviceSheet("HEMOGRAM;Hemograma;LABORATORY;LABORATORY;LABORATORY;sim;;não;não;NUMERIC_PANEL;8;4;2;sim")), parseAnalyteSheet(analyteSheet("HEMOGRAM;HEMOGLOBIN;Hemoglobina;numerico;g/dL;sim;1;;;")));
     expect(plan.writes[0]!.next.resultTemplate).toMatchObject({ code: "HEMOGRAM", version: 2 });
