@@ -1,5 +1,6 @@
-import { expect, test, type Browser, type Locator, type TestInfo } from "@playwright/test";
+import { expect, test, type Locator } from "@playwright/test";
 import { GREETING, signInAs, signOut } from "./support/auth";
+import { seedHemogramRequest } from "./support/seed";
 
 class InteractionCounter {
   count = 0;
@@ -70,26 +71,9 @@ test("recovers a collaborator with Gerar nova senha, revokes active access and f
   } finally { await peer.close(); }
 });
 
-/** The demo state starts with an empty laboratory queue; give the scoped-queue check its own HEMOGRAM item. */
-async function seedHemogramRequest(browser: Browser, testInfo: TestInfo): Promise<void> {
-  const vet = await browser.newContext({ baseURL: testInfo.project.use.baseURL, extraHTTPHeaders: testInfo.project.use.extraHTTPHeaders });
-  try {
-    expect((await vet.request.post("/api/v1/session/login", { data: { email: "vet@cvg.local", password: "e2e-local-password-2026" } })).status()).toBe(200);
-    const csrf = (await vet.cookies()).find((cookie) => cookie.name === "cvg_csrf")!.value;
-    const created = await vet.request.post("/api/v1/diagnostic-requests", {
-      headers: { "x-csrf-token": csrf, "idempotency-key": `ux-seed-${testInfo.project.name}-${Date.now()}` },
-      data: { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }
-    });
-    // 409 means an earlier spec already left an active HEMOGRAM request for this patient, so the queue is not empty.
-    expect([201, 409]).toContain(created.status());
-  } finally {
-    await vet.close();
-  }
-}
-
 test("creates in four interactions, changes department in two and enforces the generated-password lifecycle", async ({ page, browser }, testInfo) => {
   const email = `ux-${Date.now()}-${testInfo.project.name}@cvg.local`;
-  await seedHemogramRequest(browser, testInfo);
+  await seedHemogramRequest(browser, testInfo, "ux-seed");
   await signInAs(page, "admin@cvg.local", /Administração técnica/);
   await page.goto("/admin#users");
   const create = page.getByRole("form", { name: "Adicionar colaborador" });
