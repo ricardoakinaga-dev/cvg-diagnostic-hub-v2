@@ -9,6 +9,7 @@ import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
 import { UserCreateForm, UserRow } from "./admin-users";
 import { CatalogImportPanel } from "./admin-catalog-import";
+import { DataSubjectExportPanel } from "./admin-data-subject-export";
 
 type CatalogService = DiagnosticService;
 type ServiceCategory = DiagnosticService["category"];
@@ -127,6 +128,7 @@ export function AdminConsole() {
         <section className="panel" id="users"><div className="panel-heading"><h2>Colaboradores</h2><span className="timeline-count">{users.length}</span></div><UserCreateForm creator={identity} services={services} onCreated={(user) => setUsers((current) => [...current.filter((entry) => entry.id !== user.id), user])} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="Adicione um colaborador ao seu setor." /> : <div className="admin-list">{users.map((user) => <UserRow key={user.id} user={user} viewerId={identity.id} services={services} departmentCodes={departmentCodes} technical={identity.role === "ADMIN"} onChanged={(updated) => setUsers((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} />)}</div>}</section>
         <section className="panel" id="catalog"><div className="panel-heading"><h2>Serviços diagnósticos</h2><span className="timeline-count">{services.length}</span></div><CatalogImportPanel onApplied={() => void load()} /><ServiceCreateForm creator={identity} existingCodes={services.map((service) => service.code)} onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={`${service.id}:${service.version}`} service={service} existingCodes={services.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>
         <section className="panel" id="reasons"><div className="panel-heading"><h2>Motivos</h2><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm existingCodes={reasons.map((reason) => reason.code)} onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Adicione um motivo para seleção nos fluxos clínicos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={`${reason.id}:${reason.version}`} reason={reason} existingCodes={reasons.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>
+        {identity.role === "ADMIN" && <section className="panel" id="privacy"><div className="panel-heading"><h2>Privacidade (LGPD)</h2></div><DataSubjectExportPanel /></section>}
       </div>}
     </>}
   </div>;

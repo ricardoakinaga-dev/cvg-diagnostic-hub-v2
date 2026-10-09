@@ -1787,6 +1787,31 @@ describe("versioned API boundary", () => {
     expect(writes.status).toBeGreaterThanOrEqual(400);
   });
 
+  it("exports a patient's records for the data subject only to a freshly reauthenticated ADMIN (PROD-502)", async () => {
+    const store = await getRuntimeStoreAsync();
+    await store.transaction((state) => ({ state: withCompletedRequest(state, "old"), result: undefined }));
+    await store.archiveClinicalRecords({ now: ARCHIVE_NOW });
+    const exportFor = (cookie: string | undefined, query = "externalId=HIS-THOR-001") =>
+      GET(new Request(`http://localhost/api/v1/data-subject-exports?${query}`, { headers: cookie ? { cookie } : {} }), params(["data-subject-exports"]));
+    const admin = await login("admin@cvg.local");
+    const beforeStepUp = await exportFor(admin.cookie);
+    expect(beforeStepUp.status).toBe(403);
+    expect((await beforeStepUp.json()).error.code).toBe("REAUTH_REQUIRED");
+    const reauth = await POST(new Request("http://localhost/api/v1/session/reauth", {
+      method: "POST", headers: { cookie: admin.cookie, "x-csrf-token": admin.csrf, "content-type": "application/json" }, body: JSON.stringify({ password: "api-test-password" })
+    }), params(["session", "reauth"]));
+    expect(reauth.status).toBe(200);
+    const exported = await exportFor(admin.cookie);
+    expect(exported.status).toBe(200);
+    expect((await exported.json()).data).toMatchObject({ format: "cvg-hub.patient-data-export.v1", patient: { externalId: "HIS-THOR-001" }, requests: [expect.objectContaining({ requestCode: "EX-old", archived: true })] });
+    expect((await exportFor(admin.cookie, "externalId=HIS%20THOR")).status).toBe(400);
+    expect((await exportFor(admin.cookie, "")).status).toBe(400);
+    expect((await exportFor(admin.cookie, "externalId=HIS-NOBODY")).status).toBe(404);
+    const vet = await login();
+    expect((await exportFor(vet.cookie)).status).toBe(404);
+    expect((await exportFor(undefined)).status).toBe(401);
+  });
+
   it("returns the dashboard indicator contract with scope metadata", async () => {
     const manager = await login("manager@cvg.local");
     const response = await GET(new Request("http://localhost/api/v1/dashboard", { headers: { cookie: manager.cookie } }), params(["dashboard"]));

@@ -413,6 +413,36 @@ const archivedResultVersionSchema = strictObject({
   content: { anyOf: [schemaReference("StructuredLaboratoryResultContent"), schemaReference("JsonObject")] }, narrative: boundedString,
   conclusion: { type: "string", maxLength: 5000 }, releasedAt: timestamp, critical: { type: "boolean" }, amendmentReason: stringSchema(1, 500)
 }, ["id", "sequence", "status", "content", "narrative", "critical"]);
+// PROD-502 (D-048): the data subject's export; no staff identity, no draft, no audit trail, no storage key.
+const patientDataExportSchema = strictObject({
+  format: { type: "string", const: "cvg-hub.patient-data-export.v1" }, exportedAt: timestamp,
+  patient: strictObject({
+    externalId: stringSchema(1, 100), displayName: stringSchema(1, 200), species: stringSchema(1, 100), breed: stringSchema(0, 100), sex: stringSchema(0, 40),
+    birthDate: stringSchema(1, 40), ownerLabel: stringSchema(0, 200), active: { type: "boolean" }
+  }, ["externalId", "displayName", "species", "breed", "sex", "ownerLabel", "active"]),
+  encounters: arrayOf(strictObject({ externalId: stringSchema(1, 100), type: stringSchema(1, 40), status: stringSchema(1, 40), openedAt: timestamp, closedAt: timestamp }, ["externalId", "type", "status", "openedAt"])),
+  admissions: arrayOf(strictObject({ encounterExternalId: stringSchema(1, 100), departmentCode: stringSchema(1, 60), ward: stringSchema(0, 120), bed: stringSchema(0, 120), admittedAt: timestamp, dischargedAt: timestamp }, ["departmentCode", "ward", "bed", "admittedAt"])),
+  requests: arrayOf(strictObject({
+    requestCode: stringSchema(1, 100), encounterExternalId: stringSchema(1, 100), requestingDepartmentCode: stringSchema(1, 60), priority: prioritySchema,
+    status: aggregateStatusSchema, createdAt: timestamp, updatedAt: timestamp, archived: { type: "boolean" },
+    items: arrayOf(strictObject({
+      service: strictObject({ code: stringSchema(1, 100), name: stringSchema(1, 120) }, ["code", "name"]), departmentCode: stringSchema(1, 60),
+      status: { type: "string", enum: itemStates }, priority: prioritySchema, requestedAt: timestamp, completedAt: timestamp,
+      cancellationReason: stringSchema(1, 500), rejectionReason: stringSchema(1, 2000),
+      samples: arrayOf(strictObject({ accessionCode: stringSchema(1, 40), sampleType: stringSchema(1, 100), status: { type: "string", enum: ["EXPECTED", "RECEIVED", "REJECTED", "REPLACED"] }, collectedAt: timestamp, receivedAt: timestamp }, ["accessionCode", "sampleType", "status"])),
+      results: arrayOf(strictObject({
+        status: { type: "string", enum: ["DRAFT", "RELEASED", "VOIDED"] },
+        versions: arrayOf(strictObject({
+          sequence: positiveVersion, status: { type: "string", enum: ["RELEASED", "SUPERSEDED", "VOIDED"] }, releasedAt: timestamp, narrative: boundedString,
+          conclusion: { type: "string", maxLength: 5000 }, content: { anyOf: [schemaReference("StructuredLaboratoryResultContent"), schemaReference("JsonObject")] },
+          critical: { type: "boolean" }, amendmentReason: stringSchema(1, 500)
+        }, ["sequence", "status", "narrative", "content", "critical"]))
+      }, ["status", "versions"])),
+      attachments: arrayOf(strictObject({ safeName: stringSchema(1, 120), detectedMime: stringSchema(1, 100), sizeBytes: { type: "integer", minimum: 1 }, createdAt: timestamp }, ["safeName", "detectedMime", "sizeBytes", "createdAt"]))
+    }, ["service", "departmentCode", "status", "priority", "requestedAt", "samples", "results", "attachments"]))
+  }, ["requestCode", "requestingDepartmentCode", "priority", "status", "createdAt", "updatedAt", "archived", "items"])),
+  omitted: arrayOf(stringSchema(1, 300))
+}, ["format", "exportedAt", "patient", "encounters", "admissions", "requests", "omitted"]);
 const archivedRequestViewSchema = strictObject({
   readOnly: { type: "boolean", const: true }, archivedAt: timestamp,
   request: strictObject({
@@ -569,6 +599,7 @@ const responseDataSchemas = {
   ClinicalArchiveEntryList: arrayOf(schemaReference("ClinicalArchiveEntry")),
   ArchivedResultVersion: archivedResultVersionSchema,
   ArchivedRequestView: archivedRequestViewSchema,
+  PatientDataExport: patientDataExportSchema,
   EncounterList: arrayOf(schemaReference("Encounter")),
   RequestViewList: arrayOf(schemaReference("RequestView")),
   ItemCommandResult: strictObject({ item: schemaReference("DiagnosticItem"), request: schemaReference("RequestView") }, ["item", "request"]),
@@ -619,6 +650,7 @@ const supportSchemas = {
   DateTime: strictDateTime,
   Cursor: { type: "string", maxLength: 200, pattern: "^[A-Za-z0-9_-]+$" },
   Limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+  ExternalId: { type: "string", minLength: 1, maxLength: 100, pattern: "^[A-Za-z0-9._-]+$" },
   DepartmentCode: normalizedDepartmentCodeSchema,
   Priority: { type: "string", enum: ["ROUTINE", "URGENT", "EMERGENCY"] },
   ItemState: { type: "string", enum: itemStates },
@@ -790,8 +822,8 @@ function assertSemanticDrift(document, expected) {
     throw new Error("OpenAPI semantic drift: regenerate after changing manifest identity, auth, headers, request body/media/schema, query parameters, or responses.");
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
-  // 86/79 since PROD-202 added POST /users/{userId}/password-reset-link and POST /session/password/reset; 84/77 since PROD-501 added GET /patients/{patientId}/archive and GET /archive/requests/{requestId}; 82/75 since PROD-406 added POST /patients/{patientId}/encounters and POST /encounters/{encounterId}/close; 80/74 since PROD-402 added GET/POST /webhooks/whatsapp; 78/73 since PROD-405 added GET /samples/{sampleId}/label; 77/72 since PROD-407 added POST /diagnostic-services/import; 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
-  if (API_OPERATIONS.length !== 86 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 79) throw new Error("The audited API surface must remain exactly 86 operations across 79 paths.");
+  // 87/80 since PROD-502 added GET /data-subject-exports; 86/79 since PROD-202 added POST /users/{userId}/password-reset-link and POST /session/password/reset; 84/77 since PROD-501 added GET /patients/{patientId}/archive and GET /archive/requests/{requestId}; 82/75 since PROD-406 added POST /patients/{patientId}/encounters and POST /encounters/{encounterId}/close; 80/74 since PROD-402 added GET/POST /webhooks/whatsapp; 78/73 since PROD-405 added GET /samples/{sampleId}/label; 77/72 since PROD-407 added POST /diagnostic-services/import; 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
+  if (API_OPERATIONS.length !== 87 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 80) throw new Error("The audited API surface must remain exactly 87 operations across 80 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

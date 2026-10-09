@@ -363,3 +363,27 @@ test("quick-add submits with Enter and moving to recollection requires a reason 
   expect(command.status()).toBe(200);
   await expect(row.getByText("Recoleta necessária", { exact: true })).toBeVisible();
 });
+
+test("exports a patient's records for the data subject as a downloaded file (PROD-502)", async ({ page }, testInfo) => {
+  await signInAs(page, "admin@cvg.local", /Administração técnica/);
+  await page.goto("/admin#privacy");
+  await expect(page.getByRole("heading", { name: "Privacidade (LGPD)", exact: true })).toBeVisible();
+  await page.getByText("Exportar dados do titular (LGPD)", { exact: true }).click();
+  await page.getByLabel("Número do prontuário").fill("HIS-THOR-001");
+  await page.getByLabel("Sua senha (confirmação)").fill("e2e-local-password-2026");
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Exportar", exact: true }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toMatch(/^titular-HIS-THOR-001-\d{4}-\d{2}-\d{2}\.json$/);
+  const saved = testInfo.outputPath("export.json");
+  await file.saveAs(saved);
+  const { readFile } = await import("node:fs/promises");
+  const exported = JSON.parse(await readFile(saved, "utf8")) as { format: string; patient: { externalId: string }; omitted: string[] };
+  expect(exported.format).toBe("cvg-hub.patient-data-export.v1");
+  expect(exported.patient.externalId).toBe("HIS-THOR-001");
+  expect(exported.omitted.length).toBeGreaterThan(0);
+  await expect(page.getByRole("status").filter({ hasText: "Exportação de HIS-THOR-001 gerada e registrada na auditoria" })).toBeVisible();
+  // The password field is cleared and the content never reaches the page.
+  await expect(page.getByLabel("Sua senha (confirmação)")).toHaveValue("");
+  await expect(page.getByText("cvg-hub.patient-data-export.v1")).toHaveCount(0);
+});

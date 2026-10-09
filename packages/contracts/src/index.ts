@@ -205,6 +205,7 @@ export type Permission =
   | "critical_result_policy.manage"
   | "reason_code.manage"
   | "user_role.manage"
+  | "patient.data_export"
   | "queue.view"
   | "dashboard.view"
   | "diagnostic.timeline.view"
