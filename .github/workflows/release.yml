@@ -36,15 +36,6 @@ jobs:
       prefix: ${{ steps.release.outputs.prefix }}
       tag: ${{ steps.release.outputs.tag }}
     steps:
-      # Docker Hub rate-limits anonymous pulls per runner IP: the base images come through Google's Docker Hub
-      # mirror (same content) and are tagged with their Docker Hub names, as in the CI image job.
-      - name: Pull Docker Hub images through a mirror
-        run: |
-          set -Eeuo pipefail
-          for image in node:22-bookworm-slim golang:1.26-alpine alpine:3.23; do
-            docker pull --quiet "mirror.gcr.io/library/$image"
-            docker tag "mirror.gcr.io/library/$image" "$image"
-          done
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -74,11 +65,14 @@ jobs:
         run: |
           set -Eeuo pipefail
           labels=(--label "org.opencontainers.image.revision=$COMMIT" --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.created=$CREATED")
-          docker build "${labels[@]}" --tag "$PREFIX:$TAG" .
-          docker build --target ops "${labels[@]}" --tag "$PREFIX-ops:$TAG" .
+          # Base images and the Dockerfile frontend come from Google's Docker Hub mirror: Docker Hub rate-limits and refuses
+          # anonymous pulls from shared runner IPs (scripts/ci-docker-build.sh, same as CI).
+          export DOCKER_HUB_MIRROR=mirror.gcr.io
+          bash scripts/ci-docker-build.sh --pull "${labels[@]}" --tag "$PREFIX:$TAG" .
+          bash scripts/ci-docker-build.sh --target ops "${labels[@]}" --tag "$PREFIX-ops:$TAG" .
           # On-prem object storage (docker-compose.onprem.yml, D-050): MinIO built from the pinned source with the
           # dependency bumps of deploy/minio/Dockerfile, released with the same commit tag so deploy.sh pulls it too.
-          docker build --file deploy/minio/Dockerfile "${labels[@]}" --tag "$PREFIX-minio:$TAG" .
+          bash scripts/ci-docker-build.sh --file deploy/minio/Dockerfile "${labels[@]}" --tag "$PREFIX-minio:$TAG" .
           mkdir -p release
       - name: Audit application image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

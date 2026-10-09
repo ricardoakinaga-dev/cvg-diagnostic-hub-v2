@@ -543,16 +543,13 @@ jobs:
       MINIO_API_PORT: "9000"
       MINIO_CONSOLE_PORT: "9001"
     steps:
-      # Base images (node, golang, alpine) and the Compose database come through the mirror and are tagged with their
-      # Docker Hub names, so the builds and `compose up` below find them locally. (The daemon's registry-mirrors setting
-      # is not honoured by the runner's containerd image store.)
-      - name: Pull Docker Hub images through a mirror
+      # The Compose database comes through the mirror and is tagged with its Docker Hub name, so `compose up` finds it
+      # locally; the image builds resolve their base images from the mirror (scripts/ci-docker-build.sh).
+      - name: Pull the Compose database through a mirror
         run: |
           set -Eeuo pipefail
-          for image in node:22-bookworm-slim golang:1.26-alpine alpine:3.23 postgres:16-alpine; do
-            docker pull --quiet "$DOCKER_HUB_MIRROR/library/$image"
-            docker tag "$DOCKER_HUB_MIRROR/library/$image" "$image"
-          done
+          docker pull --quiet "$DOCKER_HUB_MIRROR/library/postgres:16-alpine"
+          docker tag "$DOCKER_HUB_MIRROR/library/postgres:16-alpine" postgres:16-alpine
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
@@ -570,7 +567,9 @@ jobs:
       - name: Start Compose dependencies
         run: |
           set -Eeuo pipefail
-          docker compose up -d postgres minio
+          # MinIO is built from source with its base images from the mirror, then started without a second build.
+          bash scripts/ci-docker-build.sh --file deploy/minio/Dockerfile --tag cvg-minio-source:7aac2a2 .
+          docker compose up -d --no-build postgres minio
           for _ in {1..60}; do
             if docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB" >/dev/null 2>&1; then
               break
@@ -598,10 +597,9 @@ jobs:
           STORAGE_FORCE_PATH_STYLE=true \
           npm run storage:init
       - name: Build image
-        # No --pull: the base image was just pulled fresh through the mirror (first step).
-        run: docker build --tag cvg-diagnostics-hub:ci .
+        run: bash scripts/ci-docker-build.sh --pull --tag cvg-diagnostics-hub:ci .
       - name: Build operational image (migrations, bootstrap, outbox worker)
-        run: docker build --target ops --tag cvg-diagnostics-hub-ops:ci .
+        run: bash scripts/ci-docker-build.sh --target ops --tag cvg-diagnostics-hub-ops:ci .
       - name: Audit image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -627,7 +625,7 @@ jobs:
           ignore-unfixed: true
           severity: CRITICAL,HIGH
       - name: Build MinIO client image (storage-iam, D-051)
-        run: docker build -f deploy/minio/Dockerfile.mc --tag cvg-mc-source:7394ce0 .
+        run: bash scripts/ci-docker-build.sh --file deploy/minio/Dockerfile.mc --tag cvg-mc-source:7394ce0 .
       - name: Audit MinIO client image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
