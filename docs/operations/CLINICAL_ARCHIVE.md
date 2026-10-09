@@ -51,8 +51,8 @@ Recomenda-se rodar o ensaio e conferir as contagens antes de ligar o job no prim
 
 | Consulta | Rota | Permissão e escopo |
 | --- | --- | --- |
-| Exames arquivados de um paciente | `GET /api/v1/patients/{patientId}/archive?limit=` (`listPatientArchive`) | `patient.view` e `diagnostic.timeline.view`, no mesmo escopo de `getPatientDiagnostics`; fora do escopo responde 404 |
-| Uma solicitação arquivada | `GET /api/v1/archive/requests/{requestId}` (`getArchivedRequest`) | `request.view`, no escopo da solicitação; executores veem só os exames do seu serviço; fora do escopo responde 404 |
+| Exames arquivados de um paciente | `GET /api/v1/patients/{patientId}/archive?limit=` (`listPatientArchive`) | `patient.view` e `diagnostic.timeline.view`, no mesmo escopo de `getPatientDiagnostics`; o resumo de cada solicitação lista só os exames (e conta só os anexos) que o perfil veria na leitura ativa, e o escopo é aplicado **antes** do `limit` (AUD-05/08); fora do escopo responde 404 |
+| Uma solicitação arquivada | `GET /api/v1/archive/requests/{requestId}` (`getArchivedRequest`) | `request.view`, no escopo da solicitação; **todo** perfil vê só os exames que veria na leitura ativa (`item.view` por setor e serviço do item: executores pelo seu serviço, gestores pelos setores delegados, clínicos pelos pacientes atribuídos), e resultados, versões, amostras e anexos derivam só desses exames (AUD-05); fora do escopo responde 404 |
 
 A segunda rota devolve a solicitação, os exames, os resultados e as versões **liberadas, substituídas ou invalidadas** (conteúdo e narrativa), as amostras e os metadados dos anexos; rascunhos e chaves de armazenamento nunca saem. É somente leitura: não há rota de escrita sobre o arquivo.
 
