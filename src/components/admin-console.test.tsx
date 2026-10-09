@@ -338,6 +338,18 @@ describe("AdminConsole", () => {
     expect(duplicate.parentElement).toBe(save.parentElement);
   });
 
+  it("offers the LGPD export only to the ADMIN (PROD-502)", async () => {
+    mockHttpApi(identity);
+    await openAdmin();
+    expect(screen.getByRole("heading", { name: "Privacidade (LGPD)" })).toBeInTheDocument();
+    expect(screen.getByText("Exportar dados do titular (LGPD)")).toBeInTheDocument();
+    cleanup();
+    mockHttpApi({ ...identity, role: "MANAGER", departmentCode: "LABORATORY", managedDepartmentCodes: ["LABORATORY"] });
+    await openAdmin();
+    expect(screen.queryByRole("heading", { name: "Privacidade (LGPD)" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Exportar dados do titular (LGPD)")).not.toBeInTheDocument();
+  });
+
   it("shows permission denial and does not expose mutation forms", async () => {
     vi.spyOn(apiClient, "apiFetch").mockRejectedValue(new apiClient.ApiClientError(404, { error: { code: "SCOPE_DENIED" } }));
     render(<AdminConsole />);

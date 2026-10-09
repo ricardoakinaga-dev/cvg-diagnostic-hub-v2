@@ -28,6 +28,12 @@ export const clinicalHandlers = {
   getArchivedRequest: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       return responseFor(await service.getArchivedRequest(actor, path[2]), correlationId, id);
     } },
+  exportPatientData: { authentication: "session", handle: async ({ request, correlationId, id, service, actor }) => {
+      const externalId = new URL(request.url).searchParams.get("externalId") ?? "";
+      if (!/^[A-Za-z0-9._-]{1,100}$/.test(externalId))
+        throw new ApiError("VALIDATION_ERROR", "Informe o número do prontuário (letras, números, ponto, hífen ou sublinhado; até 100 caracteres).", 400);
+      return responseFor(await service.exportPatientData(actor, externalId, { correlationId }), correlationId, id);
+    } },
   listPatientEncounters: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       return responseFor(await service.listEncounters(actor, path[1]), correlationId, id);
     } },
