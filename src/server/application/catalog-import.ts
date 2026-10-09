@@ -117,12 +117,34 @@ export interface CatalogAnalyteRow {
 
 const fold = (value: string): string => value.normalize("NFD").replace(/\p{M}/gu, "").trim().toLowerCase();
 
+/**
+ * A cell echoed in a message keeps at most 40 characters: a 20,000-character cell used to become a 20,000-character
+ * error, past the 1000-character contract cap of a report line and unreadable on screen.
+ */
+const MAX_ECHOED_CHARACTERS = 40;
+function quoted(raw: string): string {
+  const characters = Array.from(raw);
+  return `"${characters.length <= MAX_ECHOED_CHARACTERS ? raw : `${characters.slice(0, MAX_ECHOED_CHARACTERS).join("")}…`}"`;
+}
+
+/** The report's `code` of a row (contract cap 100); valid codes have at most 60 characters, so only junk is cut. */
+const rowCode = (code: string): string => Array.from(code).slice(0, 100).join("");
+
+/** At most five unknown or repeated header columns are named, the rest counted (the missing ones are at most 14). */
+function firstFive(problems: readonly string[], noun: string): string[] {
+  return problems.length <= 5 ? [...problems] : [...problems.slice(0, 5), `… e mais ${problems.length - 5} ${noun}.`];
+}
+
+/** A whole-sheet message is one report line: kept within its 1000-character contract cap. */
+const MAX_REPORT_MESSAGE = 1000;
+const capped = (message: string): string => Array.from(message).length <= MAX_REPORT_MESSAGE ? message : `${Array.from(message).slice(0, MAX_REPORT_MESSAGE - 1).join("")}…`;
+
 function parseBoolean(raw: string, column: string, errors: string[], fallback?: boolean): boolean {
   const value = fold(raw);
   if (["sim", "s", "true", "1", "yes", "y"].includes(value)) return true;
   if (["nao", "n", "false", "0", "no"].includes(value)) return false;
   if (value === "" && fallback !== undefined) return fallback;
-  errors.push(`Coluna "${column}": informe sim/não, s/n, true/false ou 1/0 (recebido "${raw}").`);
+  errors.push(`Coluna "${column}": informe sim/não, s/n, true/false ou 1/0 (recebido ${quoted(raw)}).`);
   return false;
 }
 
@@ -130,19 +152,19 @@ function parseEnum<T extends string>(raw: string, column: string, allowed: reado
   const value = fold(raw).toUpperCase().replace(/[\s-]+/g, "_");
   const direct = allowed.find((entry) => entry === value);
   const resolved = direct ?? aliases[fold(raw).replace(/[\s-]+/g, "_")];
-  if (!resolved) errors.push(`Coluna "${column}": valor "${raw}" inválido; use ${allowed.join(", ")}.`);
+  if (!resolved) errors.push(`Coluna "${column}": valor ${quoted(raw)} inválido; use ${allowed.join(", ")}.`);
   return resolved ?? allowed[0]!;
 }
 
 function parseDecimal(raw: string, column: string, errors: string[]): number | undefined {
   if (raw === "") return undefined;
-  if (!/^-?\d+([.,]\d+)?$/.test(raw)) { errors.push(`Coluna "${column}": "${raw}" não é um número válido.`); return undefined; }
+  if (!/^-?\d+([.,]\d+)?$/.test(raw)) { errors.push(`Coluna "${column}": ${quoted(raw)} não é um número válido.`); return undefined; }
   return Number(raw.replace(",", "."));
 }
 
 function parseInteger(raw: string, column: string, min: number, max: number, errors: string[]): number {
   if (!/^\d+$/.test(raw) || Number(raw) < min || Number(raw) > max) {
-    errors.push(`Coluna "${column}": informe um número inteiro entre ${min} e ${max} (recebido "${raw}").`);
+    errors.push(`Coluna "${column}": informe um número inteiro entre ${min} e ${max} (recebido ${quoted(raw)}).`);
     return min;
   }
   return Number(raw);
@@ -162,21 +184,21 @@ function readSheet<T>(text: string, columns: readonly string[], maxRows: number,
   const missing = columns.filter((column) => !names.includes(column));
   const duplicated = names.filter((name, index) => names.indexOf(name) !== index);
   const problems = [
-    ...unknown.map((cell) => `Coluna desconhecida no cabeçalho: "${cell}".`),
+    ...firstFive(unknown.map((cell) => `Coluna desconhecida no cabeçalho: ${quoted(cell)}.`), "coluna(s) desconhecida(s)"),
     ...missing.map((column) => `Coluna obrigatória ausente no cabeçalho: "${column}".`),
-    ...duplicated.map((name) => `Coluna repetida no cabeçalho: "${name}".`)
+    ...firstFive(duplicated.map((name) => `Coluna repetida no cabeçalho: ${quoted(name)}.`), "coluna(s) repetida(s)")
   ];
-  if (problems.length > 0) return { fatal: `Cabeçalho inválido na linha ${header.line}. ${problems.join(" ")} Colunas esperadas: ${columns.join(";")}.`, rows: [] };
+  if (problems.length > 0) return { fatal: capped(`Cabeçalho inválido na linha ${header.line}. ${problems.join(" ")} Colunas esperadas: ${columns.join(";")}.`), rows: [] };
   const dataRecords = records.slice(1);
   if (dataRecords.length > maxRows) return { fatal: `A planilha excede o limite de ${maxRows} linhas por importação.`, rows: [] };
   const rows = dataRecords.map((record): ParsedRow<T> => {
     const errors: string[] = [];
     if (record.cells.length !== names.length) {
-      return { line: record.line, code: fold(record.cells[0] ?? "").toUpperCase(), errors: [`A linha tem ${record.cells.length} colunas; o cabeçalho tem ${names.length}. Se um texto contém o separador, coloque-o entre aspas.`] };
+      return { line: record.line, code: rowCode(fold(record.cells[0] ?? "").toUpperCase()), errors: [`A linha tem ${record.cells.length} colunas; o cabeçalho tem ${names.length}. Se um texto contém o separador, coloque-o entre aspas.`] };
     }
     const get = (column: string): string => record.cells[names.indexOf(column)] ?? "";
     const built = build(get, errors);
-    return errors.length > 0 ? { line: record.line, code: built.code, errors } : { line: record.line, code: built.code, errors, value: built.value };
+    return errors.length > 0 ? { line: record.line, code: rowCode(built.code), errors } : { line: record.line, code: built.code, errors, value: built.value };
   });
   return { rows };
 }
@@ -324,7 +346,7 @@ export function planCatalogImport(state: StoreState, sheet: ParsedSheet<CatalogS
       error: rows.filter((row) => row.action === "ERROR").length
     }
   });
-  const fatal = [sheet.fatal, analytesSheet?.fatal ? `Planilha de analitos: ${analytesSheet.fatal}` : undefined].filter((entry): entry is string => entry !== undefined);
+  const fatal = [sheet.fatal, analytesSheet?.fatal ? capped(`Planilha de analitos: ${analytesSheet.fatal}`) : undefined].filter((entry): entry is string => entry !== undefined);
   if (fatal.length > 0) return finish(fatal.map((message) => errorRow(1, "", message)), []);
 
   const analyteRows: Array<ParsedRow<CatalogAnalyteRow>> = analytesSheet?.rows ?? [];

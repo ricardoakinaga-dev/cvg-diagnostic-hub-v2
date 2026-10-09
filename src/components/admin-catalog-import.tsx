@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ChangeEvent } from "react";
+import { useRef, useState, type ChangeEvent } from "react";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { Icon } from "./ui-icons";
@@ -25,7 +25,11 @@ function readFileText(file: File): Promise<string> {
   });
 }
 
-/** D10: validate (dry run) and apply the catalog CSV templates. Applying is only possible after a clean validation of the same content. */
+/**
+ * D10: validate (dry run) and apply the catalog CSV templates. Applying is only possible after a clean validation of
+ * the same content: the file inputs are locked while a request runs, and a validation whose selection changed while
+ * it ran is discarded (REM-01), so "Aplicar" never sends a sheet other than the one on screen.
+ */
 export function CatalogImportPanel({ onApplied }: { onApplied: () => void }) {
   const [servicesFile, setServicesFile] = useState<File | null>(null);
   const [analytesFile, setAnalytesFile] = useState<File | null>(null);
@@ -33,9 +37,12 @@ export function CatalogImportPanel({ onApplied }: { onApplied: () => void }) {
   const [busy, setBusy] = useState<"validate" | "apply" | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // Bumped on every file selection; a validation only lands if the selection is still the one it read.
+  const selection = useRef(0);
 
   function pick(setter: (file: File | null) => void) {
     return (event: ChangeEvent<HTMLInputElement>) => {
+      selection.current += 1;
       setter(event.target.files?.[0] ?? null);
       setValidated(null); setError(""); setMessage("");
     };
@@ -43,15 +50,17 @@ export function CatalogImportPanel({ onApplied }: { onApplied: () => void }) {
 
   async function validate() {
     if (!servicesFile) return;
+    const started = selection.current;
+    const current = () => selection.current === started;
     setBusy("validate"); setError(""); setMessage(""); setValidated(null);
     try {
       if (servicesFile.size > MAX_FILE_BYTES || (analytesFile?.size ?? 0) > MAX_FILE_BYTES) throw new FileProblem("Arquivo grande demais: divida a planilha em partes de até 900 KB.");
       const services = await readFileText(servicesFile);
       const analytes = analytesFile ? await readFileText(analytesFile) : undefined;
       const report = await apiFetch<CatalogImportReport>("/diagnostic-services/import", { method: "POST", body: JSON.stringify({ services, ...(analytes === undefined ? {} : { analytes }), dryRun: true }) });
-      setValidated({ report, services, ...(analytes === undefined ? {} : { analytes }) });
+      if (current()) setValidated({ report, services, ...(analytes === undefined ? {} : { analytes }) });
     } catch (cause) {
-      setError(cause instanceof FileProblem ? cause.message : getSafeErrorMessage(cause, "Não foi possível validar a planilha."));
+      if (current()) setError(cause instanceof FileProblem ? cause.message : getSafeErrorMessage(cause, "Não foi possível validar a planilha."));
     } finally { setBusy(null); }
   }
 
@@ -74,8 +83,8 @@ export function CatalogImportPanel({ onApplied }: { onApplied: () => void }) {
     <div className="admin-create-form">
       <p className="page-lede">Baixe os modelos, preencha no Excel e salve como CSV. A importação valida tudo antes de gravar e pode ser repetida.</p>
       <p><a href="/templates/catalogo-exames.csv" download>Baixar modelo de exames (CSV)</a> · <a href="/templates/catalogo-analitos.csv" download>Baixar modelo de analitos (CSV)</a></p>
-      <label>Planilha de exames (.csv)<input type="file" accept=".csv,text/csv" onChange={pick(setServicesFile)} /></label>
-      <label>Planilha de analitos (.csv, opcional)<input type="file" accept=".csv,text/csv" onChange={pick(setAnalytesFile)} /></label>
+      <label>Planilha de exames (.csv)<input type="file" accept=".csv,text/csv" disabled={busy !== null} onChange={pick(setServicesFile)} /></label>
+      <label>Planilha de analitos (.csv, opcional)<input type="file" accept=".csv,text/csv" disabled={busy !== null} onChange={pick(setAnalytesFile)} /></label>
       <ActionButton type="button" tone="ghost" state={busy === "validate" ? "pending" : "idle"} disabled={!servicesFile || busy !== null} onClick={() => void validate()}>{busy === "validate" ? "Validando…" : "Validar"}</ActionButton>
       {error && <p className="form-alert" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}

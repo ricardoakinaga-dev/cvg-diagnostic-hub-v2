@@ -67,8 +67,8 @@ Com `referencia_minima` e/ou `referencia_maxima`, o analito recebe uma faixa num
 
 1. **Administração → Serviços diagnósticos → Importar catálogo por planilha**.
 2. Escolha o CSV de exames e, se houver painéis, o CSV de analitos.
-3. **Validar**: mostra a tabela com linha, código, ação e detalhes (o que muda campo a campo). Nada é gravado.
-4. Sem erros, **Aplicar importação**; a lista de serviços é recarregada.
+3. **Validar**: mostra a tabela com linha, código, ação e detalhes (o que muda campo a campo). Nada é gravado. Enquanto valida ou aplica, os campos de arquivo ficam bloqueados; uma validação cuja seleção mudou no meio é descartada, e é preciso validar de novo (REM-01).
+4. Sem erros, **Aplicar importação**: envia exatamente o conteúdo validado que está na tela, e a lista de serviços é recarregada.
 
 ### 3.2 Pela linha de comando (servidor)
 
