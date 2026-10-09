@@ -21,8 +21,12 @@ interface MigrationProbe {
   upgrade(): ReturnType<typeof applyMigrations>;
 }
 
+// Relative to the clock: a fixed date ages past IDEMPOTENCY_RETENTION_MS (24 h) and the test's own compaction then
+// prunes these records, leaving a fresh removal row behind.
+const CREATED_AT = new Date().toISOString();
+
 function idempotency(key: string, index: number): IdempotencyRecord {
-  return { actorId: index % 2 ? "user-vet" : "user-\"lab\"", scope: "createRequest", key, payloadHash: `hash-${index}`, response: { id: `request-${index}` }, createdAt: "2026-10-08T00:00:00.000Z" };
+  return { actorId: index % 2 ? "user-vet" : "user-\"lab\"", scope: "createRequest", key, payloadHash: `hash-${index}`, response: { id: `request-${index}` }, createdAt: CREATED_AT };
 }
 
 function populated(): StoreState {
