@@ -4,7 +4,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROMETHEUS_IMAGE="prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e"
+# DOCKER_HUB_MIRROR (CI: mirror.gcr.io) pulls the same pinned digest through a Docker Hub mirror instead of the
+# rate-limited anonymous Docker Hub endpoint.
+PROMETHEUS_IMAGE="${DOCKER_HUB_MIRROR:+$DOCKER_HUB_MIRROR/}prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e"
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
