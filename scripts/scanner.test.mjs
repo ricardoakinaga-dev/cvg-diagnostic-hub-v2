@@ -111,7 +111,9 @@ test("scanner adapter quarantines what clamd flags and refuses bad callers", { s
     const mismatch = await post(port, ca, { body: "clean bytes", key: apiKey, declared: "application/pdf", detected: "image/png" });
     assert.equal(mismatch.body.status, "QUARANTINED", "declared and detected MIME must agree");
 
-    const wrongKey = await post(port, ca, { body: "clean bytes", key: `${apiKey.slice(0, -1)}0`, declared: "application/pdf" });
+    // Flip the last character: replacing it by a fixed "0" left the key unchanged whenever the hash already ended in 0
+    // (one PID in sixteen), and the "wrong" key was accepted.
+    const wrongKey = await post(port, ca, { body: "clean bytes", key: `${apiKey.slice(0, -1)}${apiKey.endsWith("0") ? "1" : "0"}`, declared: "application/pdf" });
     assert.equal(wrongKey.status, 401);
     const noKey = await post(port, ca, { body: "clean bytes", declared: "application/pdf" });
     assert.equal(noKey.status, 401);

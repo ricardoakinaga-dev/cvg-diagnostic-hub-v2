@@ -1,0 +1,55 @@
+// Grafana Alloy for the CVG Diagnostics Hub (PROD-512): reads the logs of the containers of the Compose projects
+// matching CVG_LOG_PROJECT_REGEX through the read-only Docker proxy and pushes them to Loki, labelled by project and
+// service. The application lines are JSON with allowlisted fields; `level` becomes a label, `correlationId` and
+// `requestId` stay in the line (high cardinality) and are found with `| json | correlationId="corr_..."`.
+
+discovery.docker "containers" {
+  host             = "tcp://docker-proxy:2375"
+  refresh_interval = "15s"
+}
+
+discovery.relabel "cvg" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    regex         = coalesce(sys.env("CVG_LOG_PROJECT_REGEX"), "cvg-(hml|prod)")
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project"]
+    target_label  = "project"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "cvg" {
+  host          = "tcp://docker-proxy:2375"
+  targets       = discovery.relabel.cvg.output
+  labels        = { source = "docker" }
+  relabel_rules = discovery.relabel.cvg.rules
+  forward_to    = [loki.process.cvg.receiver]
+}
+
+loki.process "cvg" {
+  stage.json {
+    expressions = { level = "level" }
+  }
+
+  stage.labels {
+    values = { level = "" }
+  }
+
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

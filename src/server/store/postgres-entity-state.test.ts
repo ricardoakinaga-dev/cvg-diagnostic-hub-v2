@@ -174,6 +174,45 @@ describe("writing the difference", () => {
       .rejects.toThrow("POSTGRES_ENTITY_STATE_DIVERGED:upsert");
   });
 
+  it("appends and replaces in one write by identity, keying only what changed (PROD-110 fast path)", async () => {
+    const { database, snapshot } = await loaded();
+    const users = snapshot.state.users;
+    const renamed = { ...users[2], displayName: "Renamed in place" };
+    const appended = [{ ...users[0], id: "user-fast-1" }, { ...users[0], id: "user-fast-2" }];
+    const next = { ...snapshot.state, users: [...users.slice(0, 2), renamed, ...users.slice(3), ...appended] };
+    const version = await commit(database, snapshot.state, next);
+    const written = [...database.rows.values()].filter((row) => row.written_version === version).map((row) => [row.entity_key, row.position]);
+    expect(written).toEqual([[renamed.id, 3], ["user-fast-1", users.length + 1], ["user-fast-2", users.length + 2]]);
+    expect(database.removals).toEqual([]);
+    expect(database.state()).toEqual(next);
+
+    // A second append from the new state uses the handed-over key index: positions continue, and a key appended
+    // by the first write is still known, so a duplicate of it is refused by the general diff.
+    const frozen = freezeState(next);
+    const failing: EntityQueryable = { query: async () => ({ rows: [], rowCount: 0 }) };
+    const lost = { ...frozen, users: [...frozen.users, { ...users[0], id: "user-fast-lost" }] };
+    await expect(writeEntityState(failing, frozen, lost, version + 1)).rejects.toThrow("POSTGRES_ENTITY_STATE_DIVERGED:upsert");
+    // The failed transaction leaves the database at `frozen`; writing from it again rebuilds its own key index.
+    const third = { ...frozen, users: [...frozen.users, { ...users[0], id: "user-fast-3" }] };
+    const thirdVersion = await commit(database, frozen, third);
+    expect(database.rows.get("users\u0000user-fast-3")).toMatchObject({ position: users.length + 3, written_version: thirdVersion });
+    expect(database.rows.has("users\u0000user-fast-lost")).toBe(false);
+    expect(database.state()).toEqual(third);
+    const frozenThird = freezeState(third);
+    await expect(writeEntityState(client(database), frozenThird, { ...frozenThird, users: [...frozenThird.users, appended[1]] }, thirdVersion + 1))
+      .rejects.toThrow("POSTGRES_ENTITY_KEY_DUPLICATE:users");
+    await expect(writeEntityState(client(database), frozenThird, { ...frozenThird, users: [...frozenThird.users, { ...users[0], id: "user-fast-3" }] }, thirdVersion + 1))
+      .rejects.toThrow("POSTGRES_ENTITY_KEY_DUPLICATE:users");
+  });
+
+  it("falls back to the general diff when a slot holds another entity", async () => {
+    const { database, snapshot } = await loaded();
+    const [first, second, ...rest] = snapshot.state.users;
+    const next = { ...snapshot.state, users: [second, first, ...rest] };
+    await commit(database, snapshot.state, next);
+    expect(database.state().users.map((user) => user.id)).toEqual(next.users.map((user) => user.id));
+  });
+
   it("batches large upserts", async () => {
     const { database, snapshot } = await loaded();
     const extra = Array.from({ length: 4_500 }, (_, index) => record("actor", "scope", `key-${index}`));

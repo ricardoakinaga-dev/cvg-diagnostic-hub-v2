@@ -17,7 +17,7 @@ const REQUEST_IDS_SQL = `SELECT request_id FROM cvg_clinical_archive
      AND ($1::text IS NULL OR data->>'patientId' = $1)
      AND ($2::text IS NULL OR request_id = $2)
    ORDER BY data->>'updatedAt' DESC, request_id
-   LIMIT $3::int`;
+   LIMIT $3::int OFFSET $4::int`;
 const ROWS_SQL = `SELECT request_id, collection, entity_key, position, data, archived_at, archive_batch
   FROM cvg_clinical_archive WHERE request_id = ANY($1::text[]) ORDER BY request_id, collection, position`;
 const DUE_REQUESTS_SQL = `SELECT request_id FROM cvg_clinical_archive
@@ -71,9 +71,9 @@ function archiveRow(record: ArchiveRowRecord): ClinicalArchiveRow {
   };
 }
 
-/** Rows of the newest `limit` archived requests that match (all of them without a limit: LIMIT NULL); request order follows REQUEST_IDS_SQL. */
+/** Rows of the newest `limit` archived requests that match, after skipping `offset` (all of them without a limit: LIMIT NULL); request order follows REQUEST_IDS_SQL. */
 export async function readClinicalArchiveRows(client: EntityQueryable, query: ClinicalArchiveQuery): Promise<ClinicalArchiveRow[]> {
-  const ids = (await client.query(REQUEST_IDS_SQL, [query.patientId ?? null, query.requestId ?? null, query.limit ?? null])).rows as { request_id: string }[];
+  const ids = (await client.query(REQUEST_IDS_SQL, [query.patientId ?? null, query.requestId ?? null, query.limit ?? null, query.offset ?? 0])).rows as { request_id: string }[];
   if (ids.length === 0) return [];
   return ((await client.query(ROWS_SQL, [ids.map((row) => row.request_id)])).rows as ArchiveRowRecord[]).map(archiveRow);
 }

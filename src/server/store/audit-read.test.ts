@@ -39,6 +39,10 @@ describe("audit read contract", () => {
     const store = new MemoryStore({ ...createDemoState("audit-actors"), auditEvents: [event("no-actor"), { ...event("a"), actorId: "reviewer" }, { ...event("b", "Other"), actorId: "reviewer" }, { ...event("c", "Other", "other"), actorId: "hidden" }] });
     expect(await store.readAuditActors(query.scope.entities)).toEqual([{ entityId: "request-visible", actorId: "reviewer" }]);
     expect(await store.readAuditActors([])).toEqual([]);
+    // Restricted to the actors the search passes; an empty list reads nothing.
+    expect(await store.readAuditActors(query.scope.entities, ["reviewer"])).toEqual([{ entityId: "request-visible", actorId: "reviewer" }]);
+    expect(await store.readAuditActors(query.scope.entities, ["hidden", "nobody"])).toEqual([]);
+    expect(await store.readAuditActors(query.scope.entities, [])).toEqual([]);
   });
 
   it("aggregates clinical metrics with duplicate recollections, unknown versions and invalid clocks", async () => {

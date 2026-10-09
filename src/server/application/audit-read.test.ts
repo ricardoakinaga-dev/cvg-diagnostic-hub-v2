@@ -208,7 +208,22 @@ describe("application historical audit read seam", () => {
       { entityType: "DiagnosticRequest", entityId: "request-visible" }, { entityType: "DiagnosticRequestItem", entityId: "item-lab" }
     ]);
     await expect(context.readAuditActors.mock.results[0].value).resolves.toEqual([{ entityId: "item-lab", actorId: "user-admin" }]);
+    // Only the users matching the query are looked up in the audit trail (D-046).
+    expect(context.readAuditActors.mock.calls[0][1]).toEqual([actor(state, "ADMIN").id]);
     expect(context.readAuditEvents).not.toHaveBeenCalled();
+  });
+
+  it("does not read the audit trail when the query matches no user (request codes, exam names)", async () => {
+    const state = fixtureState();
+    state.auditEvents = [event("Unknown", "item-lab", "reviewer-1", "user-admin")];
+    const context = seam(new MemoryStore(state));
+    const lab = actor(state, "LAB_TECH");
+    const byExam = await context.service.search(lab, "HEMOGRAM", { types: ["REQUEST", "ITEM"] });
+    expect(byExam.items.length).toBeGreaterThan(0);
+    expect(context.readAuditActors).not.toHaveBeenCalled();
+    // An upper-case, accented name ("ADMINISTRAÇÃO TÉCNICA") still matches its user and reads that actor only.
+    expect((await context.service.search(lab, actor(state, "ADMIN").displayName.toUpperCase())).items.map((entry) => entry.id)).toEqual(["request-visible"]);
+    expect(context.readAuditActors).toHaveBeenCalledTimes(1);
   });
 
   it("does not query history after invalid input or unauthorized access", async () => {

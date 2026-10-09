@@ -288,6 +288,10 @@ describe("PROD-101 PostgreSQL audit read authority", () => {
       expect(pairs.filter((pair) => pair.actorId === "user-audit-reviewer")).toHaveLength(1);
       expect(pairs.every((pair) => pair.entityId === "item-audit-lab")).toBe(true);
       expect([...pairs].sort((a, b) => a.actorId.localeCompare(b.actorId))).toEqual((await memory.readAuditActors(scope.entities)).sort((a, b) => a.actorId.localeCompare(b.actorId)));
+      // The search's restricted form: only the actors it passes, the same answer as memory.
+      const restricted = await postgres.readAuditActors([{ entityType: "DiagnosticRequestItem", entityId: "item-audit-lab" }], ["user-audit-reviewer", "user-nobody"]);
+      expect(restricted).toEqual([{ entityId: "item-audit-lab", actorId: "user-audit-reviewer" }]);
+      expect(await postgres.readAuditActors([{ entityType: "DiagnosticRequestItem", entityId: "item-audit-lab" }], [])).toEqual([]);
       expect(postgres.getState().auditEvents).toEqual([]);
     });
   });

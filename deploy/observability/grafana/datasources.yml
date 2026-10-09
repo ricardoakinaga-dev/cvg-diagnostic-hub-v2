@@ -1,0 +1,13 @@
+# Grafana datasource for the log stack (PROD-512). Explore → Loki, query:
+#   {project="cvg-prod"} | json | correlationId="corr_<uuid>"
+apiVersion: 1
+datasources:
+  - name: Loki
+    uid: cvg-loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    editable: false
+    jsonData:
+      maxLines: 1000

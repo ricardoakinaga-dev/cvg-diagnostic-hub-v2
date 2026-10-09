@@ -104,6 +104,7 @@ export function purgeAuditEvent(summary: ClinicalArchivePurgeSummary, now: Date)
  */
 export function assertBoundedArchiveQuery(query: ClinicalArchiveQuery): void {
   if (query.limit !== undefined && (!Number.isSafeInteger(query.limit) || query.limit <= 0)) throw new Error("CLINICAL_ARCHIVE_QUERY_INVALID_LIMIT");
+  if (query.offset !== undefined && (!Number.isSafeInteger(query.offset) || query.offset < 0)) throw new Error("CLINICAL_ARCHIVE_QUERY_INVALID_OFFSET");
   if (query.patientId === undefined && query.requestId === undefined && query.limit === undefined) throw new Error("CLINICAL_ARCHIVE_QUERY_UNBOUNDED");
 }
 
