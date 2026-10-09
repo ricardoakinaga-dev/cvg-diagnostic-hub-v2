@@ -1,9 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StoreState, User } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { ARCHIVE_NOW, withCompletedRequest } from "../../test/archive-fixtures";
 import { createApplicationService } from "./service";
+import { ARCHIVE_SCAN_PAGE } from "./archive-service";
 
 function userByEmail(state: StoreState, email: string): User {
   const user = state.users.find((entry) => entry.email === email);
@@ -40,6 +41,33 @@ describe("archive reads", () => {
     await expect(service.listPatientArchive(actor("admin@cvg.local"), "patient-thor")).rejects.toMatchObject({ status: 404 });
     await expect(service.listPatientArchive(vet, "patient-thor", { limit: 0 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
     await expect(service.listPatientArchive(vet, "patient-thor", { limit: 101 })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+  });
+
+  it("refuses before reading the archive, and reads a long history a page at a time (audit of 09/10)", async () => {
+    // 250 archived requests for Thor, one of them in another department the ultrasound team can see nothing of.
+    const { store, service, actor } = await archivedStore((state) => {
+      let next = state;
+      for (let index = 0; index < 2 * ARCHIVE_SCAN_PAGE + 49; index++) next = withCompletedRequest(next, `bulk-${index}`);
+      return next;
+    });
+    const reads = vi.spyOn(store, "readClinicalArchive");
+    // A role without patient access is refused without touching the archive.
+    await expect(service.listPatientArchive(actor("admin@cvg.local"), "patient-thor")).rejects.toMatchObject({ status: 404 });
+    await expect(service.listPatientArchive(actor("vet@cvg.local"), "patient-mel-2")).rejects.toMatchObject({ status: 404 });
+    expect(reads).not.toHaveBeenCalled();
+    // One page answers a small limit.
+    expect(await service.listPatientArchive(actor("vet@cvg.local"), "patient-thor", { limit: 3 })).toHaveLength(3);
+    expect(reads.mock.calls).toEqual([[{ patientId: "patient-thor", limit: ARCHIVE_SCAN_PAGE, offset: 0 }]]);
+    // An executor that sees none of it scans page by page to the end, then is refused.
+    reads.mockClear();
+    await expect(service.listPatientArchive(actor("us@cvg.local"), "patient-thor")).rejects.toMatchObject({ status: 404 });
+    expect(reads.mock.calls.map(([query]) => query.offset)).toEqual([0, ARCHIVE_SCAN_PAGE, 2 * ARCHIVE_SCAN_PAGE]);
+    // A limit larger than one page keeps scanning until it is filled.
+    reads.mockClear();
+    const all = await service.listPatientArchive(actor("vet@cvg.local"), "patient-thor", { limit: 100 });
+    expect(all).toHaveLength(100);
+    expect(new Set(all.map((entry) => entry.requestId)).size).toBe(100);
+    expect(reads).toHaveBeenCalledTimes(1);
   });
 
   it("scopes executors by their own departments and services, even without active exams", async () => {
