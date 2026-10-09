@@ -27,7 +27,7 @@ umask 077
 # PROD-302 / D-051: secrets from files and the encrypted destination. The `offsitecrypt` remote (type crypt) wraps
 # OFFSITE_CRYPT_REMOTE; a destination that is not a crypt remote is refused unless OFFSITE_ALLOW_PLAINTEXT=true
 # (a decision of the hospital recorded in D-051: destination with its own encryption and restricted access).
-. "$(dirname "$0")/secrets-env.sh"
+. "${BACKUP_HELPERS_DIR:-$(dirname "$0")}/secrets-env.sh"
 load_file_secrets RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY
 configure_offsite_crypt
 

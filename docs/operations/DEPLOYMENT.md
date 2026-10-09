@@ -429,6 +429,8 @@ Variáveis novas (todas em `.env.production.example`):
 
 Atualização de uma instalação existente: definir `POSTGRES_BACKUP_PASSWORD`, rodar `up -d` (recria o `postgres` com os novos parâmetros, com uma reinicialização curta do banco, e o `migrate` cria o papel) e esperar o primeiro backup base (`docker compose ... logs backup`, evento `basebackup.completed`) antes de contar com o PITR. O `pg_hba` passa a vir de [`deploy/backup/pg_hba.conf`](../../deploy/backup/pg_hba.conf) (mesmas regras da imagem mais a linha de replicação do `cvg_backup`).
 
+**Destino cifrado (D-051, obrigatório desde PROD-302).** O `offsite` só aceita um destino do tipo `crypt` do rclone: ele define o remoto `offsitecrypt` (nomes e conteúdo cifrados) sobre `OFFSITE_CRYPT_REMOTE` (o remoto real do `rclone.conf`, por exemplo `s3:cvg-offsite/hospital-a`) com a senha e o sal de `SECRETS_DIR/offsite_crypt_password` e `offsite_crypt_salt`, e `OFFSITE_RCLONE_REMOTE=offsitecrypt:`. Um destino que não é `crypt` é recusado (`offsite.refused`, `destination is not a crypt remote`, healthcheck vermelho) a menos que `OFFSITE_ALLOW_PLAINTEXT=true`, decisão registrada do hospital para um destino com cifra própria e acesso restrito. **Instalação existente com destino em claro:** (1) gerar `offsite_crypt_password` e `offsite_crypt_salt` (`secrets-init.sh`, só eles são criados; copiar para o cofre); (2) definir `OFFSITE_CRYPT_REMOTE=<remoto antigo>:<caminho NOVO>` (por exemplo `s3:cvg-offsite/hospital-a-crypt`) e `OFFSITE_RCLONE_REMOTE=offsitecrypt:`; (3) `up -d offsite`: o primeiro ciclo recria dumps, WAL e objetos cifrados no caminho novo, sem tocar no antigo; (4) depois do primeiro `offsite.shipped` com `check-offsite.sh` verde e de um restore de ensaio pelo caminho cifrado, expirar o caminho antigo no destino. Comandos manuais com o rclone dentro do container passam pelo helper que carrega os segredos: `docker compose ... exec offsite sh /opt/backup/rclone-with-secrets.sh lsd offsitecrypt:`.
+
 O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco + WAL + backups: reserve pelo menos 100 GB além do banco para 14 dias de WAL a `archive_timeout` 300 s, dumps e backups base; CPU/RAM conforme §6.6), o **destino externo** fora do prédio (bucket S3-compatível, outro site por SFTP ou equivalente, com política de ciclo de vida para `wal/`), as **credenciais** desse destino e quem as guarda, e os **operadores** que acompanham o `healthcheck` do `offsite` e fazem o ensaio mensal. Sem eles o mecanismo está pronto e ensaiado em laboratório, mas o RPO de 15 min **fora do prédio** não está garantido.
 
 ## 11. Pipeline de release (PROD-303)
@@ -512,12 +514,73 @@ docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-fil
 
 Todos os comandos do §3 e do §4 valem com os dois `-f`; o [`deploy.sh`](../../deploy/release/deploy.sh) do §11 recebe o overlay por `--compose-file` repetido (a imagem do `storage` não vem do registry, por isso o `build storage` único acima). Verificação sob demanda, sem alterar nada: `docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify` (ou `npm run storage:verify` com as variáveis exportadas) imprime o relatório e sai com 1 se o bucket desviou. Ensaios reproduzíveis: `npm run scanner:drill` (EICAR em quarentena com ClamAV real) e `npm run storage:backup:drill` (perda do volume e restore a partir da cópia externa, [BACKUP_RESTORE.md §4.5](BACKUP_RESTORE.md#45-restaurar-o-bucket-de-anexos-a-partir-da-cópia-externa)).
 
-**Segredos que o hospital guarda.** `.data/onprem/minio-kms.key` (sem ela, nenhum anexo é legível: copie para o cofre junto com as senhas do banco; trocar a chave exige migração com ensaio de restore) e `.data/onprem/certs/ca.key` (assina o certificado do scanner; `bash scripts/onprem-init.sh .data/onprem --renew-scanner` renova o certificado, válido por 825 dias, com `restart` do `scanner`). O `STORAGE_ACCESS_KEY`/`STORAGE_SECRET_KEY` é o usuário raiz do MinIO, usado pelo app, pelo worker (expurgo) e pela cópia externa; sem console nem porta publicada, só o Compose o alcança.
+**Segredos que o hospital guarda.** `ONPREM_DIR/minio-kms.key` (sem ela, nenhum anexo é legível: copie para o cofre junto com as senhas do banco; trocar a chave exige migração com ensaio de restore), `ONPREM_DIR/certs/ca.key` (assina o certificado do scanner; `bash scripts/onprem-init.sh <dir> --renew-scanner` renova o certificado, válido por 825 dias, com `restart` do `scanner`) e os arquivos de `SECRETS_DIR` (§13.2). Usuários do MinIO (D-051): o raiz (`STORAGE_ROOT_USER`, senha em `SECRETS_DIR/storage_root_password`) só em `storage`, `storage-init` e `storage-iam`; `app`/`worker` entram como `STORAGE_ACCESS_KEY` (policy `cvg-app`: nunca apagam versão nem mudam o bucket) e a cópia externa como `OFFSITE_STORAGE_ACCESS_KEY` (só leitura). Sem console nem porta publicada, só o Compose o alcança.
 
 **Quarentena.** O que acontece com um arquivo que o ClamAV marca, quem é o dono e os passos estão em [INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#storage-upload-ou-scanner-av-indisponível); o sinal é o alerta `CvgAttachmentQuarantined` ([OBSERVABILITY.md](OBSERVABILITY.md)). Sem saída para a internet, as assinaturas do ClamAV ficam na versão embutida na imagem: libere `database.clamav.net` no firewall (PROD-309) ou atualize a imagem a cada release.
 
 **Cópia externa do bucket (PROD-514).** O overlay define o remoto `minio` do rclone a partir das variáveis `STORAGE_*` e passa `OFFSITE_BUCKET_SOURCE=minio:<bucket>` ao serviço `offsite`: a cada ciclo os objetos vão para `<OFFSITE_RCLONE_REMOTE>/objects` com `rclone copy --ignore-existing` (nunca apaga nem sobrescreve no destino, D-041) e o ciclo é recusado (`offsite.refused`, `bucket source unreachable`) se o bucket não puder ser listado. O `offsite-status.json` ganha `objects` (contagem no bucket). Retenção no destino: as versões não correntes não saem do servidor (o rclone copia só a versão corrente), então o destino guarda uma cópia de cada objeto gravado desde a ativação, inclusive os que o expurgo apagou; expirar `objects/` no destino é uma regra de ciclo de vida do próprio destino, com prazo igual ao legal, decidida com o jurídico. O restore está em [BACKUP_RESTORE.md §4.5](BACKUP_RESTORE.md#45-restaurar-o-bucket-de-anexos-a-partir-da-cópia-externa).
 
-**Variáveis** (todas em `.env.production.example`): `ONPREM_DIR` (`./.data/onprem`), `MINIO_IMAGE_TAG` (`7aac2a2`), `STORAGE_NONCURRENT_VERSION_DAYS` (`30`), `STORAGE_MEM_LIMIT` (`1g`), `CLAMAV_MEM_LIMIT` (`2g`), `OFFSITE_BUCKET_SOURCE` (o overlay fixa `minio:<STORAGE_BUCKET>`).
+**Variáveis** (todas em `.env.production.example`): `ONPREM_DIR`, `SECRETS_DIR`, `MINIO_IMAGE_TAG` (`7aac2a2`), `MC_IMAGE_TAG` (`7394ce0`, imagem do `mc` para o `storage-iam`, [`deploy/minio/Dockerfile.mc`](../../deploy/minio/Dockerfile.mc)), `STORAGE_ROOT_USER`, `OFFSITE_STORAGE_ACCESS_KEY`, `SCANNER_UID`/`SCANNER_GID` (o scanner precisa ler `scanner.key`: `onprem-init.sh <dir> --owner uid:gid`), `STORAGE_NONCURRENT_VERSION_DAYS` (`30`), `STORAGE_MEM_LIMIT` (`1g`), `CLAMAV_MEM_LIMIT` (`2g`), `OFFSITE_BUCKET_SOURCE` (o overlay fixa `minio:<STORAGE_BUCKET>`). A imagem do `mc`, como a do MinIO, é construída da fonte pinada e auditada com Trivy na CI; até o release.yml publicá-la (follow-up do #59), `compose build storage storage-iam` uma vez no servidor.
 
 O que o hospital ainda precisa fornecer: o servidor (disco para o bucket além do banco e dos backups), o cofre para a chave KMS e a CA, o nome do responsável pela quarentena (PROD-516) e o destino externo com a regra de retenção de `objects/`.
+
+## 13. Homologação e produção no servidor, segredos em arquivo e borda (PROD-301/302/309)
+
+Decisão [D-051](../DECISION_LOG.md). Os três itens foram ensaiados nesta máquina com `npm run environments:drill` (§9 do [backlog](../build/PRODUCTION_BACKLOG.md)); o que depende do servidor e das redes do hospital está marcado ao fim.
+
+### 13.1 Dois ambientes, nada em comum (PROD-301)
+
+Homologação (`cvg-hml`) e produção (`cvg-prod`) rodam no mesmo servidor como **projetos Compose distintos**, cada um com o seu arquivo de ambiente, o seu diretório de segredos, a sua CA/chave KMS, o seu banco (`POSTGRES_DB`), o seu bucket (`STORAGE_BUCKET`), os seus volumes e a sua rede (o Compose prefixa volumes e redes com o nome do projeto; a rede padrão de um projeto não alcança a do outro). Convenção, igual à do §11:
+
+| | Homologação | Produção |
+| --- | --- | --- |
+| Projeto (`-p`) | `cvg-hml` | `cvg-prod` |
+| Arquivo de ambiente | `/etc/cvg-hub/hml.env` | `/etc/cvg-hub/prod.env` |
+| Segredos (`SECRETS_DIR`) | `/etc/cvg-hub/hml/secrets` | `/etc/cvg-hub/prod/secrets` |
+| CA, certificado do scanner, chave KMS (`ONPREM_DIR`) | `/etc/cvg-hub/hml/onprem` | `/etc/cvg-hub/prod/onprem` |
+| Banco / bucket | `cvg_hml` / `cvg-hml-attachments` | `cvg_prod` / `cvg-prod-attachments` |
+| Domínio / portas publicadas | `hml.<dominio>.example`, `HTTPS_PORT=8443` e `HTTP_BIND` no endereço da VPN | `<dominio>.example`, 80/443 |
+| Canal de release (§11) | `staging` | `production` |
+| Checkout | `/opt/cvg-hub` (o mesmo; os dois projetos usam os mesmos arquivos de Compose, versionados) | |
+
+```bash
+# por ambiente, uma vez
+bash scripts/onprem-init.sh /etc/cvg-hub/prod/onprem
+bash scripts/secrets-init.sh /etc/cvg-hub/prod/secrets        # ou --allow-empty metrics_scrape_token
+# subir (os quatro arquivos; o quinto, internal-tls, só quando o certificado é do hospital)
+docker compose -p cvg-prod -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.secrets.yml \
+  --env-file /etc/cvg-hub/prod.env up -d
+```
+
+A homologação recebe a mesma release antes da produção (canal `staging`, §11) e é onde os ensaios de restore (§10, [BACKUP_RESTORE.md](BACKUP_RESTORE.md)) e de rotação (13.2) acontecem antes de valer em produção. Nunca aponte um comando de um projeto para o arquivo de ambiente do outro: o `-p` e o `--env-file` andam sempre juntos.
+
+### 13.2 Segredos em arquivo e rotação (PROD-302)
+
+Com [`docker-compose.secrets.yml`](../../docker-compose.secrets.yml) (e o overlay on-prem, que já nasce assim) **nenhum segredo fica no arquivo de ambiente, na interpolação do Compose, na imagem ou no host de build**: cada um é um arquivo em `SECRETS_DIR` (modo 600, diretório 700, gerado por [`scripts/secrets-init.sh`](../../scripts/secrets-init.sh)), montado somente leitura em `/run/secrets/<nome>` só nos serviços que o usam. Os processos leem `NOME_FILE` ao iniciar ([`src/server/security/file-secrets.ts`](../../src/server/security/file-secrets.ts), chamado pela instrumentação do Next e pela primeira linha dos scripts de operação) e **recusam** `NOME` e `NOME_FILE` definidos com valores diferentes, arquivo ilegível ou placeholder sem valor; o PostgreSQL oficial lê `POSTGRES_PASSWORD_FILE` sozinho; o MinIO lê `MINIO_ROOT_PASSWORD_FILE`; Caddy, `backup`, `offsite` e o scanner usam o mesmo contrato por [`deploy/backup/secrets-env.sh`](../../deploy/backup/secrets-env.sh) e pelo `scanner.mjs`. As strings de conexão do Compose levam `${POSTGRES_RUNTIME_PASSWORD}` literal, expandido pelo processo depois de ler o arquivo, com a senha codificada para URL: nenhuma senha passa pela interpolação do Compose.
+
+| Arquivo em `SECRETS_DIR` | Quem lê | Rotação |
+| --- | --- | --- |
+| `postgres_password` | `postgres` (só na primeira inicialização do volume), `migrate` | `--rotate`, depois `ALTER ROLE` manual no banco (o papel administrativo não é recriado pelo `migrate`) e `up -d` |
+| `postgres_migration_password`, `postgres_runtime_password`, `postgres_backup_password` | `migrate` (reaplica a senha do papel a cada execução), `app`/`worker`/`backup` | `--rotate`, `docker compose ... run --rm migrate`, `up -d --force-recreate app worker backup offsite` |
+| `session_secret` | `app`, `worker`, `migrate`, `bootstrap` | `--rotate` + `up -d --force-recreate app worker`; encerra todas as sessões e invalida links de redefinição pendentes (§2) |
+| `trust_proxy_shared_secret` | `app`, `worker`, `proxy` | `--rotate` + `up -d --force-recreate proxy app worker`, juntos |
+| `storage_root_password` | `storage`, `storage-init`, `storage-iam` | `--rotate` exige trocar também no MinIO (`mc admin user` com a senha antiga) antes do `up -d`; raro, planejado |
+| `storage_secret_key`, `offsite_storage_secret_key` | `storage-iam` (aplica no MinIO), `app`/`worker`, `offsite`/`storage-restore` | `--rotate` + `up -d` (o `storage-iam` reaplica e os serviços são recriados) |
+| `malware_scanner_api_key` | `scanner`, `app`, `worker`, `migrate`, `bootstrap`, `storage-init` | `--rotate` + `up -d --force-recreate scanner app worker` |
+| `metrics_scrape_token` | `app` | `--rotate` + `up -d --force-recreate app` + o Prometheus |
+| `offsite_crypt_password`, `offsite_crypt_salt` | `offsite`, `storage-restore` | **não rotacionar**: a cópia externa inteira foi cifrada com eles; trocar exige novo caminho no destino e recópia (§10) |
+
+Runbook de rotação (ensaiado no `environments:drill` com a senha de runtime da homologação): (1) `bash scripts/secrets-init.sh <SECRETS_DIR> --rotate <nome>`; (2) o comando da tabela; (3) conferir `docker compose ... logs --tail 20 <serviço>` (`secrets.loaded` lista os nomes, nunca os valores) e `/readyz`; (4) para senhas de banco, confirmar que a senha antiga é recusada (`psql` com ela falha); (5) registrar a rotação (data, nome, quem) no cofre. Cópia dos arquivos no cofre do hospital é obrigatória: `minio-kms.key`, `offsite_crypt_*` e `storage_root_password` são as chaves de tudo o que está cifrado.
+
+Menor privilégio no MinIO (D-051): o usuário raiz (`STORAGE_ROOT_USER`) só existe em `storage`, `storage-init` e `storage-iam`; o `app`/`worker` entram como `STORAGE_ACCESS_KEY` com a policy `cvg-app` (ler, gravar e criar marcador de exclusão no bucket; **negado** apagar versão, suspender versionamento, mudar policy, cifra ou ciclo de vida) e a cópia externa como `OFFSITE_STORAGE_ACCESS_KEY` com `cvg-offsite` (só listar e ler). [`deploy/minio/iam.sh`](../../deploy/minio/iam.sh) aplica isso a cada `up`; `docker compose ... run --rm --entrypoint sh storage-iam /usr/local/bin/cvg-storage-iam-verify` prova as 17 permissões e negações contra o MinIO em execução.
+
+### 13.3 DNS, TLS, firewall e administração (PROD-309)
+
+- **DNS:** `APP_DOMAIN` (produção) e o nome da homologação resolvem para o servidor **na rede do hospital**. Sem nome definido pelo hospital nada aqui tem valor real: os exemplos usam `.example`.
+- **TLS:** duas opções, decididas pelo hospital. (a) ACME com [`deploy/Caddyfile`](../../deploy/Caddyfile): exige 80 e 443 alcançáveis pelo emissor público e DNS público; (b) certificado emitido pela CA do hospital com [`docker-compose.internal-tls.yml`](../../docker-compose.internal-tls.yml) + [`deploy/Caddyfile.internal-tls`](../../deploy/Caddyfile.internal-tls): `TLS_CERT_FILE` (cadeia completa) e `TLS_KEY_FILE` (600, root) no arquivo de ambiente; renovação = trocar os arquivos e `restart proxy`; a CA do hospital precisa estar nas estações. Em (b) a porta 80 só redireciona.
+- **Firewall:** só 80/443 da rede clínica; SSH e a porta da homologação só da VPN/bastião; nada mais aberto (banco, MinIO, ClamAV, scanner e o Docker nunca publicam porta: o teste `backup-wal.test.mjs` garante que `proxy` é o único serviço com `ports`). Exemplo completo em [`deploy/firewall/nftables.conf.example`](../../deploy/firewall/nftables.conf.example) com placeholders de sub-rede. Saída: liberar `database.clamav.net` (assinaturas), o emissor ACME se usado, o registry das imagens (§11) e o destino da cópia externa.
+- **Administração:** por VPN ou bastião do hospital, com usuário nominal e chave SSH; nenhum acesso de fora para dentro (o deploy é pull, §11). O console do MinIO está desligado; `docker compose ... exec` é o único caminho para os containers.
+
+**Checklist antes do primeiro deploy no servidor (preencher no RELEASE_CHECKLIST):** nome DNS dos dois ambientes; decisão (a)/(b) do TLS e os arquivos; sub-redes da VPN e da rede clínica no `nftables.conf`; `SECRETS_DIR` e `ONPREM_DIR` de cada ambiente criados e copiados para o cofre; `HTTP_BIND`/`HTTPS_PORT` da homologação; egress liberado; `npm run environments:drill` repetido no servidor com os projetos reais parados.
+
+**O que o hospital ainda precisa fornecer:** o servidor e o acesso por VPN/bastião, os nomes DNS, a decisão e os certificados de TLS, as sub-redes, o cofre de segredos e quem o guarda. Até lá PROD-301/302/309 ficam `VERIFY`: mecanismo pronto e ensaiado aqui, não no servidor.

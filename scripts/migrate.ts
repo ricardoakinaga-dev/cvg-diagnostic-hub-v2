@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { Pool } from "pg";
@@ -7,9 +8,6 @@ import {
   RUNTIME_MIGRATION_VERSIONS,
   validateRuntimeMigrationSet
 } from "../src/server/store/migrations";
-import { loadFileSecrets } from "../src/server/security/file-secrets";
-// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
-loadFileSecrets();
 
 interface RunMigrationsOptions {
   readonly connectionString: string;

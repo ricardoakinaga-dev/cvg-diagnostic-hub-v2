@@ -7,7 +7,11 @@
 # The on-prem overlay (docker-compose.onprem.yml) defines the `minio` remote (the attachments bucket, OFFSITE_BUCKET_SOURCE)
 # from the environment (RCLONE_CONFIG_MINIO_*), so nothing about the source bucket needs to be written here.
 
-# S3-compatible (AWS S3, MinIO, Backblaze B2 S3 API, Wasabi...): OFFSITE_RCLONE_REMOTE=s3:cvg-offsite/hospital-a
+# The encrypted destination (D-051) is NOT written here: the `offsitecrypt` remote (type crypt) is defined by the offsite
+# service from OFFSITE_CRYPT_REMOTE (one of the remotes below, e.g. s3:cvg-offsite/hospital-a) and the passphrase files;
+# OFFSITE_RCLONE_REMOTE=offsitecrypt:. Only the underlying destination and its credentials live in this file.
+
+# S3-compatible (AWS S3, MinIO, Backblaze B2 S3 API, Wasabi...): OFFSITE_CRYPT_REMOTE=s3:cvg-offsite/hospital-a
 [s3]
 type = s3
 provider = Minio
@@ -16,7 +20,7 @@ access_key_id = CHANGE_ME_ACCESS_KEY_ID
 secret_access_key = CHANGE_ME_SECRET
 region = us-east-1
 
-# SFTP to another site's server: OFFSITE_RCLONE_REMOTE=sftp:/backups/cvg
+# SFTP to another site's server: OFFSITE_CRYPT_REMOTE=sftp:/backups/cvg
 # Dedicated key pair, private key inline (one line, newlines as \n); the file is mounted read-only and stays out of git.
 [sftp]
 type = sftp

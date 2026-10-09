@@ -58,9 +58,9 @@ Depois mova o arquivo para um armazenamento cifrado fora da máquina e registre 
 
 ### 3.3 Cópia externa: ativar, monitorar, falhar
 
-1. Copie `deploy/backup/rclone.conf.example` para `deploy/backup/rclone.conf` (ignorado pelo git, `chmod 600`) e preencha o remoto (S3/MinIO ou SFTP). Prefira uma credencial que escreva no caminho `wal/` e não apague objetos, quando o destino permitir.
-2. Defina no `.env.production`: `OFFSITE_RCLONE_REMOTE=<remoto>:<caminho>` (por exemplo `s3:cvg-offsite/hospital-a`) e, se o arquivo estiver em outro caminho, `OFFSITE_RCLONE_CONFIG`. Opcionalmente `OFFSITE_MAX_BACKUP_AGE_SECONDS` (padrão 2 × `BACKUP_INTERVAL_SECONDS`).
-3. Teste o destino antes (`rclone lsd <remoto>:`, comando no cabeçalho do exemplo) e suba: `docker compose ... up -d offsite`.
+1. Copie `deploy/backup/rclone.conf.example` para `deploy/backup/rclone.conf` (ignorado pelo git, `chmod 600`) e preencha o remoto real (S3/MinIO ou SFTP). Prefira uma credencial que escreva no caminho e não apague objetos, quando o destino permitir.
+2. Cifra obrigatória (D-051): a senha e o sal do remoto `crypt` são os arquivos `offsite_crypt_password` e `offsite_crypt_salt` de `SECRETS_DIR` (`scripts/secrets-init.sh`; cópia no cofre, sem eles a cópia externa é ilegível). No arquivo de ambiente: `OFFSITE_RCLONE_REMOTE=offsitecrypt:` e `OFFSITE_CRYPT_REMOTE=<remoto>:<caminho>` (por exemplo `s3:cvg-offsite/hospital-a`); se o `rclone.conf` estiver em outro caminho, `OFFSITE_RCLONE_CONFIG`. Opcionalmente `OFFSITE_MAX_BACKUP_AGE_SECONDS` (padrão 2 × `BACKUP_INTERVAL_SECONDS`). Um destino que não seja `crypt` é recusado, salvo `OFFSITE_ALLOW_PLAINTEXT=true` por decisão registrada do hospital.
+3. Teste o destino antes pelo helper que carrega os segredos (`docker compose ... run --rm --no-deps offsite sh /opt/backup/rclone-with-secrets.sh lsd offsitecrypt:`) e suba: `docker compose ... up -d offsite`.
 4. No modo on-prem, o overlay já define `OFFSITE_BUCKET_SOURCE=minio:<bucket>`; num S3 gerenciado, defina um remoto de leitura no `rclone.conf` e `OFFSITE_BUCKET_SOURCE=<remoto>:<bucket>` para o bucket entrar na cópia (`objects` no status).
 5. Sem `OFFSITE_RCLONE_REMOTE`, o serviço registra `{"event":"offsite.disabled"}` e fica ocioso; a aplicação sobe do mesmo jeito, mas nenhum backup sai do servidor. Isso precisa ser uma decisão registrada, não um esquecimento.
 6. A cada ciclo o serviço grava `/backups/offsite-status.json` com `lastShippedAt`, `lastShippedEpoch`, `lastAttemptAt`, `lastResult` (`ok`, `error`, `disabled`), `walSegments`, `bytes` (aproximado, em blocos de 1 KiB), `objects` (objetos no bucket de anexos, 0 sem `OFFSITE_BUCKET_SOURCE`) e, quando o ciclo é recusado, `reason`. Um ciclo recusado (`{"event":"offsite.refused","reason":...}` no log de erro) ainda copia o WAL, mas não conta como sucesso: sem backup válido recente em `/backups` o `healthcheck` fica vermelho depois de 3 intervalos. Como o envio nunca apaga, configure no destino a regra de ciclo de vida de `dumps/` e `wal/` descrita na retenção (§3, margem de pelo menos 2 × o intervalo de backup). `deploy/backup/check-offsite.sh` lê esse arquivo e sai com código diferente de zero quando o último **sucesso** é mais velho que 3 × `OFFSITE_SHIP_INTERVAL_SECONDS` (ou o arquivo não existe): é o `healthcheck` do Compose e o comando do runbook (`docker compose ... exec offsite sh /opt/backup/check-offsite.sh`). Não existe métrica Prometheus para isso (o Hub não enxerga o volume), então o alerta é o estado `unhealthy` do container, que o monitoramento do host precisa observar (PROD-513); veja [INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#backup-falho-ou-cópia-externa-parada).
@@ -148,12 +148,14 @@ Quando o volume `cvg-storage` (ou o servidor) se perde. O banco restaurado (§4.
 # 1. Suba o storage vazio e deixe o storage-init endurecer o bucket (versionamento, SSE, policy, ciclo de vida).
 docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production up -d storage storage-init
 docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production logs storage-init   # storage.hardened, problems: []
-# 2. Copie do destino para o bucket, pelo próprio serviço offsite (remoto minio já definido). Nada é apagado em lugar nenhum.
-docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production run --rm --no-deps offsite \
-  rclone copy "$OFFSITE_RCLONE_REMOTE/objects" "minio:$STORAGE_BUCKET" --ignore-existing
-# 3. Confira contagem e integridade contra o destino e o endurecimento do bucket restaurado.
-docker compose ... run --rm --no-deps offsite rclone check "$OFFSITE_RCLONE_REMOTE/objects" "minio:$STORAGE_BUCKET" --one-way
+# 2. Copie do destino cifrado para o bucket com o serviço storage-restore (usuário do app: o da cópia externa só lê).
+#    Nada é apagado em lugar nenhum.
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.secrets.yml --env-file /etc/cvg-hub/prod.env \
+  --profile restore run --rm --no-deps storage-restore copy offsitecrypt:objects "minio:$STORAGE_BUCKET" --ignore-existing
+# 3. Confira contagem e integridade contra o destino, o endurecimento do bucket restaurado e os usuários.
+docker compose ... --profile restore run --rm --no-deps storage-restore check offsitecrypt:objects "minio:$STORAGE_BUCKET" --one-way
 docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify
+docker compose ... run --rm --no-deps --entrypoint sh storage-iam /usr/local/bin/cvg-storage-iam-verify
 # 4. Suba app e worker e abra um anexo de cada setor pela tela (download passa por checksum e scanStatus).
 ```
 
@@ -199,6 +201,8 @@ Leitura honesta: o RPO nominal é 600 s (300 de `archive_timeout` + 300 de envio
 | Ensaio completo | 35 s |
 
 O ensaio prova o mecanismo (write-once, recusa sem fonte, restore íntegro num bucket endurecido), não o RTO de produção: baixar do destino real e provisionar o servidor dependem do hospital (PROD-514).
+
+Repetido em 09/10/2026 depois de D-051 (segredos em arquivo, usuários de menor privilégio, destino `crypt`): 200 objetos, cópia externa 14 s (207 arquivos cifrados no destino cru, nenhum nome original nem byte em claro), restore pelo `storage-restore` com o usuário do app em 1 s, tentativa de restore com o usuário só leitura negada, `storage.verified` e `cvg-storage-iam-verify` 17/17 depois do restore; ensaio inteiro em 36 s. O ensaio do PITR (`npm run db:backup:drill`) passou a enviar e a restaurar pelo mesmo remoto cifrado.
 
 ## 6. Failure handling
 

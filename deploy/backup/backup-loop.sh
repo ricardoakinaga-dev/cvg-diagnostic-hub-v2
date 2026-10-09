@@ -14,7 +14,8 @@ umask 077
 
 # PROD-302: PGPASSWORD_FILE / PGBACKUP_PASSWORD_FILE (Docker secrets) win over the variables; both set with different
 # values is refused, like src/server/security/file-secrets.ts.
-. "$(dirname "$0")/secrets-env.sh" 2>/dev/null || . /opt/backup/secrets-env.sh
+# BACKUP_HELPERS_DIR: where secrets-env.sh lives (/opt/backup in the containers; the tests point it at deploy/backup).
+. "${BACKUP_HELPERS_DIR:-/opt/backup}/secrets-env.sh"
 load_file_secrets PGPASSWORD PGBACKUP_PASSWORD
 
 : "${PGHOST:?}" "${PGUSER:?}" "${PGPASSWORD:?}" "${PGDATABASE:?}"

@@ -120,6 +120,8 @@ function offsiteFixture() {
     "#!/bin/sh",
     `echo "$*" >> '${log}'`,
     'if [ "$1" = sync ]; then echo "sync is forbidden" >> \'' + log + "'; exit 1; fi",
+    'if [ "$1" = listremotes ]; then printf "%s\\n" "${FAKE_REMOTES:-}"; exit 0; fi',
+    'if [ "$1" = obscure ]; then printf "obscured-%s" "$(cat)"; exit 0; fi',
     'if [ "$1" = size ]; then [ -d "$2" ] || exit 1; printf \'{"count":%s,"bytes":%s}\n\' "$(find "$2" -type f | wc -l)" "$(cat "$2"/* 2>/dev/null | wc -c)"; exit 0; fi',
     'if [ "$1" != copy ]; then exit 1; fi',
     '[ -d "$2" ] || exit 1',
@@ -133,7 +135,7 @@ function offsiteFixture() {
   const remoteDest = path.join(remote, "dest");
   const run = (env = {}) => sh("deploy/backup/ship-offsite.sh", ["--once"], {
     PATH: `${bin}:${process.env.PATH}`, OFFSITE_RCLONE_REMOTE: remoteDest, BACKUP_DIRECTORY: backups, WAL_ARCHIVE_DIRECTORY: wal,
-    OFFSITE_STATUS_FILE: statusFile, ...env
+    OFFSITE_STATUS_FILE: statusFile, OFFSITE_ALLOW_PLAINTEXT: "true", BACKUP_HELPERS_DIR: path.join(root, "deploy/backup"), ...env
   });
   const seedRemote = () => {
     mkdirSync(path.join(remoteDest, "dumps"), { recursive: true });
@@ -153,7 +155,7 @@ function offsiteFixture() {
   const bucket = path.join(dir, "bucket");
   const addObject = (name, content = "object") => { mkdirSync(path.dirname(path.join(bucket, name)), { recursive: true }); writeFileSync(path.join(bucket, name), content); };
   const remoteObjects = () => (existsSync(path.join(remoteDest, "objects")) ? readdirSync(path.join(remoteDest, "objects")).sort() : []);
-  return { dir, run, seedRemote, remoteFiles, status, rcloneLog, addBackup, backups, statusFile, remote: remoteDest, bucket, addObject, remoteObjects };
+  return { dir, bin, run, seedRemote, remoteFiles, status, rcloneLog, addBackup, backups, statusFile, remote: remoteDest, bucket, addObject, remoteObjects };
 }
 
 test("ship-offsite.sh copies the attachments bucket write-once and never deletes or overwrites an object on the remote", () => {
@@ -406,7 +408,7 @@ test("backup-loop.sh prunes old dumps and base backups but never the WAL the old
 
   const run = (retention) => spawnSync("sh", ["-c", `. "${path.join(root, "deploy/backup/backup-loop.sh")}"; prune`], {
     encoding: "utf8",
-    env: { PATH: process.env.PATH, BACKUP_LOOP_SOURCE_ONLY: "1", PGHOST: "x", PGUSER: "x", PGPASSWORD: "x", PGDATABASE: "x", BACKUP_DIRECTORY: backups, WAL_ARCHIVE_DIRECTORY: wal, BACKUP_RETENTION_DAYS: String(retention) }
+    env: { PATH: process.env.PATH, BACKUP_LOOP_SOURCE_ONLY: "1", BACKUP_HELPERS_DIR: path.join(root, "deploy/backup"), PGHOST: "x", PGUSER: "x", PGPASSWORD: "x", PGDATABASE: "x", BACKUP_DIRECTORY: backups, WAL_ARCHIVE_DIRECTORY: wal, BACKUP_RETENTION_DAYS: String(retention) }
   });
   const result = run(14);
   assert.equal(result.status, 0, result.stderr);
@@ -427,6 +429,77 @@ test("backup-loop.sh prunes old dumps and base backups but never the WAL the old
   rmSync(dir, { recursive: true, force: true });
 });
 
+test("ship-offsite.sh refuses a destination that is not a crypt remote unless the hospital allowed plaintext (D-051)", () => {
+  const f = offsiteFixture();
+  f.addBackup(0);
+  const refused = f.run({ OFFSITE_ALLOW_PLAINTEXT: "" });
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /offsite.refused.*not a crypt remote/);
+  assert.equal(f.status().lastResult, "error");
+  assert.match(f.status().reason, /not a crypt remote.*D-051/);
+  assert.deepEqual(f.remoteFiles(), [], "nothing was shipped");
+  assert.equal(f.run({ OFFSITE_ALLOW_PLAINTEXT: "false" }).status, 1);
+  assert.equal(f.run({ OFFSITE_ALLOW_PLAINTEXT: "true" }).status, 0);
+  // A named remote whose type is crypt is accepted without the plaintext flag; the fake rclone answers listremotes.
+  const crypt = f.run({ OFFSITE_ALLOW_PLAINTEXT: "", FAKE_REMOTES: `${f.remote}: crypt` });
+  assert.equal(crypt.status, 0, crypt.stderr);
+  const s3 = f.run({ OFFSITE_ALLOW_PLAINTEXT: "", FAKE_REMOTES: `${f.remote}: s3` });
+  assert.notEqual(s3.status, 0);
+  assert.match(f.status().reason, /type s3/);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh defines the offsitecrypt remote from the passphrase files, obscured, never on the command line", () => {
+  const f = offsiteFixture();
+  f.addBackup(0);
+  writeFileSync(path.join(f.dir, "crypt_password"), "passphrase-from-the-vault\n");
+  writeFileSync(path.join(f.dir, "crypt_salt"), "salt-from-the-vault\n");
+  writeFileSync(path.join(f.bin, "env-dump"), "#!/bin/sh\nenv | grep '^RCLONE_CONFIG_OFFSITECRYPT_' | sort\n", { mode: 0o755 });
+  const result = sh("deploy/backup/ship-offsite.sh", ["--once"], {
+    PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_RCLONE_REMOTE: f.remote, OFFSITE_ALLOW_PLAINTEXT: "true", BACKUP_DIRECTORY: f.backups, WAL_ARCHIVE_DIRECTORY: path.join(f.dir, "wal"),
+    OFFSITE_STATUS_FILE: f.statusFile, BACKUP_HELPERS_DIR: path.join(root, "deploy/backup"),
+    OFFSITE_CRYPT_REMOTE: "s3:cvg-offsite/hospital", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password"), OFFSITE_CRYPT_SALT_FILE: path.join(f.dir, "crypt_salt")
+  });
+  assert.equal(result.status, 0, result.stderr);
+  // The variables the script exports are what rclone sees: type crypt over the wrapped remote, obscured passphrases.
+  const probe = spawnSync("sh", ["-c", `. ${path.join(root, "deploy/backup/secrets-env.sh")}; configure_offsite_crypt; env | grep '^RCLONE_CONFIG_OFFSITECRYPT_' | sort`], {
+    encoding: "utf8", env: { PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_CRYPT_REMOTE: "s3:cvg-offsite/hospital", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password"), OFFSITE_CRYPT_SALT_FILE: path.join(f.dir, "crypt_salt") }
+  });
+  assert.equal(probe.status, 0, probe.stderr);
+  assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_TYPE=crypt/);
+  assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_REMOTE=s3:cvg-offsite\/hospital/);
+  assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_PASSWORD=obscured-passphrase-from-the-vault/);
+  assert.match(probe.stdout, /RCLONE_CONFIG_OFFSITECRYPT_PASSWORD2=obscured-salt-from-the-vault/);
+  assert.doesNotMatch(probe.stdout, /OFFSITE_CRYPT_PASSWORD=passphrase/);
+  // Missing wrapped remote or unreadable passphrase file: refused before any copy.
+  const missing = spawnSync("sh", ["-c", `. ${path.join(root, "deploy/backup/secrets-env.sh")}; configure_offsite_crypt`], { encoding: "utf8", env: { PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "crypt_password") } });
+  assert.notEqual(missing.status, 0);
+  assert.match(missing.stderr, /OFFSITE_CRYPT_REMOTE missing/);
+  const unreadable = spawnSync("sh", ["-c", `. ${path.join(root, "deploy/backup/secrets-env.sh")}; configure_offsite_crypt`], { encoding: "utf8", env: { PATH: `${f.bin}:${process.env.PATH}`, OFFSITE_CRYPT_REMOTE: "s3:x", OFFSITE_CRYPT_PASSWORD_FILE: path.join(f.dir, "absent") } });
+  assert.notEqual(unreadable.status, 0);
+  assert.match(unreadable.stderr, /SECRET_FILE_UNREADABLE:OFFSITE_CRYPT_PASSWORD/);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("backup-loop.sh and ship-offsite.sh read *_FILE secrets and refuse a conflicting pair (PROD-302)", () => {
+  const dir = temp();
+  writeFileSync(path.join(dir, "pw"), "runtime-password-from-file\n");
+  const helper = path.join(root, "deploy/backup/secrets-env.sh");
+  const loaded = spawnSync("sh", ["-c", `. ${helper}; load_file_secrets PGPASSWORD PGBACKUP_PASSWORD && printf '%s|%s' "$PGPASSWORD" "\${PGBACKUP_PASSWORD:-unset}"`], { encoding: "utf8", env: { PATH: process.env.PATH, PGPASSWORD_FILE: path.join(dir, "pw"), PGBACKUP_PASSWORD_FILE: "" } });
+  assert.equal(loaded.status, 0, loaded.stderr);
+  assert.equal(loaded.stdout, "runtime-password-from-file|unset");
+  const conflict = spawnSync("sh", ["-c", `. ${helper}; load_file_secrets PGPASSWORD`], { encoding: "utf8", env: { PATH: process.env.PATH, PGPASSWORD: "other", PGPASSWORD_FILE: path.join(dir, "pw") } });
+  assert.notEqual(conflict.status, 0);
+  assert.match(conflict.stderr, /SECRET_CONFLICT:PGPASSWORD/);
+  // backup-loop.sh itself: the password file satisfies the mandatory PGPASSWORD.
+  const loop = spawnSync("sh", ["-c", `. "${path.join(root, "deploy/backup/backup-loop.sh")}"; printf '%s' "$PGPASSWORD"`], {
+    encoding: "utf8", env: { PATH: process.env.PATH, BACKUP_LOOP_SOURCE_ONLY: "1", BACKUP_HELPERS_DIR: path.join(root, "deploy/backup"), PGHOST: "x", PGUSER: "x", PGPASSWORD_FILE: path.join(dir, "pw"), PGDATABASE: "x", BACKUP_DIRECTORY: path.join(dir, "b"), WAL_ARCHIVE_DIRECTORY: path.join(dir, "w") }
+  });
+  assert.equal(loop.status, 0, loop.stderr);
+  assert.equal(loop.stdout, "runtime-password-from-file");
+  rmSync(dir, { recursive: true, force: true });
+});
+
 test("docker-compose.prod.yml renders with an environment built from .env.production.example", { skip: spawnSync("docker", ["compose", "version"]).status !== 0 }, () => {
   const dir = temp();
   const example = readFileSync(path.join(root, ".env.production.example"), "utf8");
@@ -435,7 +508,10 @@ test("docker-compose.prod.yml renders with an environment built from .env.produc
     return match ? `${match[1]}=${/REMOTE|ENDPOINT|DOMAIN|EMAIL|VERSION|REF|APPROVED|TOKEN/.test(match[1]) && !/ENDPOINT|DOMAIN/.test(match[1]) ? "" : "value-for-config-check-0123456789abcdef"}` : line;
   }).join("\n");
   const envFile = path.join(dir, "env");
-  writeFileSync(envFile, filled);
+  const secretsDir = path.join(dir, "secrets");
+  mkdirSync(secretsDir);
+  writeFileSync(path.join(dir, "web.crt"), "cert"); writeFileSync(path.join(dir, "web.key"), "key");
+  writeFileSync(envFile, `${filled}\nSECRETS_DIR=${secretsDir}\nONPREM_DIR=${dir}\nTLS_CERT_FILE=${path.join(dir, "web.crt")}\nTLS_KEY_FILE=${path.join(dir, "web.key")}\n`);
   const config = (files) => spawnSync("docker", ["compose", ...files.flatMap((f) => ["-f", path.join(root, f)]), "--env-file", envFile, "config", "--format", "json"], { encoding: "utf8", env: { ...process.env, DRILL_PORT: "55304" } });
   const result = config(["docker-compose.prod.yml"]);
   assert.equal(result.status, 0, result.stderr);
@@ -475,11 +551,70 @@ test("docker-compose.prod.yml renders with an environment built from .env.produc
   assert.equal(stack.services.app.environment.MALWARE_SCANNER_ALLOWED_HOSTS, "scanner");
   assert.equal(stack.services.app.environment.NODE_EXTRA_CA_CERTS, "/certs/ca.crt");
   assert.equal(stack.services.worker.environment.NODE_EXTRA_CA_CERTS, "/certs/ca.crt");
-  assert.equal(stack.services.app.depends_on["storage-init"].condition, "service_completed_successfully");
+  assert.equal(stack.services.app.depends_on["storage-iam"].condition, "service_completed_successfully");
+  assert.equal(stack.services["storage-iam"].depends_on["storage-init"].condition, "service_completed_successfully");
   assert.equal(stack.services.app.depends_on.scanner.condition, "service_healthy");
   assert.equal(stack.services.scanner.environment.CLAMD_HOST, "clamav");
   assert.equal(stack.services.scanner.read_only, true);
   assert.equal(stack.services.offsite.environment.OFFSITE_BUCKET_SOURCE, "minio:value-for-config-check-0123456789abcdef");
   assert.equal(stack.services.offsite.environment.RCLONE_CONFIG_MINIO_ENDPOINT, "http://storage:9000");
+  // Least privilege (D-051): the root user only in storage, storage-init and storage-iam; app/worker and offsite use their own.
+  assert.equal(stack.services.storage.environment.MINIO_ROOT_PASSWORD_FILE, "/run/secrets/storage_root_password");
+  assert.equal(stack.services.storage.environment.MINIO_ROOT_PASSWORD, undefined);
+  assert.equal(stack.services["storage-iam"].environment.STORAGE_ROOT_PASSWORD_FILE, "/run/secrets/storage_root_password");
+  assert.equal(stack.services.app.environment.STORAGE_ACCESS_KEY, "value-for-config-check-0123456789abcdef", "the app user comes from the env file");
+  assert.notEqual(stack.services.storage.environment.MINIO_ROOT_USER, stack.services.app.environment.STORAGE_ACCESS_KEY, "the app never runs as the MinIO root");
+  assert.equal(stack.services.app.environment.STORAGE_SECRET_KEY_FILE, "/run/secrets/storage_secret_key");
+  assert.equal(stack.services.app.environment.STORAGE_ROOT_PASSWORD_FILE, undefined);
+  assert.equal(stack.services.offsite.environment.RCLONE_CONFIG_MINIO_ACCESS_KEY_ID, "cvg-offsite");
+  assert.equal(stack.services.offsite.environment.RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY_FILE, "/run/secrets/offsite_storage_secret_key");
+  assert.equal(stack.services.scanner.environment.MALWARE_SCANNER_API_KEY_FILE, "/run/secrets/malware_scanner_api_key");
+  assert.match(stack.services.scanner.image, /^node:22-bookworm-slim@sha256:[0-9a-f]{64}$/);
+
+  // Secrets overlay (PROD-302): every secret of the base file comes from /run/secrets; the env placeholders are not needed.
+  const withSecrets = config(["docker-compose.prod.yml", "docker-compose.onprem.yml", "docker-compose.secrets.yml"]);
+  assert.equal(withSecrets.status, 0, withSecrets.stderr);
+  const secured = JSON.parse(withSecrets.stdout);
+  for (const name of ["postgres_password", "postgres_migration_password", "postgres_runtime_password", "session_secret", "trust_proxy_shared_secret", "storage_root_password", "storage_secret_key", "offsite_storage_secret_key", "malware_scanner_api_key", "offsite_crypt_password", "offsite_crypt_salt"]) {
+    assert.ok(secured.secrets[name]?.file?.startsWith(secretsDir), `secret ${name} comes from SECRETS_DIR`);
+  }
+  assert.equal(secured.services.app.environment.SESSION_SECRET_FILE, "/run/secrets/session_secret");
+  // `config` re-escapes the literal `$` as `$$`; the container receives `${POSTGRES_RUNTIME_PASSWORD}`, expanded at process start.
+  assert.equal(secured.services.app.environment.DATABASE_URL, "postgresql://cvg_runtime:$${POSTGRES_RUNTIME_PASSWORD}@postgres:5432/cvg_production", "the password is a placeholder expanded at process start, never interpolated by Compose");
+  assert.equal(secured.services.migrate.environment.MIGRATION_DATABASE_URL, "postgresql://cvg_migrator:$${POSTGRES_MIGRATION_PASSWORD}@postgres:5432/cvg_production");
+  assert.ok(!JSON.stringify(secured).includes("value-for-config-check-0123456789abcdef@"), "no password is interpolated into a connection string");
+  assert.equal(secured.services.migrate.environment.POSTGRES_MIGRATION_PASSWORD_FILE, "/run/secrets/postgres_migration_password");
+  assert.equal(secured.services.postgres.environment.POSTGRES_PASSWORD_FILE, "/run/secrets/postgres_password");
+  assert.equal(secured.services.backup.environment.PGPASSWORD_FILE, "/run/secrets/postgres_runtime_password");
+  assert.equal(secured.services.proxy.environment.TRUST_PROXY_SHARED_SECRET_FILE, "/run/secrets/trust_proxy_shared_secret");
+  assert.ok(secured.services.proxy.command.join(" ").includes("TRUST_PROXY_SHARED_SECRET_FILE"), "the edge exports the secret from the file");
+  assert.equal(secured.services.offsite.environment.OFFSITE_CRYPT_PASSWORD_FILE, "/run/secrets/offsite_crypt_password");
+  assert.equal(secured.services.offsite.environment.OFFSITE_ALLOW_PLAINTEXT, "false");
+  for (const service of ["backup", "offsite"]) {
+    assert.ok(secured.services[service].volumes.some((v) => v.target === "/opt/backup/secrets-env.sh"), `${service} mounts the secrets helper`);
+  }
+  assert.ok(secured.services.offsite.volumes.some((v) => v.target === "/opt/backup/rclone-with-secrets.sh"), "manual rclone runs in offsite go through the helper");
+  assert.equal(secured.services["storage-restore"], undefined, "the restore service only exists under --profile restore");
+  const withRestore = spawnSync("docker", ["compose", "--profile", "restore", "-f", path.join(root, "docker-compose.prod.yml"), "-f", path.join(root, "docker-compose.onprem.yml"), "-f", path.join(root, "docker-compose.secrets.yml"), "--env-file", envFile, "config", "--format", "json"], { encoding: "utf8", env: { ...process.env } });
+  assert.equal(withRestore.status, 0, withRestore.stderr);
+  const restore = JSON.parse(withRestore.stdout).services["storage-restore"];
+  assert.ok(restore.volumes.some((v) => v.target === "/opt/backup/secrets-env.sh"), "storage-restore mounts the secrets helper");
+  assert.equal(restore.environment.RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY_FILE, "/run/secrets/storage_secret_key", "the restore writes with the app user");
+  assert.equal(restore.ports, undefined);
+  // PROD-309: the edge is the only published port, whatever the overlays.
+  for (const [name, service] of Object.entries(secured.services)) {
+    if (name === "proxy") continue;
+    assert.equal(service.ports, undefined, `${name} publishes no port`);
+  }
+  assert.deepEqual(secured.services.proxy.ports.map((p) => p.published), ["80", "443"]);
+
+  // Internal TLS (PROD-309): the edge serves the hospital's certificate instead of ACME.
+  const internal = config(["docker-compose.prod.yml", "docker-compose.secrets.yml", "docker-compose.internal-tls.yml"]);
+  assert.equal(internal.status, 0, internal.stderr);
+  const edge = JSON.parse(internal.stdout).services.proxy;
+  const caddyfile = edge.volumes.find((v) => v.target === "/etc/caddy/Caddyfile");
+  assert.ok(caddyfile.source.endsWith("deploy/Caddyfile.internal-tls"), "the overlay replaces the Caddyfile mount");
+  assert.ok(edge.volumes.some((v) => v.target === "/certs/web.crt" && v.read_only === true));
+  assert.ok(edge.volumes.some((v) => v.target === "/certs/web.key" && v.read_only === true));
   rmSync(dir, { recursive: true, force: true });
 });

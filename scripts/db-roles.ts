@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
@@ -7,9 +8,6 @@ import {
   type DatabasePrivilegeRoles
 } from "../src/server/store/postgres-privileges";
 import { runMigrations } from "./migrate";
-import { loadFileSecrets } from "../src/server/security/file-secrets";
-// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
-loadFileSecrets();
 
 export interface RoleProvisioningOptions {
   readonly adminUrl: string;

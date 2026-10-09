@@ -28,7 +28,8 @@ command -v curl >/dev/null 2>&1 || { echo "curl é obrigatório" >&2; exit 2; }
 work_dir="$(mktemp -d)"
 env_file="$work_dir/drill.env"
 onprem_dir="$work_dir/onprem"
-DC=(docker compose -p "$PROJECT" -f "$ROOT_DIR/docker-compose.prod.yml" -f "$ROOT_DIR/docker-compose.onprem.yml" -f "$ROOT_DIR/docker-compose.storage-drill.yml" --env-file "$env_file")
+secrets_dir="$work_dir/secrets"
+DC=(docker compose -p "$PROJECT" -f "$ROOT_DIR/docker-compose.prod.yml" -f "$ROOT_DIR/docker-compose.onprem.yml" -f "$ROOT_DIR/docker-compose.secrets.yml" -f "$ROOT_DIR/docker-compose.storage-drill.yml" --env-file "$env_file")
 drill_started="$(date +%s)"
 
 cleanup() {
@@ -55,22 +56,17 @@ wait_for() { # description, timeout, command...
 }
 
 bash "$ROOT_DIR/scripts/onprem-init.sh" "$onprem_dir" >/dev/null 2>&1
-api_key="$(secret)$(secret)"
+bash "$ROOT_DIR/scripts/secrets-init.sh" "$secrets_dir" >/dev/null
+api_key="$(cat "$secrets_dir/malware_scanner_api_key")"
 sed -e "s|^APP_DOMAIN=.*|APP_DOMAIN=localhost|" \
     -e "s|^IMAGE_PREFIX=.*|IMAGE_PREFIX=${DRILL_IMAGE_PREFIX:-$PROJECT}|" \
-    -e "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=$(secret)|" \
-    -e "s|^SESSION_SECRET=.*|SESSION_SECRET=$(secret)$(secret)|" \
-    -e "s|^TRUST_PROXY_SHARED_SECRET=.*|TRUST_PROXY_SHARED_SECRET=$(secret)|" \
     -e "s|^STORAGE_ENDPOINT=.*|STORAGE_ENDPOINT=http://storage:9000|" \
     -e "s|^STORAGE_BUCKET=.*|STORAGE_BUCKET=drill-attachments|" \
-    -e "s|^STORAGE_ACCESS_KEY=.*|STORAGE_ACCESS_KEY=drill$(secret | head -c 12)|" \
-    -e "s|^STORAGE_SECRET_KEY=.*|STORAGE_SECRET_KEY=$(secret)|" \
+    -e "s|^STORAGE_ACCESS_KEY=.*|STORAGE_ACCESS_KEY=cvg-app|" \
     -e "s|^MALWARE_SCANNER_ENDPOINT=.*|MALWARE_SCANNER_ENDPOINT=https://scanner:9443/scan|" \
-    -e "s|^MALWARE_SCANNER_API_KEY=.*|MALWARE_SCANNER_API_KEY=$api_key|" \
     -e "s|^MALWARE_SCANNER_ALLOWED_HOSTS=.*|MALWARE_SCANNER_ALLOWED_HOSTS=scanner|" \
     -e "s|^ONPREM_DIR=.*|ONPREM_DIR=$onprem_dir|" \
-    -e "s|^POSTGRES_MIGRATION_PASSWORD=.*|POSTGRES_MIGRATION_PASSWORD=$(secret)|" \
-    -e "s|^POSTGRES_RUNTIME_PASSWORD=.*|POSTGRES_RUNTIME_PASSWORD=$(secret)|" \
+    -e "s|^SECRETS_DIR=.*|SECRETS_DIR=$secrets_dir|" \
     "$ROOT_DIR/.env.production.example" > "$env_file"
 printf 'DRILL_SCANNER_PORT=%s\n' "$SCANNER_PORT" >> "$env_file"
 chmod 600 "$env_file"

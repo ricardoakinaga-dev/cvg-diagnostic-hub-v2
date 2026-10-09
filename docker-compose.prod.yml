@@ -290,6 +290,7 @@ services:
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     volumes:
       - ./deploy/backup/backup-loop.sh:/opt/backup-loop.sh:ro
+      - ./deploy/backup/secrets-env.sh:/opt/backup/secrets-env.sh:ro
       - cvg-backups:/backups
       - cvg-wal-archive:/wal-archive
     depends_on:
@@ -317,11 +318,17 @@ services:
       # Encrypted destination (D-051): the `offsitecrypt` remote wraps OFFSITE_CRYPT_REMOTE with the passphrase and salt
       # read from files; OFFSITE_RCLONE_REMOTE=offsitecrypt: then. Plaintext destinations need OFFSITE_ALLOW_PLAINTEXT=true.
       OFFSITE_CRYPT_REMOTE: ${OFFSITE_CRYPT_REMOTE:-}
+      OFFSITE_CRYPT_PASSWORD: ${OFFSITE_CRYPT_PASSWORD:-}
       OFFSITE_CRYPT_PASSWORD_FILE: ${OFFSITE_CRYPT_PASSWORD_FILE:-}
+      OFFSITE_CRYPT_SALT: ${OFFSITE_CRYPT_SALT:-}
       OFFSITE_CRYPT_SALT_FILE: ${OFFSITE_CRYPT_SALT_FILE:-}
       OFFSITE_ALLOW_PLAINTEXT: ${OFFSITE_ALLOW_PLAINTEXT:-false}
     volumes:
       - ./deploy/backup/ship-offsite.sh:/opt/backup/ship-offsite.sh:ro
+      - ./deploy/backup/secrets-env.sh:/opt/backup/secrets-env.sh:ro
+      # Manual rclone runs inside this container (runbooks) go through the helper, which loads the *_FILE secrets
+      # and defines the crypt remote: docker compose ... exec offsite sh /opt/backup/rclone-with-secrets.sh lsd offsitecrypt:
+      - ./deploy/backup/rclone-with-secrets.sh:/opt/backup/rclone-with-secrets.sh:ro
       - ./deploy/backup/check-offsite.sh:/opt/backup/check-offsite.sh:ro
       - ${OFFSITE_RCLONE_CONFIG:-./deploy/backup/rclone.conf.example}:/config/rclone/rclone.conf:ro
       - cvg-wal-archive:/wal-archive:ro

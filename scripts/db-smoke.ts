@@ -1,11 +1,9 @@
+import "./load-file-secrets";
 import { randomBytes } from "node:crypto";
 import { PostgresStore } from "../src/server/store/postgres-store";
 import { createDemoState } from "../src/server/store/fixtures";
 import { createApplicationService } from "../src/server/application/service";
 import { InProcessEventBus, processOutboxBatch } from "../src/server/operations/outbox";
-import { loadFileSecrets } from "../src/server/security/file-secrets";
-// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
-loadFileSecrets();
 
 function databaseUrlForDestructiveSmoke(): string {
   const connectionString = process.env.DATABASE_URL;

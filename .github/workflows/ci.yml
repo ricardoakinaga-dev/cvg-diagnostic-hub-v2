@@ -596,6 +596,16 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           severity: CRITICAL,HIGH
+      - name: Build MinIO client image (storage-iam, D-051)
+        run: docker build -f deploy/minio/Dockerfile.mc --tag cvg-mc-source:7394ce0 .
+      - name: Audit MinIO client image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cvg-mc-source:7394ce0
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
       - name: Boot image and verify livez and readyz
         run: |
           set -Eeuo pipefail

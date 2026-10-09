@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 // Creates the attachments bucket and, with STORAGE_HARDEN=true (PROD-307, D-050), applies and verifies the hardening:
 // versioning, default encryption at rest, no anonymous access and a lifecycle that only expires non-current versions.
 // `--verify` only checks and exits 1 on any deviation (runbook and release checklist).
@@ -6,9 +7,6 @@
 //   npm run storage:init -- --verify     # verify only, never changes the bucket (except a probe object it removes)
 import { CreateBucketCommand, HeadBucketCommand, S3Client } from "@aws-sdk/client-s3";
 import { hardenBucket, objectUrl, verifyBucket, type BucketHardeningOptions } from "../src/server/storage/bucket-hardening";
-import { loadFileSecrets } from "../src/server/security/file-secrets";
-// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
-loadFileSecrets();
 
 const endpoint = required(process.env.STORAGE_ENDPOINT, "STORAGE_ENDPOINT");
 const bucket = required(process.env.STORAGE_BUCKET, "STORAGE_BUCKET");

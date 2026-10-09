@@ -1,9 +1,7 @@
+import "./load-file-secrets";
 import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { closeRateLimitBackend } from "../src/server/security/rate-limit";
 import { issueResetLinkByEmail, parseResetLinkArgs } from "../src/server/security/password-reset";
-import { loadFileSecrets } from "../src/server/security/file-secrets";
-// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
-loadFileSecrets();
 
 /** Break-glass for an operator with the database credential (PROD-202): issues a one-time reset link. */
 async function main(): Promise<void> {

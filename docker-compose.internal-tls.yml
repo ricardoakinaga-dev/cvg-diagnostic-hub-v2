@@ -1,0 +1,17 @@
+# TLS with a certificate issued by the hospital's CA instead of ACME (PROD-309, D-051). Use when the server is not
+# reachable from the internet on 80/443 (ACME HTTP challenge impossible) or when the hospital issues the certificate
+# for APP_DOMAIN itself. The edge keeps everything else of deploy/Caddyfile (no trusted proxies, shared secret, body limit).
+#
+#   TLS_CERT_FILE=/etc/cvg-hub/prod/tls/web.crt   # full chain (leaf + intermediates), PEM
+#   TLS_KEY_FILE=/etc/cvg-hub/prod/tls/web.key    # mode 600, owner root (the proxy runs as root inside the container)
+#   docker compose -p cvg-prod -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.secrets.yml \
+#     -f docker-compose.internal-tls.yml --env-file /etc/cvg-hub/prod.env up -d
+#
+# Renewal: replace the two files and `docker compose ... restart proxy` (Caddy reloads certificates from disk on restart).
+# Port 80 is still published for the HTTP -> HTTPS redirect; the firewall decides who reaches it (DEPLOYMENT section 13).
+services:
+  proxy:
+    volumes:
+      - ./deploy/Caddyfile.internal-tls:/etc/caddy/Caddyfile:ro
+      - ${TLS_CERT_FILE:?TLS_CERT_FILE must point to the certificate chain (PEM)}:/certs/web.crt:ro
+      - ${TLS_KEY_FILE:?TLS_KEY_FILE must point to the private key (PEM)}:/certs/web.key:ro

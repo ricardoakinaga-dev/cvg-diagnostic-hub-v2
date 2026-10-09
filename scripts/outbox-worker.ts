@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { unlink } from "node:fs/promises";
 import { Pool } from "pg";
 import { createOutboxSinkFromEnv, type ConfiguredOutboxSink, type OutboxProcessSummary, type OutboxSqlExecutor, processOutboxBatch } from "../src/server/operations/outbox";
@@ -11,9 +12,6 @@ import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
 import { runCriticalEscalation } from "../src/server/application/critical-escalation";
 import { createWhatsAppAlertResolver, createWhatsAppOutboxSink } from "../src/server/operations/whatsapp-outbox-sink";
-import { loadFileSecrets } from "../src/server/security/file-secrets";
-// PROD-302: secrets mounted as files (NAME_FILE) are read before anything touches process.env.
-loadFileSecrets();
 
 const once = process.argv.includes("--once") || process.env.OUTBOX_ONCE === "true";
 const intervalMs = positiveInteger(process.env.OUTBOX_INTERVAL_MS, 5_000);

@@ -4,7 +4,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { request as httpsRequest } from "node:https";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
@@ -80,6 +80,8 @@ test("scanner adapter quarantines what clamd flags and refuses bad callers", { s
   const tls = certificates(dir);
   const port = await freePort();
   const apiKey = createHash("sha256").update(`scanner-test-${process.pid}`).digest("hex");
+  // Same length, guaranteed different in every position (hex digits never collide with "g").
+  const wrongKey = "g".repeat(apiKey.length);
   const child = spawn(process.execPath, [path.join(root, "deploy/local/scanner.mjs")], {
     env: { PATH: process.env.PATH, MALWARE_SCANNER_API_KEY: apiKey, CLAMD_HOST: "127.0.0.1", CLAMD_PORT: String(clamdPort), SCANNER_PORT: String(port), SCANNER_TLS_KEY: tls.key, SCANNER_TLS_CERT: tls.cert },
     stdio: ["ignore", "pipe", "pipe"]
@@ -111,8 +113,8 @@ test("scanner adapter quarantines what clamd flags and refuses bad callers", { s
     const mismatch = await post(port, ca, { body: "clean bytes", key: apiKey, declared: "application/pdf", detected: "image/png" });
     assert.equal(mismatch.body.status, "QUARANTINED", "declared and detected MIME must agree");
 
-    const wrongKey = await post(port, ca, { body: "clean bytes", key: `${apiKey.slice(0, -1)}0`, declared: "application/pdf" });
-    assert.equal(wrongKey.status, 401);
+    const wrongKeyResponse = await post(port, ca, { body: "clean bytes", key: wrongKey, declared: "application/pdf" });
+    assert.equal(wrongKeyResponse.status, 401);
     const noKey = await post(port, ca, { body: "clean bytes", declared: "application/pdf" });
     assert.equal(noKey.status, 401);
 
@@ -123,6 +125,20 @@ test("scanner adapter quarantines what clamd flags and refuses bad callers", { s
 
     const notFound = await post(port, ca, { method: "POST", url: "/other", key: apiKey, body: "x" });
     assert.equal(notFound.status, 404);
+
+    // PROD-302: the API key may come from a file; a conflicting pair is refused at start.
+    const keyFile = path.join(dir, "api_key");
+    writeFileSync(keyFile, `${apiKey}\n`);
+    const fromFile = spawnSync(process.execPath, ["-e", "import('" + path.join(root, "deploy/local/scanner.mjs").replace(/\\/g, "/") + "').then(() => setTimeout(() => process.exit(0), 300))"], {
+      encoding: "utf8", env: { PATH: process.env.PATH, MALWARE_SCANNER_API_KEY_FILE: keyFile, CLAMD_HOST: "127.0.0.1", CLAMD_PORT: String(clamdPort), SCANNER_PORT: String(await freePort()), SCANNER_TLS_KEY: tls.key, SCANNER_TLS_CERT: tls.cert }
+    });
+    assert.equal(fromFile.status, 0, fromFile.stderr);
+    assert.match(fromFile.stdout, /scanner.ready/);
+    const conflicting = spawnSync(process.execPath, [path.join(root, "deploy/local/scanner.mjs")], {
+      encoding: "utf8", env: { PATH: process.env.PATH, MALWARE_SCANNER_API_KEY: wrongKey, MALWARE_SCANNER_API_KEY_FILE: keyFile, CLAMD_HOST: "127.0.0.1", CLAMD_PORT: String(clamdPort), SCANNER_PORT: String(await freePort()), SCANNER_TLS_KEY: tls.key, SCANNER_TLS_CERT: tls.cert }
+    });
+    assert.notEqual(conflicting.status, 0);
+    assert.match(conflicting.stderr, /SECRET_CONFLICT:MALWARE_SCANNER_API_KEY/);
 
     // clamd gone: FAILED with 503, never CLEAN.
     await new Promise((resolve) => clamd.close(resolve));

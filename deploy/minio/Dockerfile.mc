@@ -26,6 +26,7 @@ COPY --from=builder /src/LICENSE /usr/share/licenses/mc/LICENSE
 COPY --from=builder /out/source.tar.gz /usr/share/mc/source.tar.gz
 COPY deploy/minio/Dockerfile.mc /usr/share/mc/Dockerfile.mc
 COPY deploy/minio/iam.sh /usr/local/bin/cvg-storage-iam
+COPY deploy/minio/iam-verify.sh /usr/local/bin/cvg-storage-iam-verify
 
 LABEL org.opencontainers.image.source="https://github.com/minio/mc" \
       org.opencontainers.image.revision="7394ce0dd2a80935aded936b09fa12cbb3cb8096" \

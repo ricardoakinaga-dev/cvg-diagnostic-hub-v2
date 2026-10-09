@@ -6,6 +6,14 @@
 #   docker compose -p <project> -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.storage-drill.yml \
 #     --env-file <drill.env> up -d postgres migrate backup storage storage-init offsite
 services:
+  # The rehearsal's "off-site" destination is a local directory wrapped by the crypt remote; it must be visible to
+  # the offsite service (ships) and to storage-restore (restores), so both mount the same disposable volume.
+  offsite:
+    volumes:
+      - drill-offsite:/offsite-destination
+  storage-restore:
+    volumes:
+      - drill-offsite:/offsite-destination
   proxy:
     profiles: ["never"]
   app:
@@ -16,3 +24,6 @@ services:
     # The drill talks to the adapter from the host.
     ports:
       - "127.0.0.1:${DRILL_SCANNER_PORT:-0}:9443"
+
+volumes:
+  drill-offsite:

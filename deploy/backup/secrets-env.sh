@@ -33,7 +33,8 @@ remote_type() {
 }
 
 configure_offsite_crypt() {
-  [ -n "${OFFSITE_CRYPT_PASSWORD_FILE:-}" ] || return 0
+  # Env mode (no secrets overlay) passes the passphrase itself; file mode passes OFFSITE_CRYPT_PASSWORD_FILE.
+  [ -n "${OFFSITE_CRYPT_PASSWORD_FILE:-}" ] || [ -n "${OFFSITE_CRYPT_PASSWORD:-}" ] || return 0
   load_file_secrets OFFSITE_CRYPT_PASSWORD OFFSITE_CRYPT_SALT || return 1
   [ -n "${OFFSITE_CRYPT_PASSWORD:-}" ] || { echo '{"event":"secrets.refused","reason":"OFFSITE_CRYPT_PASSWORD empty"}' >&2; return 1; }
   [ -n "${OFFSITE_CRYPT_REMOTE:-}" ] || { echo '{"event":"secrets.refused","reason":"OFFSITE_CRYPT_REMOTE missing (the remote the crypt wraps)"}' >&2; return 1; }
