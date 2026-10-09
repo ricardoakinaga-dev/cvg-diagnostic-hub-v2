@@ -48,6 +48,8 @@ jobs:
       - run: npm run validate:migrations
       # PROD-511: Prometheus config and alert rules valid, and every alert proven to fire.
       - run: npm run observability:check
+      # PROD-512: the log stack collects a selected project, finds a line by correlationId and serves it in Grafana.
+      - run: npm run logs:check
       - run: npm run security:scan
       # PROD-504: no personal data in tracked files, the client bundle or real logs.
       - run: npm run privacy:scan

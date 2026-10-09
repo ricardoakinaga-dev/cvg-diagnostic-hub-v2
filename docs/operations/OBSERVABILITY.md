@@ -65,3 +65,45 @@ Every alert links to an owner/runbook, records correlation/incident ID and state
 ## 6. SLO proposals
 
 Initial targets are proposals: API read p95 ≤500 ms, command p95 ≤800 ms under pilot load, search p95 ≤800 ms, realtime propagation p95 ≤2 s, no silent event loss. Validate workload and thresholds before release; report p50/p95/p99/error rate, not only average.
+
+## 7. Logs agregados e busca por correlationId (PROD-512)
+
+**O que é.** Uma pilha separada da aplicação, um projeto Compose por servidor ([`docker-compose.observability.yml`](../../docker-compose.observability.yml), D-047):
+
+| Serviço | Papel |
+| --- | --- |
+| `docker-proxy` | Proxy da API do Docker que só permite `GET` em `/containers` e `/networks`. O coletor nunca toca no socket. |
+| `alloy` | Lê os logs dos containers dos projetos que casam com `CVG_LOG_PROJECT_REGEX` (padrão `cvg-(hml\|prod)`) e os envia ao Loki com os rótulos `project`, `service` e `level`. |
+| `loki` | Guarda os logs por `LOKI_RETENTION_PERIOD` (padrão `720h`, 30 dias). Sem porta publicada. |
+| `grafana` | Consulta. Escuta só em `127.0.0.1:${GRAFANA_PORT:-3001}`, sem acesso anônimo e sem cadastro; acesso pela VPN ou por túnel SSH (PROD-309). |
+
+**Subir:**
+
+```bash
+docker compose -p cvg-obs -f docker-compose.observability.yml --env-file /etc/cvg-hub/obs.env up -d
+```
+
+O `obs.env` precisa de `GRAFANA_ADMIN_PASSWORD`, que é obrigatório e fica no cofre de segredos. Opcionais: `GRAFANA_ADMIN_USER`, `GRAFANA_PORT`, `LOKI_RETENTION_PERIOD`, `CVG_LOG_PROJECT_REGEX` e os limites de memória `LOKI_MEM_LIMIT`, `ALLOY_MEM_LIMIT` e `GRAFANA_MEM_LIMIT`.
+
+**Buscar uma requisição ou um job.** A resposta da API traz o cabeçalho `x-correlation-id`, e a auditoria traz `correlation_id`. No Grafana, em **Explore → Loki**:
+
+```
+{project="cvg-prod"} | json | correlationId="corr_<uuid>"
+```
+
+Outras consultas úteis:
+- erros do app nas últimas 24 h: `{project="cvg-prod", service="app", level="error"}`;
+- ciclos do worker: `{project="cvg-prod", service="worker"} | json | event="outbox.batch"`;
+- cópia externa: `{service="offsite"} |= "offsite."`.
+
+A mesma `correlationId` liga o log técnico à trilha de auditoria (`audit_events.correlation_id`), que continua sendo a fonte da linha do tempo clínica (§1).
+
+**O que nunca entra.** Os logs do app só têm campos permitidos (sem corpo, conteúdo clínico, credencial ou token), e o `privacy:scan` confere os logs da CI. O serviço `bootstrap` não tem driver de log, então nenhum link de redefinição de senha chega ao Loki.
+
+**Prova.** `npm run logs:check` sobe a pilha com as imagens fixadas num projeto descartável e confere:
+- a configuração do Alloy e a do Loki carregam;
+- um container de um projeto selecionado que imprime uma linha JSON é achado pelo `correlationId`, com os rótulos `project`, `service` e `level`;
+- um container de outro projeto não é coletado;
+- o Grafana sobe com a datasource do Loki saudável.
+
+Roda na CI (job `verify`) e leva cerca de 30 s com as imagens em cache.
