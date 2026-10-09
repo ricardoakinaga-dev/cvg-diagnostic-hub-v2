@@ -6,6 +6,7 @@ import * as passwordSecurity from "./password";
 import { findById, sessionForTokenHash } from "../domain/state-index";
 import { assertRateLimit } from "./rate-limit";
 import { assertAcceptablePassword } from "./password-policy";
+import { withoutPendingReset } from "./password-reset";
 
 const SESSION_COOKIE = "cvg_session";
 const CSRF_COOKIE = "cvg_csrf";
@@ -146,7 +147,8 @@ function rotateCredentials(
   passwordHash: string,
   audit: { eventType: string; previousState: string; correlationId: string }
 ) {
-  const user = { ...current, passwordHash, mustChangePassword: false, version: current.version + 1 };
+  const pending = withoutPendingReset(current);
+  const user = { ...pending.user, passwordHash, mustChangePassword: false, version: current.version + 1 };
   const sessionToken = randomBytes(32).toString("base64url");
   const csrfToken = randomBytes(24).toString("base64url");
   const createdAt = new Date().toISOString();
@@ -160,7 +162,7 @@ function rotateCredentials(
       sessions: [...state.sessions.map((entry) => entry.userId === user.id && !entry.revokedAt ? { ...entry, revokedAt: createdAt, version: entry.version + 1 } : entry), session],
       auditEvents: [...state.auditEvents, {
         id: `audit_${randomBytes(16).toString("hex")}`, eventType: audit.eventType, actorId: user.id, entityType: "USER", entityId: user.id,
-        previousState: audit.previousState, newState: "ACTIVE", correlationId: audit.correlationId, metadata: { sessionsRotated: true, sessionsRevoked: revoked }, occurredAt: createdAt
+        previousState: audit.previousState, newState: "ACTIVE", correlationId: audit.correlationId, metadata: { sessionsRotated: true, sessionsRevoked: revoked, ...(pending.revoked ? { resetLinkRevoked: true } : {}) }, occurredAt: createdAt
       }]
     },
     result: { user, sessionToken, csrfToken, expiresAt }
