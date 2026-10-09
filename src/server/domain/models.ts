@@ -514,7 +514,10 @@ export interface ClinicalArchiveRow {
 export interface ClinicalArchiveQuery {
   readonly patientId?: string;
   readonly requestId?: string;
-  /** Newest requests first; without a limit, every matching request (callers scope before they page). */
+  /**
+   * Newest requests first; without a limit, every matching request (callers scope before they page). A query with
+   * no patient, no request and no limit is refused (`assertBoundedArchiveQuery`).
+   */
   readonly limit?: number;
 }
 
