@@ -69,6 +69,8 @@ interface HeaderRow {
 const UPSERT_BATCH_SIZE = 2_000;
 const layouts = new WeakMap<readonly unknown[], Layout>();
 const entityKeys = new WeakMap<object, string>();
+// key -> index of a layout, built only when a write appends to that collection and handed over to the next layout.
+const keyIndexes = new WeakMap<Layout, Map<string, number>>();
 
 const HEADER_SQL = "SELECT state, version, entity_removal_floor FROM cvg_runtime_state WHERE id = 1";
 const LOCKED_HEADER_SQL = `${HEADER_SQL} FOR UPDATE`;
@@ -252,6 +254,60 @@ async function layoutFor(client: EntityQueryable, collection: EntityCollection, 
   return { keys, positions };
 }
 
+function keyIndexOf(layout: Layout): Map<string, number> {
+  let index = keyIndexes.get(layout);
+  if (!index) {
+    index = new Map();
+    for (let position = 0; position < layout.keys.length; position += 1) index.set(layout.keys[position], position);
+    keyIndexes.set(layout, index);
+  }
+  return index;
+}
+
+interface AppendOrReplace {
+  readonly layout: Layout;
+  readonly changed: readonly number[];
+}
+
+/**
+ * The application only appends new entities and replaces existing ones in place, so a write normally compares
+ * object identities slot by slot and keys only the replaced and appended entities, instead of re-keying and
+ * re-indexing the whole collection (about seven hash passes over 55 thousand exams at 12 months of D2 volume,
+ * PROD-110). Anything else (a shorter array, a slot holding another entity, an appended key that already
+ * exists) returns undefined and the general diff below handles it, including its errors.
+ */
+function appendOrReplace(collection: EntityCollection, previous: readonly unknown[], next: readonly unknown[], layout: Layout): AppendOrReplace | undefined {
+  if (next.length < previous.length || layout.keys.length !== previous.length) return undefined;
+  const changed: number[] = [];
+  for (let index = 0; index < previous.length; index += 1) {
+    if (next[index] === previous[index]) continue;
+    if (entityKey(collection, next[index]) !== layout.keys[index]) return undefined;
+    changed.push(index);
+  }
+  if (next.length === previous.length) return { layout, changed };
+  const known = keyIndexOf(layout);
+  const appended: string[] = [];
+  const fresh = new Set<string>();
+  for (let index = previous.length; index < next.length; index += 1) {
+    const key = entityKey(collection, next[index]);
+    if (known.has(key) || fresh.has(key)) return undefined;
+    fresh.add(key);
+    appended.push(key);
+    changed.push(index);
+  }
+  // Positions are increasing in array order (load, refresh and the general diff all keep them so).
+  const highest = layout.positions.length > 0 ? layout.positions[layout.positions.length - 1] : 0;
+  const nextLayout: Layout = {
+    keys: layout.keys.concat(appended),
+    positions: layout.positions.concat(appended.map((_, offset) => highest + offset + 1))
+  };
+  // Hand the index over: the old layout rebuilds its own if it is ever written from again.
+  keyIndexes.delete(layout);
+  appended.forEach((key, offset) => known.set(key, previous.length + offset));
+  keyIndexes.set(nextLayout, known);
+  return { layout: nextLayout, changed };
+}
+
 /**
  * Persists the difference between `before` (what the database holds) and
  * `after`, stamping every written row and removal with `version`. Runs inside
@@ -265,6 +321,14 @@ export async function writeEntityState(client: EntityQueryable, before: StoreSta
     const next = after[collection] as unknown[];
     if (previous === next) continue;
     const layout = await layoutFor(client, collection, previous);
+    const fast = appendOrReplace(collection, previous, next, layout);
+    if (fast) {
+      for (const index of fast.changed) {
+        upserts.push({ collection, entity_key: fast.layout.keys[index], position: fast.layout.positions[index], data: next[index] });
+      }
+      layouts.set(next, fast.layout);
+      continue;
+    }
     const previousIndex = new Map<string, number>();
     layout.keys.forEach((key, index) => previousIndex.set(key, index));
     const keys = next.map((entry) => entityKey(collection, entry));
