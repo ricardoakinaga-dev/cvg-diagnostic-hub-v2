@@ -12,7 +12,7 @@ Até aqui, o gate da CI (`perf:postgres`) media rotas HTTP, escrita e 100 conex�
 | Exames | 54.750 (hemograma e RX de tórax em cada solicitação) |
 | Pacientes | 6.844 (cerca de 4 solicitações por paciente) |
 | Abertas | 150 (os últimos 2 dias); as demais concluídas, com amostra, procedimento, resultado com versão emendada e notificação |
-| Auditoria | 100 mil eventos de carga mais a trilha clínica com autores (criação, recebimento, liberação, procedimento) |
+| Auditoria | 100 mil eventos de carga, sem autor (a trilha clínica com autores entra com a correção da busca, D-046) |
 | Snapshot | 102 MB |
 
 O gerador é determinístico e só produz dados sintéticos (`scripts/perf-clinical-volume.ts`). As leituras alternam três perfis: veterinário, técnico de laboratório e gestor. Os dois últimos enxergam todo o histórico do laboratório, que é o caso mais caro. Cada rodada faz 20 leituras por rota com 4 em paralelo, 10 escritas concorrentes e mantém 100 conexões SSE abertas.
@@ -41,7 +41,7 @@ p95 em milissegundos. As metas do PRD são 500 ms para leitura, 800 ms para busc
    - Em processo, uma busca leva cerca de 200 ms para gestor e técnico, e a lista leva de 60 a 90 ms. As duas percorrem todo o conjunto visível, porque a API devolve o `total`.
    - O Node atende numa só thread, então as requisições simultâneas fazem fila. Até o catálogo, que é leve, espera atrás delas.
    - Com uso sequencial, os tempos são os do [relatório de escala](RELATORIO_ESCALA_2026-10-08.md) (lista em 124 ms, busca em 347 ms).
-2. **A busca lia a trilha de auditoria inteira do histórico visível a cada consulta.** Eram cerca de 82 mil IDs num `ANY`, sem índice que servisse. Com autores realistas na auditoria, a busca subiu de p50 300 ms para 880 ms. A correção ([D-046](DECISION_LOG.md)) lê a trilha só para os usuários que casam com o termo.
+2. **A busca lia a trilha de auditoria inteira do histórico visível a cada consulta.** Eram cerca de 82 mil IDs num `ANY`, sem índice que servisse. Esta carga não mostrava o custo, porque seus eventos de auditoria não têm autor. Com a trilha clínica com autores, medida localmente, a busca sobe para p50 880 ms e p95 1,8 s. A correção lê a trilha só para os usuários que casam com o termo e entra num PR seguinte, junto com a trilha realista no gerador.
 3. **A escrita é dominada pela gravação por diferença.** Num perfil de CPU em processo, a 12 meses, `writeEntityState` ficou com 56% do tempo próprio e a projeção dos eventos com 16%. A criação de solicitação leva cerca de 390 ms sozinha. A escrita compara todas as coleções a cada comando, e é o próximo alvo de otimização.
 
 ## 4. O que fica em aberto
