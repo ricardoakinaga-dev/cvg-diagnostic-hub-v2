@@ -228,6 +228,25 @@ then
   failures=$((failures + 1))
 fi
 
+# A merge left unresolved: a line starting with 7 "<", ">" or "|" followed by a space or the end of the line
+# (PR #48 once carried them into the decision log unnoticed). A line of 7 "=" alone is not searched: it is also
+# a Markdown setext heading, and the other markers always surround it.
+CONFLICT_PATTERN='^([<]{7}|[>]{7}|[|]{7})( |$)'
+conflict_paths=(README.md QUESTIONS.md AGENTS.md docs .gauntlet deploy .github scripts docker-compose*.yml)
+conflict_rc=0
+if [[ "$ENGINE" == "rg" ]]; then
+  conflict_hits="$(rg -n -e "$CONFLICT_PATTERN" "${conflict_paths[@]}")" || conflict_rc=$?
+else
+  conflict_hits="$(grep -rnE -- "$CONFLICT_PATTERN" "${conflict_paths[@]}")" || conflict_rc=$?
+fi
+if (( conflict_rc == 0 )); then
+  printf 'MERGE_CONFLICT_MARKER: %s\n' "$conflict_hits" >&2
+  failures=$((failures + 1))
+elif (( conflict_rc > 1 )); then
+  printf 'SEARCH_ERROR: varredura de marcadores de conflito incompleta (motor=%s rc=%d).\n' "$REPORT_ENGINE" "$conflict_rc" >&2
+  failures=$((failures + 1))
+fi
+
 # Ensure canonical high-risk vocabulary is present in its normative sources.
 for term in 'RECOLLECTION_REQUIRED' 'RESULT_AVAILABLE' 'ResultAmended' 'CriticalResultDetected' 'Idempotency-Key' '409 CONFLICT'; do
   rc=0
