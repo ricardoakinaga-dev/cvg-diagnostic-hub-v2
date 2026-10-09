@@ -26,14 +26,13 @@ app ──> S3 compatível (anexos)      app ──HTTPS──> antivírus exter
 | `backup` | `postgres:16-alpine` + [`backup-loop.sh`](../../deploy/backup/backup-loop.sh) | Dump diário (papel de runtime), backup base diário (`pg_basebackup`, papel `cvg_backup`) e poda; volumes `cvg-backups` e `cvg-wal-archive`. |
 | `offsite` | `rclone/rclone:1.71.2` + [`ship-offsite.sh`](../../deploy/backup/ship-offsite.sh) | Opt-in: copia o WAL, os dumps e os backups base para `OFFSITE_RCLONE_REMOTE` a cada `OFFSITE_SHIP_INTERVAL_SECONDS`, sem nunca apagar nem sobrescrever no destino, e recusa o ciclo (`offsite.refused`) se `/backups` não tiver backup válido recente. Sem destino, registra `offsite.disabled` e a aplicação sobe normalmente. `healthcheck` falha se o último envio com sucesso tiver mais de 3 intervalos. |
 
-Armazenamento S3 e antivírus são **serviços externos obrigatórios**: em produção o runtime recusa `STORAGE_MODE=local` e `STORAGE_SCAN_MODE=local`, e exige scanner em HTTPS com host na allowlist.
+Armazenamento S3 e antivírus são **serviços obrigatórios fora do processo**: em produção o runtime recusa `STORAGE_MODE=local` e `STORAGE_SCAN_MODE=local`, e exige scanner em HTTPS com host na allowlist. Pela D11 eles rodam **no servidor do hospital**, pelo overlay [`docker-compose.onprem.yml`](../../docker-compose.onprem.yml) (§12): `storage` (MinIO), `storage-init`, `clamav` e `scanner` entram no mesmo projeto, sem porta publicada. Um S3 e um antivírus gerenciados continuam possíveis só com o arquivo base, apontando `STORAGE_ENDPOINT` e `MALWARE_SCANNER_ENDPOINT` para fora.
 
 ## 2. Pré-requisitos
 
 1. Host com Docker Engine e Compose v2; DNS de `APP_DOMAIN` apontando para o host; portas 80/443 liberadas (ACME).
-2. Bucket S3 criado (ou `npm run storage:init` contra endpoint estilo MinIO).
-3. Endpoint do antivírus com API key, respondendo `{"status":"CLEAN"|"QUARANTINED"|"FAILED","detectedMime":...}`.
-4. `.env.production` criado a partir de [`.env.production.example`](../../.env.production.example) com valores do secret manager. O arquivo é ignorado pelo git.
+2. Armazenamento e antivírus: no modo on-prem (§12), `bash scripts/onprem-init.sh .data/onprem` gera a CA interna, o certificado do scanner e a chave de criptografia do MinIO, e o `storage-init` cria e endurece o bucket a cada `up`. Com serviços gerenciados: bucket criado (ou `npm run storage:init`) e endpoint do antivírus com API key, respondendo `{"status":"CLEAN"|"QUARANTINED"|"FAILED","detectedMime":...}`.
+3. `.env.production` criado a partir de [`.env.production.example`](../../.env.production.example) com valores do secret manager. O arquivo é ignorado pelo git.
 
 O `/readyz` falha (503) em produção, antes de tocar no banco, se `SESSION_SECRET` ou `TRUST_PROXY_SHARED_SECRET` tiverem menos de 32 caracteres ou se `TRUST_PROXY` não for `true`.
 
@@ -409,7 +408,7 @@ Com o volume real, repita o ensaio em homologação antes da janela.
 - Quem sabe a senha atual a troca em **Minha conta → Alterar senha** (`POST /session/password/change`, PROD-201): as outras sessões são encerradas. Para um colaborador que perdeu a senha, o gestor ou o ADMIN usa **Gerar nova senha** na linha do usuário: a senha temporária aparece uma vez, as sessões anteriores são encerradas e a troca é obrigatória no próximo login (redefinir um ADMIN exige reautenticação).
 - **Alertas de resultado crítico no WhatsApp (PROD-402):** cada profissional cadastra o próprio celular em **Minha conta → Resultado crítico no WhatsApp**, com consentimento. Ninguém cadastra por outra pessoa. O gestor ou o ADMIN marca quem está de plantão com **Colocar no plantão**, na linha do usuário, que também mostra se a pessoa já tem número. Desativar um acesso tira a pessoa do plantão.
 - RPO/RTO, roteamento de alertas e failover continuam abertos em [PRODUCTION_READINESS.md](PRODUCTION_READINESS.md).
-- **Backup:** o Compose mantém um dump diário, um backup base diário e o arquivamento contínuo de WAL (retenção de 14 dias), e o serviço `offsite` leva tudo para fora do servidor ([BACKUP_RESTORE.md](BACKUP_RESTORE.md), §10 abaixo). O PITR foi ensaiado só em laboratório (`npm run db:backup:drill`); o restore cronometrado no servidor e no destino reais, e o backup do S3, seguem pendentes (PROD-514).
+- **Backup:** o Compose mantém um dump diário, um backup base diário e o arquivamento contínuo de WAL (retenção de 14 dias), e o serviço `offsite` leva tudo, inclusive o bucket de anexos no modo on-prem, para fora do servidor ([BACKUP_RESTORE.md](BACKUP_RESTORE.md), §10 e §12). O PITR e o restore do bucket foram ensaiados só em laboratório (`npm run db:backup:drill`, `npm run storage:backup:drill`); o restore cronometrado no servidor e no destino reais segue pendente (PROD-514).
 - **Exames numéricos (hemograma em painel):** a tela de cadastro avulso só cria `NUMERIC_PANEL` duplicando um serviço que já tenha template. O painel versionado (analitos, unidades e faixas) entra pela importação de planilha ([CATALOG_IMPORT.md](CATALOG_IMPORT.md), D-035); faixas por espécie ainda não existem no modelo e seguem como observação.
 - **Códigos de setor:** são texto livre, mas rótulos em português e filas reconhecem `LABORATORY`, `RADIOLOGY`, `ULTRASOUND`, `INPATIENT` e `IT`. Outros códigos funcionam e aparecem como foram digitados.
 - **Logs e memória:** os containers rotacionam logs (`LOG_MAX_SIZE`, `LOG_MAX_FILE`) e têm teto de memória (`APP_MEM_LIMIT`, `WORKER_MEM_LIMIT`, `PROXY_MEM_LIMIT`).
@@ -426,8 +425,99 @@ Variáveis novas (todas em `.env.production.example`):
 | `OFFSITE_RCLONE_REMOTE` | vazio | Destino do rclone, `<remoto>:<caminho>` (`s3:cvg-offsite/hospital-a`, `sftp:/backups`). Vazio desliga a cópia externa. |
 | `OFFSITE_RCLONE_CONFIG` | `./deploy/backup/rclone.conf.example` no Compose; `./deploy/backup/rclone.conf` no `.env.production.example` | Arquivo de configuração do rclone, montado somente leitura em `/config/rclone/rclone.conf`. O arquivo real fica fora do git (`.gitignore` e `scripts/secret-scan.sh` exigem isso); crie-o a partir de [`rclone.conf.example`](../../deploy/backup/rclone.conf.example) **antes** do `up`, senão o Docker cria um diretório no lugar. |
 | `OFFSITE_SHIP_INTERVAL_SECONDS` | `300` | Intervalo do envio e base do `healthcheck` (3 × intervalo). |
-| `OFFSITE_MAX_BACKUP_AGE_SECONDS` | vazio (2 × `BACKUP_INTERVAL_SECONDS` = `172800`) | Idade máxima do backup mais novo em `/backups` (dump ou backup base não vazio) para o ciclo de cópia externa ser aceito; acima disso o ciclo é recusado. |
+| `OFFSITE_MAX_BACKUP_AGE_SECONDS` | vazio (2 × `BACKUP_INTERVAL_SECONDS` = `172800`) | Idade máxima do backup mais novo em `/backups` (dump ou backup base não vazio e **concluído**) para o ciclo de cópia externa ser aceito; acima disso o ciclo é recusado. Um backup ainda sendo escrito (`base/<stamp>.partial/`, `cvg-*.dump.partial`) não conta, porque também não é enviado (REM-02). |
 
 Atualização de uma instalação existente: definir `POSTGRES_BACKUP_PASSWORD`, rodar `up -d` (recria o `postgres` com os novos parâmetros, com uma reinicialização curta do banco, e o `migrate` cria o papel) e esperar o primeiro backup base (`docker compose ... logs backup`, evento `basebackup.completed`) antes de contar com o PITR. O `pg_hba` passa a vir de [`deploy/backup/pg_hba.conf`](../../deploy/backup/pg_hba.conf) (mesmas regras da imagem mais a linha de replicação do `cvg_backup`).
 
 O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco + WAL + backups: reserve pelo menos 100 GB além do banco para 14 dias de WAL a `archive_timeout` 300 s, dumps e backups base; CPU/RAM conforme §6.6), o **destino externo** fora do prédio (bucket S3-compatível, outro site por SFTP ou equivalente, com política de ciclo de vida para `wal/`), as **credenciais** desse destino e quem as guarda, e os **operadores** que acompanham o `healthcheck` do `offsite` e fazem o ensaio mensal. Sem eles o mecanismo está pronto e ensaiado em laboratório, mas o RPO de 15 min **fora do prédio** não está garantido.
+
+## 11. Pipeline de release (PROD-303)
+
+O servidor do hospital deixa de compilar imagens. O workflow [`release.yml`](../../.github/workflows/release.yml) roda depois de cada CI verde num push para `main`:
+
+1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`) e a operacional (`<prefixo>-ops:sha-…`), ambas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH com correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das duas, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
+2. **promote-staging:** move a tag `staging` das duas imagens para essa release, sem aprovação (homologação automática).
+3. **promote-production:** move a tag `production`. O job usa o ambiente `production` do GitHub e espera a aprovação de quem estiver em *required reviewers*. Antes de mover a tag ele confere, pela API, que o ambiente tem revisores obrigatórios; se não tiver, falha.
+
+Tag por commit é imutável por convenção: o `deploy.sh` recusa `latest`, `staging` e `production` e só aceita `sha-<hex>`.
+
+**No servidor (modelo pull, D-045).** Um timer roda [`deploy/release/pull-release.sh`](../../deploy/release/pull-release.sh), que segue um canal: baixa `<prefixo>:<canal>` e `<prefixo>-ops:<canal>`, confere que as duas vêm do mesmo commit e, se esse commit não é o que está no ar, chama [`deploy/release/deploy.sh`](../../deploy/release/deploy.sh). O servidor só faz chamadas de saída. Não há SSH de fora para dentro nem runner do GitHub dentro da rede do hospital (PROD-309), e o repositório é público: um runner próprio executaria código de PRs de terceiros.
+
+O `deploy.sh` faz, nesta ordem:
+
+1. baixa as duas imagens da release;
+2. recusa a imagem cujo rótulo não é o commit da tag (`release.revision_mismatch`);
+3. faz o backup (`run --rm --no-deps backup --once`; sem backup, sem deploy);
+4. roda `up -d --no-build`, em que o `migrate` executa antes de `app` e `worker` serem recriados;
+5. espera o `app` ficar `healthy` (`RELEASE_HEALTH_TIMEOUT_SECONDS`, padrão 300) e o `worker` rodando;
+6. registra a release em `<state-dir>/<projeto>.current` e `.history`.
+
+Cada passo emite um evento JSON (`release.started`, `release.deployed` com a release anterior, ou o erro do passo). Com `--maintenance`, ele para `proxy`, `app`, `worker` e `backup` antes do backup e roda o `migrate` sozinho. É o caminho das migrations de cutover coordenado do §4.1. Sem a opção, a trava do `migrate` recusa essas migrations e o app antigo continua no ar.
+
+Nada é desfeito automaticamente. Uma release que falhou no servidor fica registrada em `<projeto>.failed` e o timer não a tenta de novo. O operador corrige e roda `deploy.sh` à mão, ou apaga o arquivo. Para voltar, rode `deploy.sh --tag <release anterior>` (o `.history` guarda a lista), o que só vale se a release não aplicou migration. Com migration aplicada, o caminho é o restore do backup tirado pelo próprio deploy (§8).
+
+Exemplo de unidade systemd para homologação. Para produção, troque o canal, o projeto, o arquivo de ambiente e o `--compose-file` conforme a separação do PROD-301.
+
+```ini
+# /etc/systemd/system/cvg-release-hml.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cvg-hub
+ExecStart=/opt/cvg-hub/deploy/release/pull-release.sh --channel staging --project cvg-hml --env-file /etc/cvg-hub/hml.env --prefix ghcr.io/<dono>/cvg-hub --compose-file docker-compose.prod.yml
+
+# /etc/systemd/system/cvg-release-hml.timer
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+O diretório `/opt/cvg-hub` é um checkout do repositório. Os arquivos de Compose e os scripts de `deploy/` vêm dele, então o operador o atualiza para o commit da release (`git fetch && git checkout <commit>`) antes da primeira subida e sempre que o Compose mudar.
+
+**Para ligar (decisões do dono do produto e do hospital):**
+
+| Onde | O quê |
+| --- | --- |
+| Variável do repositório `RELEASE_PUBLISH_ENABLED` | `true` liga o workflow. Desligado, nada é publicado. |
+| Variável `RELEASE_IMAGE_PREFIX` (opcional) | Outro registry, por exemplo um do próprio hospital, com os segredos `RELEASE_REGISTRY_USERNAME` e `RELEASE_REGISTRY_PASSWORD`. O padrão é `ghcr.io/<dono>/cvg-hub` com o token do próprio workflow. |
+| Ambiente `production` (Settings → Environments) | *Required reviewers* com quem aprova a ida para produção. Sem isso o job falha antes de mover a tag. |
+| Servidor | `docker login` no registry com token **somente leitura**, caso a imagem seja privada, e os timers acima. |
+
+O primeiro deploy de um ambiente continua sendo o §3. A única diferença é que, em vez de `build`, o operador exporta `IMAGE_PREFIX` e `IMAGE_TAG=sha-…` e roda `pull`.
+## 12. Armazenamento e antivírus no servidor do hospital (modo on-prem, PROD-307/308/514)
+
+D11 põe o servidor dentro do hospital. O overlay [`docker-compose.onprem.yml`](../../docker-compose.onprem.yml) acrescenta ao stack de produção o armazenamento de objetos e o antivírus, sem nenhuma porta publicada, e a decisão está em [D-050](../DECISION_LOG.md):
+
+| Serviço | Imagem / origem | Papel |
+| --- | --- | --- |
+| `storage` | MinIO compilado da fonte pinada ([`deploy/minio/Dockerfile`](../../deploy/minio/Dockerfile), revisão `7aac2a2`) | Bucket de anexos. Criptografia em repouso de todo objeto com a chave do segredo `minio-kms-key` (`MINIO_KMS_SECRET_KEY_FILE`, `MINIO_KMS_AUTO_ENCRYPTION=on`); console desligado; volume `cvg-storage`. |
+| `storage-init` | imagem `ops`, [`scripts/init-storage.ts`](../../scripts/init-storage.ts) com `STORAGE_HARDEN=true` | A cada `up`, cria o bucket se faltar e **aplica e verifica** o endurecimento: versionamento, criptografia padrão (SSE), policy sem acesso anônimo (grava um objeto de prova, confirma `x-amz-server-side-encryption` e que um `GET` sem credencial responde `403`, apaga a prova) e o ciclo de vida. Se algo desviar, sai com código 1 e `app` e `worker` não sobem. |
+| `clamav` | `clamav/clamav` pelo digest | Antivírus real; carrega a base de assinaturas embutida e a atualiza com `freshclam` quando há saída para `database.clamav.net`; volume `cvg-clamav`. |
+| `scanner` | `node:22-bookworm-slim` + [`deploy/local/scanner.mjs`](../../deploy/local/scanner.mjs) | Adaptador HTTPS entre o contrato de varredura do app e o `clamd` (mesmo arquivo da instalação local; `CLAMD_HOST`/`CLAMD_PORT`, certificado em `/certs`). Só responde com a API key e sobre HTTPS; o app o aceita porque `scanner` está na allowlist e a CA interna vai em `NODE_EXTRA_CA_CERTS`. |
+
+**Ciclo de vida "conforme D5" (D-050).** Os 24 meses de D5 são do arquivamento clínico no banco ([CLINICAL_ARCHIVE.md](CLINICAL_ARCHIVE.md)): o anexo continua no bucket, dentro do prazo legal, até o expurgo do PROD-501, que é quem apaga o objeto. Por isso o bucket **não tem** expiração nem transição por idade de objeto corrente: a única regra (`cvg-noncurrent-versions`) apaga versões não correntes, que nascem de uma exclusão ou substituição, depois de `STORAGE_NONCURRENT_VERSION_DAYS` (padrão 30), e os marcadores de exclusão órfãos. Esses dias são a janela para desfazer uma exclusão errada ou um ataque que tenha apagado objetos. A verificação recusa qualquer regra com `Expiration.Days`/`Date` ou `Transition`, para que ninguém a acrescente por engano no console de um S3 gerenciado.
+
+**Primeira subida.**
+
+```bash
+bash scripts/onprem-init.sh .data/onprem        # CA, certificado do scanner (SAN scanner), chave KMS; nunca commitado
+# .env.production: STORAGE_ENDPOINT=http://storage:9000, STORAGE_FORCE_PATH_STYLE=true, STORAGE_BUCKET=cvg-attachments,
+#   MALWARE_SCANNER_ENDPOINT=https://scanner:9443/scan, MALWARE_SCANNER_ALLOWED_HOSTS=scanner, MALWARE_SCANNER_API_KEY (32+),
+#   STORAGE_ACCESS_KEY/STORAGE_SECRET_KEY (viram o usuário raiz do MinIO), ONPREM_DIR=./.data/onprem
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production build storage   # uma vez: imagem do MinIO
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production up -d
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production logs storage-init   # {"event":"storage.hardened",...,"problems":[]}
+```
+
+Todos os comandos do §3 e do §4 valem com os dois `-f`; o [`deploy.sh`](../../deploy/release/deploy.sh) do §11 recebe o overlay por `--compose-file` repetido (a imagem do `storage` não vem do registry, por isso o `build storage` único acima). Verificação sob demanda, sem alterar nada: `docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify` (ou `npm run storage:verify` com as variáveis exportadas) imprime o relatório e sai com 1 se o bucket desviou. Ensaios reproduzíveis: `npm run scanner:drill` (EICAR em quarentena com ClamAV real) e `npm run storage:backup:drill` (perda do volume e restore a partir da cópia externa, [BACKUP_RESTORE.md §4.5](BACKUP_RESTORE.md#45-restaurar-o-bucket-de-anexos-a-partir-da-cópia-externa)).
+
+**Segredos que o hospital guarda.** `.data/onprem/minio-kms.key` (sem ela, nenhum anexo é legível: copie para o cofre junto com as senhas do banco; trocar a chave exige migração com ensaio de restore) e `.data/onprem/certs/ca.key` (assina o certificado do scanner; `bash scripts/onprem-init.sh .data/onprem --renew-scanner` renova o certificado, válido por 825 dias, com `restart` do `scanner`). O `STORAGE_ACCESS_KEY`/`STORAGE_SECRET_KEY` é o usuário raiz do MinIO, usado pelo app, pelo worker (expurgo) e pela cópia externa; sem console nem porta publicada, só o Compose o alcança.
+
+**Quarentena.** O que acontece com um arquivo que o ClamAV marca, quem é o dono e os passos estão em [INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#storage-upload-ou-scanner-av-indisponível); o sinal é o alerta `CvgAttachmentQuarantined` ([OBSERVABILITY.md](OBSERVABILITY.md)). Sem saída para a internet, as assinaturas do ClamAV ficam na versão embutida na imagem: libere `database.clamav.net` no firewall (PROD-309) ou atualize a imagem a cada release.
+
+**Cópia externa do bucket (PROD-514).** O overlay define o remoto `minio` do rclone a partir das variáveis `STORAGE_*` e passa `OFFSITE_BUCKET_SOURCE=minio:<bucket>` ao serviço `offsite`: a cada ciclo os objetos vão para `<OFFSITE_RCLONE_REMOTE>/objects` com `rclone copy --ignore-existing` (nunca apaga nem sobrescreve no destino, D-041) e o ciclo é recusado (`offsite.refused`, `bucket source unreachable`) se o bucket não puder ser listado. O `offsite-status.json` ganha `objects` (contagem no bucket). Retenção no destino: as versões não correntes não saem do servidor (o rclone copia só a versão corrente), então o destino guarda uma cópia de cada objeto gravado desde a ativação, inclusive os que o expurgo apagou; expirar `objects/` no destino é uma regra de ciclo de vida do próprio destino, com prazo igual ao legal, decidida com o jurídico. O restore está em [BACKUP_RESTORE.md §4.5](BACKUP_RESTORE.md#45-restaurar-o-bucket-de-anexos-a-partir-da-cópia-externa).
+
+**Variáveis** (todas em `.env.production.example`): `ONPREM_DIR` (`./.data/onprem`), `MINIO_IMAGE_TAG` (`7aac2a2`), `STORAGE_NONCURRENT_VERSION_DAYS` (`30`), `STORAGE_MEM_LIMIT` (`1g`), `CLAMAV_MEM_LIMIT` (`2g`), `OFFSITE_BUCKET_SOURCE` (o overlay fixa `minio:<STORAGE_BUCKET>`).
+
+O que o hospital ainda precisa fornecer: o servidor (disco para o bucket além do banco e dos backups), o cofre para a chave KMS e a CA, o nome do responsável pela quarentena (PROD-516) e o destino externo com a regra de retenção de `objects/`.

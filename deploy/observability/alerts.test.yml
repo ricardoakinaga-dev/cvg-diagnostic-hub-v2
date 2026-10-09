@@ -129,3 +129,25 @@ tests:
       - eval_time: 30m
         alertname: CvgLoginDistributedAttempts
         exp_alerts: []
+
+  - name: a quarantined attachment is reported to the quarantine owner and then clears
+    interval: 30s
+    input_series:
+      - series: 'cvg_attachment_scans_total{job="cvg-hub",status="CLEAN"}'
+        values: "0+1x80"
+      - series: 'cvg_attachment_scans_total{job="cvg-hub",status="QUARANTINED"}'
+        values: "0x10 1x80"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: CvgAttachmentQuarantined
+        exp_alerts: []
+      - eval_time: 6m
+        alertname: CvgAttachmentQuarantined
+        exp_alerts:
+          - exp_labels: { severity: warning, job: cvg-hub, status: QUARANTINED }
+            exp_annotations:
+              summary: "O antivírus colocou um anexo em quarentena nos últimos 15 minutos: o responsável pela quarentena precisa avaliar (PROD-308)."
+              runbook: "docs/operations/INCIDENT_RUNBOOKS.md#storage-upload-ou-scanner-av-indisponível"
+      - eval_time: 30m
+        alertname: CvgAttachmentQuarantined
+        exp_alerts: []

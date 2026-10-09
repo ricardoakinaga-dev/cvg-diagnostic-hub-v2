@@ -75,7 +75,7 @@ O expurgo apaga as linhas de `cvg_clinical_archive` das solicitações arquivada
 
 ### Objetos no S3
 
-Depois do expurgo confirmado no banco, o job chama `FileStore.remove` para cada chave de anexo (S3 ou armazenamento local). Uma falha de remoção **não derruba o job nem desfaz o expurgo**: o job registra `clinical.archive_object_removal_failed` com o prefixo `attachments/<resultId>` (nunca o nome do arquivo) e conta `objectRemovalFailures` no log `clinical.archive_applied`. Como as linhas já foram apagadas, o objeto órfão deve ser removido manualmente pelo prefixo registrado. Se o bucket usa versionamento (PROD-307), a remoção cria um marcador de exclusão: a regra de ciclo de vida do bucket precisa expirar também as versões não correntes no mesmo prazo, senão o conteúdo continua recuperável.
+Depois do expurgo confirmado no banco, o job chama `FileStore.remove` para cada chave de anexo (S3 ou armazenamento local). Uma falha de remoção **não derruba o job nem desfaz o expurgo**: o job registra `clinical.archive_object_removal_failed` com o prefixo `attachments/<resultId>` (nunca o nome do arquivo) e conta `objectRemovalFailures` no log `clinical.archive_applied`. Como as linhas já foram apagadas, o objeto órfão deve ser removido manualmente pelo prefixo registrado. Como o bucket usa versionamento (PROD-307, D-050), a remoção cria um marcador de exclusão e a versão anterior continua recuperável por `STORAGE_NONCURRENT_VERSION_DAYS` (padrão 30 dias, aplicado pelo `storage-init` no modo on-prem; num S3 gerenciado, configure a mesma regra); depois disso a regra de ciclo de vida apaga a versão não corrente e o marcador. Nenhuma regra do bucket apaga objeto corrente por idade: só o expurgo remove anexos.
 
 ## 6. Variáveis de ambiente
 
