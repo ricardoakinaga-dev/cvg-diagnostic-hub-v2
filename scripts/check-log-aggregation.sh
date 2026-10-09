@@ -8,11 +8,25 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.observability.yml"
-BUSYBOX_IMAGE="busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
-image_of() { sed -n "s|^ *image: \\(grafana/$1:[^ ]*\\)$|\\1|p" "$COMPOSE_FILE"; }
-LOKI_IMAGE="$(image_of loki)"
-ALLOY_IMAGE="$(image_of alloy)"
-[[ -n "$LOKI_IMAGE" && -n "$ALLOY_IMAGE" ]] || { echo "images not found in $COMPOSE_FILE" >&2; exit 1; }
+# DOCKER_HUB_MIRROR (CI: mirror.gcr.io) pulls the same pinned digests through a Docker Hub mirror instead of the
+# rate-limited anonymous Docker Hub endpoint; the compose services get the mirrored names from an override file.
+MIRROR="${DOCKER_HUB_MIRROR:+$DOCKER_HUB_MIRROR/}"
+BUSYBOX_IMAGE="${DOCKER_HUB_MIRROR:+$DOCKER_HUB_MIRROR/library/}busybox:1.36@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662"
+image_of() { sed -n "s|^ *image: \\($1:[^ ]*\\)$|\\1|p" "$COMPOSE_FILE"; }
+LOKI_IMAGE="$(image_of grafana/loki)"
+ALLOY_IMAGE="$(image_of grafana/alloy)"
+GRAFANA_IMAGE="$(image_of grafana/grafana)"
+PROXY_IMAGE="$(image_of tecnativa/docker-socket-proxy)"
+[[ -n "$LOKI_IMAGE" && -n "$ALLOY_IMAGE" && -n "$GRAFANA_IMAGE" && -n "$PROXY_IMAGE" ]] || { echo "images not found in $COMPOSE_FILE" >&2; exit 1; }
+compose_files=(-f "$COMPOSE_FILE")
+if [[ -n "$MIRROR" ]]; then
+  override="$(mktemp --suffix=.yml)"
+  printf 'services:\n  docker-proxy: { image: "%s" }\n  loki: { image: "%s" }\n  alloy: { image: "%s" }\n  grafana: { image: "%s" }\n' \
+    "$MIRROR$PROXY_IMAGE" "$MIRROR$LOKI_IMAGE" "$MIRROR$ALLOY_IMAGE" "$MIRROR$GRAFANA_IMAGE" > "$override"
+  compose_files+=(-f "$override")
+fi
+LOKI_IMAGE="$MIRROR$LOKI_IMAGE"
+ALLOY_IMAGE="$MIRROR$ALLOY_IMAGE"
 
 project="cvglogcheck$$"
 app_project="${project}app"
@@ -20,11 +34,12 @@ other_project="${project}other"
 correlation="corr_$(cat /proc/sys/kernel/random/uuid)"
 
 compose() {
-  GRAFANA_ADMIN_PASSWORD=check-only-not-a-secret CVG_LOG_PROJECT_REGEX="$app_project" docker compose -p "$project" -f "$COMPOSE_FILE" "$@"
+  GRAFANA_ADMIN_PASSWORD=check-only-not-a-secret CVG_LOG_PROJECT_REGEX="$app_project" docker compose -p "$project" "${compose_files[@]}" "$@"
 }
 cleanup() {
   docker rm -f "$project-app" "$project-other" >/dev/null 2>&1 || true
   compose down --volumes --remove-orphans >/dev/null 2>&1 || true
+  [[ -n "${override:-}" ]] && rm -f "$override"
 }
 trap cleanup EXIT
 fail() { printf '{"event":"logs.check","result":"fail","reason":"%s"}\n' "$1" >&2; exit 1; }
