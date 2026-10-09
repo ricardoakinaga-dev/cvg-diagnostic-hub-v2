@@ -10,6 +10,7 @@ import { buildNextHttpTestBundle, NEXT_HTTP_TEST_PROXY_HEADERS, startNextHttpTes
 import { buildAuditHeavyState } from "./perf-snapshot";
 import { summarize, round, type PerfSample } from "./perf-report";
 import { assessPostgresPerf } from "./perf-postgres-report";
+import { addClinicalVolume, D2_EXAMS_PER_DAY, type ClinicalVolumeSummary } from "./perf-clinical-volume";
 import { isHealthySse, observeSse, type SseObservation } from "./perf-postgres-sse";
 
 const ROUTES = ["/api/v1/diagnostic-services", "/api/v1/diagnostic-requests?limit=25", "/api/v1/search?q=HEMOGRAM&limit=25", "/api/v1/dashboard"];
@@ -31,18 +32,21 @@ function ceilingFactor(): number {
 interface Client { cookie: string; csrf: string; }
 interface HttpSample extends PerfSample { id?: string; errorCode?: string; }
 
-function setting(name: string, fallback: number, maximum: number): number {
+function setting(name: string, fallback: number, maximum: number, minimum = 1): number {
   const value = process.env[name];
   if (value === undefined) return fallback;
   const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > maximum) throw new Error(`Invalid ${name}; expected an integer from 1 to ${maximum}.`);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum || parsed > maximum) throw new Error(`Invalid ${name}; expected an integer from ${minimum} to ${maximum}.`);
   return parsed;
 }
 
 /** Authentication is exercised by HTTP using synthetic persisted sessions;
- * password hashing/login throughput is deliberately outside this workload. */
-function fixture(auditEvents: number, clients: number, writes: number): { state: StoreState; clients: Client[]; admin: Client } {
+ * password hashing/login throughput is deliberately outside this workload.
+ * With a clinical volume, reads also come from a laboratory technician and a manager, who see the whole
+ * laboratory history (the veterinarians only see their own patients). */
+function fixture(auditEvents: number, clients: number, writes: number, clinical?: { months: number; examsPerDay: number }): { state: StoreState; clients: Client[]; readers: Client[]; admin: Client; volume?: ClinicalVolumeSummary } {
   const state = buildAuditHeavyState(auditEvents);
+  const volume = clinical ? addClinicalVolume(state, clinical) : undefined;
   const veterinarian = state.users.find((user) => user.role === "VETERINARIAN");
   const administrator = state.users.find((user) => user.role === "ADMIN");
   if (!veterinarian || !administrator) throw new Error("Missing workload actors.");
@@ -72,7 +76,16 @@ function fixture(auditEvents: number, clients: number, writes: number): { state:
     state.users.push(user);
     return session(user.id);
   });
-  return { state, clients: syntheticClients, admin: session(administrator.id) };
+  const profileReaders = volume ? ["LAB_TECH", "MANAGER"].map((role) => {
+    const template = state.users.find((user) => user.role === role);
+    if (!template) throw new Error(`Missing ${role} workload actor.`);
+    const reader = { ...template, id: `user-perf-${role.toLowerCase()}`, email: `perf-${role.toLowerCase()}@example.test`, createdAt };
+    state.users.push(reader);
+    return session(reader.id);
+  }) : [];
+  // Reads alternate veterinarian, technician and manager when a clinical volume is loaded.
+  const readers = volume ? syntheticClients.flatMap((client) => [client, ...profileReaders]) : syntheticClients;
+  return { state, clients: syntheticClients, readers, admin: session(administrator.id), ...(volume ? { volume } : {}) };
 }
 
 async function parallel<T>(count: number, concurrency: number, operation: (index: number) => Promise<T>): Promise<T[]> {
@@ -149,6 +162,9 @@ async function metric(baseUrl: string, client: Client): Promise<{ sharedReads: n
 export async function runPostgresPerf(record: (phase: string, evidence?: Record<string, unknown>) => void = () => undefined) {
   record("configuration");
   const auditEvents = setting("PERF_POSTGRES_AUDIT_EVENTS", 100_000, 1_000_000);
+  // PROD-110: months of synthetic clinical history at the D2 rate (0 = audit-only workload, the former default).
+  const clinicalMonths = setting("PERF_POSTGRES_CLINICAL_MONTHS", 0, 36, 0);
+  const examsPerDay = setting("PERF_POSTGRES_EXAMS_PER_DAY", D2_EXAMS_PER_DAY, 2_000, 2);
   const connectionCount = setting("PERF_POSTGRES_SSE_CONNECTIONS", 100, 500);
   const p95CeilingFactor = ceilingFactor();
   const requestsPerRoute = setting("PERF_POSTGRES_REQUESTS", 20, 10_000);
@@ -157,9 +173,10 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
   const idleMs = setting("PERF_POSTGRES_IDLE_MS", 6_000, 60_000);
   const started = Date.now();
   return withDisposablePostgresDatabase(async (database) => {
-    record("seed", { auditEvents, connectionCount, requestsPerRoute, concurrency, writeCount });
+    record("seed", { auditEvents, clinicalMonths, examsPerDay, connectionCount, requestsPerRoute, concurrency, writeCount });
     console.error("PROD-110: preparing disposable PostgreSQL workload.");
-    const workload = fixture(auditEvents, connectionCount, writeCount);
+    const workload = fixture(auditEvents, connectionCount, writeCount, clinicalMonths > 0 ? { months: clinicalMonths, examsPerDay } : undefined);
+    const seedStarted = performance.now();
     const seeded = await database.createStore({ ...workload.state, auditEvents: [] });
     await database.closeStore(seeded);
     // Keep the same durable event volume as the legacy baseline. The entities
@@ -172,6 +189,7 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
     const initial = await database.query(`SELECT (SELECT count(*)::int FROM audit_events) AS events,
       pg_column_size(state) + (SELECT COALESCE(sum(pg_column_size(data)), 0)::int FROM cvg_runtime_entities) AS bytes FROM cvg_runtime_state WHERE id=1`);
     const initialRow = initial.rows[0] as { events: number; bytes: number };
+    const seedDurationMs = performance.now() - seedStarted;
     const probe = await storageProbe();
     const applicationName = `cvg-perf-${process.pid}`;
     const options = { databaseUrl: database.connectionString(), realtimeChannel: `cvg_perf_${process.pid}`, applicationName, storageEndpoint: probe.url,
@@ -193,8 +211,10 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
       record("warmup");
       const baseUrl = server.baseUrl;
       for (const route of ROUTES) {
-        const warmup = await measureHttpRequest(`${baseUrl}${route}`, workload.clients[0]);
-        if (warmup.status !== 200) throw new Error(`Warmup failed for ${route}: HTTP ${warmup.status}.`);
+        for (const reader of new Set([workload.clients[0], ...workload.readers.slice(0, 3)])) {
+          const warmup = await measureHttpRequest(`${baseUrl}${route}`, reader);
+          if (warmup.status !== 200) throw new Error(`Warmup failed for ${route}: HTTP ${warmup.status}.`);
+        }
       }
       console.error(`PROD-110: opening ${connectionCount} authenticated SSE clients.`);
       record("sse-admission");
@@ -238,7 +258,7 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
       const writesStarted = performance.now();
       const runId = randomUUID();
       const [routeSamples, writes] = await Promise.all([
-        parallel(ROUTES.length * requestsPerRoute, concurrency, (index) => measureHttpRequest(`${baseUrl}${ROUTES[index % ROUTES.length]}`, workload.clients[index % connectionCount])),
+        parallel(ROUTES.length * requestsPerRoute, concurrency, (index) => measureHttpRequest(`${baseUrl}${ROUTES[index % ROUTES.length]}`, workload.readers[Math.floor(index / ROUTES.length) % workload.readers.length])),
         parallel(writeCount, Math.min(concurrency, writeCount), (index) => measureHttpRequest(`${baseUrl}/api/v1/diagnostic-requests`, workload.clients[index % connectionCount], {
           method: "POST", headers: { "content-type": "application/json", "x-csrf-token": workload.clients[index % connectionCount].csrf, "idempotency-key": `perf-${runId}-${index}` },
           body: JSON.stringify({ patientId: `patient-perf-${index}`, encounterId: `encounter-perf-${index}`, priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] })
@@ -272,9 +292,10 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
       return {
         benchmark: "PROD-110 PostgreSQL HTTP/SSE", schemaVersion: 1, measuredAt: new Date().toISOString(),
         environment: { node: process.version, platform: process.platform, arch: process.arch, cpus: os.availableParallelism(), nextMode: "production", dbPoolMax: 4, rateLimitMode: "postgres", database: "disposable-loopback", realtimeIntervalMs: 5_000, realtimePollTimeoutMs: 10_000 },
-        workload: { auditEvents: initialRow.events, snapshotBytes: initialRow.bytes, authenticatedUsers: connectionCount, sseConnections: connectionCount, requestsPerRoute, concurrency, writeCount },
+        workload: { auditEvents: initialRow.events, snapshotBytes: initialRow.bytes, seedDurationMs: round(seedDurationMs), clinicalVolume: workload.volume ?? null,
+          readProfiles: workload.volume ? ["VETERINARIAN", "LAB_TECH", "MANAGER"] : ["VETERINARIAN"], authenticatedUsers: connectionCount, sseConnections: connectionCount, requestsPerRoute, concurrency, writeCount },
         requests, writes: { ...writeSummary, elapsedMs: round(writes.elapsedMs), committedPerSecond: round(durableWrites / (writes.elapsedMs / 1_000)), durableWrites },
-        timingAssessment: { source: "docs/prd/PRD.md NFR-PERF-001/002", workloadApproval: "D2_PENDING", enforcedInCi: p95CeilingFactor > 0, p95CeilingFactor,
+        timingAssessment: { source: "docs/prd/PRD.md NFR-PERF-001/002", workloadApproval: workload.volume ? "D2_VOLUME_PEAK_PENDING" : "D2_PENDING", enforcedInCi: p95CeilingFactor > 0, p95CeilingFactor,
           reads: timingTargets, writes: { measuredP95Ms: writeSummary.p95Ms, proposedP95Ms: WRITE_P95_TARGET_MS, withinProposedTarget: writeSummary.p95Ms <= WRITE_P95_TARGET_MS },
           withinProposedTargets: timingTargets.every((entry) => entry.withinProposedTarget) && writeSummary.p95Ms <= WRITE_P95_TARGET_MS },
         rawSamples: { reads: routeSamples.map((entry, index) => ({ endpoint: ROUTES[index % ROUTES.length], ...entry })), writes: writes.samples },
@@ -284,7 +305,9 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
           closureReasons: endMetrics.closureReasons,
           deliveryWaitMs: round(performance.now() - deliveryStarted), observations: streams.map((stream) => ({ frames: stream.frames, heartbeats: stream.heartbeats, deliveredWrites: ids.filter((id) => stream.entityIds.has(id)).length, protocolError: stream.protocolError })) },
         postgresSamples: resourceSamples, measurementDurationMs: round(measurementDurationMs), totalDurationMs: Date.now() - started, gate,
-        limitations: [`Provisional synthetic ${auditEvents}-audit workload; D2-approved clinical volume, peak and staging topology remain pending.`, "Latency and throughput are measured through HTTP response bodies and PostgreSQL commits; timing is gated only by generous absolute p95 ceilings (PERF_POSTGRES_P95_CEILING_FACTOR, default 2x the PRD targets). A passing correctness gate is not a timing-target acceptance.", "Synthetic sessions exclude password hashing/login throughput. Single instance; storage readiness is a probe, with no attachment workload.", "Idle shared-read telemetry is specific to realtime; HTTP authentication aggregate reads are outside that counter. Sampled waits can miss short locks.", "Not a staging, long soak, failover or production capacity acceptance."]
+        limitations: [workload.volume
+          ? `Synthetic ${workload.volume.months}-month clinical history at ${workload.volume.examsPerDay} exams/day (D2 volume) plus ${auditEvents} audit events; the D2 peak of simultaneous users and the staging topology remain pending.`
+          : `Provisional synthetic ${auditEvents}-audit workload without clinical history; D2 volume, peak and staging topology remain pending.`, "Latency and throughput are measured through HTTP response bodies and PostgreSQL commits; timing is gated only by generous absolute p95 ceilings (PERF_POSTGRES_P95_CEILING_FACTOR, default 2x the PRD targets). A passing correctness gate is not a timing-target acceptance.", "Synthetic sessions exclude password hashing/login throughput. Single instance; storage readiness is a probe, with no attachment workload.", "Idle shared-read telemetry is specific to realtime; HTTP authentication aggregate reads are outside that counter. Sampled waits can miss short locks.", "Not a staging, long soak, failover or production capacity acceptance."]
       };
     } finally {
       monitoring = false;
