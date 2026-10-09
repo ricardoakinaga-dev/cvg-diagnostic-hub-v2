@@ -57,7 +57,7 @@
 | --- | --- | --- | --- | --- | --- | --- |
 | PROD-301 | P0 | READY | M | Homologação e produção separadas (banco, bucket, segredos) no servidor do hospital (D11), com o Compose ensaiado. | Servidor disponível | P1.2, AUD-034 |
 | PROD-302 | P0 | READY | M | Segredos fora do repositório e do host de build no servidor do hospital; rotação documentada e ensaiada. | PROD-301 | P1.3, AUD-034 |
-| PROD-303 | P0 | READY | M | Registry de imagens e pipeline de deploy: build → Trivy → push com tag do commit → staging automático → produção com aprovação. | PROD-002 | P1.4 |
+| PROD-303 | P0 | VERIFY | M | Registry de imagens e pipeline de deploy: build → Trivy → push com tag do commit → staging automático → produção com aprovação. **Entregue em 09/10 (D-045, [DEPLOYMENT §11](../operations/DEPLOYMENT.md#11-pipeline-de-release-prod-303)):** `release.yml` publica `sha-<commit>` (app e ops, Trivy, SBOM) depois do CI verde em `main`, move `staging` sozinho e `production` só com aprovação do ambiente; o servidor puxa o canal (`deploy/release/pull-release.sh`) e aplica com backup → migrate → up → saúde (`deploy/release/deploy.sh`). Testes com `docker` falso (`scripts/release-deploy.test.mjs`) e ensaio com Docker Compose real e registry local (pull, promoção por `imagetools`, caminho normal e `--maintenance`). **Falta para `DONE`:** ligar `RELEASE_PUBLISH_ENABLED`, configurar revisores do ambiente `production` e uma release real chegando à homologação no servidor do hospital. | PROD-002 | P1.4 |
 | PROD-304 | P0 | VERIFY | M | PostgreSQL no servidor do hospital com arquivamento contínuo de WAL para fora do prédio (RPO 15 min, D2); restore point-in-time demonstrado. **Entregue:** WAL contínuo + base backup + cópia externa por rclone, PITR ensaiado localmente em 6 s (381 MB, 36 segmentos de WAL; `npm run db:backup:drill`, [BACKUP_RESTORE.md](../operations/BACKUP_RESTORE.md)); **falta:** servidor e destino externo reais; AUD-04 corrigido (#40): a cópia externa nunca apaga no destino e recusa ciclo sem backup válido recente (D-041). | PROD-301 | P1.5, AUD-033 |
 | PROD-305 | P1 | VERIFY | S | Usuários de banco separados: migration (DDL) e runtime (DML, sem `ALTER`/`DROP` nem `DELETE` em `audit_events`). Aceite: teste negativo de privilégio. | — | P1.6 |
 | PROD-306 | P1 | VERIFY | S | Liveness do worker do outbox (heartbeat + healthcheck no compose) e métrica de idade da mensagem pendente mais antiga. Aceite: worker travado fica `unhealthy`. | — | F-07 |
@@ -112,10 +112,10 @@
 | W0 Base | 3 | 0 | 3 | 0 | 0 |
 | W1 Escala | 12 | 0 | 7 | 4 | 1 |
 | W2 Identidade | 6 | 0 | 1 | 4 | 1 |
-| W3 Infra | 9 | 4 | 0 | 5 | 0 |
+| W3 Infra | 9 | 3 | 0 | 6 | 0 |
 | W4 Clínico/dados/operação | 20 | 4 | 2 | 10 | 4 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **60** | **8** | **13** | **23** | **16** |
+| **Total** | **60** | **7** | **13** | **24** | **16** |
 
 Em 08/10/2026 as 12 decisões (D1–D12) foram tomadas ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026)); os 16 itens ainda bloqueados dependem de entradas de conteúdo (lista de críticos, prazo legal, planilhas), do servidor de homologação ou das validações externas. Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 

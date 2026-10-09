@@ -33,6 +33,12 @@ const MAX_LABEL_LENGTH = 160;
 const MAX_DURATION_MS = 600_000;
 const SERVER_CORRELATION_ID_PATTERN = /^corr_[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const ALLOWED_FIELD_NAMES = new Set([
+  // PROD-308 attachment.quarantined / attachment.scan_failed: identifiers and MIME pair, never the file name.
+  "attachmentId",
+  "resultVersionId",
+  "declaredMime",
+  "detectedMime",
+  "sizeBytes",
   "method",
   "route",
   "status",
