@@ -113,9 +113,9 @@
 | W1 Escala | 12 | 0 | 7 | 4 | 1 |
 | W2 Identidade | 6 | 0 | 1 | 4 | 1 |
 | W3 Infra | 9 | 0 | 0 | 9 | 0 |
-| W4 Clínico/dados/operação | 20 | 4 | 2 | 10 | 4 |
+| W4 Clínico/dados/operação | 20 | 0 | 2 | 14 | 4 |
 | W5 Validação/piloto | 10 | 0 | 0 | 0 | 10 |
-| **Total** | **60** | **4** | **13** | **27** | **16** |
+| **Total** | **60** | **0** | **13** | **31** | **16** |
 
 Em 08/10/2026 as 12 decisões (D1–D12) foram tomadas ([ata](PACOTE_DECISOES_2026-10-08.md#ata-de-08102026)); os 16 itens ainda bloqueados dependem de entradas de conteúdo (lista de críticos, prazo legal, planilhas), do servidor de homologação ou das validações externas. Por isso a Fase 0 roda em paralelo com a W1. Seis itens estão em `VERIFY` em 03/10/2026: eles têm implementação e teste, e falta a evidência de execução contínua em staging (PROD-103, 104, 107, 205, 305, 306) — que depende de ambiente real, não de código.
 
