@@ -26,12 +26,14 @@ O PostgreSQL roda no servidor do hospital (D11) e a meta é RPO 15 min e RTO 4 h
 | 2. Backup base físico | `pg_basebackup` (tar+gzip, `--checkpoint=fast`, `--wal-method=none`) como o papel `cvg_backup` | `cvg-backups/base/<UTC>/` | diária | ponto de partida do PITR |
 | 3. WAL contínuo | `archive_command` copia cada segmento fechado, de forma atômica, para `cvg-wal-archive`; `archive_timeout` força um segmento a cada `WAL_ARCHIVE_TIMEOUT_SECONDS` (300 s) | `cvg-wal-archive` | contínua, no máximo 5 min | recuperar até qualquer instante depois do backup base |
 | Cópia externa | serviço `offsite` (rclone) copia (sem nunca apagar nem sobrescrever no destino) o WAL, os dumps e os backups base para `OFFSITE_RCLONE_REMOTE` | fora do prédio | a cada `OFFSITE_SHIP_INTERVAL_SECONDS` (300 s) | desastre no servidor ou no prédio |
+| 4. Bucket de anexos (PROD-514, modo on-prem) | o mesmo `offsite` copia os objetos do bucket (`OFFSITE_BUCKET_SOURCE`, remoto `minio` definido pelo overlay) para `<destino>/objects`, write-once | fora do prédio | a cada ciclo do `offsite` | perda do volume `cvg-storage` ou do servidor; o banco guarda as chaves, o destino guarda os bytes |
 
 Detalhes que importam:
 
 - **Papel `cvg_backup`.** O `pg_basebackup` abre uma conexão de replicação, e `REPLICATION` nunca pode ficar no papel de runtime (a aplicação comprometida passaria a ler todo o WAL). O `migrate` (`scripts/db-roles.ts`) cria `cvg_backup` com `LOGIN REPLICATION` e `pg_read_all_data` quando `POSTGRES_BACKUP_PASSWORD` está definido; o dump continua usando o papel de runtime, sem credencial administrativa no container `backup`. Uma regra dedicada em `deploy/backup/pg_hba.conf` (`host replication cvg_backup ... scram-sha-256`) é a única abertura de replicação. Sem `POSTGRES_BACKUP_PASSWORD` não há backup base nem PITR; o dump diário segue funcionando.
 - **Atomicidade e repetição.** `deploy/backup/archive-wal.sh` copia para um nome temporário e renomeia; recusa sobrescrever um segmento diferente e retorna não-zero em qualquer dúvida, o que faz o PostgreSQL guardar o WAL e tentar de novo. Um volume cheio ou um erro de cópia aparece em `pg_stat_archiver.failed_count` e enche o disco do `pg_wal`: é alerta, não perda silenciosa.
 - **Retenção.** O `backup` apaga dumps e backups base com mais de `BACKUP_RETENTION_DAYS` (14), sempre preservando o backup base mais recente, e apaga WAL somente anterior ao primeiro segmento que o backup base retido mais antigo exige (lido do `backup_label`). Na cópia externa, o WAL é enviado com `rclone copy` (nunca apaga no destino: um erro de poda local não chega lá) e dumps e backups base também com `rclone copy --ignore-existing`: o envio **nunca apaga nem sobrescreve nada no destino** (os artefatos nascem prontos e nunca mudam: o dump só é renomeado de `.partial` depois do `pg_restore --list` e o backup base fica num diretório com carimbo; um arquivo alterado no lugar, por exemplo cifrado por ransomware com o mesmo nome e data nova, não substitui a cópia boa). Além disso, o ciclo é **recusado** (`offsite.refused`, `lastResult` `error`, saída diferente de zero em `--once`) quando `/backups` não tem um dump (`cvg-*.dump`) ou um `base/<carimbo>/base.tar.gz` não vazio com idade de no máximo `OFFSITE_MAX_BACKUP_AGE_SECONDS` (padrão 2 × `BACKUP_INTERVAL_SECONDS`, 172800 s); um `/backups` vazio ou ausente por engano falha em vez de passar por backup válido. A retenção no destino (`dumps/` e `wal/`) é uma regra de ciclo de vida do próprio destino (por exemplo, expirar objetos com mais de `BACKUP_RETENTION_DAYS` + 2 dias, sempre com margem de pelo menos 2 × o intervalo de backup, para que nenhuma regra apague o backup base mais recente antes de existir o próximo) ou um passo separado do operador, que nunca remove o backup base mais recente nem o WAL posterior a ele.
+- **Bucket de anexos.** Os objetos são imutáveis (um `PUT` por anexo, chave com token de reivindicação) e o versionamento do bucket (PROD-307) guarda a versão anterior de qualquer exclusão por `STORAGE_NONCURRENT_VERSION_DAYS`. A cópia externa leva só a versão corrente, com `rclone copy --ignore-existing`: um objeto apagado no servidor (expurgo, engano ou ataque) continua no destino, e um objeto alterado no lugar não substitui a cópia. Antes de copiar, o `offsite` lista o bucket (`rclone size`): se não conseguir (MinIO parado, credencial trocada, nome errado), o ciclo é recusado com `bucket source unreachable`; WAL e dumps ainda saem. O RPO do bucket é o intervalo do `offsite` (300 s). Retenção de `objects/` no destino é regra do destino, com prazo igual ao legal.
 - **Espaço.** Um segmento tem 16 MB mesmo quando fechado por `archive_timeout`: até 288 por dia, cerca de 4,6 GB/dia e 65 GB em 14 dias para o WAL, mais dumps e backups base. Dimensione o disco do servidor e o destino com essa conta (o tamanho real depende da escrita; um sistema quase parado fecha menos segmentos porque o PostgreSQL só troca de segmento se houve escrita).
 - **Compressão não é feita no arquivamento** para que `restore_command` seja um `cp`; se o destino cobrar por volume, habilite compressão no destino ou troque o `archive_command` por uma versão que comprima e ajuste a `restore_command` de `scripts/restore-pitr.sh`.
 - **Volume novo.** `deploy/backup/postgres-entrypoint.sh` cria `/wal-archive` com o dono certo antes de entregar ao entrypoint oficial.
@@ -59,8 +61,9 @@ Depois mova o arquivo para um armazenamento cifrado fora da máquina e registre 
 1. Copie `deploy/backup/rclone.conf.example` para `deploy/backup/rclone.conf` (ignorado pelo git, `chmod 600`) e preencha o remoto (S3/MinIO ou SFTP). Prefira uma credencial que escreva no caminho `wal/` e não apague objetos, quando o destino permitir.
 2. Defina no `.env.production`: `OFFSITE_RCLONE_REMOTE=<remoto>:<caminho>` (por exemplo `s3:cvg-offsite/hospital-a`) e, se o arquivo estiver em outro caminho, `OFFSITE_RCLONE_CONFIG`. Opcionalmente `OFFSITE_MAX_BACKUP_AGE_SECONDS` (padrão 2 × `BACKUP_INTERVAL_SECONDS`).
 3. Teste o destino antes (`rclone lsd <remoto>:`, comando no cabeçalho do exemplo) e suba: `docker compose ... up -d offsite`.
-4. Sem `OFFSITE_RCLONE_REMOTE`, o serviço registra `{"event":"offsite.disabled"}` e fica ocioso; a aplicação sobe do mesmo jeito, mas nenhum backup sai do servidor. Isso precisa ser uma decisão registrada, não um esquecimento.
-5. A cada ciclo o serviço grava `/backups/offsite-status.json` com `lastShippedAt`, `lastShippedEpoch`, `lastAttemptAt`, `lastResult` (`ok`, `error`, `disabled`), `walSegments` e `bytes` (aproximado, em blocos de 1 KiB) e, quando o ciclo é recusado, `reason`. Um ciclo recusado (`{"event":"offsite.refused","reason":...}` no log de erro) ainda copia o WAL, mas não conta como sucesso: sem backup válido recente em `/backups` o `healthcheck` fica vermelho depois de 3 intervalos. Como o envio nunca apaga, configure no destino a regra de ciclo de vida de `dumps/` e `wal/` descrita na retenção (§3, margem de pelo menos 2 × o intervalo de backup). `deploy/backup/check-offsite.sh` lê esse arquivo e sai com código diferente de zero quando o último **sucesso** é mais velho que 3 × `OFFSITE_SHIP_INTERVAL_SECONDS` (ou o arquivo não existe): é o `healthcheck` do Compose e o comando do runbook (`docker compose ... exec offsite sh /opt/backup/check-offsite.sh`). Não existe métrica Prometheus para isso (o Hub não enxerga o volume), então o alerta é o estado `unhealthy` do container, que o monitoramento do host precisa observar (PROD-513); veja [INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#backup-falho-ou-cópia-externa-parada).
+4. No modo on-prem, o overlay já define `OFFSITE_BUCKET_SOURCE=minio:<bucket>`; num S3 gerenciado, defina um remoto de leitura no `rclone.conf` e `OFFSITE_BUCKET_SOURCE=<remoto>:<bucket>` para o bucket entrar na cópia (`objects` no status).
+5. Sem `OFFSITE_RCLONE_REMOTE`, o serviço registra `{"event":"offsite.disabled"}` e fica ocioso; a aplicação sobe do mesmo jeito, mas nenhum backup sai do servidor. Isso precisa ser uma decisão registrada, não um esquecimento.
+6. A cada ciclo o serviço grava `/backups/offsite-status.json` com `lastShippedAt`, `lastShippedEpoch`, `lastAttemptAt`, `lastResult` (`ok`, `error`, `disabled`), `walSegments`, `bytes` (aproximado, em blocos de 1 KiB), `objects` (objetos no bucket de anexos, 0 sem `OFFSITE_BUCKET_SOURCE`) e, quando o ciclo é recusado, `reason`. Um ciclo recusado (`{"event":"offsite.refused","reason":...}` no log de erro) ainda copia o WAL, mas não conta como sucesso: sem backup válido recente em `/backups` o `healthcheck` fica vermelho depois de 3 intervalos. Como o envio nunca apaga, configure no destino a regra de ciclo de vida de `dumps/` e `wal/` descrita na retenção (§3, margem de pelo menos 2 × o intervalo de backup). `deploy/backup/check-offsite.sh` lê esse arquivo e sai com código diferente de zero quando o último **sucesso** é mais velho que 3 × `OFFSITE_SHIP_INTERVAL_SECONDS` (ou o arquivo não existe): é o `healthcheck` do Compose e o comando do runbook (`docker compose ... exec offsite sh /opt/backup/check-offsite.sh`). Não existe métrica Prometheus para isso (o Hub não enxerga o volume), então o alerta é o estado `unhealthy` do container, que o monitoramento do host precisa observar (PROD-513); veja [INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#backup-falho-ou-cópia-externa-parada).
 
 ## 4. Runbook de restore
 
@@ -137,6 +140,25 @@ Checksums e contagens (solicitações, resultados, anexos), versão do schema, `
 
 `scripts/backup-drill.sh` repete o ciclo inteiro em um projeto Compose descartável (`docker-compose.prod.yml` + `docker-compose.pitr-drill.yml`; sobem só `postgres`, `migrate`, `backup` e `offsite`, com destino `:local:` do rclone): cria a carga e marcadores `m1..m4` com instantes, define o alvo entre `m2` e `m3`, força `pg_switch_wal()`, espera o arquivamento e a cópia externa, restaura **a partir da cópia externa** com `restore-pitr.sh` (alvo e `--latest`), confere os marcadores (`m1,m2` e `m1,m2,m3,m4`), imprime um JSON com RPO e RTO e remove tudo (`down -v`). Variáveis: `DRILL_PROJECT`, `DRILL_PORT`, `DRILL_SHIP_INTERVAL_SECONDS`, `DRILL_ROW_COUNT`. Exige Docker, a imagem `ops` (é construída na primeira execução) e as imagens `postgres:16-alpine` e `rclone/rclone`.
 
+### 4.5 Restaurar o bucket de anexos a partir da cópia externa
+
+Quando o volume `cvg-storage` (ou o servidor) se perde. O banco restaurado (§4.1 ou §4.2) tem as chaves dos anexos; os bytes vêm de `<OFFSITE_RCLONE_REMOTE>/objects`.
+
+```bash
+# 1. Suba o storage vazio e deixe o storage-init endurecer o bucket (versionamento, SSE, policy, ciclo de vida).
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production up -d storage storage-init
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production logs storage-init   # storage.hardened, problems: []
+# 2. Copie do destino para o bucket, pelo próprio serviço offsite (remoto minio já definido). Nada é apagado em lugar nenhum.
+docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production run --rm --no-deps offsite \
+  rclone copy "$OFFSITE_RCLONE_REMOTE/objects" "minio:$STORAGE_BUCKET" --ignore-existing
+# 3. Confira contagem e integridade contra o destino e o endurecimento do bucket restaurado.
+docker compose ... run --rm --no-deps offsite rclone check "$OFFSITE_RCLONE_REMOTE/objects" "minio:$STORAGE_BUCKET" --one-way
+docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify
+# 4. Suba app e worker e abra um anexo de cada setor pela tela (download passa por checksum e scanStatus).
+```
+
+O destino pode ter objetos que o expurgo já apagou do servidor: eles voltam com o `copy`, e o banco restaurado não os referencia. Se o restore for posterior a um expurgo, rode `npm run runtime:archive -- --dry-run --purge` para ver o que seria removido de novo e aplique o expurgo quando o jurídico confirmar. Ensaio reproduzível: `npm run storage:backup:drill` (medidas no §5).
+
 ## 5. Cadência dos ensaios e evidência
 
 - **Mensal:** `npm run db:backup:drill` em máquina de homologação (ou na do hospital, em projeto Compose separado, nunca sobre produção) e conferência de que `check-offsite.sh` está verde há 30 dias.
@@ -160,7 +182,23 @@ Ensaiado com `scripts/backup-drill.sh` no Docker 29 / PostgreSQL 16.15 (`postgre
 | RPO: arquivamento até a cópia externa | 12 s | 15 s |
 | Ensaio completo (subir, carregar, copiar, restaurar duas vezes, verificar) | 36 s | 65 s |
 
-Leitura honesta: o RPO nominal é 600 s (300 de `archive_timeout` + 300 de envio) e o ensaio, com `pg_switch_wal()` forçado e envio de 15 s, só prova que o caminho funciona e que o atraso de envio acompanha o intervalo. O RTO medido (segundos) é só o replay, sem baixar do destino e sem provisionar o servidor; a janela de 4 h é dominada por esses dois itens, que dependem do hospital. A verificação cobriu o banco; **o armazenamento de objetos (S3) ainda não tem backup nem restore ensaiado** (PROD-514).
+Leitura honesta: o RPO nominal é 600 s (300 de `archive_timeout` + 300 de envio) e o ensaio, com `pg_switch_wal()` forçado e envio de 15 s, só prova que o caminho funciona e que o atraso de envio acompanha o intervalo. O RTO medido (segundos) é só o replay, sem baixar do destino e sem provisionar o servidor; a janela de 4 h é dominada por esses dois itens, que dependem do hospital.
+
+### Evidência medida do bucket de anexos (2026-10-09, laboratório local)
+
+`npm run storage:backup:drill` com o overlay on-prem (MinIO compilado da fonte `7aac2a2`, `rclone/rclone:1.71.2`, destino `:local:`, envio a cada 15 s), em projeto Compose descartável:
+
+| Medida | Valor |
+| --- | --- |
+| Endurecimento pelo `storage-init` | versionamento `Enabled`, SSE `AES256`, objeto de prova cifrado, policy ausente, leitura anônima `403`, 1 regra de ciclo de vida (versões não correntes, 30 dias) |
+| Objetos gravados pela API S3 | 200 × 64 KiB (12,5 MB) |
+| Cópia externa completa (`objects: 200`, `check-offsite.sh` ok) | 12 s depois do início do upload |
+| Perda simulada | `docker volume rm` do `cvg-storage`; bucket novo vazio e endurecido |
+| **Restore dos 200 objetos a partir da cópia externa** | **1 s** |
+| Verificação | `rclone check` sem divergência; `storage.verified` no bucket restaurado; leitura anônima `403` |
+| Ensaio completo | 35 s |
+
+O ensaio prova o mecanismo (write-once, recusa sem fonte, restore íntegro num bucket endurecido), não o RTO de produção: baixar do destino real e provisionar o servidor dependem do hospital (PROD-514).
 
 ## 6. Failure handling
 
