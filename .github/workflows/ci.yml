@@ -12,6 +12,12 @@ concurrency:
   group: cvg-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Docker Hub rate-limits anonymous pulls per runner IP (`toomanyrequests` failed main at 794fd24). CI pulls the same
+# pinned images through Google's Docker Hub mirror: service containers by name, the check scripts through this variable
+# and the image job through the daemon's registry mirror. Production pulls are not affected.
+env:
+  DOCKER_HUB_MIRROR: mirror.gcr.io
+
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -23,7 +29,7 @@ jobs:
         node-version: ["22.x"]
     services:
       postgres:
-        image: postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine
         env:
           POSTGRES_USER: cvg
           POSTGRES_PASSWORD: cvg_ci
@@ -121,7 +127,7 @@ jobs:
     timeout-minutes: 25
     services:
       postgres:
-        image: postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine
         env:
           POSTGRES_USER: cvg
           POSTGRES_PASSWORD: cvg_ci
@@ -262,7 +268,7 @@ jobs:
         node-version: ["22.x"]
     services:
       postgres:
-        image: postgres:16-alpine
+        image: mirror.gcr.io/library/postgres:16-alpine
         env:
           POSTGRES_USER: cvg
           POSTGRES_PASSWORD: cvg_ci
@@ -537,6 +543,17 @@ jobs:
       MINIO_API_PORT: "9000"
       MINIO_CONSOLE_PORT: "9001"
     steps:
+      # Base images (node, golang, alpine) and the Compose dependencies come through the mirror. This job has no
+      # service container yet, so restarting the daemon here is safe.
+      - name: Pull Docker Hub images through a mirror
+        run: |
+          set -Eeuo pipefail
+          config=/etc/docker/daemon.json
+          current='{}'
+          if sudo test -s "$config"; then current="$(sudo cat "$config")"; fi
+          printf '%s' "$current" | jq --arg mirror "https://$DOCKER_HUB_MIRROR" '."registry-mirrors" = [$mirror]' | sudo tee "$config" >/dev/null
+          sudo systemctl restart docker
+          docker info --format '{{json .RegistryConfig.Mirrors}}'
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
