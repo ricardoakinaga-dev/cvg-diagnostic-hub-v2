@@ -56,7 +56,7 @@ Com `referencia_minima` e/ou `referencia_maxima`, o analito recebe uma faixa num
 - A planilha é a fonte da verdade **para as colunas que carrega**. Campos que ela não carrega (por exemplo as permissões dos colaboradores) não são tocados.
 - Cada linha vira `CRIAR`, `ATUALIZAR`, `SEM MUDANÇA` ou `ERRO`. Reimportar a mesma planilha dá `SEM MUDANÇA` em tudo e não grava nada.
 - Exames **com solicitações** não aceitam troca de categoria, setor, fluxo, `exige_amostra`, `exige_agenda` ou `esquema_resultado` (mesma regra `CATALOG_IN_USE` da tela): a linha dá erro. Nome, tipo de amostra, anexo, prazos e `ativo` podem mudar.
-- Em um exame `NUMERIC_PANEL`, os analitos montam o painel (código do painel = código do exame). Se os analitos mudam, a **versão do painel sobe**; se não mudam, ela é mantida. Sem linhas de analitos, um exame que já tem painel ativo mantém o painel.
+- Em um exame `NUMERIC_PANEL`, os analitos montam o painel (código do painel = código do exame). Se os analitos mudam, a **versão do painel sobe**; se não mudam, ela é mantida. Sem linhas de analitos, um exame que já tem painel ativo mantém o painel. **Cada exame deve vir inteiro em uma única parte da planilha:** a planilha de analitos de um exame precisa trazer **todos** os seus analitos. Os que faltarem são **removidos** do painel; a validação mostra a linha `analitos removidos: ...` (com `(obrigatório)` quando for o caso), a tela diz "Remove: ..." e a CLI imprime o aviso. Confira essa lista antes de aplicar.
 - Tudo ou nada: se qualquer linha tiver erro, **nada é gravado** e o relatório aponta a linha (número da linha no arquivo, como o Excel mostra) e o motivo. Corrija e envie de novo.
 - Cada exame criado ou alterado gera um evento de auditoria, e a importação gera um evento `CatalogImported` com as contagens. Um exame novo e ativo já fica disponível para os técnicos que tinham todos os exames do setor.
 - Um gestor só importa linhas dos setores que administra; linhas de outros setores dão erro.
@@ -104,13 +104,13 @@ Acrescente `--apply` para gravar. `--no-deps` evita que o Compose reexecute o `m
 
 ## 4. Limites conhecidos
 
-- **Tamanho do envio.** As duas planilhas viajam em um único corpo JSON, limitado por `JSON_BODY_MAX_BYTES` (1 MiB por padrão). A tela recusa arquivos acima de 900 KB cada um; se a soma passar de 1 MiB, divida a planilha de analitos em partes (cada parte precisa trazer os exames correspondentes na planilha de exames) ou aumente o limite com revisão de risco.
+- **Tamanho do envio.** As duas planilhas viajam em um único corpo JSON, limitado por `JSON_BODY_MAX_BYTES` (1 MiB por padrão). A tela recusa arquivos acima de 900 KB cada um; se a soma passar de 1 MiB, divida as planilhas em partes **por exame**: cada exame vai inteiro, com todos os seus analitos, em uma única parte (nunca o mesmo exame em duas partes), e cada parte traz os exames correspondentes na planilha de exames ou aumente o limite com revisão de risco.
 
 - **Faixas por espécie:** o modelo atual guarda **uma** faixa de referência por analito, sem distinguir cão, gato ou outras espécies. Enquanto não existir um modelo de faixas por espécie, registre as faixas específicas em `observacao` e deixe `referencia_minima` e `referencia_maxima` vazias (faixa pendente) ou preencha só a faixa que valha para todos os pacientes atendidos. A observação é exibida junto à faixa, mas não é usada para marcar baixo/alto.
 - **Valores permitidos de analito qualitativo** (lista fechada de opções) ainda não fazem parte da planilha: um analito `QUALITATIVE` aceita qualquer texto.
 - Alterar os analitos de um exame sobe a versão do painel; rascunhos de resultado abertos na versão anterior precisam ser relançados no painel novo.
 - O formato aceito é CSV (UTF-8). Arquivos `.xlsx` precisam ser salvos como CSV; cada arquivo tem no máximo 2000 linhas de exames, 10000 de analitos e cerca de 900 KB.
-- A importação não remove exames nem analitos: o que não está na planilha fica como está.
+- A importação nunca remove exames (para aposentar um, use `ativo = não`). Já o painel de um exame é **substituído por inteiro**: analitos que não estão na planilha de analitos são removidos do painel, e a validação os lista (marcando os obrigatórios).
 
 ## 5. Mensagens de erro frequentes
 
@@ -120,6 +120,7 @@ Acrescente `--apply` para gravar. `--no-deps` evita que o Compose reexecute o `m
 | `A linha tem N colunas; o cabeçalho tem M` | Há ponto e vírgula dentro de um texto sem aspas, ou uma coluna a mais ou a menos. |
 | `Linha de exemplo do modelo` | Apague a linha de exemplo ou troque o código `EXEMPLO_...`. |
 | `A estrutura deste serviço já está referenciada por solicitações` | O exame já foi solicitado; reverta a coluna estrutural para o valor atual. |
+| `analitos removidos` | A planilha não trouxe analitos que o painel atual tem: confira se a planilha trouxe todos os analitos do exame. Se a remoção for intencional, siga em frente. |
 | `O esquema NUMERIC_PANEL exige linhas de analitos` | Preencha a planilha de analitos para esse exame. |
 | `o exame X não consta na planilha de exames` | Inclua o exame na planilha de exames (mesmo que sem mudança) ou corrija o código no analito. |
 | `Você não tem permissão para gerenciar o catálogo do setor` | A linha é de um setor que o seu perfil não administra; peça ao ADMIN ou ao gestor do setor. |
