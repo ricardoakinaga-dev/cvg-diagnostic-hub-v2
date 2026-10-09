@@ -68,6 +68,13 @@ groups:
 
   - name: cvg-hub-security
     rules:
+      - alert: CvgAttachmentQuarantined
+        expr: increase(cvg_attachment_scans_total{status="QUARANTINED"}[15m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "O antivírus colocou um anexo em quarentena nos últimos 15 minutos: o responsável pela quarentena precisa avaliar (PROD-308)."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#storage-upload-ou-scanner-av-indisponível"
       - alert: CvgLoginDistributedAttempts
         expr: increase(cvg_login_distributed_attempt_signals_total[15m]) > 0
         labels:

@@ -4,6 +4,9 @@
 # Test the destination before enabling:
 #   docker run --rm -v "$PWD/deploy/backup/rclone.conf:/config/rclone/rclone.conf:ro" rclone/rclone:1.71.2 lsd <remote>:
 
+# The on-prem overlay (docker-compose.onprem.yml) defines the `minio` remote (the attachments bucket, OFFSITE_BUCKET_SOURCE)
+# from the environment (RCLONE_CONFIG_MINIO_*), so nothing about the source bucket needs to be written here.
+
 # S3-compatible (AWS S3, MinIO, Backblaze B2 S3 API, Wasabi...): OFFSITE_RCLONE_REMOTE=s3:cvg-offsite/hospital-a
 [s3]
 type = s3

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { renderPrometheus, resetMetrics } from "../observability/metrics";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -909,9 +910,13 @@ describe("secure attachment lifecycle", () => {
     try {
       const content = Buffer.from("not a PDF");
       const session = await context.service.createAttachmentUploadSession(context.imaging, context.versionId, { filename: "laudo.pdf", mimeType: "application/pdf", sizeBytes: content.length, checksum: createHash("sha256").update(content).digest("hex"), expectedVersion: context.versionGuard, idempotencyKey: "quarantine-session" });
+      resetMetrics();
       const uploaded = await context.service.uploadAttachment(context.imaging, session.attachment.id, content);
       expect(uploaded.attachment.scanStatus).toBe("QUARANTINED");
+      // PROD-308: the quarantine is counted for the owner's alert; the object is never downloadable.
+      expect(renderPrometheus()).toContain('cvg_attachment_scans_total{status="QUARANTINED"} 1');
       await expect(context.service.finalizeAttachment(context.imaging, session.attachment.id, { expectedVersion: context.versionGuard, idempotencyKey: "quarantine-finalize" })).rejects.toMatchObject({ code: "ATTACHMENT_QUARANTINED" });
+      await expect(context.service.downloadAttachment(context.imaging, session.attachment.id)).rejects.toMatchObject({ code: "NOT_FOUND" });
     } finally {
       await rm(context.root, { recursive: true, force: true });
     }
