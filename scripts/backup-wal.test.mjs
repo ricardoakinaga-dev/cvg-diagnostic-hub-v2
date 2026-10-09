@@ -406,7 +406,7 @@ test("backup-loop.sh prunes old dumps and base backups but never the WAL the old
   writeFileSync(path.join(wal, "00000002.history"), "h");
   for (const [name, days] of [["cvg-old.dump", 20], ["cvg-new.dump", 1]]) { writeFileSync(path.join(backups, name), "d"); age(path.join(backups, name), days); }
 
-  const run = (retention) => spawnSync("sh", ["-c", `. "${path.join(root, "deploy/backup/backup-loop.sh")}"; prune`], {
+  const run = (retention) => spawnSync("sh", ["-c", '. "$1"; prune', "sh", path.join(root, "deploy/backup/backup-loop.sh")], {
     encoding: "utf8",
     env: { PATH: process.env.PATH, BACKUP_LOOP_SOURCE_ONLY: "1", BACKUP_HELPERS_DIR: path.join(root, "deploy/backup"), PGHOST: "x", PGUSER: "x", PGPASSWORD: "x", PGDATABASE: "x", BACKUP_DIRECTORY: backups, WAL_ARCHIVE_DIRECTORY: wal, BACKUP_RETENTION_DAYS: String(retention) }
   });
