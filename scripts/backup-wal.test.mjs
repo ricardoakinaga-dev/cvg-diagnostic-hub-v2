@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -124,7 +124,9 @@ function offsiteFixture() {
     'if [ "$1" != copy ]; then exit 1; fi',
     '[ -d "$2" ] || exit 1',
     'mkdir -p "$3"',
-    'case " $* " in *" --ignore-existing "*) cd "$2" && find . -type f | while read -r f; do [ -e "$3/$f" ] || { mkdir -p "$3/$(dirname "$f")"; cp "$f" "$3/$f"; }; done ;;',
+    // Honours the --exclude of partial backups like rclone does.
+    'skip_partial=0; case " $* " in *"*.partial"*) skip_partial=1 ;; esac',
+    'case " $* " in *" --ignore-existing "*) cd "$2" && find . -type f | while read -r f; do case "$f" in *.partial/*|*.partial) [ "$skip_partial" = 1 ] && continue ;; esac; [ -e "$3/$f" ] || { mkdir -p "$3/$(dirname "$f")"; cp "$f" "$3/$f"; }; done ;;',
     '*) cp -r "$2"/. "$3"/ ;; esac'
   ].join("\n"), { mode: 0o755 });
   writeFileSync(path.join(wal, "000000010000000000000001"), "wal");
@@ -296,6 +298,38 @@ test("ship-offsite.sh judges freshness by the newest valid artifact and OFFSITE_
   // Default limit derives from BACKUP_INTERVAL_SECONDS (2 x).
   assert.notEqual(f.run({ BACKUP_INTERVAL_SECONDS: "30" }).status, 0);
   assert.equal(f.run({ BACKUP_INTERVAL_SECONDS: "3600" }).status, 0);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh never counts a backup still being written as a fresh one (REM-02)", () => {
+  const f = offsiteFixture();
+  const partialBase = (stamp) => {
+    mkdirSync(path.join(f.backups, "base", `${stamp}.partial`), { recursive: true });
+    writeFileSync(path.join(f.backups, "base", `${stamp}.partial`, "base.tar.gz"), "half a base backup");
+  };
+  // Only a base backup in progress: refused, nothing but WAL leaves, the last success does not move.
+  partialBase("20261009T101500Z");
+  writeFileSync(path.join(f.backups, "cvg-20261009T101500Z.dump.partial"), "half a dump");
+  const onlyPartial = f.run();
+  assert.notEqual(onlyPartial.status, 0);
+  assert.match(onlyPartial.stderr, /"event":"offsite.refused"/);
+  assert.match(f.status().reason, /no valid backup/);
+  assert.equal(f.status().lastShippedEpoch, 0);
+  assert.deepEqual(f.remoteFiles(), []);
+  // A finished dump five days old plus a fresh partial base: still refused as old.
+  f.addBackup(5 * 86400, ["dump"]);
+  const stale = f.run();
+  assert.notEqual(stale.status, 0);
+  assert.match(f.status().reason, /old/);
+  assert.equal(f.status().lastShippedEpoch, 0);
+  // The base backup finishes (renamed out of .partial): fresh, shipped, and the partial leftovers stay home.
+  renameSync(path.join(f.backups, "base", "20261009T101500Z.partial"), path.join(f.backups, "base", "20261009T101500Z"));
+  partialBase("20261010T101500Z");
+  assert.equal(f.run().status, 0);
+  assert.equal(f.status().lastResult, "ok");
+  const shipped = readdirSync(path.join(f.remote, "dumps"), { recursive: true }).map(String).sort();
+  assert.ok(shipped.includes(path.join("base", "20261009T101500Z", "base.tar.gz")));
+  assert.ok(!shipped.some((name) => name.includes(".partial")));
   rmSync(f.dir, { recursive: true, force: true });
 });
 
