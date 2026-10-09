@@ -8,7 +8,7 @@ import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes }
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
 import { assertPasswordPolicy } from "../security/password-policy";
-import { createPasswordResetGrant, passwordResetUrl } from "../security/password-reset";
+import { createPasswordResetGrant, passwordResetUrl, withoutPendingReset } from "../security/password-reset";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { findById } from "../domain/state-index";
@@ -225,13 +225,14 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           throw new ApiError("CONFLICT", "O último administrador ativo não pode perder o acesso administrativo.", 409);
         }
         const serviceCodes = assignedServices(originalState, input.role, departmentCode, input.serviceCodes ?? (isExecutorRole({ ...target, role: input.role }) && target.departmentCode === departmentCode ? target.serviceCodes : undefined));
-        const updated: User = { ...target, role: input.role, departmentCode, managedDepartmentCodes, serviceCodes, active: nextActive, ...(target.onCall && !nextActive ? { onCall: false } : {}), version: target.version + 1 };
+        const pending = withoutPendingReset(target);
+        const updated: User = { ...pending.user, role: input.role, departmentCode, managedDepartmentCodes, serviceCodes, active: nextActive, ...(target.onCall && !nextActive ? { onCall: false } : {}), version: target.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         const nextState = {
           ...originalState,
           users: originalState.users.map((user) => user.id === target.id ? updated : user),
           sessions: revokeUserSessions(originalState, target.id),
-          auditEvents: [...originalState.auditEvents, createAudit("UserRoleUpdated", currentActor.id, "User", target.id, correlationId, `${target.role}:${target.departmentCode}:${target.active}`, `${updated.role}:${updated.departmentCode}:${updated.active}`, { action: "UPDATE_USER_ACCESS", departmentCode: updated.departmentCode, previousManagedDepartmentCodes: target.managedDepartmentCodes?.join(",") ?? "", managedDepartmentCodes: managedDepartmentCodes?.join(",") ?? "", previousServiceCodes: target.serviceCodes?.join(",") ?? "", serviceCodes: serviceCodes?.join(",") ?? "" })]
+          auditEvents: [...originalState.auditEvents, createAudit("UserRoleUpdated", currentActor.id, "User", target.id, correlationId, `${target.role}:${target.departmentCode}:${target.active}`, `${updated.role}:${updated.departmentCode}:${updated.active}`, { action: "UPDATE_USER_ACCESS", departmentCode: updated.departmentCode, previousManagedDepartmentCodes: target.managedDepartmentCodes?.join(",") ?? "", managedDepartmentCodes: managedDepartmentCodes?.join(",") ?? "", previousServiceCodes: target.serviceCodes?.join(",") ?? "", serviceCodes: serviceCodes?.join(",") ?? "", ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
         };
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result };
@@ -331,13 +332,14 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           throw new ApiError("CONFLICT", "O último administrador ativo não pode ser desativado.", 409);
         }
         // Nobody stays on call (PROD-402) after losing access.
-        const updated: User = { ...target, active: false, ...(target.onCall ? { onCall: false } : {}), version: target.version + 1 };
+        const pending = withoutPendingReset(target);
+        const updated: User = { ...pending.user, active: false, ...(target.onCall ? { onCall: false } : {}), version: target.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         const nextState = {
           ...originalState,
           users: originalState.users.map((user) => user.id === target.id ? updated : user),
           sessions: revokeUserSessions(originalState, target.id),
-          auditEvents: [...originalState.auditEvents, createAudit("UserDeactivated", currentActor.id, "User", target.id, correlationId, target.active ? "ACTIVE" : "INACTIVE", "INACTIVE", { action: "DEACTIVATE_USER", role: target.role, departmentCode: target.departmentCode })]
+          auditEvents: [...originalState.auditEvents, createAudit("UserDeactivated", currentActor.id, "User", target.id, correlationId, target.active ? "ACTIVE" : "INACTIVE", "INACTIVE", { action: "DEACTIVATE_USER", role: target.role, departmentCode: target.departmentCode, ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
         };
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result };
@@ -361,12 +363,13 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         ensureExpectedVersion(target.version, input.expectedVersion);
         if (!target.active) throw new ApiError("CONFLICT", "Ative o acesso antes de gerar uma nova senha.", 409);
         const password = `Cvg1-${randomBytes(24).toString("base64url")}`;
-        const updated: User = { ...target, passwordHash: hashPassword(password), mustChangePassword: true, version: target.version + 1 };
+        const pending = withoutPendingReset(target);
+        const updated: User = { ...pending.user, passwordHash: hashPassword(password), mustChangePassword: true, version: target.version + 1 };
         const nextState = {
           ...originalState,
           users: originalState.users.map((user) => user.id === target.id ? updated : user),
           sessions: revokeUserSessions(originalState, target.id),
-          auditEvents: [...originalState.auditEvents, createAudit("UserPasswordRegenerated", currentActor.id, "User", target.id, input.correlationId ?? id("corr"), undefined, "TEMPORARY_PASSWORD", { action: "REGENERATE_USER_PASSWORD", role: target.role, departmentCode: target.departmentCode })]
+          auditEvents: [...originalState.auditEvents, createAudit("UserPasswordRegenerated", currentActor.id, "User", target.id, input.correlationId ?? id("corr"), undefined, "TEMPORARY_PASSWORD", { action: "REGENERATE_USER_PASSWORD", role: target.role, departmentCode: target.departmentCode, ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
         };
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result: { ...result, initialPassword: password } };
