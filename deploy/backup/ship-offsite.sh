@@ -5,7 +5,10 @@
 #   OFFSITE_RCLONE_REMOTE   remote and path, e.g. s3:cvg-offsite/hospital-a or sftp:/backups (defined in rclone.conf)
 #   RCLONE_CONFIG           rclone config file (mounted read-only)
 #
-# NOTHING in this script deletes on the remote: WAL, dumps and base backups all go with `rclone copy`. A local pruning
+# NOTHING in this script deletes or overwrites on the remote: WAL, dumps and base backups all go with `rclone copy
+# --ignore-existing`. The artifacts are write-once (a dump is renamed from .partial only after pg_restore --list, a base
+# backup lives in a stamped directory), so a file that changed in place locally (for example encrypted by ransomware,
+# same name, fresh mtime) never replaces the good copy on the remote. A local pruning
 # mistake, an empty volume or a wrong mount can therefore never reach the destination (AUD-04: `sync --max-delete`
 # emptied the remote from an empty /backups and eroded it across cycles). On top of that a cycle is REFUSED
 # (status error, event offsite.refused) when /backups holds no valid recent backup: a non-empty cvg-*.dump or
@@ -79,7 +82,7 @@ ship_once() {
   fi
   if [ "$wal_ok" = 1 ] \
     && rclone copy "$BACKUP_DIRECTORY" "$REMOTE/dumps" --exclude 'offsite-status.json*' --exclude '*.partial/**' --exclude '*.partial' \
-      --log-level ERROR; then
+      --ignore-existing --log-level ERROR; then
     write_status ok "$(date +%s)" "$wal_count" "$bytes"
     echo "{\"event\":\"offsite.shipped\",\"walSegments\":$wal_count,\"bytes\":$bytes}"
   else

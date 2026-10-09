@@ -122,7 +122,9 @@ function offsiteFixture() {
     'if [ "$1" = sync ]; then echo "sync is forbidden" >> \'' + log + "'; exit 1; fi",
     'if [ "$1" != copy ]; then exit 1; fi',
     '[ -d "$2" ] || exit 1',
-    'mkdir -p "$3" && cp -r "$2"/. "$3"/'
+    'mkdir -p "$3"',
+    'case " $* " in *" --ignore-existing "*) cd "$2" && find . -type f | while read -r f; do [ -e "$3/$f" ] || { mkdir -p "$3/$(dirname "$f")"; cp "$f" "$3/$f"; }; done ;;',
+    '*) cp -r "$2"/. "$3"/ ;; esac'
   ].join("\n"), { mode: 0o755 });
   writeFileSync(path.join(wal, "000000010000000000000001"), "wal");
   const remoteDest = path.join(remote, "dest");
@@ -193,6 +195,21 @@ test("ship-offsite.sh repeated cycles never delete on the remote, even after the
     assert.equal(f.status().lastShippedEpoch, epoch);
   }
   assert.doesNotMatch(f.rcloneLog(), /forbidden|(^|\n)sync /);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh never overwrites a remote file whose local copy changed in place", () => {
+  const f = offsiteFixture();
+  f.addBackup(0, ["dump"]);
+  const dump = path.join(f.backups, "cvg-20261008.dump");
+  writeFileSync(dump, "good dump");
+  assert.equal(f.run().status, 0);
+  assert.equal(readFileSync(path.join(f.remote, "dumps", "cvg-20261008.dump"), "utf8"), "good dump");
+  // Same name, new content, fresh mtime: what in-place encryption looks like.
+  writeFileSync(dump, "ENCRYPTED");
+  assert.equal(f.run().status, 0);
+  assert.equal(readFileSync(path.join(f.remote, "dumps", "cvg-20261008.dump"), "utf8"), "good dump");
+  assert.match(f.rcloneLog(), /copy .*backups .*--ignore-existing/);
   rmSync(f.dir, { recursive: true, force: true });
 });
 
