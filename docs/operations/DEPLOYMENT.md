@@ -431,6 +431,60 @@ Atualização de uma instalação existente: definir `POSTGRES_BACKUP_PASSWORD`,
 
 O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco + WAL + backups: reserve pelo menos 100 GB além do banco para 14 dias de WAL a `archive_timeout` 300 s, dumps e backups base; CPU/RAM conforme §6.6), o **destino externo** fora do prédio (bucket S3-compatível, outro site por SFTP ou equivalente, com política de ciclo de vida para `wal/`), as **credenciais** desse destino e quem as guarda, e os **operadores** que acompanham o `healthcheck` do `offsite` e fazem o ensaio mensal. Sem eles o mecanismo está pronto e ensaiado em laboratório, mas o RPO de 15 min **fora do prédio** não está garantido.
 
+## 11. Pipeline de release (PROD-303)
+
+O servidor do hospital deixa de compilar imagens. O workflow [`release.yml`](../../.github/workflows/release.yml) roda depois de cada CI verde num push para `main`:
+
+1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`) e a operacional (`<prefixo>-ops:sha-…`), ambas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH com correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das duas, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
+2. **promote-staging:** move a tag `staging` das duas imagens para essa release, sem aprovação (homologação automática).
+3. **promote-production:** move a tag `production`. O job usa o ambiente `production` do GitHub e espera a aprovação de quem estiver em *required reviewers*. Antes de mover a tag ele confere, pela API, que o ambiente tem revisores obrigatórios; se não tiver, falha.
+
+Tag por commit é imutável por convenção: o `deploy.sh` recusa `latest`, `staging` e `production` e só aceita `sha-<hex>`.
+
+**No servidor (modelo pull, D-045).** Um timer roda [`deploy/release/pull-release.sh`](../../deploy/release/pull-release.sh), que segue um canal: baixa `<prefixo>:<canal>` e `<prefixo>-ops:<canal>`, confere que as duas vêm do mesmo commit e, se esse commit não é o que está no ar, chama [`deploy/release/deploy.sh`](../../deploy/release/deploy.sh). O servidor só faz chamadas de saída. Não há SSH de fora para dentro nem runner do GitHub dentro da rede do hospital (PROD-309), e o repositório é público: um runner próprio executaria código de PRs de terceiros.
+
+O `deploy.sh` faz, nesta ordem:
+
+1. baixa as duas imagens da release;
+2. recusa a imagem cujo rótulo não é o commit da tag (`release.revision_mismatch`);
+3. faz o backup (`run --rm --no-deps backup --once`; sem backup, sem deploy);
+4. roda `up -d --no-build`, em que o `migrate` executa antes de `app` e `worker` serem recriados;
+5. espera o `app` ficar `healthy` (`RELEASE_HEALTH_TIMEOUT_SECONDS`, padrão 300) e o `worker` rodando;
+6. registra a release em `<state-dir>/<projeto>.current` e `.history`.
+
+Cada passo emite um evento JSON (`release.started`, `release.deployed` com a release anterior, ou o erro do passo). Com `--maintenance`, ele para `proxy`, `app`, `worker` e `backup` antes do backup e roda o `migrate` sozinho. É o caminho das migrations de cutover coordenado do §4.1. Sem a opção, a trava do `migrate` recusa essas migrations e o app antigo continua no ar.
+
+Nada é desfeito automaticamente. Uma release que falhou no servidor fica registrada em `<projeto>.failed` e o timer não a tenta de novo. O operador corrige e roda `deploy.sh` à mão, ou apaga o arquivo. Para voltar, rode `deploy.sh --tag <release anterior>` (o `.history` guarda a lista), o que só vale se a release não aplicou migration. Com migration aplicada, o caminho é o restore do backup tirado pelo próprio deploy (§8).
+
+Exemplo de unidade systemd para homologação. Para produção, troque o canal, o projeto, o arquivo de ambiente e o `--compose-file` conforme a separação do PROD-301.
+
+```ini
+# /etc/systemd/system/cvg-release-hml.service
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/cvg-hub
+ExecStart=/opt/cvg-hub/deploy/release/pull-release.sh --channel staging --project cvg-hml --env-file /etc/cvg-hub/hml.env --prefix ghcr.io/<dono>/cvg-hub --compose-file docker-compose.prod.yml
+
+# /etc/systemd/system/cvg-release-hml.timer
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+O diretório `/opt/cvg-hub` é um checkout do repositório. Os arquivos de Compose e os scripts de `deploy/` vêm dele, então o operador o atualiza para o commit da release (`git fetch && git checkout <commit>`) antes da primeira subida e sempre que o Compose mudar.
+
+**Para ligar (decisões do dono do produto e do hospital):**
+
+| Onde | O quê |
+| --- | --- |
+| Variável do repositório `RELEASE_PUBLISH_ENABLED` | `true` liga o workflow. Desligado, nada é publicado. |
+| Variável `RELEASE_IMAGE_PREFIX` (opcional) | Outro registry, por exemplo um do próprio hospital, com os segredos `RELEASE_REGISTRY_USERNAME` e `RELEASE_REGISTRY_PASSWORD`. O padrão é `ghcr.io/<dono>/cvg-hub` com o token do próprio workflow. |
+| Ambiente `production` (Settings → Environments) | *Required reviewers* com quem aprova a ida para produção. Sem isso o job falha antes de mover a tag. |
+| Servidor | `docker login` no registry com token **somente leitura**, caso a imagem seja privada, e os timers acima. |
+
+O primeiro deploy de um ambiente continua sendo o §3. A única diferença é que, em vez de `build`, o operador exporta `IMAGE_PREFIX` e `IMAGE_TAG=sha-…` e roda `pull`.
 ## 12. Armazenamento e antivírus no servidor do hospital (modo on-prem, PROD-307/308/514)
 
 D11 põe o servidor dentro do hospital. O overlay [`docker-compose.onprem.yml`](../../docker-compose.onprem.yml) acrescenta ao stack de produção o armazenamento de objetos e o antivírus, sem nenhuma porta publicada, e a decisão está em [D-050](../DECISION_LOG.md):
@@ -456,7 +510,7 @@ docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-fil
 docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production logs storage-init   # {"event":"storage.hardened",...,"problems":[]}
 ```
 
-Todos os comandos do §3 e do §4 valem com os dois `-f`; o `deploy/release/deploy.sh` do §11 (PR #50) recebe o overlay por `--compose-file` repetido (a imagem do `storage` não vem do registry, por isso o `build storage` único acima). Verificação sob demanda, sem alterar nada: `docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify` (ou `npm run storage:verify` com as variáveis exportadas) imprime o relatório e sai com 1 se o bucket desviou. Ensaios reproduzíveis: `npm run scanner:drill` (EICAR em quarentena com ClamAV real) e `npm run storage:backup:drill` (perda do volume e restore a partir da cópia externa, [BACKUP_RESTORE.md §4.5](BACKUP_RESTORE.md#45-restaurar-o-bucket-de-anexos-a-partir-da-cópia-externa)).
+Todos os comandos do §3 e do §4 valem com os dois `-f`; o [`deploy.sh`](../../deploy/release/deploy.sh) do §11 recebe o overlay por `--compose-file` repetido (a imagem do `storage` não vem do registry, por isso o `build storage` único acima). Verificação sob demanda, sem alterar nada: `docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify` (ou `npm run storage:verify` com as variáveis exportadas) imprime o relatório e sai com 1 se o bucket desviou. Ensaios reproduzíveis: `npm run scanner:drill` (EICAR em quarentena com ClamAV real) e `npm run storage:backup:drill` (perda do volume e restore a partir da cópia externa, [BACKUP_RESTORE.md §4.5](BACKUP_RESTORE.md#45-restaurar-o-bucket-de-anexos-a-partir-da-cópia-externa)).
 
 **Segredos que o hospital guarda.** `.data/onprem/minio-kms.key` (sem ela, nenhum anexo é legível: copie para o cofre junto com as senhas do banco; trocar a chave exige migração com ensaio de restore) e `.data/onprem/certs/ca.key` (assina o certificado do scanner; `bash scripts/onprem-init.sh .data/onprem --renew-scanner` renova o certificado, válido por 825 dias, com `restart` do `scanner`). O `STORAGE_ACCESS_KEY`/`STORAGE_SECRET_KEY` é o usuário raiz do MinIO, usado pelo app, pelo worker (expurgo) e pela cópia externa; sem console nem porta publicada, só o Compose o alcança.
 
