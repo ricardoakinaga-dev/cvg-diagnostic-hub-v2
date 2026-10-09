@@ -1,8 +1,26 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import { incrementGauge, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
+import { incrementGauge, recordAttachmentScan, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
 
 describe("bounded metrics", () => {
+  it("counts attachment scans by bounded verdict (PROD-308)", () => {
+    resetMetrics();
+    recordAttachmentScan("CLEAN");
+    recordAttachmentScan("QUARANTINED");
+    recordAttachmentScan("QUARANTINED");
+    recordAttachmentScan("weird verdict with id-123");
+
+    const output = renderPrometheus();
+
+    expect(output).toContain("# TYPE cvg_attachment_scans_total counter");
+    expect(output).toContain('cvg_attachment_scans_total{status="CLEAN"} 1');
+    expect(output).toContain('cvg_attachment_scans_total{status="QUARANTINED"} 2');
+    expect(output).toContain('cvg_attachment_scans_total{status="FAILED"} 1');
+    expect(output).not.toContain("id-123");
+    resetMetrics();
+    expect(renderPrometheus()).toContain('cvg_attachment_scans_total{status="QUARANTINED"} 0');
+  });
+
   it("renders stable labels without identifiers or request payloads", () => {
     resetMetrics();
     recordHttpRequest("GET", "/api/v1/diagnostic-items/[id]", 200, 12.5);

@@ -1,0 +1,18 @@
+# Override used ONLY by scripts/storage-backup-drill.sh and scripts/scanner-drill.sh (PROD-307/308/514) on a
+# DISPOSABLE Compose project with the on-prem overlay. The storage drill starts postgres, migrate, backup, storage,
+# storage-init and offsite (the off-site copy needs a real dump to accept the cycle); the scanner drill starts clamav and
+# scanner. app, worker and proxy are never started, so no TLS edge, domain or clinical data is involved.
+#
+#   docker compose -p <project> -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.storage-drill.yml \
+#     --env-file <drill.env> up -d postgres migrate backup storage storage-init offsite
+services:
+  proxy:
+    profiles: ["never"]
+  app:
+    profiles: ["never"]
+  worker:
+    profiles: ["never"]
+  scanner:
+    # The drill talks to the adapter from the host.
+    ports:
+      - "127.0.0.1:${DRILL_SCANNER_PORT:-0}:9443"
