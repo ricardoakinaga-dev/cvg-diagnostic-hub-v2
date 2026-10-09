@@ -270,6 +270,9 @@ services:
   # OFFSITE_SHIP_INTERVAL_SECONDS. Opt-in: with the remote empty it logs offsite.disabled and idles; the stack runs without it.
   # Healthy = last successful shipment younger than 3 x interval (deploy/backup/check-offsite.sh). The rclone
   # config (credentials) is mounted read-only from OFFSITE_RCLONE_CONFIG and never committed.
+  # Nothing is ever deleted on the remote (WAL, dumps and base backups all use `rclone copy`); a cycle is refused
+  # (offsite.refused, status error) when /backups has no valid backup younger than OFFSITE_MAX_BACKUP_AGE_SECONDS
+  # (empty = 2 x BACKUP_INTERVAL_SECONDS). Remote retention is a lifecycle rule of the destination.
   offsite:
     image: rclone/rclone:1.71.2
     entrypoint: ["/bin/sh", "/opt/backup/ship-offsite.sh"]
@@ -277,6 +280,8 @@ services:
       RCLONE_CONFIG: /config/rclone/rclone.conf
       OFFSITE_RCLONE_REMOTE: ${OFFSITE_RCLONE_REMOTE:-}
       OFFSITE_SHIP_INTERVAL_SECONDS: ${OFFSITE_SHIP_INTERVAL_SECONDS:-300}
+      BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
+      OFFSITE_MAX_BACKUP_AGE_SECONDS: ${OFFSITE_MAX_BACKUP_AGE_SECONDS:-}
     volumes:
       - ./deploy/backup/ship-offsite.sh:/opt/backup/ship-offsite.sh:ro
       - ./deploy/backup/check-offsite.sh:/opt/backup/check-offsite.sh:ro

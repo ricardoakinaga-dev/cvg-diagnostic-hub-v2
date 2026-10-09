@@ -106,6 +106,136 @@ test("ship-offsite.sh without a remote logs offsite.disabled and exits cleanly i
   rmSync(dir, { recursive: true, force: true });
 });
 
+// Fake rclone: `copy` copies files and logs every call; `sync` is forbidden and fails loudly.
+function offsiteFixture() {
+  const dir = temp();
+  const bin = path.join(dir, "bin");
+  const log = path.join(dir, "rclone.log");
+  const remote = path.join(dir, "remote");
+  const backups = path.join(dir, "backups");
+  const wal = path.join(dir, "wal");
+  const statusFile = path.join(dir, "status", "offsite-status.json");
+  for (const d of [bin, remote, wal, path.dirname(statusFile)]) mkdirSync(d, { recursive: true });
+  writeFileSync(path.join(bin, "rclone"), [
+    "#!/bin/sh",
+    `echo "$*" >> '${log}'`,
+    'if [ "$1" = sync ]; then echo "sync is forbidden" >> \'' + log + "'; exit 1; fi",
+    'if [ "$1" != copy ]; then exit 1; fi',
+    '[ -d "$2" ] || exit 1',
+    'mkdir -p "$3" && cp -r "$2"/. "$3"/'
+  ].join("\n"), { mode: 0o755 });
+  writeFileSync(path.join(wal, "000000010000000000000001"), "wal");
+  const remoteDest = path.join(remote, "dest");
+  const run = (env = {}) => sh("deploy/backup/ship-offsite.sh", ["--once"], {
+    PATH: `${bin}:${process.env.PATH}`, OFFSITE_RCLONE_REMOTE: remoteDest, BACKUP_DIRECTORY: backups, WAL_ARCHIVE_DIRECTORY: wal,
+    OFFSITE_STATUS_FILE: statusFile, ...env
+  });
+  const seedRemote = () => {
+    mkdirSync(path.join(remoteDest, "dumps"), { recursive: true });
+    for (const n of ["a.dump", "b.dump", "c.dump"]) writeFileSync(path.join(remoteDest, "dumps", n), "old");
+  };
+  const remoteFiles = () => (existsSync(path.join(remoteDest, "dumps")) ? readdirSync(path.join(remoteDest, "dumps")).sort() : []);
+  const status = () => JSON.parse(readFileSync(statusFile, "utf8"));
+  const rcloneLog = () => (existsSync(log) ? readFileSync(log, "utf8") : "");
+  const addBackup = (ageSeconds = 0, kinds = ["dump", "base"]) => {
+    const when = new Date(Date.now() - ageSeconds * 1000);
+    const files = [];
+    if (kinds.includes("dump")) files.push(path.join(backups, "cvg-20261008.dump"));
+    if (kinds.includes("base")) { mkdirSync(path.join(backups, "base", "20261008T000000Z"), { recursive: true }); files.push(path.join(backups, "base", "20261008T000000Z", "base.tar.gz")); }
+    mkdirSync(backups, { recursive: true });
+    for (const f of files) { writeFileSync(f, "data"); utimesSync(f, when, when); }
+  };
+  return { dir, run, seedRemote, remoteFiles, status, rcloneLog, addBackup, backups, statusFile, remote: remoteDest };
+}
+
+test("ship-offsite.sh refuses an existing but empty /backups, keeps the remote and never calls sync", () => {
+  const f = offsiteFixture();
+  f.seedRemote(); mkdirSync(f.backups);
+  writeFileSync(f.statusFile, '{"lastShippedAt":"x","lastShippedEpoch":1700000000,"lastAttemptAt":"x","lastResult":"ok","walSegments":1,"bytes":1}\n');
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /"event":"offsite.refused"/);
+  assert.deepEqual(f.remoteFiles(), ["a.dump", "b.dump", "c.dump"]);
+  assert.equal(f.status().lastResult, "error");
+  assert.equal(f.status().lastShippedEpoch, 1700000000);
+  assert.match(f.status().reason, /no valid backup/);
+  assert.doesNotMatch(f.rcloneLog(), /(^|\n)sync /);
+  assert.doesNotMatch(f.rcloneLog(), /forbidden/);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh refuses a missing /backups directory", () => {
+  const f = offsiteFixture();
+  f.seedRemote();
+  const result = f.run();
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /offsite.refused/);
+  assert.equal(f.status().lastResult, "error");
+  assert.equal(f.status().lastShippedEpoch, 0);
+  assert.match(f.status().reason, /missing/);
+  assert.deepEqual(f.remoteFiles(), ["a.dump", "b.dump", "c.dump"]);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh repeated cycles never delete on the remote, even after the source is emptied", () => {
+  const f = offsiteFixture();
+  f.addBackup(0);
+  for (let i = 0; i < 3; i += 1) assert.equal(f.run().status, 0);
+  const shipped = readdirSync(path.join(f.remote, "dumps"), { recursive: true }).sort();
+  assert.ok(shipped.some((n) => n.endsWith("base.tar.gz")) && shipped.includes("cvg-20261008.dump"));
+  const epoch = f.status().lastShippedEpoch;
+  assert.ok(epoch > 0);
+  rmSync(f.backups, { recursive: true, force: true }); mkdirSync(f.backups);
+  for (let i = 0; i < 2; i += 1) {
+    assert.notEqual(f.run().status, 0);
+    assert.deepEqual(readdirSync(path.join(f.remote, "dumps"), { recursive: true }).sort(), shipped);
+    assert.equal(f.status().lastResult, "error");
+    assert.equal(f.status().lastShippedEpoch, epoch);
+  }
+  assert.doesNotMatch(f.rcloneLog(), /forbidden|(^|\n)sync /);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh judges freshness by the newest valid artifact and OFFSITE_MAX_BACKUP_AGE_SECONDS", () => {
+  const f = offsiteFixture();
+  f.addBackup(10 * 86400, ["base"]);
+  const stale = f.run();
+  assert.notEqual(stale.status, 0);
+  assert.match(f.status().reason, /old/);
+  // An empty (0 byte) fresh dump is not a valid artifact.
+  writeFileSync(path.join(f.backups, "cvg-empty.dump"), "");
+  assert.notEqual(f.run().status, 0);
+  // A fresh dump next to the old base is enough.
+  f.addBackup(0, ["dump"]);
+  assert.equal(f.run().status, 0);
+  assert.equal(f.status().lastResult, "ok");
+  // A tight limit refuses a dump that is two minutes old.
+  f.addBackup(120, ["dump"]);
+  rmSync(path.join(f.backups, "base"), { recursive: true, force: true });
+  const tight = f.run({ OFFSITE_MAX_BACKUP_AGE_SECONDS: "60" });
+  assert.notEqual(tight.status, 0);
+  assert.match(f.status().reason, /old \(limit 60 s\)/);
+  // Default limit derives from BACKUP_INTERVAL_SECONDS (2 x).
+  assert.notEqual(f.run({ BACKUP_INTERVAL_SECONDS: "30" }).status, 0);
+  assert.equal(f.run({ BACKUP_INTERVAL_SECONDS: "3600" }).status, 0);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh still copies WAL in a refused cycle and reports error when the WAL copy fails", () => {
+  const f = offsiteFixture();
+  mkdirSync(f.backups);
+  assert.notEqual(f.run().status, 0);
+  assert.ok(existsSync(path.join(f.remote, "wal", "000000010000000000000001")));
+  assert.match(f.rcloneLog(), new RegExp(`copy ${f.dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/wal `));
+  f.addBackup(0);
+  rmSync(path.join(f.dir, "wal"), { recursive: true });
+  const failed = f.run();
+  assert.notEqual(failed.status, 0);
+  assert.match(failed.stderr, /offsite.failed/);
+  assert.equal(f.status().lastResult, "error");
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
 test("archive-wal.sh copies atomically, is idempotent and refuses to overwrite a different segment", () => {
   const dir = temp();
   const archive = path.join(dir, "archive");

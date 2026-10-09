@@ -5,10 +5,13 @@
 #   OFFSITE_RCLONE_REMOTE   remote and path, e.g. s3:cvg-offsite/hospital-a or sftp:/backups (defined in rclone.conf)
 #   RCLONE_CONFIG           rclone config file (mounted read-only)
 #
-# WAL goes with `copy`: WAL files are immutable and a base backup is useless without them, so a local pruning mistake
-# must never reach the remote. Retention of remote WAL belongs to the destination (lifecycle rule) or to the operator.
-# Dumps and base backups go with `sync`, so the remote follows the local retention; --max-delete caps how much a single
-# run may remove, which turns an accidentally empty /backups into a failed run instead of an empty remote.
+# NOTHING in this script deletes on the remote: WAL, dumps and base backups all go with `rclone copy`. A local pruning
+# mistake, an empty volume or a wrong mount can therefore never reach the destination (AUD-04: `sync --max-delete`
+# emptied the remote from an empty /backups and eroded it across cycles). On top of that a cycle is REFUSED
+# (status error, event offsite.refused) when /backups holds no valid recent backup: a non-empty cvg-*.dump or
+# base/<stamp>/base.tar.gz whose newest mtime is at most OFFSITE_MAX_BACKUP_AGE_SECONDS old (default 2 x
+# BACKUP_INTERVAL_SECONDS). WAL is copied first and also in a refused cycle (immutable, never harmful).
+# Retention of the remote belongs to the destination (lifecycle rule) or to a separate operator step.
 # Every cycle rewrites offsite-status.json; check-offsite.sh reads it.
 set -eu
 umask 077
@@ -18,15 +21,18 @@ INTERVAL="${OFFSITE_SHIP_INTERVAL_SECONDS:-300}"
 WAL_DIRECTORY="${WAL_ARCHIVE_DIRECTORY:-/wal-archive}"
 BACKUP_DIRECTORY="${BACKUP_DIRECTORY:-/backups}"
 STATUS_FILE="${OFFSITE_STATUS_FILE:-$BACKUP_DIRECTORY/offsite-status.json}"
-MAX_DELETE="${OFFSITE_MAX_DELETE:-20}"
+BACKUP_INTERVAL="${BACKUP_INTERVAL_SECONDS:-86400}"
+MAX_BACKUP_AGE="${OFFSITE_MAX_BACKUP_AGE_SECONDS:-$((BACKUP_INTERVAL * 2))}"
 REMOTE="${REMOTE%/}"
 
 write_status() {
-  # $1 result, $2 last success epoch (0 = never), $3 walSegments, $4 bytes
+  # $1 result, $2 last success epoch (0 = never), $3 walSegments, $4 bytes, $5 optional refusal reason
   shipped_at="1970-01-01T00:00:00Z"
   if [ "$2" -gt 0 ]; then shipped_at="$(date -u -d "@$2" +%Y-%m-%dT%H:%M:%SZ)"; fi
-  printf '{"lastShippedAt":"%s","lastShippedEpoch":%s,"lastAttemptAt":"%s","lastResult":"%s","walSegments":%s,"bytes":%s}\n' \
-    "$shipped_at" "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$3" "$4" > "$STATUS_FILE.tmp"
+  reason=""
+  if [ -n "${5:-}" ]; then reason=",\"reason\":\"$5\""; fi
+  printf '{"lastShippedAt":"%s","lastShippedEpoch":%s,"lastAttemptAt":"%s","lastResult":"%s","walSegments":%s,"bytes":%s%s}\n' \
+    "$shipped_at" "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$3" "$4" "$reason" > "$STATUS_FILE.tmp"
   mv "$STATUS_FILE.tmp" "$STATUS_FILE"
 }
 
@@ -36,13 +42,44 @@ previous_success() {
   echo "${value:-0}"
 }
 
+# Prints the newest mtime (epoch) among valid backup artifacts; prints 0 when there is none.
+newest_backup_epoch() {
+  newest=0
+  for artifact in "$BACKUP_DIRECTORY"/cvg-*.dump "$BACKUP_DIRECTORY"/base/*/base.tar.gz; do
+    [ -f "$artifact" ] && [ -s "$artifact" ] || continue
+    mtime="$(stat -c %Y "$artifact" 2>/dev/null || echo 0)"
+    if [ "$mtime" -gt "$newest" ]; then newest="$mtime"; fi
+  done
+  echo "$newest"
+}
+
+# Sets REFUSAL to the reason when /backups cannot be shipped; leaves it empty otherwise.
+check_backups() {
+  REFUSAL=""
+  if [ ! -d "$BACKUP_DIRECTORY" ]; then REFUSAL="backup directory missing"; return; fi
+  newest="$(newest_backup_epoch)"
+  if [ "$newest" -le 0 ]; then REFUSAL="no valid backup (cvg-*.dump or base/*/base.tar.gz) in backup directory"; return; fi
+  age=$(( $(date +%s) - newest ))
+  if [ "$age" -gt "$MAX_BACKUP_AGE" ]; then
+    REFUSAL="newest backup is $age s old (limit $MAX_BACKUP_AGE s)"
+  fi
+}
+
 ship_once() {
   wal_count="$(ls -1 "$WAL_DIRECTORY" 2>/dev/null | grep -cE '^[0-9A-F]{24}$' || true)"
   bytes="$(( ( $(du -sk "$WAL_DIRECTORY" "$BACKUP_DIRECTORY" 2>/dev/null | cut -f1 | paste -sd+ - | sed 's/^$/0/') ) * 1024 ))"
   last_ok="$(previous_success)"
-  if rclone copy "$WAL_DIRECTORY" "$REMOTE/wal" --exclude '.*.tmp' --ignore-existing --log-level ERROR \
-    && rclone sync "$BACKUP_DIRECTORY" "$REMOTE/dumps" --exclude 'offsite-status.json*' --exclude '*.partial/**' --exclude '*.partial' \
-      --max-delete "$MAX_DELETE" --log-level ERROR; then
+  wal_ok=0
+  rclone copy "$WAL_DIRECTORY" "$REMOTE/wal" --exclude '.*.tmp' --ignore-existing --log-level ERROR && wal_ok=1
+  check_backups
+  if [ -n "$REFUSAL" ]; then
+    write_status error "$last_ok" "$wal_count" "$bytes" "$REFUSAL"
+    printf '{"event":"offsite.refused","reason":"%s","walSegments":%s}\n' "$REFUSAL" "$wal_count" >&2
+    return 1
+  fi
+  if [ "$wal_ok" = 1 ] \
+    && rclone copy "$BACKUP_DIRECTORY" "$REMOTE/dumps" --exclude 'offsite-status.json*' --exclude '*.partial/**' --exclude '*.partial' \
+      --log-level ERROR; then
     write_status ok "$(date +%s)" "$wal_count" "$bytes"
     echo "{\"event\":\"offsite.shipped\",\"walSegments\":$wal_count,\"bytes\":$bytes}"
   else
