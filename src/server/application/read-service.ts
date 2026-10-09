@@ -81,6 +81,7 @@ const {
   auditEventDepartmentCode,
   canViewManagementAudit,
   requestForNotification,
+  criticalResultResource,
   decodeKeysetCursor,
   decodeSearchCursor,
   decodeTimelineCursor,
@@ -253,6 +254,11 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         if (notification.recipientUserId !== currentActor.id) {
           const request = requestForNotification(originalState, notification);
           if (currentActor.role !== "MANAGER" || !request || !hasManagerRequestContext(originalState, currentActor, request)) throw new ApiError("NOT_FOUND", "Notificação não encontrada.", 404);
+        }
+        if (notification.category === "CRITICAL" && notification.entityType === "RESULT_VERSION") {
+          // AUD-02: confirming stops the escalation, so only someone who can open the result may confirm it.
+          const resource = criticalResultResource(originalState, notification);
+          if (!resource || !canAccessResource(currentActor, "result.view", resource)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este resultado.", 404);
         }
         const idempotent = withIdempotency(originalState, currentActor.id, scope, input.idempotencyKey, { notificationId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };

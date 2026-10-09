@@ -711,6 +711,17 @@ export function requestForNotification(state: StoreState, notification: Notifica
   return item ? findById(state.requests, item.requestId) : undefined;
 }
 
+/** The resource `result.view` checks for the result a critical notification points to (same as requireCurrentResultRead). */
+export function criticalResultResource(state: StoreState, notification: Notification): { patientId: string; departmentCode: string; serviceCode: string } | undefined {
+  if (notification.entityType !== "RESULT_VERSION") return undefined;
+  const version = findById(state.resultVersions, notification.entityId);
+  const result = version ? findById(state.results, version.resultId) : undefined;
+  const item = result ? findById(state.items, result.itemId) : undefined;
+  const request = item ? findById(state.requests, item.requestId) : undefined;
+  const service = item ? findById(state.services, item.serviceId) : undefined;
+  return request && service ? { patientId: request.patientId, departmentCode: service.departmentCode, serviceCode: service.code } : undefined;
+}
+
 export function resultView(state: StoreState, result: Result): ResultView {
   const item = itemFor(state, result.itemId);
   const request = requestFor(state, item.requestId);

@@ -1,10 +1,10 @@
 import type { RoleCode } from "@cvg/contracts";
-import type { AuditEvent, Notification, StateStore, StoreState } from "../domain/models";
+import type { AuditEvent, Notification, StateStore, StoreState, User } from "../domain/models";
 import { findById } from "../domain/state-index";
-import { hasPermission } from "../security/authorization";
+import { canAccessResource, hasPermission } from "../security/authorization";
 import { withCriticalWhatsAppAlert } from "./critical-alert-channel";
 import { criticalPolicyFromEnvironment, nextCriticalRecipients, planCriticalEscalation, type CriticalEscalationDecision, type CriticalResultPolicy } from "./critical-result-policy";
-import { createAudit, createOutbox, id, notificationFor, requestForNotification } from "./service-common";
+import { createAudit, createOutbox, criticalResultResource, id, notificationFor, requestForNotification } from "./service-common";
 
 export interface CriticalEscalationSummary {
   due: number;
@@ -20,6 +20,16 @@ export interface CriticalEscalationOptions {
 /** Roles that only see the patients in their scope; the escalated professional must be able to open the result. */
 const PATIENT_SCOPED_ROLES: readonly RoleCode[] = ["VETERINARIAN", "INPATIENT_TEAM", "VIEWER"];
 
+/**
+ * AUD-02: a recipient must be able to open the result, after the patient grant below; otherwise they could
+ * confirm, and stop the climb, without seeing it. A manager reaches it through the exam's department.
+ */
+function canOpenResult(user: User, resource: { patientId: string; departmentCode: string; serviceCode: string }): boolean {
+  if (!hasPermission(user.role, "notification.acknowledge")) return false;
+  const granted = PATIENT_SCOPED_ROLES.includes(user.role) ? { ...user, patientIds: [...(user.patientIds ?? []), resource.patientId] } : user;
+  return canAccessResource(granted, "result.view", resource);
+}
+
 function isRoot(notification: Notification): boolean {
   return notification.category === "CRITICAL" && notification.entityType === "RESULT_VERSION" && notification.escalationOf === undefined;
 }
@@ -30,7 +40,7 @@ function dueEscalations(state: StoreState, policy: CriticalResultPolicy, at: Dat
     if (!isRoot(root) || acknowledged.has(root.entityId)) return [];
     // A notification whose in-app delivery failed was never seen: that is when the climb matters most.
     const state = root.state === "FAILED" ? "PENDING" : root.state;
-    const decision = planCriticalEscalation({ notificationId: root.id, createdAt: root.createdAt, state, escalationLevel: root.escalation?.level ?? 0, lastEscalatedAt: root.escalation?.lastEscalatedAt }, policy, at);
+    const decision = planCriticalEscalation({ notificationId: root.id, createdAt: root.createdAt, state, escalationLevel: root.escalation?.level ?? 0 }, policy, at);
     return decision ? [{ root, decision }] : [];
   });
 }
@@ -66,14 +76,15 @@ export async function runCriticalEscalation(store: StateStore, options: Critical
       const correlationId = id("corr");
       const escalatedAt = at.toISOString();
       const request = requestForNotification(state, root);
+      const resource = criticalResultResource(state, root);
       const admission = request?.admissionId ? findById(state.admissions, request.admissionId) : undefined;
       const reached = new Set(state.notifications.filter((entry) => entry.category === "CRITICAL" && entry.entityId === root.entityId).map((entry) => entry.recipientUserId));
-      const step = request ? nextCriticalRecipients({
+      const step = request && resource ? nextCriticalRecipients({
         requesterId: request.requesterId,
         responsibleUserId: admission?.responsibleUserId,
         departmentCode: request.requestingDepartmentCode,
         candidates: state.users
-          .filter((user) => hasPermission(user.role, "notification.acknowledge"))
+          .filter((user) => canOpenResult(user, resource))
           .map((user) => ({ userId: user.id, role: user.role, departmentCode: user.departmentCode, active: user.active !== false, managedDepartmentCodes: user.managedDepartmentCodes, onCall: user.onCall }))
       }, policy, reached) : undefined;
       const audit: AuditEvent = createAudit("CriticalResultEscalated", undefined, "Notification", root.id, correlationId, String(root.escalation?.level ?? 0), String(decision.level), {
