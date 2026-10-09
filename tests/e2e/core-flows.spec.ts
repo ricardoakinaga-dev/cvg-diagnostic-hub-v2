@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { GREETING, signInAs, signOut } from "./support/auth";
+import { seedHemogramRequest } from "./support/seed";
 
 async function signIn(page: import("@playwright/test").Page): Promise<void> {
   await signInAs(page, "vet@cvg.local", GREETING);
@@ -28,7 +29,10 @@ function responsiveNavLink(
 }
 
 test.describe("operational hub journeys", () => {
-  test("authenticates and renders the Plane-style home", async ({ page }, testInfo) => {
+  test("authenticates and renders the Plane-style home", async ({ page, browser }, testInfo) => {
+    // AUD-09: the Setores widget only renders with requests in scope; the scenario brings its own instead of
+    // relying on what clinical-lifecycle or other specs left behind.
+    await seedHemogramRequest(browser, testInfo, "home-seed");
     await signIn(page);
     const shortcuts = page.getByRole("navigation", { name: "Atalhos" });
     await expect(shortcuts.getByRole("link", { name: /Atrasados/ })).toHaveAttribute("href", "/queues?preset=overdue");
