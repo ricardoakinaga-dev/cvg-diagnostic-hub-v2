@@ -21,7 +21,7 @@ for failing in \${FAKE_FAIL:-}; do
 done
 case "$1" in
   compose)
-    [[ "$args" == *" pull "* ]] && echo "minio=\${MINIO_IMAGE_TAG:-}" >> "$FAKE_LOG.env"
+    [[ "$args" == *" pull "* ]] && echo "minio=\${MINIO_IMAGE_TAG:-} mc=\${MC_IMAGE_TAG:-}" >> "$FAKE_LOG.env"
     [[ "$args" == *" ps -q app "* ]] && echo app-container
     [[ "$args" == *" ps -q worker "* ]] && echo worker-container
     exit 0 ;;
@@ -113,7 +113,7 @@ test("a rolling deploy pulls, checks the commit, backs up, starts and records th
   assert.match(readFileSync(path.join(ws.state, "cvg-hml.history"), "utf8"), new RegExp(`^\\d{4}-\\d\\d-\\d\\dT\\S+Z ${TAG}\\n$`));
   assert.deepEqual(events(result.stdout).map((entry) => entry.event), ["release.started", "release.deployed"]);
   // The on-prem object storage image is pulled with the release tag too.
-  assert.equal(readFileSync(`${ws.log}.env`, "utf8"), `minio=${TAG}\n`);
+  assert.equal(readFileSync(`${ws.log}.env`, "utf8"), `minio=${TAG} mc=${TAG}\n`);
   assert.equal(events(result.stdout)[1].previous, "none");
 
   const again = deploy(ws, ["--compose-file", "docker-compose.prod.yml", "--compose-file", "docker-compose.prod.yml"]);

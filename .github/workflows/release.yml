@@ -55,7 +55,7 @@ jobs:
             echo "tag=sha-${commit:0:12}"
             echo "created=$(git show -s --format=%cI HEAD)"
           } >> "$GITHUB_OUTPUT"
-      - name: Build application, operational and object storage images
+      - name: Build application, operational, object storage and storage client images
         env:
           PREFIX: ${{ steps.release.outputs.prefix }}
           TAG: ${{ steps.release.outputs.tag }}
@@ -70,6 +70,8 @@ jobs:
           # On-prem object storage (docker-compose.onprem.yml, D-050): MinIO built from the pinned source with the
           # dependency bumps of deploy/minio/Dockerfile, released with the same commit tag so deploy.sh pulls it too.
           docker build --file deploy/minio/Dockerfile "${labels[@]}" --tag "$PREFIX-minio:$TAG" .
+          # MinIO client for the storage-iam one-shot (least-privilege users, D-051), built from source as well.
+          docker build --file deploy/minio/Dockerfile.mc "${labels[@]}" --tag "$PREFIX-mc:$TAG" .
           mkdir -p release
       - name: Audit application image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -95,6 +97,14 @@ jobs:
           exit-code: "1"
           ignore-unfixed: true
           severity: CRITICAL,HIGH
+      - name: Audit storage client image for high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.prefix }}-mc:${{ steps.release.outputs.tag }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
       - name: Generate the application image SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
@@ -113,6 +123,12 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-minio:${{ steps.release.outputs.tag }}
           format: cyclonedx
           output: release/cvg-hub-minio.cdx.json
+      - name: Generate the storage client image SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ steps.release.outputs.prefix }}-mc:${{ steps.release.outputs.tag }}
+          format: cyclonedx
+          output: release/cvg-hub-mc.cdx.json
       - name: Log in to the registry
         env:
           PREFIX: ${{ steps.release.outputs.prefix }}
@@ -139,10 +155,12 @@ jobs:
           docker push --quiet "$PREFIX:$TAG"
           docker push --quiet "$PREFIX-ops:$TAG"
           docker push --quiet "$PREFIX-minio:$TAG"
+          docker push --quiet "$PREFIX-mc:$TAG"
           app_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX:$TAG")"
           ops_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-ops:$TAG")"
           minio_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-minio:$TAG")"
-          printf '{"commit":"%s","tag":"%s","app":"%s","ops":"%s","minio":"%s"}\n' "$COMMIT" "$TAG" "$app_digest" "$ops_digest" "$minio_digest" > release/manifest.json
+          mc_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-mc:$TAG")"
+          printf '{"commit":"%s","tag":"%s","app":"%s","ops":"%s","minio":"%s","mc":"%s"}\n' "$COMMIT" "$TAG" "$app_digest" "$ops_digest" "$minio_digest" "$mc_digest" > release/manifest.json
           {
             echo "### Release $TAG"
             echo
@@ -151,6 +169,7 @@ jobs:
             echo "| app | \`$app_digest\` |"
             echo "| ops | \`$ops_digest\` |"
             echo "| minio | \`$minio_digest\` |"
+            echo "| mc | \`$mc_digest\` |"
           } >> "$GITHUB_STEP_SUMMARY"
       - name: Upload release manifest and SBOMs
         uses: actions/upload-artifact@v7
