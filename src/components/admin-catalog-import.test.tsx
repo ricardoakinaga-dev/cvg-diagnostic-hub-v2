@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminConsole } from "./admin-console";
 import { CatalogImportPanel, type CatalogImportReport } from "./admin-catalog-import";
@@ -95,6 +95,51 @@ describe("CatalogImportPanel", () => {
     expect(JSON.parse(mock.mock.calls[0]![1]!.body as string)).not.toHaveProperty("analytes");
     fireEvent.change(screen.getByLabelText("Planilha de exames (.csv)"), { target: { files: [] } });
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
+  });
+
+  it("locks the files while validating and never applies a sheet other than the one selected (REM-01)", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const mock = vi.spyOn(apiClient, "apiFetch").mockImplementation(async <T,>(_path: string, init?: RequestInit): Promise<T> => {
+      await gate;
+      const body = JSON.parse(init?.body as string) as { dryRun: boolean };
+      return (body.dryRun ? clean : { ...clean, applied: true, dryRun: false }) as T;
+    });
+    const onApplied = vi.fn();
+    render(<CatalogImportPanel onApplied={onApplied} />);
+    open();
+    choose("Planilha de exames (.csv)", csv("exames.csv", "EXAMES"));
+    choose("Planilha de analitos (.csv, opcional)", csv("antiga.csv", "ANTIGA"));
+    fireEvent.click(screen.getByRole("button", { name: "Validar" }));
+    await waitFor(() => expect(mock).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText("Planilha de exames (.csv)")).toBeDisabled();
+    expect(screen.getByLabelText("Planilha de analitos (.csv, opcional)")).toBeDisabled();
+    // A selection that still gets through (a file dialog opened before) makes the pending answer obsolete.
+    choose("Planilha de analitos (.csv, opcional)", csv("nova.csv", "NOVA"));
+    await act(async () => { release(); await gate; });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Validar" })).toBeEnabled());
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Aplicar importação" })).not.toBeInTheDocument();
+    // Validating again reads and applies the file on screen.
+    fireEvent.click(screen.getByRole("button", { name: "Validar" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Aplicar importação" }));
+    await waitFor(() => expect(onApplied).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(mock.mock.calls[1]![1]!.body as string)).toEqual({ services: "EXAMES", analytes: "NOVA", dryRun: true });
+    expect(JSON.parse(mock.mock.calls[2]![1]!.body as string)).toEqual({ services: "EXAMES", analytes: "NOVA", dryRun: false });
+  });
+
+  it("drops the error of a validation whose selection changed while it ran", async () => {
+    let fail!: (reason: Error) => void;
+    vi.spyOn(apiClient, "apiFetch").mockImplementation(() => new Promise((_resolve, reject) => { fail = reject; }));
+    render(<CatalogImportPanel onApplied={vi.fn()} />);
+    open();
+    choose("Planilha de exames (.csv)", csv("antiga.csv"));
+    fireEvent.click(screen.getByRole("button", { name: "Validar" }));
+    await waitFor(() => expect(fail).toBeTypeOf("function"));
+    choose("Planilha de exames (.csv)", csv("nova.csv"));
+    await act(async () => { fail(new Error("offline")); });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Validar" })).toBeEnabled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("explains failures: API error, unreadable huge file and failed apply", async () => {
