@@ -58,6 +58,29 @@ describe("CatalogImportPanel", () => {
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
   });
 
+  it("shows the analytes each exam loses, as text, and counts the exams in the summary", async () => {
+    const losing: CatalogImportReport = { applied: false, dryRun: true, summary: { create: 0, update: 2, unchanged: 0, error: 0 }, rows: [
+      { line: 2, code: "URINALYSIS", action: "UPDATE", changes: ["painel de analitos: versão 1 → 2 (1 analitos)", "analitos removidos: FIRST (obrigatório)"], removedAnalytes: [{ code: "FIRST", label: "Primeiro", required: true }] },
+      { line: 3, code: "CBC", action: "UPDATE", changes: ["analitos removidos: A, B"], removedAnalytes: [{ code: "A", label: "A", required: false }, { code: "B", label: "B", required: false }] }
+    ] };
+    vi.spyOn(apiClient, "apiFetch").mockResolvedValue(losing);
+    render(<CatalogImportPanel onApplied={vi.fn()} />);
+    open();
+    choose("Planilha de exames (.csv)", csv("exames.csv"));
+    fireEvent.click(screen.getByRole("button", { name: "Validar" }));
+    const table = await screen.findByRole("table");
+    expect(within(table).getByText(/Remove: FIRST \(obrigatório\)/)).toBeInTheDocument();
+    expect(within(table).getByText(/Remove: A, B/)).toBeInTheDocument();
+    expect(screen.getByRole("status")).toHaveTextContent("2 exames perdem analitos");
+    cleanup();
+    vi.spyOn(apiClient, "apiFetch").mockResolvedValue({ ...losing, rows: [losing.rows[0]!] });
+    render(<CatalogImportPanel onApplied={vi.fn()} />);
+    open();
+    choose("Planilha de exames (.csv)", csv("exames.csv"));
+    fireEvent.click(screen.getByRole("button", { name: "Validar" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("1 exame perde analitos");
+  });
+
   it("shows errors and offers no way to apply while any row has an error; changing a file discards the validation", async () => {
     const mock = vi.spyOn(apiClient, "apiFetch").mockResolvedValue(withErrors);
     render(<CatalogImportPanel onApplied={vi.fn()} />);

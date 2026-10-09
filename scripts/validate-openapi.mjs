@@ -475,7 +475,8 @@ const responseDataSchemas = {
     summary: strictObject({ create: nonNegativeInteger, update: nonNegativeInteger, unchanged: nonNegativeInteger, error: nonNegativeInteger }, ["create", "update", "unchanged", "error"]),
     rows: arrayOf(strictObject({
       line: { type: "integer", minimum: 1 }, code: stringSchema(0, 100), action: { type: "string", enum: ["CREATE", "UPDATE", "UNCHANGED", "ERROR"] },
-      changes: arrayOf(stringSchema(1, 1000)), errors: arrayOf(stringSchema(1, 1000))
+      changes: arrayOf(stringSchema(1, 1000)), errors: arrayOf(stringSchema(1, 1000)),
+      removedAnalytes: arrayOf(strictObject({ code: stringSchema(1, 60), label: stringSchema(1, 120), required: { type: "boolean" } }, ["code", "label", "required"]))
     }, ["line", "code", "action"]))
   }, ["applied", "dryRun", "summary", "rows"]),
   ManagedUserCreation: strictObject({ ...managedUserSchema.properties, initialPassword: stringSchema(12, 200) }, managedUserSchema.required),
