@@ -33,6 +33,7 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
     "critical_result_policy.manage",
     "reason_code.manage",
     "user_role.manage",
+    "patient.data_export",
     "audit.view",
     "health.liveness",
     "health.readiness",

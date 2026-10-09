@@ -2,6 +2,7 @@ import { createFileStoreFromEnv, type FileStore } from "../storage/file-store";
 import { createMalwareScannerFromEnv } from "../storage/malware-scanner";
 import type { StateStore } from "../domain/models";
 import { createArchiveService } from "./archive-service";
+import { createDataSubjectService } from "./data-subject-service";
 import { createAttachmentService } from "./attachment-service";
 import { createAdmissionContextService } from "./admission-context-service";
 import { createManagementService } from "./management-service";
@@ -35,6 +36,7 @@ export function createApplicationService(store: StateStore, dependencies: { stor
     ...createManagementService(context),
     ...createRegistryService(context),
     ...createReadService(context),
-    ...createArchiveService(context)
+    ...createArchiveService(context),
+    ...createDataSubjectService(context)
   };
 }

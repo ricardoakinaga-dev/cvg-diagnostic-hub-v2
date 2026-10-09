@@ -9117,6 +9117,246 @@
         }
       }
     },
+    "/data-subject-exports": {
+      "get": {
+        "operationId": "exportPatientData",
+        "summary": "Export a patient's records for the data subject (LGPD)",
+        "description": "Export a patient's records for the data subject (LGPD). Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Patients"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-permissions": [
+          "patient.data_export"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "exporting a data subject's records requires recent reauthentication; every export is audited"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          },
+          {
+            "name": "externalId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/ExternalId"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/exportPatientDataSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Authenticated actor is not authorized",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/patients/{patientId}/encounters": {
       "get": {
         "operationId": "listPatientEncounters",
@@ -25766,6 +26006,12 @@
         "maximum": 100,
         "default": 25
       },
+      "ExternalId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 100,
+        "pattern": "^[A-Za-z0-9._-]+$"
+      },
       "DepartmentCode": {
         "type": "string",
         "minLength": 1,
@@ -30211,6 +30457,476 @@
           }
         }
       },
+      "PatientDataExport": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "format",
+          "exportedAt",
+          "patient",
+          "encounters",
+          "admissions",
+          "requests",
+          "omitted"
+        ],
+        "properties": {
+          "format": {
+            "type": "string",
+            "const": "cvg-hub.patient-data-export.v1"
+          },
+          "exportedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "patient": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "externalId",
+              "displayName",
+              "species",
+              "breed",
+              "sex",
+              "ownerLabel",
+              "active"
+            ],
+            "properties": {
+              "externalId": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "displayName": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              },
+              "species": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "breed": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 100
+              },
+              "sex": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 40
+              },
+              "birthDate": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 40
+              },
+              "ownerLabel": {
+                "type": "string",
+                "minLength": 0,
+                "maxLength": 200
+              },
+              "active": {
+                "type": "boolean"
+              }
+            }
+          },
+          "encounters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "externalId",
+                "type",
+                "status",
+                "openedAt"
+              ],
+              "properties": {
+                "externalId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "type": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "status": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 40
+                },
+                "openedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "closedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "admissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "departmentCode",
+                "ward",
+                "bed",
+                "admittedAt"
+              ],
+              "properties": {
+                "encounterExternalId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "departmentCode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "ward": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 120
+                },
+                "bed": {
+                  "type": "string",
+                  "minLength": 0,
+                  "maxLength": 120
+                },
+                "admittedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "dischargedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          },
+          "requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "requestCode",
+                "requestingDepartmentCode",
+                "priority",
+                "status",
+                "createdAt",
+                "updatedAt",
+                "archived",
+                "items"
+              ],
+              "properties": {
+                "requestCode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "encounterExternalId": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 100
+                },
+                "requestingDepartmentCode": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "priority": {
+                  "type": "string",
+                  "enum": [
+                    "ROUTINE",
+                    "URGENT",
+                    "EMERGENCY"
+                  ]
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "REQUESTED",
+                    "IN_PROGRESS",
+                    "PARTIALLY_AVAILABLE",
+                    "RESULTS_AVAILABLE",
+                    "COMPLETED",
+                    "CANCELLED"
+                  ]
+                },
+                "createdAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "updatedAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "archived": {
+                  "type": "boolean"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "service",
+                      "departmentCode",
+                      "status",
+                      "priority",
+                      "requestedAt",
+                      "samples",
+                      "results",
+                      "attachments"
+                    ],
+                    "properties": {
+                      "service": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "code",
+                          "name"
+                        ],
+                        "properties": {
+                          "code": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 100
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 120
+                          }
+                        }
+                      },
+                      "departmentCode": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 60
+                      },
+                      "status": {
+                        "type": "string",
+                        "enum": [
+                          "REQUESTED",
+                          "RECEIVED",
+                          "IN_PROGRESS",
+                          "SCHEDULED",
+                          "AWAITING_REPORT",
+                          "RESULT_AVAILABLE",
+                          "REVIEWED",
+                          "COMPLETED",
+                          "CANCELLED",
+                          "REJECTED",
+                          "RECOLLECTION_REQUIRED",
+                          "FAILED",
+                          "RESULT_VOIDED"
+                        ]
+                      },
+                      "priority": {
+                        "type": "string",
+                        "enum": [
+                          "ROUTINE",
+                          "URGENT",
+                          "EMERGENCY"
+                        ]
+                      },
+                      "requestedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "completedAt": {
+                        "type": "string",
+                        "format": "date-time"
+                      },
+                      "cancellationReason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 500
+                      },
+                      "rejectionReason": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2000
+                      },
+                      "samples": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "accessionCode",
+                            "sampleType",
+                            "status"
+                          ],
+                          "properties": {
+                            "accessionCode": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 40
+                            },
+                            "sampleType": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "EXPECTED",
+                                "RECEIVED",
+                                "REJECTED",
+                                "REPLACED"
+                              ]
+                            },
+                            "collectedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            },
+                            "receivedAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      },
+                      "results": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "status",
+                            "versions"
+                          ],
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "DRAFT",
+                                "RELEASED",
+                                "VOIDED"
+                              ]
+                            },
+                            "versions": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "sequence",
+                                  "status",
+                                  "narrative",
+                                  "content",
+                                  "critical"
+                                ],
+                                "properties": {
+                                  "sequence": {
+                                    "type": "integer",
+                                    "minimum": 1
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "RELEASED",
+                                      "SUPERSEDED",
+                                      "VOIDED"
+                                    ]
+                                  },
+                                  "releasedAt": {
+                                    "type": "string",
+                                    "format": "date-time"
+                                  },
+                                  "narrative": {
+                                    "type": "string",
+                                    "maxLength": 20000
+                                  },
+                                  "conclusion": {
+                                    "type": "string",
+                                    "maxLength": 5000
+                                  },
+                                  "content": {
+                                    "anyOf": [
+                                      {
+                                        "$ref": "#/components/schemas/StructuredLaboratoryResultContent"
+                                      },
+                                      {
+                                        "$ref": "#/components/schemas/JsonObject"
+                                      }
+                                    ]
+                                  },
+                                  "critical": {
+                                    "type": "boolean"
+                                  },
+                                  "amendmentReason": {
+                                    "type": "string",
+                                    "minLength": 1,
+                                    "maxLength": 500
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      },
+                      "attachments": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "safeName",
+                            "detectedMime",
+                            "sizeBytes",
+                            "createdAt"
+                          ],
+                          "properties": {
+                            "safeName": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 120
+                            },
+                            "detectedMime": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 100
+                            },
+                            "sizeBytes": {
+                              "type": "integer",
+                              "minimum": 1
+                            },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "omitted": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          }
+        }
+      },
       "EncounterList": {
         "type": "array",
         "items": {
@@ -32285,6 +33001,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ArchivedRequestView"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "exportPatientDataSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/PatientDataExport"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

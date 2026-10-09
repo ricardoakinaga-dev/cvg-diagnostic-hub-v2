@@ -41,6 +41,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getPatientDiagnostics: "PatientDiagnostics",
   listPatientArchive: "ClinicalArchiveEntryList",
   getArchivedRequest: "ArchivedRequestView",
+  exportPatientData: "PatientDataExport",
   listPatientEncounters: "EncounterList",
   openPatientEncounter: "EncounterOpenResult",
   closeEncounter: "EncounterCloseResult",
@@ -140,6 +141,7 @@ export type ApiAuthorizationCondition =
   | "granting or removing ADMIN requires recent reauthentication"
   | "regenerating an ADMIN credential requires recent reauthentication"
   | "issuing a reset link for an ADMIN requires recent reauthentication"
+  | "exporting a data subject's records requires recent reauthentication; every export is audited"
   | "actor cannot reset self; target must be active and within managed role and department scope"
   | "authenticated active session"
   | "permission is evaluated against the actor's current role"
@@ -366,6 +368,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   read("/patients/{patientId}/diagnostics", "getPatientDiagnostics", "List a patient's diagnostics", "Patients", { queryParameters: pagination }),
   read("/patients/{patientId}/archive", "listPatientArchive", "List a patient's archived diagnostics", "Patients", { queryParameters: [{ name: "limit", schema: "Limit" }] }),
   read("/archive/requests/{requestId}", "getArchivedRequest", "Read an archived diagnostic request (read-only)", "Patients"),
+  read("/data-subject-exports", "exportPatientData", "Export a patient's records for the data subject (LGPD)", "Patients", { queryParameters: [{ name: "externalId", required: true, schema: "ExternalId" }] }),
   read("/patients/{patientId}/encounters", "listPatientEncounters", "List a patient's encounters", "Patients"),
   command("POST", "/patients/{patientId}/encounters", "openPatientEncounter", "Open a new encounter for a registered patient", "Patients", jsonBody("EncounterOpen"), { headers: [IDEMPOTENCY_REQUIRED], successStatus: 201 }),
   read("/encounters/{encounterId}", "getEncounter", "Read an encounter", "Patients"),
@@ -526,6 +529,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getPatientDiagnostics: authorization(["patient.view", "diagnostic.timeline.view"], PATIENT),
   listPatientArchive: authorization(["patient.view", "diagnostic.timeline.view"], PATIENT),
   getArchivedRequest: authorization(["request.view"], REQUEST),
+  exportPatientData: authorization(["patient.data_export"], [...ROLE, "exporting a data subject's records requires recent reauthentication; every export is audited"]),
   listPatientEncounters: authorization(["encounter.view"], PATIENT),
   openPatientEncounter: authorization(["encounter.manage"], [...PATIENT, "patient must be active and have no open encounter"]),
   closeEncounter: authorization(["encounter.manage"], [...PATIENT, "encounter must be OPEN; pending diagnostic items stay with the requester"]),
@@ -600,7 +604,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getResultTemplate: [400, 401, 403, 404, 429, 500], createDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500], importDiagnosticServices: [400, 401, 403, 404, 409, 415, 422, 429, 500], updateDiagnosticService: [400, 401, 403, 404, 409, 415, 429, 500],
   listReasonCodes: [401, 404, 429, 500], createReasonCode: [400, 401, 403, 404, 409, 415, 429, 500],
   updateReasonCode: [400, 401, 403, 404, 409, 415, 429, 500], listPatients: [400, 401, 404, 429, 500],
-  createPatient: [400, 401, 404, 409, 415, 429, 500], getPatient: [401, 404, 429, 500], getPatientDiagnostics: [400, 401, 404, 429, 500], listPatientArchive: [400, 401, 404, 429, 500], getArchivedRequest: [401, 404, 429, 500],
+  createPatient: [400, 401, 404, 409, 415, 429, 500], getPatient: [401, 404, 429, 500], getPatientDiagnostics: [400, 401, 404, 429, 500], listPatientArchive: [400, 401, 404, 429, 500], exportPatientData: [400, 401, 403, 404, 429, 500], getArchivedRequest: [401, 404, 429, 500],
   listPatientEncounters: [401, 404, 429, 500], openPatientEncounter: [400, 401, 404, 409, 415, 429, 500], closeEncounter: [400, 401, 404, 409, 415, 429, 500], getEncounter: [401, 404, 429, 500], getAdmission: [401, 404, 429, 500],
   updateAdmissionContext: [400, 401, 403, 404, 409, 415, 422, 429, 500, 503],
   listDiagnosticRequests: [400, 401, 404, 429, 500], createDiagnosticRequest: [400, 401, 403, 404, 409, 415, 429, 500],
