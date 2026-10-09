@@ -12,7 +12,7 @@ Até aqui, o gate da CI (`perf:postgres`) media rotas HTTP, escrita e 100 conex�
 | Exames | 54.750 (hemograma e RX de tórax em cada solicitação) |
 | Pacientes | 6.844 (cerca de 4 solicitações por paciente) |
 | Abertas | 150 (os últimos 2 dias); as demais concluídas, com amostra, procedimento, resultado com versão emendada e notificação |
-| Auditoria | 100 mil eventos de carga, sem autor (a trilha clínica com autores entra com a correção da busca, D-046) |
+| Auditoria | 100 mil eventos de carga mais a trilha clínica com autores: criação pelo veterinário, recebimento e liberação pelo laboratório, procedimento pela radiologia (cerca de 109 mil eventos) |
 | Snapshot | 102 MB |
 
 O gerador é determinístico e só produz dados sintéticos (`scripts/perf-clinical-volume.ts`). As leituras alternam três perfis: veterinário, técnico de laboratório e gestor. Os dois últimos enxergam todo o histórico do laboratório, que é o caso mais caro. Cada rodada faz 20 leituras por rota com 4 em paralelo, 10 escritas concorrentes e mantém 100 conexões SSE abertas.
@@ -41,14 +41,14 @@ p95 em milissegundos. As metas do PRD são 500 ms para leitura, 800 ms para busc
    - Em processo, uma busca leva cerca de 200 ms para gestor e técnico, e a lista leva de 60 a 90 ms. As duas percorrem todo o conjunto visível, porque a API devolve o `total`.
    - O Node atende numa só thread, então as requisições simultâneas fazem fila. Até o catálogo, que é leve, espera atrás delas.
    - Com uso sequencial, os tempos são os do [relatório de escala](RELATORIO_ESCALA_2026-10-08.md) (lista em 124 ms, busca em 347 ms).
-2. **A busca lia a trilha de auditoria inteira do histórico visível a cada consulta.** Eram cerca de 82 mil IDs num `ANY`, sem índice que servisse. Esta carga não mostrava o custo, porque seus eventos de auditoria não têm autor. Com a trilha clínica com autores, medida localmente, a busca sobe para p50 880 ms e p95 1,8 s. A correção lê a trilha só para os usuários que casam com o termo e entra num PR seguinte, junto com a trilha realista no gerador.
-3. **A escrita é dominada pela gravação por diferença.** Num perfil de CPU em processo, a 12 meses, `writeEntityState` ficou com 56% do tempo próprio e a projeção dos eventos com 16%. A criação de solicitação leva cerca de 390 ms sozinha. A escrita compara todas as coleções a cada comando, e é o próximo alvo de otimização.
+2. **A busca lia a trilha de auditoria inteira do histórico visível a cada consulta.** Eram cerca de 82 mil IDs num `ANY`, sem índice que servisse. A primeira versão desta carga não mostrava o custo, porque seus eventos de auditoria não tinham autor. Com a trilha clínica com autores, medida localmente, a busca chegava a p50 880 ms e p95 1,8 s. **Corrigido ([D-046](DECISION_LOG.md)):** a trilha só é lida para os usuários que casam com o termo, e não é lida quando nenhum casa (código de solicitação, nome de exame). A busca cai para p50 303 ms e p95 916 ms no mesmo ambiente, e as demais rotas melhoram por haver menos disputa.
+3. **A escrita era dominada pela gravação por diferença.** Num perfil de CPU em processo, a 12 meses, `writeEntityState` ficou com 56% do tempo próprio e a projeção dos eventos com 16%. **Corrigido:** o escritor compara posição por posição por identidade de objeto e só calcula a chave do que foi acrescentado ou trocado. A criação de solicitação em processo com PostgreSQL caiu de mediana 188 ms para 77 ms, e de p95 217 ms para 87 ms.
 
 ## 4. O que fica em aberto
 
 - **Pico de usuários simultâneos (D2):** o hospital ainda não o informou. A concorrência de 4 leitores pesados contínuos é uma premissa de estresse, não a medida real.
 - **Homologação:** falta a medição no servidor do hospital (D11), com o hardware e o banco reais.
-- **Otimização:** busca, lista e gravação por diferença. O cutover relacional ([PROD-111](build/PRODUCTION_BACKLOG.md)) só fecha com o PROD-110 dentro da meta neste volume.
+- **Otimização:** a lista e o painel ainda percorrem todo o conjunto visível (o `total` da API exige isso); busca e escrita foram corrigidas nesta rodada, e a próxima rodada da CI mede o efeito somado. O cutover relacional ([PROD-111](build/PRODUCTION_BACKLOG.md)) só fecha com o PROD-110 dentro da meta neste volume.
 - **Não medido:** várias instâncias do app, failover e uma carga longa (soak).
 
 ## 5. Como reproduzir
