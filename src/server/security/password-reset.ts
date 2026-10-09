@@ -55,6 +55,16 @@ function userForToken(state: StoreState, tokenHash: string): User | undefined {
   return match;
 }
 
+/**
+ * AUD-06: a pending link belongs to the credential and the access it was issued under. A password change, a
+ * regenerated password, an access change or a deactivation drops it in the same transaction.
+ */
+export function withoutPendingReset(user: User): { user: User; revoked: boolean } {
+  if (!user.passwordReset) return { user, revoked: false };
+  const { passwordReset: _revoked, ...rest } = user;
+  return { user: rest, revoked: true };
+}
+
 function invalid(): ApiError {
   return new ApiError("PASSWORD_RESET_INVALID", INVALID_MESSAGE, 400);
 }
