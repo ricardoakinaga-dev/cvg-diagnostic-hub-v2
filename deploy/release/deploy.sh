@@ -73,14 +73,17 @@ for file in "${compose_files[@]}"; do [[ -f "$file" ]] || { echo "--compose-file
 
 # Compose reads IMAGE_PREFIX and IMAGE_TAG from the shell before the env file, so the release wins over any
 # value left in .env.
-export IMAGE_PREFIX="$prefix" IMAGE_TAG="$tag"
+# MINIO_IMAGE_TAG: the on-prem overlay's object storage image is released with the same commit tag (D-045, D-050).
+export IMAGE_PREFIX="$prefix" IMAGE_TAG="$tag" MINIO_IMAGE_TAG="$tag"
 compose_args=(compose -p "$project")
 for file in "${compose_files[@]}"; do compose_args+=(-f "$file"); done
 compose_args+=(--env-file "$env_file")
 compose() { "$DOCKER" "${compose_args[@]}" "$@"; }
 
 event release.started maintenance "$maintenance"
-compose pull migrate app worker || fail release.pull_failed "the registry did not serve both images"
+# Every image of the selected compose files: the release images (app, ops and, with the on-prem overlay, minio) and
+# the pinned public ones, so `up -d --no-build` never needs to build or to reach a registry by itself.
+compose pull || fail release.pull_failed "the registry did not serve every image of the release"
 
 commit="${tag#sha-}"
 for image in "$prefix:$tag" "$prefix-ops:$tag"; do
