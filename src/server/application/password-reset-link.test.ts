@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApplicationService } from "./service";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
-import { authenticateRequest, loginUser, reauthenticateUser } from "../security/session";
+import { authenticateRequest, changeOwnPassword, loginUser, reauthenticateUser } from "../security/session";
 import { validatedPassword } from "./service-common";
-import { hashResetToken } from "../security/password-reset";
+import { completePasswordReset, hashResetToken } from "../security/password-reset";
 
 const PASSWORD = "management-test-password";
 
@@ -136,5 +136,56 @@ describe("issuePasswordResetLink (PROD-202)", () => {
     expect(validatedPassword("Cavalo-azul-Lua-48-xk")).toBe("Cavalo-azul-Lua-48-xk");
     expect(() => validatedPassword("short1")).toThrowError(expect.objectContaining({ code: "VALIDATION_ERROR" }));
     expect(() => validatedPassword("Password123456")).toThrowError(expect.objectContaining({ code: "PASSWORD_POLICY" }));
+  });
+});
+
+describe("a pending reset link is revoked by credential and access changes (AUD-06)", () => {
+  afterEach(() => vi.unstubAllEnvs());
+  const NEW_PASSWORD = "Brand-new-secret-4471";
+
+  async function pendingLink() {
+    vi.stubEnv("APP_ORIGIN", "https://hub.hospital.example/");
+    const { store, service, vet } = setup();
+    const admin = await actorFor(store, "admin@cvg.local");
+    const issued = await service.issuePasswordResetLink(admin, vet.id, { expectedVersion: vet.version, idempotencyKey: "pending-link" });
+    const token = new URL(issued.resetUrl!).searchParams.get("token")!;
+    const current = () => store.getState().users.find((entry) => entry.id === vet.id)!;
+    const expectRevoked = async (eventType: string) => {
+      expect(current().passwordReset).toBeUndefined();
+      expect(store.getState().auditEvents.filter((event) => event.eventType === eventType).at(-1)?.metadata).toMatchObject({ resetLinkRevoked: true });
+      await expect(completePasswordReset(store, token, NEW_PASSWORD, "late-link", {})).rejects.toMatchObject({ status: 400, code: "PASSWORD_RESET_INVALID" });
+    };
+    return { store, service, admin, current, expectRevoked };
+  }
+
+  it("when the owner changes the password", async () => {
+    const { store, expectRevoked } = await pendingLink();
+    const own = await loginUser(store, "vet@cvg.local", PASSWORD);
+    await changeOwnPassword(store, new Request("http://localhost/api/v1/session/password/change", { headers: { cookie: `cvg_session=${own.sessionToken}; cvg_csrf=${own.csrfToken}`, "x-csrf-token": own.csrfToken } }), PASSWORD, "Owner-chosen-secret-3390", "own-change");
+    await expectRevoked("PasswordChanged");
+  });
+
+  it("when an administrator regenerates the password, and a link issued afterwards still works", async () => {
+    const { store, service, admin, current, expectRevoked } = await pendingLink();
+    await service.regenerateManagedUserPassword(admin, current().id, { expectedVersion: current().version, idempotencyKey: "regenerate" });
+    await expectRevoked("UserPasswordRegenerated");
+    const again = await service.issuePasswordResetLink(admin, current().id, { expectedVersion: current().version, idempotencyKey: "pending-link-2" });
+    await expect(completePasswordReset(store, new URL(again.resetUrl!).searchParams.get("token")!, NEW_PASSWORD, "fresh-link", {})).resolves.toEqual({ email: "vet@cvg.local" });
+  });
+
+  it("when the access changes (promotion to manager)", async () => {
+    const { service, admin, current, expectRevoked } = await pendingLink();
+    await service.updateUserRole(admin, current().id, { role: "MANAGER", departmentCode: "INPATIENT", expectedVersion: current().version, idempotencyKey: "promote" });
+    expect(current().role).toBe("MANAGER");
+    await expectRevoked("UserRoleUpdated");
+  });
+
+  it("when the account is deactivated, and reactivation does not bring it back", async () => {
+    const { service, admin, current, expectRevoked } = await pendingLink();
+    await service.deactivateManagedUser(admin, current().id, { expectedVersion: current().version, idempotencyKey: "deactivate" });
+    await expectRevoked("UserDeactivated");
+    await service.updateUserRole(admin, current().id, { role: current().role, departmentCode: current().departmentCode, active: true, expectedVersion: current().version, idempotencyKey: "reactivate" });
+    expect(current()).toMatchObject({ active: true });
+    expect(current().passwordReset).toBeUndefined();
   });
 });
