@@ -35,6 +35,20 @@ p95 em milissegundos. As metas do PRD são 500 ms para leitura, 800 ms para busc
 - **Tempo da rodada:** o job inteiro levou 2,5 min na CI; o seed dos 12 meses, 16 s.
 - **Escrita:** 3 por segundo confirmadas sob carga, contra 19 por segundo com o estado pequeno.
 
+### 2.1 Depois das correções da busca (D-046) e da escrita
+
+Mesmo job da CI (runner de 4 vCPU, run 37948606728), agora com a trilha de auditoria clínica com autores no gerador (209 mil eventos, o caso mais caro para a busca):
+
+| Rota | p95 antes | p95 depois | Meta do PRD |
+| --- | --- | --- | --- |
+| Catálogo | 851 ms | 473 ms | 500 ms |
+| Lista de solicitações | 746 ms | 419 ms | 500 ms |
+| Busca `HEMOGRAM` | 1021 ms | 662 ms | 800 ms |
+| Painel | 624 ms | 610 ms | 500 ms |
+| Escrita | 1665 ms | 1239 ms (p50 711 ms) | 800 ms |
+
+As escritas confirmadas subiram de 3,0 para 4,5 por segundo sob a mesma carga. Com 4 leitores pesados simultâneos, catálogo, lista e busca já ficam dentro da meta. O painel e a escrita ainda ficam acima dela.
+
 ## 3. Achados
 
 1. **A meta do PRD não é atingida com 12 meses de dados e 4 leitores pesados ao mesmo tempo.** O p95 fica perto de 2× a meta.
@@ -48,7 +62,7 @@ p95 em milissegundos. As metas do PRD são 500 ms para leitura, 800 ms para busc
 
 - **Pico de usuários simultâneos (D2):** o hospital ainda não o informou. A concorrência de 4 leitores pesados contínuos é uma premissa de estresse, não a medida real.
 - **Homologação:** falta a medição no servidor do hospital (D11), com o hardware e o banco reais.
-- **Otimização:** a lista e o painel ainda percorrem todo o conjunto visível (o `total` da API exige isso); busca e escrita foram corrigidas nesta rodada, e a próxima rodada da CI mede o efeito somado. O cutover relacional ([PROD-111](build/PRODUCTION_BACKLOG.md)) só fecha com o PROD-110 dentro da meta neste volume.
+- **Otimização:** o painel (p95 610 ms) e a escrita (p95 1,24 s) ainda ficam acima da meta com 4 leitores pesados simultâneos (§2.1). O painel percorre todos os exames visíveis a cada chamada, e a escrita ainda projeta os eventos e grava o cabeçalho a cada comando. O cutover relacional ([PROD-111](build/PRODUCTION_BACKLOG.md)) só fecha com o PROD-110 dentro da meta neste volume.
 - **Não medido:** várias instâncias do app, failover e uma carga longa (soak).
 
 ## 5. Como reproduzir
