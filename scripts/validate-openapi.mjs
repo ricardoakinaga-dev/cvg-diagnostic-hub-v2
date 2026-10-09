@@ -405,7 +405,7 @@ const resultVersionSchema = strictObject({
 const clinicalArchiveEntrySchema = strictObject({
   requestId: identifier, requestCode: stringSchema(1, 100), patientId: identifier, encounterId: identifier,
   requestingDepartmentCode: stringSchema(1, 60), archivedAt: timestamp, completedAt: timestamp,
-  services: arrayOf(strictObject({ code: stringSchema(1, 100), name: stringSchema(1, 120), departmentCode: stringSchema(1, 60) }, ["code", "name", "departmentCode"]), { maxItems: 100 }),
+  services: arrayOf(strictObject({ code: stringSchema(1, 100), name: stringSchema(1, 120), departmentCode: stringSchema(1, 60), attachmentCount: nonNegativeInteger }, ["code", "name", "departmentCode", "attachmentCount"]), { maxItems: 100 }),
   attachmentCount: nonNegativeInteger
 }, ["requestId", "requestCode", "patientId", "encounterId", "requestingDepartmentCode", "archivedAt", "completedAt", "services", "attachmentCount"]);
 const archivedResultVersionSchema = strictObject({

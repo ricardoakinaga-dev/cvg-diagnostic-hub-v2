@@ -145,7 +145,8 @@ export class MemoryStore implements StateStore {
     const requests = new Set(this.archive
       .filter((row) => row.collection === "requests" && (query.patientId === undefined || row.data.patientId === query.patientId) && (query.requestId === undefined || row.requestId === query.requestId))
       .map((row) => row.requestId));
-    return archiveEntries(this.archive.filter((row) => requests.has(row.requestId)), state.services).slice(0, query.limit);
+    const entries = archiveEntries(this.archive.filter((row) => requests.has(row.requestId)), state.services);
+    return query.limit === undefined ? entries : entries.slice(0, query.limit);
   }
 
   async readArchivedRequest(requestId: string): Promise<ClinicalArchiveRow[] | undefined> {

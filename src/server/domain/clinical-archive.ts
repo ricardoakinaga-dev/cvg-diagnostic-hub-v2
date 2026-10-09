@@ -109,7 +109,22 @@ export function archivedEntitiesOf<T>(rows: readonly ClinicalArchiveRow[], colle
 }
 
 interface ArchivedRequestShape { id: string; requestCode: string; patientId: string; encounterId: string; requestingDepartmentCode: string; updatedAt: string }
-interface ArchivedItemShape { serviceId: string; departmentCode: string; completedAt?: string }
+interface ArchivedItemShape { id: string; serviceId: string; departmentCode: string; completedAt?: string }
+interface ArchivedResultShape { id: string; itemId: string }
+interface ArchivedVersionShape { id: string; resultId: string }
+interface ArchivedAttachmentShape { resultVersionId: string }
+
+/** Attachments of each archived item, through result version -> result -> item. */
+function attachmentCountsByItem(group: readonly ClinicalArchiveRow[]): Map<string, number> {
+  const itemByResult = new Map(archivedEntitiesOf<ArchivedResultShape>(group, "results").map((result) => [result.id, result.itemId]));
+  const resultByVersion = new Map(archivedEntitiesOf<ArchivedVersionShape>(group, "resultVersions").map((version) => [version.id, version.resultId]));
+  const counts = new Map<string, number>();
+  for (const attachment of archivedEntitiesOf<ArchivedAttachmentShape>(group, "attachments")) {
+    const itemId = itemByResult.get(resultByVersion.get(attachment.resultVersionId) ?? "");
+    if (itemId !== undefined) counts.set(itemId, (counts.get(itemId) ?? 0) + 1);
+  }
+  return counts;
+}
 
 /** Summaries newest first (request updatedAt, then id); rows of several requests may be mixed. */
 export function archiveEntries(rows: readonly ClinicalArchiveRow[], services: readonly DiagnosticService[]): ClinicalArchiveEntry[] {
@@ -124,13 +139,18 @@ export function archiveEntries(rows: readonly ClinicalArchiveRow[], services: re
     const request = archivedEntitiesOf<ArchivedRequestShape>(group, "requests")[0];
     if (!request) continue;
     const items = archivedEntitiesOf<ArchivedItemShape>(group, "items");
-    const seen = new Set<string>();
+    const attachmentsByItem = attachmentCountsByItem(group);
     const archivedServices: ClinicalArchiveEntry["services"] = [];
+    const byServiceId = new Map<string, ClinicalArchiveEntry["services"][number]>();
     for (const item of items) {
-      if (seen.has(item.serviceId)) continue;
-      seen.add(item.serviceId);
       const service = serviceById.get(item.serviceId);
-      archivedServices.push({ code: service?.code ?? item.serviceId, name: service?.name ?? item.serviceId, departmentCode: item.departmentCode });
+      const code = service?.code ?? item.serviceId;
+      const attachments = attachmentsByItem.get(item.id) ?? 0;
+      const known = byServiceId.get(item.serviceId);
+      if (known) { known.attachmentCount += attachments; continue; }
+      const summary = { code, name: service?.name ?? item.serviceId, departmentCode: item.departmentCode, attachmentCount: attachments };
+      byServiceId.set(item.serviceId, summary);
+      archivedServices.push(summary);
     }
     const completedAt = items.reduce((latest, item) => (item.completedAt && item.completedAt > latest ? item.completedAt : latest), request.updatedAt);
     entries.push({ updatedAt: request.updatedAt, entry: {
