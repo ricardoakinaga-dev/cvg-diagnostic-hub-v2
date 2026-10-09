@@ -162,6 +162,24 @@ describe("bucket hardening (PROD-307, D-050)", () => {
     expect(client.send.mock.calls.some(([command]) => command instanceof PutObjectCommand)).toBe(false);
   });
 
+  it("reports an unreadable lifecycle, a failed probe write and keeps going", async () => {
+    const base = fakeClient({ ...hardened, rules: undefined });
+    const client = { send: vi.fn(async (command: unknown) => {
+      if (command instanceof PutObjectCommand) throw new Error("AccessDenied: no write");
+      if (command instanceof DeleteObjectCommand) throw new Error("AccessDenied: no delete");
+      return base.send(command);
+    }) };
+    const verification = await verifyBucket(client, options, privateProbe);
+
+    expect(verification.ok).toBe(false);
+    expect(verification.report.lifecycle.ruleCount).toBe(0);
+    expect(verification.problems).toEqual(expect.arrayContaining([
+      "sem regra de expiração de versões não correntes",
+      expect.stringMatching(/objeto de prova: AccessDenied/)
+    ]));
+    expect(client.send.mock.calls.some(([command]) => command instanceof DeleteObjectCommand)).toBe(true);
+  });
+
   it("validates its options", async () => {
     await expect(hardenBucket(fakeClient({}), { ...options, noncurrentVersionDays: 0 })).rejects.toThrow(/STORAGE_NONCURRENT_VERSION_DAYS/);
     await expect(verifyBucket(fakeClient({}), { ...options, noncurrentVersionDays: 99999 })).rejects.toThrow(/STORAGE_NONCURRENT_VERSION_DAYS/);
@@ -173,6 +191,8 @@ describe("bucket hardening (PROD-307, D-050)", () => {
     expect(policyAllowsAnonymous(JSON.stringify({ Statement: [{ Effect: "Allow", Principal: "*" }] }))).toBe(true);
     expect(policyAllowsAnonymous(JSON.stringify({ Statement: [{ Effect: "Deny", Principal: "*" }] }))).toBe(false);
     expect(policyAllowsAnonymous("not json")).toBe(true);
+    expect(policyAllowsAnonymous(JSON.stringify({ Statement: ["malformed", null, { Effect: "Allow", Principal: { Service: "x" } }] }))).toBe(false);
+    expect(policyAllowsAnonymous(JSON.stringify({ Statement: { Effect: "Allow", Principal: { AWS: ["arn:aws:iam::1:user/a", "*"] } } }))).toBe(true);
   });
 
   it("builds the anonymous probe URL in both addressing styles", () => {
