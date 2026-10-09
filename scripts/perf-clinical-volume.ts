@@ -1,4 +1,4 @@
-import type { DiagnosticItem, DiagnosticRequest, Encounter, Notification, Patient, Procedure, ProcedureSchedule, Result, ResultVersion, Sample, StoreState } from "../src/server/domain/models";
+import type { AuditEvent, DiagnosticItem, DiagnosticRequest, Encounter, Notification, Patient, Procedure, ProcedureSchedule, Result, ResultVersion, Sample, StoreState } from "../src/server/domain/models";
 
 /** D2 (08/10/2026): up to 150 exams a day; the PROD-110 load target is the volume after 12 months. */
 export const D2_EXAMS_PER_DAY = 150;
@@ -26,13 +26,16 @@ export interface ClinicalVolumeSummary {
   readonly requests: number;
   readonly items: number;
   readonly activeRequests: number;
+  readonly auditEvents: number;
 }
 
 /**
  * Appends a synthetic clinical history to `state` (in place, for speed at 55 thousand exams): requests spread
  * evenly over `months`, each with a laboratory item (sample, result with an amended version, acknowledged
  * notification) and a radiology item (procedure and schedule), like the archive fixtures but with unique IDs
- * and codes. Deterministic for the same options; nothing in it is real patient data.
+ * and codes, plus the audit trail with its actors (creation by the veterinarian, receipt and release by the
+ * laboratory, the radiology procedure), which the search reads for reviewer matches. Deterministic for the same
+ * options; nothing in it is real patient data.
  */
 export function addClinicalVolume(state: StoreState, options: ClinicalVolumeOptions): ClinicalVolumeSummary {
   const { months } = options;
@@ -58,6 +61,8 @@ export function addClinicalVolume(state: StoreState, options: ClinicalVolumeOpti
   }
 
   let activeRequests = 0;
+  const audit = (index: number, step: number, eventType: string, entityType: string, entityId: string, actorId: string, occurredAt: string): AuditEvent =>
+    ({ id: `audit-vol-${index}-${step}`, eventType, actorId, entityType, entityId, correlationId: `corr-vol-${index}`, metadata: {}, occurredAt });
   for (let index = 0; index < requests; index++) {
     const day = Math.floor(index / requestsPerDay);
     // Spread the day's requests between 07:00 and 19:00.
@@ -79,6 +84,7 @@ export function addClinicalVolume(state: StoreState, options: ClinicalVolumeOpti
       id: requestId, requestCode: `EX-V${index}`, patientId: `patient-vol-${patientIndex}`, encounterId: `encounter-vol-${patientIndex}`, requesterId: "user-vet",
       requestingDepartmentCode: "INPATIENT", priority: "ROUTINE", aggregateStatus: "REQUESTED", itemIds: [labItem.id, imagingItem.id], createdAt: at, updatedAt: at, version: 1
     };
+    state.auditEvents.push(audit(index, 0, "DiagnosticRequestCreated", "DiagnosticRequest", requestId, "user-vet", at));
     if (active) {
       activeRequests++;
       state.requests.push(request);
@@ -105,6 +111,11 @@ export function addClinicalVolume(state: StoreState, options: ClinicalVolumeOpti
     state.results.push(result);
     state.resultVersions.push(draft, released);
     state.notifications.push(notification);
+    state.auditEvents.push(
+      audit(index, 1, "SampleReceived", "DiagnosticRequestItem", labItem.id, "user-lab", at),
+      audit(index, 2, "ResultReleased", "DiagnosticRequestItem", labItem.id, "user-lab", done),
+      audit(index, 3, "ProcedurePerformed", "DiagnosticRequestItem", imagingItem.id, "user-rx", done)
+    );
   }
-  return { months, examsPerDay, days, patients, requests, items: requests * ITEMS_PER_REQUEST, activeRequests };
+  return { months, examsPerDay, days, patients, requests, items: requests * ITEMS_PER_REQUEST, activeRequests, auditEvents: requests + 3 * (requests - activeRequests) };
 }

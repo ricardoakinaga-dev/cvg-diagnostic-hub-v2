@@ -570,7 +570,8 @@ export interface StateStore {
   readStateVersion(): Promise<number>;
   /** Scoped historical reads; PostgreSQL reads the append-only table. */
   readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage>;
-  readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]>;
+  /** Distinct (entity, actor) pairs of these entities; with `actorIds`, only those actors (the search passes the users that match). */
+  readAuditActors(entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]>;
   readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics>;
   /**
    * Narrow authorization read. Implementations must answer from indexed single

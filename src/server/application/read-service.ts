@@ -103,6 +103,13 @@ const {
   transitionItem,
 } = helpers;
 
+/**
+ * Lower case for the search. Portuguese has no locale-specific case mapping (only Turkish, Azerbaijani and
+ * Lithuanian do), so this equals toLocaleLowerCase("pt-BR") without an ICU call per field: the search folds
+ * every field of the visible history on each query.
+ */
+const foldCase = (text: string): string => text.toLowerCase();
+
 export function createReadService({ store, storage }: ApplicationServiceContext) {
   const service = {
     async listPatients(actor: User, query = "") {
@@ -329,7 +336,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
     },
 
     async search(actor: User, query: string, filters: SearchFilters = {}) {
-      const normalized = query.trim().toLocaleLowerCase("pt-BR");
+      const normalized = foldCase(query.trim());
       const boundedLimit = pageSize(filters.limit);
       const cursor = decodeSearchCursor(filters.cursor);
       if (Array.from(normalized).length < 2) throw new ApiError("VALIDATION_ERROR", "Digite pelo menos 2 caracteres ou use um protocolo completo.", 400);
@@ -345,7 +352,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const requestedTypes = filters.types?.length ? new Set(filters.types) : new Set<SearchResultType>(["REQUEST"]);
       if ([...requestedTypes].some((type) => !["REQUEST", "ITEM"].includes(type))) throw new ApiError("VALIDATION_ERROR", "O tipo de busca é inválido.", 400);
       const rankFor = (fields: string[]): number | undefined => {
-        const normalizedFields = fields.map((field) => field.toLocaleLowerCase("pt-BR"));
+        const normalizedFields = fields.map(foldCase);
         if (normalizedFields.some((field) => field === normalized)) return 0;
         if (normalizedFields.some((field) => field.startsWith(normalized))) return 1;
         if (normalizedFields.some((field) => field.includes(normalized))) return 2;
@@ -359,11 +366,15 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         return visibleItems.length ? [{ request, visibleItems }] : [];
       });
       // Reviewer matching has always used entity IDs regardless of event type.
-      // The store returns distinct actor pairs for those authorized IDs.
-      const auditActors = await store.readAuditActors(visibleRequests.flatMap(({ request, visibleItems }) => [
+      // The store returns distinct actor pairs for those authorized IDs. A reviewer field is the actor's id, name
+      // or e-mail, so only the users that match the query can change a rank: the audit table is read for them
+      // alone, and not at all when nobody matches (a request code or an exam name), instead of every pair of the
+      // visible history on each search (D-046).
+      const matchingActorIds = state.users.filter((user) => rankFor([user.id, user.displayName, user.email]) !== undefined).map((user) => user.id);
+      const auditActors = matchingActorIds.length === 0 ? [] : await store.readAuditActors(visibleRequests.flatMap(({ request, visibleItems }) => [
         { entityType: "DiagnosticRequest", entityId: request.id },
         ...visibleItems.map((item) => ({ entityType: "DiagnosticRequestItem", entityId: item.id }))
-      ]));
+      ]), matchingActorIds);
       const actorsByEntityId = new Map<string, Set<string>>();
       for (const { entityId, actorId } of auditActors) {
         const actors = actorsByEntityId.get(entityId) ?? new Set<string>();

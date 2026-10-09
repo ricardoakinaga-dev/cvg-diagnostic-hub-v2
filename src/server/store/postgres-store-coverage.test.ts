@@ -757,6 +757,13 @@ describe("PostgresStore behavior coverage with an isolated pg mock", () => {
       await expect(store.readAuditActors([...scope.entities, ...scope.entities]))
         .resolves.toEqual([{ entityId: "request-a", actorId: "user-vet" }]);
       expect(pool.query.mock.calls.at(-1)?.[1]).toEqual([["request-a"]]);
+      pool.query.mockResolvedValueOnce(result(1, [{ entityId: event.entityId, actorId: event.actorId }]));
+      await expect(store.readAuditActors(scope.entities, ["user-vet", "user-vet"])).resolves.toEqual([{ entityId: "request-a", actorId: "user-vet" }]);
+      expect(pool.query.mock.calls.at(-1)?.[0]).toContain("actor_id = ANY($2::text[])");
+      expect(pool.query.mock.calls.at(-1)?.[1]).toEqual([["request-a"], ["user-vet"]]);
+      const beforeNoActors = pool.query.mock.calls.length;
+      await expect(store.readAuditActors(scope.entities, [])).resolves.toEqual([]);
+      expect(pool.query).toHaveBeenCalledTimes(beforeNoActors);
       pool.query.mockResolvedValueOnce(result(1, [{ recollections: 1, latency: 30 }]));
       await expect(store.readAuditMetrics({ requestCount: 2, samples: [{ id: "sample-a", requestId: "request-a" }], releasedVersions: [] }))
         .resolves.toEqual({ recollectionRate: 0.5, resultViewLatencySeconds: 30 });

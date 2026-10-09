@@ -183,8 +183,8 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
     // were seeded above; the runtime row holds only the header (PROD-101, 015).
     await database.query(`WITH source AS (SELECT $1::jsonb AS state), seeded AS (
       UPDATE cvg_runtime_state SET version=version+1 WHERE id=1 RETURNING cvg_runtime_state.id
-    ) INSERT INTO audit_events (id,event_type,entity_type,entity_id,correlation_id,metadata,occurred_at)
-      SELECT e->>'id',e->>'eventType',e->>'entityType',e->>'entityId',e->>'correlationId',e->'metadata',(e->>'occurredAt')::timestamptz
+    ) INSERT INTO audit_events (id,event_type,actor_id,entity_type,entity_id,correlation_id,metadata,occurred_at)
+      SELECT e->>'id',e->>'eventType',e->>'actorId',e->>'entityType',e->>'entityId',e->>'correlationId',e->'metadata',(e->>'occurredAt')::timestamptz
       FROM source, seeded, jsonb_array_elements(source.state->'auditEvents') e`, [JSON.stringify(workload.state)]);
     const initial = await database.query(`SELECT (SELECT count(*)::int FROM audit_events) AS events,
       pg_column_size(state) + (SELECT COALESCE(sum(pg_column_size(data)), 0)::int FROM cvg_runtime_entities) AS bytes FROM cvg_runtime_state WHERE id=1`);
@@ -284,7 +284,7 @@ export async function runPostgresPerf(record: (phase: string, evidence?: Record<
       const timingTargets = requests.map((entry) => ({ endpoint: entry.endpoint, measuredP95Ms: entry.p95Ms,
         proposedP95Ms: entry.endpoint.includes("/search?") ? SEARCH_P95_TARGET_MS : READ_P95_TARGET_MS,
         withinProposedTarget: entry.p95Ms <= (entry.endpoint.includes("/search?") ? SEARCH_P95_TARGET_MS : READ_P95_TARGET_MS) }));
-      const gate = assessPostgresPerf({ auditEvents: initialRow.events, expectedAuditEvents: auditEvents,
+      const gate = assessPostgresPerf({ auditEvents: initialRow.events, expectedAuditEvents: auditEvents + (workload.volume?.auditEvents ?? 0),
         sseConnections: Math.min(healthyConnections, readsBefore.activeConnections, readsAfter.activeConnections, endMetrics.activeConnections),
         expectedSseConnections: connectionCount, requests, expectedReads: ROUTES.map((endpoint) => ({ endpoint, requests: requestsPerRoute })),
         writes: writeSummary, durableWrites, expectedWrites: writeCount, unexpectedStreamClosures: closures,

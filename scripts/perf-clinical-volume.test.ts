@@ -9,7 +9,9 @@ test("12 months at the D2 rate is about 55 thousand exams, with only the last tw
   const state = createDemoState("clinical-volume-password");
   const before = { patients: state.patients.length, requests: state.requests.length };
   const summary = addClinicalVolume(state, { months: 12, now: NOW });
-  assert.deepEqual(summary, { months: 12, examsPerDay: D2_EXAMS_PER_DAY, days: 365, patients: 6_844, requests: 27_375, items: 54_750, activeRequests: 150 });
+  assert.deepEqual(summary, { months: 12, examsPerDay: D2_EXAMS_PER_DAY, days: 365, patients: 6_844, requests: 27_375, items: 54_750, activeRequests: 150, auditEvents: 27_375 + 3 * (27_375 - 150) });
+  assert.equal(state.auditEvents.length, summary.auditEvents);
+  assert.deepEqual(new Set(state.auditEvents.map((event) => event.actorId)), new Set(["user-vet", "user-lab", "user-rx"]));
   assert.equal(state.requests.length - before.requests, 27_375);
   assert.equal(state.items.length, 54_750);
   assert.equal(state.patients.length - before.patients, 6_844);
@@ -26,7 +28,7 @@ test("every reference resolves and every identifier and code is unique", () => {
   const state = createDemoState("clinical-volume-password");
   addClinicalVolume(state, { months: 2, examsPerDay: 40, now: NOW });
   const ids = (entries: Array<{ id: string }>) => new Set(entries.map((entry) => entry.id));
-  for (const collection of [state.patients, state.encounters, state.requests, state.items, state.samples, state.procedures, state.schedules, state.results, state.resultVersions, state.notifications]) {
+  for (const collection of [state.patients, state.encounters, state.requests, state.items, state.samples, state.procedures, state.schedules, state.results, state.resultVersions, state.notifications, state.auditEvents]) {
     assert.equal(ids(collection).size, collection.length);
   }
   assert.equal(new Set(state.requests.map((request) => request.requestCode)).size, state.requests.length);
@@ -45,6 +47,7 @@ test("every reference resolves and every identifier and code is unique", () => {
   for (const sample of state.samples) assert.ok(requests.has(sample.requestId) && sample.itemIds.every((itemId) => items.has(itemId)));
   for (const result of state.results) assert.ok(items.has(result.itemId) && state.resultVersions.some((version) => version.id === result.currentVersionId));
   for (const procedure of state.procedures) assert.ok(items.has(procedure.itemId));
+  for (const event of state.auditEvents) assert.ok(event.entityType === "DiagnosticRequest" ? requests.has(event.entityId) : items.has(event.entityId));
 });
 
 test("the same options give the same history, and hostile options are refused", () => {

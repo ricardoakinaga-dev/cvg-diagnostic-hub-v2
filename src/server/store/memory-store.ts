@@ -72,11 +72,12 @@ export class MemoryStore implements StateStore {
     return auditPage((await this.readState()).auditEvents, query);
   }
 
-  async readAuditActors(entities: AuditEntity[]): Promise<{ entityId: string; actorId: string }[]> {
+  async readAuditActors(entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]> {
     const ids = new Set(entities.map((entity) => entity.entityId));
+    const actors = actorIds ? new Set(actorIds) : undefined;
     const pairs = new Map<string, { entityId: string; actorId: string }>();
     for (const event of (await this.readState()).auditEvents) {
-      if (event.actorId && ids.has(event.entityId)) pairs.set(JSON.stringify([event.entityId, event.actorId]), { entityId: event.entityId, actorId: event.actorId });
+      if (event.actorId && ids.has(event.entityId) && (!actors || actors.has(event.actorId))) pairs.set(JSON.stringify([event.entityId, event.actorId]), { entityId: event.entityId, actorId: event.actorId });
     }
     return [...pairs.values()];
   }
