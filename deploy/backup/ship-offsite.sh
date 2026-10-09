@@ -3,6 +3,8 @@
 # OFFSITE_RCLONE_REMOTE empty it logs offsite.disabled and sleeps, so the stack starts without a destination.
 #
 #   OFFSITE_RCLONE_REMOTE   remote and path, e.g. s3:cvg-offsite/hospital-a or sftp:/backups (defined in rclone.conf)
+#   OFFSITE_BUCKET_SOURCE   optional (PROD-514, on-prem MinIO): rclone path of the attachments bucket, e.g. minio:cvg-attachments;
+#                           its objects go to <remote>/objects with the same write-once rule. Empty = PostgreSQL artifacts only.
 #   RCLONE_CONFIG           rclone config file (mounted read-only)
 #
 # NOTHING in this script deletes or overwrites on the remote: WAL, dumps and base backups all go with `rclone copy
@@ -14,6 +16,9 @@
 # (status error, event offsite.refused) when /backups holds no valid recent backup: a non-empty cvg-*.dump or
 # base/<stamp>/base.tar.gz whose newest mtime is at most OFFSITE_MAX_BACKUP_AGE_SECONDS old (default 2 x
 # BACKUP_INTERVAL_SECONDS). WAL is copied first and also in a refused cycle (immutable, never harmful).
+# The bucket copy (OFFSITE_BUCKET_SOURCE) follows the same rule: `rclone copy --ignore-existing`, so an object deleted
+# or re-encrypted at the source never removes or replaces the copy; the cycle is refused (bucket source unreachable)
+# when the source bucket cannot be listed, which is what a wrong bucket name, a dead MinIO or a revoked credential look like.
 # Retention of the remote belongs to the destination (lifecycle rule) or to a separate operator step.
 # Every cycle rewrites offsite-status.json; check-offsite.sh reads it.
 set -eu
@@ -27,6 +32,10 @@ STATUS_FILE="${OFFSITE_STATUS_FILE:-$BACKUP_DIRECTORY/offsite-status.json}"
 BACKUP_INTERVAL="${BACKUP_INTERVAL_SECONDS:-86400}"
 MAX_BACKUP_AGE="${OFFSITE_MAX_BACKUP_AGE_SECONDS:-$((BACKUP_INTERVAL * 2))}"
 REMOTE="${REMOTE%/}"
+BUCKET_SOURCE="${OFFSITE_BUCKET_SOURCE:-}"
+BUCKET_SOURCE="${BUCKET_SOURCE%/}"
+
+OBJECTS=0
 
 write_status() {
   # $1 result, $2 last success epoch (0 = never), $3 walSegments, $4 bytes, $5 optional refusal reason
@@ -34,8 +43,8 @@ write_status() {
   if [ "$2" -gt 0 ]; then shipped_at="$(date -u -d "@$2" +%Y-%m-%dT%H:%M:%SZ)"; fi
   reason=""
   if [ -n "${5:-}" ]; then reason=",\"reason\":\"$5\""; fi
-  printf '{"lastShippedAt":"%s","lastShippedEpoch":%s,"lastAttemptAt":"%s","lastResult":"%s","walSegments":%s,"bytes":%s%s}\n' \
-    "$shipped_at" "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$3" "$4" "$reason" > "$STATUS_FILE.tmp"
+  printf '{"lastShippedAt":"%s","lastShippedEpoch":%s,"lastAttemptAt":"%s","lastResult":"%s","walSegments":%s,"bytes":%s,"objects":%s%s}\n' \
+    "$shipped_at" "$2" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$3" "$4" "$OBJECTS" "$reason" > "$STATUS_FILE.tmp"
   mv "$STATUS_FILE.tmp" "$STATUS_FILE"
 }
 
@@ -68,6 +77,16 @@ check_backups() {
   fi
 }
 
+# Sets OBJECTS to the object count of the source bucket and BUCKET_REFUSAL when it cannot be listed.
+check_bucket() {
+  BUCKET_REFUSAL=""
+  OBJECTS=0
+  [ -n "$BUCKET_SOURCE" ] || return 0
+  size_json="$(rclone size "$BUCKET_SOURCE" --json --exclude '.cvg-bucket-probe/**' --log-level ERROR 2>/dev/null)" || { BUCKET_REFUSAL="bucket source unreachable ($BUCKET_SOURCE)"; return 0; }
+  OBJECTS="$(printf '%s' "$size_json" | sed -n 's/.*"count":\([0-9]*\).*/\1/p' | head -1)"
+  OBJECTS="${OBJECTS:-0}"
+}
+
 ship_once() {
   wal_count="$(ls -1 "$WAL_DIRECTORY" 2>/dev/null | grep -cE '^[0-9A-F]{24}$' || true)"
   bytes="$(( ( $(du -sk "$WAL_DIRECTORY" "$BACKUP_DIRECTORY" 2>/dev/null | cut -f1 | paste -sd+ - | sed 's/^$/0/') ) * 1024 ))"
@@ -75,19 +94,33 @@ ship_once() {
   wal_ok=0
   rclone copy "$WAL_DIRECTORY" "$REMOTE/wal" --exclude '.*.tmp' --ignore-existing --log-level ERROR && wal_ok=1
   check_backups
-  if [ -n "$REFUSAL" ]; then
-    write_status error "$last_ok" "$wal_count" "$bytes" "$REFUSAL"
-    printf '{"event":"offsite.refused","reason":"%s","walSegments":%s}\n' "$REFUSAL" "$wal_count" >&2
+  check_bucket
+  if [ -n "$REFUSAL" ] || [ -n "$BUCKET_REFUSAL" ]; then
+    cycle_reason="$REFUSAL"
+    if [ -n "$BUCKET_REFUSAL" ]; then
+      # The PostgreSQL artifacts are still shipped (write-once, never harmful); the cycle is not a success.
+      if [ -z "$REFUSAL" ] && [ "$wal_ok" = 1 ]; then
+        rclone copy "$BACKUP_DIRECTORY" "$REMOTE/dumps" --exclude 'offsite-status.json*' --exclude '*.partial/**' --exclude '*.partial' \
+          --ignore-existing --log-level ERROR || true
+      fi
+      cycle_reason="${cycle_reason:+$cycle_reason; }$BUCKET_REFUSAL"
+    fi
+    write_status error "$last_ok" "$wal_count" "$bytes" "$cycle_reason"
+    printf '{"event":"offsite.refused","reason":"%s","walSegments":%s}\n' "$cycle_reason" "$wal_count" >&2
     return 1
   fi
-  if [ "$wal_ok" = 1 ] \
+  bucket_ok=1
+  if [ -n "$BUCKET_SOURCE" ]; then
+    rclone copy "$BUCKET_SOURCE" "$REMOTE/objects" --exclude '.cvg-bucket-probe/**' --ignore-existing --log-level ERROR || bucket_ok=0
+  fi
+  if [ "$wal_ok" = 1 ] && [ "$bucket_ok" = 1 ] \
     && rclone copy "$BACKUP_DIRECTORY" "$REMOTE/dumps" --exclude 'offsite-status.json*' --exclude '*.partial/**' --exclude '*.partial' \
       --ignore-existing --log-level ERROR; then
     write_status ok "$(date +%s)" "$wal_count" "$bytes"
-    echo "{\"event\":\"offsite.shipped\",\"walSegments\":$wal_count,\"bytes\":$bytes}"
+    echo "{\"event\":\"offsite.shipped\",\"walSegments\":$wal_count,\"bytes\":$bytes,\"objects\":$OBJECTS}"
   else
     write_status error "$last_ok" "$wal_count" "$bytes"
-    echo "{\"event\":\"offsite.failed\",\"walSegments\":$wal_count}" >&2
+    echo "{\"event\":\"offsite.failed\",\"walSegments\":$wal_count,\"objects\":$OBJECTS}" >&2
     return 1
   fi
 }

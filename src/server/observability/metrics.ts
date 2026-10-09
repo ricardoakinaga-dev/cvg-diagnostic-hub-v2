@@ -16,6 +16,12 @@ const realtimeResyncs = new Map<string, number>();
 const realtimeConnectionRejections = new Map<string, number>();
 const realtimeSharedReads = new Map<string, number>();
 const realtimeAuthorizationStaleness = new Map<string, number>();
+const attachmentScans = new Map<string, number>();
+// Every verdict renders from the start (zero), so alerts and dashboards can reference the series before the first upload.
+function seedAttachmentScans(): void {
+  for (const status of ["CLEAN", "QUARANTINED", "FAILED"]) attachmentScans.set(status, 0);
+}
+seedAttachmentScans();
 const gauges = new Map<string, number>();
 let loginDistributedAttemptSignals = 0;
 const allowedGauges = new Set([
@@ -79,6 +85,7 @@ const allowedRealtimeClosureReasons = new Set([
   "unknown"
 ]);
 const allowedRealtimeResyncReasons = new Set(["event_window_expired", "unknown"]);
+const allowedAttachmentScanStatuses = new Set(["CLEAN", "QUARANTINED", "FAILED"]);
 const allowedRealtimeConnectionRejectionReasons = new Set(["connection_limit", "unknown"]);
 
 export function recordHttpRequest(method: string, route: string, status: number, durationMs: number): void {
@@ -149,6 +156,11 @@ export function recordRealtimeSharedRead(mode: RealtimePollMode): void {
 
 export function recordRealtimeAuthorizationStaleness(): void {
   incrementCounter(realtimeAuthorizationStaleness, "stream");
+}
+
+/** PROD-308: one count per upload scanned; QUARANTINED is the signal the quarantine owner watches (OBSERVABILITY.md). */
+export function recordAttachmentScan(status: string): void {
+  incrementCounter(attachmentScans, normalizeAllowedLabel(status, allowedAttachmentScanStatuses, "FAILED"));
 }
 
 export function recordRealtimeConnectionRejected(reason = "unknown"): void {
@@ -253,6 +265,7 @@ export function renderPrometheus(): string {
   appendCounter(lines, "cvg_realtime_connection_rejections_total", "Realtime connection attempts rejected by bounded capacity.", realtimeConnectionRejections, ["reason"]);
   appendCounter(lines, "cvg_realtime_shared_reads_total", "Full aggregate reads performed by the shared realtime reader.", realtimeSharedReads, ["mode"]);
   appendCounter(lines, "cvg_realtime_authorization_staleness_total", "Realtime authorizations revalidated against a newer runtime-state version.", realtimeAuthorizationStaleness, ["mode"]);
+  appendCounter(lines, "cvg_attachment_scans_total", "Attachment uploads scanned by the malware scanner, by verdict (QUARANTINED needs the quarantine owner).", attachmentScans, ["status"]);
   lines.push(
     "# HELP cvg_login_distributed_attempt_signals_total Accounts whose failed logins crossed the aggregated per-account threshold (monitoring only, no blocking).",
     "# TYPE cvg_login_distributed_attempt_signals_total counter",
@@ -275,6 +288,8 @@ export function resetMetrics(): void {
   realtimeConnectionRejections.clear();
   realtimeSharedReads.clear();
   realtimeAuthorizationStaleness.clear();
+  attachmentScans.clear();
+  seedAttachmentScans();
   gauges.clear();
   loginDistributedAttemptSignals = 0;
 }

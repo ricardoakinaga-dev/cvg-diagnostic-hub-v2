@@ -120,6 +120,7 @@ function offsiteFixture() {
     "#!/bin/sh",
     `echo "$*" >> '${log}'`,
     'if [ "$1" = sync ]; then echo "sync is forbidden" >> \'' + log + "'; exit 1; fi",
+    'if [ "$1" = size ]; then [ -d "$2" ] || exit 1; printf \'{"count":%s,"bytes":%s}\n\' "$(find "$2" -type f | wc -l)" "$(cat "$2"/* 2>/dev/null | wc -c)"; exit 0; fi',
     'if [ "$1" != copy ]; then exit 1; fi',
     '[ -d "$2" ] || exit 1',
     'mkdir -p "$3"',
@@ -147,8 +148,68 @@ function offsiteFixture() {
     mkdirSync(backups, { recursive: true });
     for (const f of files) { writeFileSync(f, "data"); utimesSync(f, when, when); }
   };
-  return { dir, run, seedRemote, remoteFiles, status, rcloneLog, addBackup, backups, statusFile, remote: remoteDest };
+  const bucket = path.join(dir, "bucket");
+  const addObject = (name, content = "object") => { mkdirSync(path.dirname(path.join(bucket, name)), { recursive: true }); writeFileSync(path.join(bucket, name), content); };
+  const remoteObjects = () => (existsSync(path.join(remoteDest, "objects")) ? readdirSync(path.join(remoteDest, "objects")).sort() : []);
+  return { dir, run, seedRemote, remoteFiles, status, rcloneLog, addBackup, backups, statusFile, remote: remoteDest, bucket, addObject, remoteObjects };
 }
+
+test("ship-offsite.sh copies the attachments bucket write-once and never deletes or overwrites an object on the remote", () => {
+  const f = offsiteFixture();
+  f.addBackup(0);
+  f.addObject("attachments/a.bin", "a");
+  f.addObject("b.bin", "good b");
+  const first = f.run({ OFFSITE_BUCKET_SOURCE: f.bucket });
+  assert.equal(first.status, 0, first.stderr);
+  assert.match(first.stdout, /"event":"offsite.shipped".*"objects":2/);
+  assert.deepEqual(readdirSync(path.join(f.remote, "objects"), { recursive: true }).sort(), ["attachments", path.join("attachments", "a.bin"), "b.bin"].sort());
+  assert.equal(f.status().objects, 2);
+  assert.match(f.rcloneLog(), new RegExp(`copy ${f.bucket.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} .*/objects .*--ignore-existing`));
+  // Object deleted at the source (purge, mistake or attacker) and another re-encrypted in place: the remote keeps both originals.
+  rmSync(path.join(f.bucket, "attachments", "a.bin"));
+  writeFileSync(path.join(f.bucket, "b.bin"), "ENCRYPTED");
+  const second = f.run({ OFFSITE_BUCKET_SOURCE: f.bucket });
+  assert.equal(second.status, 0, second.stderr);
+  assert.ok(existsSync(path.join(f.remote, "objects", "attachments", "a.bin")));
+  assert.equal(readFileSync(path.join(f.remote, "objects", "b.bin"), "utf8"), "good b");
+  assert.equal(f.status().objects, 1);
+  assert.doesNotMatch(f.rcloneLog(), /forbidden|(^|\n)sync |delete|purge/);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh refuses the cycle when the bucket source cannot be listed, still ships WAL and dumps, and touches nothing on the remote", () => {
+  const f = offsiteFixture();
+  f.addBackup(0);
+  f.addObject("kept.bin");
+  assert.equal(f.run({ OFFSITE_BUCKET_SOURCE: f.bucket }).status, 0);
+  const epoch = f.status().lastShippedEpoch;
+  assert.deepEqual(f.remoteObjects(), ["kept.bin"]);
+  // Wrong bucket name / MinIO down: `rclone size` fails.
+  const refused = f.run({ OFFSITE_BUCKET_SOURCE: path.join(f.dir, "missing-bucket") });
+  assert.notEqual(refused.status, 0);
+  assert.match(refused.stderr, /"event":"offsite.refused","reason":"bucket source unreachable/);
+  assert.equal(f.status().lastResult, "error");
+  assert.equal(f.status().lastShippedEpoch, epoch, "a refused cycle is not a success");
+  assert.match(f.status().reason, /bucket source unreachable/);
+  assert.deepEqual(f.remoteObjects(), ["kept.bin"]);
+  assert.ok(existsSync(path.join(f.remote, "dumps", "cvg-20261008.dump")), "PostgreSQL artifacts still leave the building");
+  assert.doesNotMatch(f.rcloneLog(), /copy .*missing-bucket/);
+  // Both problems at once are reported together.
+  rmSync(f.backups, { recursive: true, force: true }); mkdirSync(f.backups);
+  const both = f.run({ OFFSITE_BUCKET_SOURCE: path.join(f.dir, "missing-bucket") });
+  assert.notEqual(both.status, 0);
+  assert.match(f.status().reason, /no valid backup.*; bucket source unreachable/);
+  rmSync(f.dir, { recursive: true, force: true });
+});
+
+test("ship-offsite.sh without OFFSITE_BUCKET_SOURCE never calls rclone size and reports objects 0", () => {
+  const f = offsiteFixture();
+  f.addBackup(0);
+  assert.equal(f.run().status, 0);
+  assert.equal(f.status().objects, 0);
+  assert.doesNotMatch(f.rcloneLog(), /(^|\n)size /);
+  rmSync(f.dir, { recursive: true, force: true });
+});
 
 test("ship-offsite.sh refuses an existing but empty /backups, keeps the remote and never calls sync", () => {
   const f = offsiteFixture();
@@ -360,5 +421,31 @@ test("docker-compose.prod.yml renders with an environment built from .env.produc
 
   const drill = config(["docker-compose.prod.yml", "docker-compose.pitr-drill.yml"]);
   assert.equal(drill.status, 0, drill.stderr);
+
+  // On-prem overlay (PROD-307/308/514): MinIO + ClamAV + scanner, nothing published, bucket hardening before the app.
+  const onprem = config(["docker-compose.prod.yml", "docker-compose.onprem.yml"]);
+  assert.equal(onprem.status, 0, onprem.stderr);
+  const stack = JSON.parse(onprem.stdout);
+  for (const name of ["storage", "storage-init", "clamav", "scanner"]) {
+    assert.ok(stack.services[name], `${name} service`);
+    assert.equal(stack.services[name].ports, undefined, `${name} publishes no port`);
+  }
+  assert.equal(stack.services.storage.environment.MINIO_KMS_SECRET_KEY_FILE, "/run/secrets/minio-kms-key");
+  assert.equal(stack.services.storage.environment.MINIO_KMS_AUTO_ENCRYPTION, "on");
+  assert.equal(stack.services.storage.environment.MINIO_BROWSER, "off");
+  assert.ok(stack.secrets["minio-kms-key"].file.endsWith("/minio-kms.key"));
+  assert.equal(stack.services["storage-init"].environment.STORAGE_HARDEN, "true");
+  assert.equal(stack.services["storage-init"].environment.STORAGE_NONCURRENT_VERSION_DAYS, "30");
+  assert.equal(stack.services.app.environment.STORAGE_ENDPOINT, "http://storage:9000");
+  assert.equal(stack.services.app.environment.MALWARE_SCANNER_ENDPOINT, "https://scanner:9443/scan");
+  assert.equal(stack.services.app.environment.MALWARE_SCANNER_ALLOWED_HOSTS, "scanner");
+  assert.equal(stack.services.app.environment.NODE_EXTRA_CA_CERTS, "/certs/ca.crt");
+  assert.equal(stack.services.worker.environment.NODE_EXTRA_CA_CERTS, "/certs/ca.crt");
+  assert.equal(stack.services.app.depends_on["storage-init"].condition, "service_completed_successfully");
+  assert.equal(stack.services.app.depends_on.scanner.condition, "service_healthy");
+  assert.equal(stack.services.scanner.environment.CLAMD_HOST, "clamav");
+  assert.equal(stack.services.scanner.read_only, true);
+  assert.equal(stack.services.offsite.environment.OFFSITE_BUCKET_SOURCE, "minio:value-for-config-check-0123456789abcdef");
+  assert.equal(stack.services.offsite.environment.RCLONE_CONFIG_MINIO_ENDPOINT, "http://storage:9000");
   rmSync(dir, { recursive: true, force: true });
 });
