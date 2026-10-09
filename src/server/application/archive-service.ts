@@ -9,6 +9,9 @@ import type { ApplicationServiceContext } from "./service-context";
 import type { ArchivedRequestView } from "./service-types";
 
 const DENIED = () => new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+/** Requests read per round trip while scanning a patient's archive for the entries the actor may see. */
+export const ARCHIVE_SCAN_PAGE = 100;
+const PATIENT_ARCHIVE_PERMISSIONS = ["patient.view", "diagnostic.timeline.view"] as const;
 
 /**
  * The archive follows the active reads item by item (AUD-05): `item.view` on the
@@ -40,20 +43,33 @@ export function createArchiveService({ store }: ApplicationServiceContext) {
       const currentActor = requireActiveUser(state, actor);
       const limit = pageSize(filters.limit);
       if (!findById(state.patients, patientId)) throw DENIED();
-      // Scope first, then page (AUD-08): a newer record of another department must not hide an older visible one.
-      const visible = (await store.readClinicalArchive({ patientId }))
-        .map((entry) => scopedArchiveEntry(currentActor, entry))
-        .filter((entry): entry is ClinicalArchiveEntry => entry !== undefined)
-        .slice(0, limit);
-      for (const permission of ["patient.view", "diagnostic.timeline.view"] as const) {
+      // The active permissions are checked before the archive is read: only a manager or an executor whose only
+      // context for this patient is archived may fall back on the archive scope, so nobody else makes the server
+      // read the archive just to be refused (audit of 09/10).
+      let refusal: unknown;
+      for (const permission of PATIENT_ARCHIVE_PERMISSIONS) {
         try {
           requirePatientPermission(state, currentActor, permission, patientId);
         } catch (error) {
-          // A manager or executor whose only context for this patient is archived reads what the archive scope allows.
-          const archiveOnly = (currentActor.role === "MANAGER" || isExecutorRole(currentActor)) && visible.length > 0 && hasPermission(currentActor.role, permission);
+          const archiveOnly = (currentActor.role === "MANAGER" || isExecutorRole(currentActor)) && hasPermission(currentActor.role, permission);
           if (!archiveOnly) throw error;
+          refusal ??= error;
         }
       }
+      // Scope first, then page (AUD-08): a newer record of another department must not hide an older visible one.
+      // The archive is read a page of requests at a time and the scan stops once `limit` visible entries are found,
+      // so a long history is never materialized whole for one page of answers.
+      const visible: ClinicalArchiveEntry[] = [];
+      for (let offset = 0; visible.length < limit; offset += ARCHIVE_SCAN_PAGE) {
+        const page = await store.readClinicalArchive({ patientId, limit: ARCHIVE_SCAN_PAGE, offset });
+        for (const entry of page) {
+          const scoped = scopedArchiveEntry(currentActor, entry);
+          if (scoped && visible.length < limit) visible.push(scoped);
+        }
+        if (page.length < ARCHIVE_SCAN_PAGE) break;
+      }
+      // The archive-only fallback needs something archived that this actor may see.
+      if (refusal !== undefined && visible.length === 0) throw refusal;
       return visible;
     },
 

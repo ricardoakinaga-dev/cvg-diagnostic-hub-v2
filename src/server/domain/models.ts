@@ -519,6 +519,8 @@ export interface ClinicalArchiveQuery {
    * no patient, no request and no limit is refused (`assertBoundedArchiveQuery`).
    */
   readonly limit?: number;
+  /** Skips this many requests of the same order first (paging a patient's archive); a non-negative integer. */
+  readonly offset?: number;
 }
 
 export interface ClinicalArchiveEntry {
