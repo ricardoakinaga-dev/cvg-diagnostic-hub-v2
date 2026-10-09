@@ -7,6 +7,13 @@ const apiKey = process.env.MALWARE_SCANNER_API_KEY;
 if (!apiKey || apiKey.length < 32) throw new Error("Scanner API key must contain 32 or more characters.");
 const expectedAuthorization = createHash("sha256").update(`Bearer ${apiKey}`).digest();
 const maxBytes = 25 * 1024 * 1024;
+// Local installation and on-prem production (PROD-308) share this adapter: clamd host/port and the TLS files are
+// configurable; the defaults are the ones of docker-compose.local.yml.
+const clamdHost = process.env.CLAMD_HOST || "clamav";
+const clamdPort = Number(process.env.CLAMD_PORT || 3310);
+const listenPort = Number(process.env.SCANNER_PORT || 9443);
+const tlsKeyPath = process.env.SCANNER_TLS_KEY || "/certs/scanner.key";
+const tlsCertPath = process.env.SCANNER_TLS_CERT || "/certs/scanner.crt";
 
 function send(response, code, payload) {
   response.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" });
@@ -15,7 +22,7 @@ function send(response, code, payload) {
 
 function clamd(command, content) {
   return new Promise((resolve, reject) => {
-    const socket = createConnection({ host: "clamav", port: 3310 });
+    const socket = createConnection({ host: clamdHost, port: clamdPort });
     let reply = "";
     socket.setTimeout(20_000, () => socket.destroy(new Error("CLAMD_TIMEOUT")));
     socket.once("error", reject);
@@ -95,8 +102,8 @@ async function handle(request, response) {
 }
 
 const server = createServer({
-  key: readFileSync("/certs/scanner.key"),
-  cert: readFileSync("/certs/scanner.crt"),
+  key: readFileSync(tlsKeyPath),
+  cert: readFileSync(tlsCertPath),
   minVersion: "TLSv1.2"
 }, (request, response) => {
   void handle(request, response).catch(() => {
@@ -106,7 +113,7 @@ const server = createServer({
 });
 server.requestTimeout = 30_000;
 server.headersTimeout = 10_000;
-server.listen(9443, "0.0.0.0", () => console.log(JSON.stringify({ event: "scanner.ready", backend: "clamav" })));
+server.listen(listenPort, "0.0.0.0", () => console.log(JSON.stringify({ event: "scanner.ready", backend: "clamav", clamd: `${clamdHost}:${clamdPort}` })));
 for (const signal of ["SIGTERM", "SIGINT"]) {
   process.once(signal, () => server.close());
 }
