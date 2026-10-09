@@ -6,10 +6,12 @@ import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { Icon } from "./ui-icons";
 
 type ImportAction = "CREATE" | "UPDATE" | "UNCHANGED" | "ERROR";
-interface ImportRow { line: number; code: string; action: ImportAction; changes?: string[]; errors?: string[] }
+interface RemovedAnalyte { code: string; label: string; required: boolean }
+interface ImportRow { line: number; code: string; action: ImportAction; changes?: string[]; errors?: string[]; removedAnalytes?: RemovedAnalyte[] }
 export interface CatalogImportReport { applied: boolean; dryRun: boolean; summary: { create: number; update: number; unchanged: number; error: number }; rows: ImportRow[] }
 
 const ACTION_LABELS: Record<ImportAction, string> = { CREATE: "Criar", UPDATE: "Atualizar", UNCHANGED: "Sem mudança", ERROR: "Erro" };
+const removalText = (removed: RemovedAnalyte[]): string => `Remove: ${removed.map((analyte) => analyte.required ? `${analyte.code} (obrigatório)` : analyte.code).join(", ")}`;
 const MAX_FILE_BYTES = 900_000;
 
 class FileProblem extends Error {}
@@ -67,6 +69,7 @@ export function CatalogImportPanel({ onApplied }: { onApplied: () => void }) {
   }
 
   const report = validated?.report;
+  const losingExams = report ? report.rows.filter((row) => (row.removedAnalytes?.length ?? 0) > 0).length : 0;
   return <details className="admin-create"><summary><Icon name="table" size={14} /> Importar catálogo por planilha</summary>
     <div className="admin-create-form">
       <p className="page-lede">Baixe os modelos, preencha no Excel e salve como CSV. A importação valida tudo antes de gravar e pode ser repetida.</p>
@@ -77,8 +80,8 @@ export function CatalogImportPanel({ onApplied }: { onApplied: () => void }) {
       {error && <p className="form-alert" role="alert">{error}</p>}
       {message && <p role="status">{message}</p>}
       {report && <>
-        <p role="status">Resultado da validação: {report.summary.create} a criar, {report.summary.update} a atualizar, {report.summary.unchanged} sem mudança, {report.summary.error} com erro.{report.summary.error > 0 ? " Corrija as linhas com erro e valide novamente; nada é gravado enquanto houver erro." : ""}</p>
-        <div className="laboratory-table-wrap"><table className="laboratory-table"><caption className="sr-only">Resultado da validação da planilha</caption><thead><tr><th scope="col">Linha</th><th scope="col">Código</th><th scope="col">Ação</th><th scope="col">Detalhes</th></tr></thead><tbody>{report.rows.map((row, index) => <tr key={`${row.line}:${row.code}:${index}`}><td>{row.line}</td><th scope="row">{row.code || "—"}</th><td>{ACTION_LABELS[row.action]}</td><td>{[...(row.changes ?? []), ...(row.errors ?? [])].join(" · ") || "—"}</td></tr>)}</tbody></table></div>
+        <p role="status">Resultado da validação: {report.summary.create} a criar, {report.summary.update} a atualizar, {report.summary.unchanged} sem mudança, {report.summary.error} com erro.{losingExams > 0 ? ` ${losingExams} ${losingExams === 1 ? "exame perde" : "exames perdem"} analitos: confira a coluna Detalhes antes de aplicar.` : ""}{report.summary.error > 0 ? " Corrija as linhas com erro e valide novamente; nada é gravado enquanto houver erro." : ""}</p>
+        <div className="laboratory-table-wrap"><table className="laboratory-table"><caption className="sr-only">Resultado da validação da planilha</caption><thead><tr><th scope="col">Linha</th><th scope="col">Código</th><th scope="col">Ação</th><th scope="col">Detalhes</th></tr></thead><tbody>{report.rows.map((row, index) => <tr key={`${row.line}:${row.code}:${index}`}><td>{row.line}</td><th scope="row">{row.code || "—"}</th><td>{ACTION_LABELS[row.action]}</td><td>{[...(row.changes ?? []).filter((line) => !(row.removedAnalytes?.length && line.startsWith("analitos removidos:"))), ...(row.removedAnalytes?.length ? [removalText(row.removedAnalytes)] : []), ...(row.errors ?? [])].join(" · ") || "—"}</td></tr>)}</tbody></table></div>
         <ActionButton type="button" state={busy === "apply" ? "pending" : "idle"} disabled={report.summary.error > 0 || busy !== null} onClick={() => void apply()}>{busy === "apply" ? "Aplicando…" : "Aplicar importação"}</ActionButton>
       </>}
     </div>

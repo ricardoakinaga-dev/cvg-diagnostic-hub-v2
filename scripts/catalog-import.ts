@@ -45,6 +45,8 @@ export function formatCatalogImportReport(report: Pick<CatalogImportResult, "row
     lines.push(`${String(row.line).padEnd(6)} ${(row.code || "-").padEnd(31)} ${ACTION_LABELS[row.action].padEnd(12)} ${details}`);
   }
   const { summary } = report;
+  const losing = report.rows.filter((row) => (row.removedAnalytes?.length ?? 0) > 0).length;
+  if (losing > 0) lines.push("", `Atenção: ${losing} ${losing === 1 ? "exame perde" : "exames perdem"} analitos (painel substituído pela planilha). Confira as linhas "analitos removidos".`);
   const outcome = summary.error > 0 ? "Nada foi gravado: corrija os erros e envie novamente."
     : apply ? (report.applied === false ? "Nada foi gravado." : "Importação aplicada.")
       : "Validação concluída; nada foi gravado. Use --apply para aplicar.";
