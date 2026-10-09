@@ -37,16 +37,14 @@ jobs:
       tag: ${{ steps.release.outputs.tag }}
     steps:
       # Docker Hub rate-limits anonymous pulls per runner IP: the base images come through Google's Docker Hub
-      # mirror (same digests), as in the CI image job.
+      # mirror (same content) and are tagged with their Docker Hub names, as in the CI image job.
       - name: Pull Docker Hub images through a mirror
         run: |
           set -Eeuo pipefail
-          config=/etc/docker/daemon.json
-          current='{}'
-          if sudo test -s "$config"; then current="$(sudo cat "$config")"; fi
-          printf '%s' "$current" | jq '."registry-mirrors" = ["https://mirror.gcr.io"]' | sudo tee "$config" >/dev/null
-          sudo systemctl restart docker
-          docker info --format '{{json .RegistryConfig.Mirrors}}'
+          for image in node:22-bookworm-slim golang:1.26-alpine alpine:3.23; do
+            docker pull --quiet "mirror.gcr.io/library/$image"
+            docker tag "mirror.gcr.io/library/$image" "$image"
+          done
       - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.workflow_run.head_sha || github.sha }}
@@ -76,7 +74,7 @@ jobs:
         run: |
           set -Eeuo pipefail
           labels=(--label "org.opencontainers.image.revision=$COMMIT" --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.created=$CREATED")
-          docker build --pull "${labels[@]}" --tag "$PREFIX:$TAG" .
+          docker build "${labels[@]}" --tag "$PREFIX:$TAG" .
           docker build --target ops "${labels[@]}" --tag "$PREFIX-ops:$TAG" .
           # On-prem object storage (docker-compose.onprem.yml, D-050): MinIO built from the pinned source with the
           # dependency bumps of deploy/minio/Dockerfile, released with the same commit tag so deploy.sh pulls it too.
