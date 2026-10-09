@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { closeRateLimitBackend } from "../src/server/security/rate-limit";
 import { issueResetLinkByEmail, parseResetLinkArgs } from "../src/server/security/password-reset";

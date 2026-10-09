@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { bootstrapProductionDatabase } from "../src/server/store/production-bootstrap";
 
 async function main(): Promise<void> {

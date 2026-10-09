@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { unlink } from "node:fs/promises";
 import { Pool } from "pg";
 import { createOutboxSinkFromEnv, type ConfiguredOutboxSink, type OutboxProcessSummary, type OutboxSqlExecutor, processOutboxBatch } from "../src/server/operations/outbox";

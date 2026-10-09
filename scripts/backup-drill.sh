@@ -63,7 +63,10 @@ sed -e "s|^APP_DOMAIN=.*|APP_DOMAIN=localhost|" \
     -e "s|^POSTGRES_MIGRATION_PASSWORD=.*|POSTGRES_MIGRATION_PASSWORD=$(secret)|" \
     -e "s|^POSTGRES_RUNTIME_PASSWORD=.*|POSTGRES_RUNTIME_PASSWORD=$(secret)|" \
     -e "s|^POSTGRES_BACKUP_PASSWORD=.*|POSTGRES_BACKUP_PASSWORD=$(secret)|" \
-    -e "s|^OFFSITE_RCLONE_REMOTE=.*|OFFSITE_RCLONE_REMOTE=:local:/offsite-destination|" \
+    -e "s|^OFFSITE_RCLONE_REMOTE=.*|OFFSITE_RCLONE_REMOTE=offsitecrypt:|" \
+    -e "s|^OFFSITE_CRYPT_REMOTE=.*|OFFSITE_CRYPT_REMOTE=/offsite-destination|" \
+    -e "s|^OFFSITE_CRYPT_PASSWORD=.*|OFFSITE_CRYPT_PASSWORD=$(secret)|" \
+    -e "s|^OFFSITE_CRYPT_SALT=.*|OFFSITE_CRYPT_SALT=$(secret)|" \
     -e "s|^OFFSITE_RCLONE_CONFIG=.*|OFFSITE_RCLONE_CONFIG=$ROOT_DIR/deploy/backup/rclone.conf.example|" \
     -e "s|^OFFSITE_SHIP_INTERVAL_SECONDS=.*|OFFSITE_SHIP_INTERVAL_SECONDS=$SHIP_INTERVAL|" \
     "$ROOT_DIR/.env.production.example" > "$env_file"
@@ -115,16 +118,21 @@ last_archived_time="$(psql_main -c "SELECT to_char(last_archived_time AT TIME ZO
 archived_epoch="$(date -u -d "$last_archived_time" +%s)"
 shipped() { # lastShippedEpoch strictly after the archive time
   local epoch; epoch="$(docker exec "$offsite_container" sed -n 's/.*"lastShippedEpoch":\([0-9]*\).*/\1/p' /backups/offsite-status.json 2>/dev/null)"
-  [[ -n "$epoch" ]] && (( epoch > archived_epoch )) && docker exec "$offsite_container" test -f "/offsite-destination/wal/$switched"
+  [[ -n "$epoch" ]] && (( epoch > archived_epoch )) && docker exec "$offsite_container" sh /opt/backup/rclone-with-secrets.sh lsf "offsitecrypt:wal/$switched" 2>/dev/null | grep -q .
 }
 wait_for "cópia externa de $switched" $(( SHIP_INTERVAL * 6 + 60 )) shipped
 shipped_epoch="$(docker exec "$offsite_container" sed -n 's/.*"lastShippedEpoch":\([0-9]*\).*/\1/p' /backups/offsite-status.json)"
 step "WAL $switched arquivado e copiado para fora"
 docker exec "$offsite_container" sh /opt/backup/check-offsite.sh >&2
 
-# (d) restore from the off-site copy, never from the live volumes.
+# (d) restore from the off-site copy, never from the live volumes. The destination is encrypted (D-051): the raw copy must
+# not expose the segment name, and the plaintext only exists after rclone decrypts it with the crypt passphrase.
+if docker exec "$offsite_container" sh -c "find /offsite-destination -name '$switched' -o -name '*.dump' | grep -q ."; then
+  echo "o destino cru expõe nomes originais (sem cifra)" >&2; exit 1
+fi
 mkdir -p "$work_dir/offsite"
-docker cp "$offsite_container:/offsite-destination/." "$work_dir/offsite" >&2
+docker exec "$offsite_container" sh /opt/backup/rclone-with-secrets.sh copy "offsitecrypt:" /tmp/offsite-plain --log-level ERROR
+docker cp "$offsite_container:/tmp/offsite-plain/." "$work_dir/offsite" >&2
 wal_count="$(ls "$work_dir/offsite/wal" | grep -cE '^[0-9A-F]{24}$' || true)"
 base_dir="$(ls -1d "$work_dir"/offsite/dumps/base/[0-9]*Z | sort | tail -1)"
 base_bytes="$(stat -c %s "$base_dir/base.tar.gz")"

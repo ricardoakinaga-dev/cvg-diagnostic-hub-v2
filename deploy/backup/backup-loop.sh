@@ -12,6 +12,12 @@ set -eu
 # Backups hold clinical data and credential hashes: owner-only files.
 umask 077
 
+# PROD-302: PGPASSWORD_FILE / PGBACKUP_PASSWORD_FILE (Docker secrets) win over the variables; both set with different
+# values is refused, like src/server/security/file-secrets.ts.
+# BACKUP_HELPERS_DIR: where secrets-env.sh lives (/opt/backup in the containers; the tests point it at deploy/backup).
+. "${BACKUP_HELPERS_DIR:-/opt/backup}/secrets-env.sh"
+load_file_secrets PGPASSWORD PGBACKUP_PASSWORD
+
 : "${PGHOST:?}" "${PGUSER:?}" "${PGPASSWORD:?}" "${PGDATABASE:?}"
 INTERVAL="${BACKUP_INTERVAL_SECONDS:-86400}"
 RETENTION_DAYS="${BACKUP_RETENTION_DAYS:-14}"

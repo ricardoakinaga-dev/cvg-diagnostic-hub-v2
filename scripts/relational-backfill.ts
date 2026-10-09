@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { backfillFailureCode } from "../src/server/store/relational/clinical-core-backfill";
 import { PostgresStore } from "../src/server/store/postgres-store";
 

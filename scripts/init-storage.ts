@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 // Creates the attachments bucket and, with STORAGE_HARDEN=true (PROD-307, D-050), applies and verifies the hardening:
 // versioning, default encryption at rest, no anonymous access and a lifecycle that only expires non-current versions.
 // `--verify` only checks and exits 1 on any deviation (runbook and release checklist).

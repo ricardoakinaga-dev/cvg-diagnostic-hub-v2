@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";

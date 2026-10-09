@@ -24,6 +24,13 @@
 set -eu
 umask 077
 
+# PROD-302 / D-051: secrets from files and the encrypted destination. The `offsitecrypt` remote (type crypt) wraps
+# OFFSITE_CRYPT_REMOTE; a destination that is not a crypt remote is refused unless OFFSITE_ALLOW_PLAINTEXT=true
+# (a decision of the hospital recorded in D-051: destination with its own encryption and restricted access).
+. "${BACKUP_HELPERS_DIR:-$(dirname "$0")}/secrets-env.sh"
+load_file_secrets RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY
+configure_offsite_crypt
+
 REMOTE="${OFFSITE_RCLONE_REMOTE:-}"
 INTERVAL="${OFFSITE_SHIP_INTERVAL_SECONDS:-300}"
 WAL_DIRECTORY="${WAL_ARCHIVE_DIRECTORY:-/wal-archive}"
@@ -133,6 +140,19 @@ if [ -z "$REMOTE" ]; then
   mkdir -p "$BACKUP_DIRECTORY"
   write_status disabled 0 0 0 2>/dev/null || true
   [ "${1:-}" = "--once" ] && exit 0
+  while true; do sleep 3600; done
+fi
+
+# Health data leaves the building only encrypted (D-051): the destination must be a crypt remote.
+case "$REMOTE" in
+  :*) DESTINATION_TYPE="connection-string" ;;
+  *) DESTINATION_TYPE="$(remote_type "${REMOTE%%:*}")" ;;
+esac
+if [ "$DESTINATION_TYPE" != "crypt" ] && [ "${OFFSITE_ALLOW_PLAINTEXT:-false}" != "true" ]; then
+  mkdir -p "$BACKUP_DIRECTORY"
+  write_status error "$(previous_success)" 0 0 "destination is not a crypt remote (type $DESTINATION_TYPE); set OFFSITE_ALLOW_PLAINTEXT=true only by decision of the hospital (D-051)" 2>/dev/null || true
+  echo "{\"event\":\"offsite.refused\",\"reason\":\"destination is not a crypt remote (type $DESTINATION_TYPE)\"}" >&2
+  [ "${1:-}" = "--once" ] && exit 1
   while true; do sleep 3600; done
 fi
 

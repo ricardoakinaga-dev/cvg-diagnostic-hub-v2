@@ -1,21 +1,30 @@
 # Production stack: TLS edge -> web app, outbox worker and PostgreSQL.
-# Object storage (S3-compatible) and the malware scanner are external managed
-# services configured through .env.production; see docs/operations/DEPLOYMENT.md.
+# Object storage (S3-compatible) and the malware scanner come from docker-compose.onprem.yml on the hospital server
+# (D11) or from managed services configured through the env file; see docs/operations/DEPLOYMENT.md.
 #
 #   docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 #   docker compose -f docker-compose.prod.yml --env-file .env.production run --rm bootstrap   # first deploy only
+#
+# Secrets (PROD-302): every secret below accepts a NAME_FILE variant (Docker secret mounted read-only), filled by
+# docker-compose.secrets.yml; the processes read NAME_FILE at start (src/server/security/file-secrets.ts) and refuse
+# NAME and NAME_FILE set together. The connection strings carry $${NAME} placeholders expanded at process start, so no
+# password is interpolated by Compose into a URL. With an env file only (no secrets overlay) the NAME values are used.
 
 x-app-environment: &app-environment
   NODE_ENV: production
   APP_DATA_MODE: postgres
   # The application and the worker connect as the runtime role: DML only, no DDL, append-only audit_events.
   # The DDL credentials are NOT part of this shared block; only the one-shot migrate service receives them.
-  DATABASE_URL: postgresql://${POSTGRES_RUNTIME_USER:-cvg_runtime}:${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
+  DATABASE_URL: postgresql://${POSTGRES_RUNTIME_USER:-cvg_runtime}:$${POSTGRES_RUNTIME_PASSWORD}@postgres:5432/${POSTGRES_DB:?}
+  POSTGRES_RUNTIME_PASSWORD: ${POSTGRES_RUNTIME_PASSWORD:-}
+  POSTGRES_RUNTIME_PASSWORD_FILE: ${POSTGRES_RUNTIME_PASSWORD_FILE:-}
   DB_POOL_MAX: ${DB_POOL_MAX:-10}
-  SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET must be set}
+  SESSION_SECRET: ${SESSION_SECRET:-}
+  SESSION_SECRET_FILE: ${SESSION_SECRET_FILE:-}
   APP_ORIGIN: https://${APP_DOMAIN:?APP_DOMAIN must be set}
   TRUST_PROXY: "true"
-  TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?TRUST_PROXY_SHARED_SECRET must be set}
+  TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:-}
+  TRUST_PROXY_SHARED_SECRET_FILE: ${TRUST_PROXY_SHARED_SECRET_FILE:-}
   RATE_LIMIT_MODE: postgres
   LOGIN_RATE_LIMIT: ${LOGIN_RATE_LIMIT:-10}
   LOGIN_CLIENT_RATE_LIMIT: ${LOGIN_CLIENT_RATE_LIMIT:-60}
@@ -29,11 +38,13 @@ x-app-environment: &app-environment
   STORAGE_REGION: ${STORAGE_REGION:-us-east-1}
   STORAGE_BUCKET: ${STORAGE_BUCKET:?STORAGE_BUCKET must be set}
   STORAGE_ACCESS_KEY: ${STORAGE_ACCESS_KEY:?STORAGE_ACCESS_KEY must be set}
-  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:?STORAGE_SECRET_KEY must be set}
+  STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY:-}
+  STORAGE_SECRET_KEY_FILE: ${STORAGE_SECRET_KEY_FILE:-}
   STORAGE_FORCE_PATH_STYLE: ${STORAGE_FORCE_PATH_STYLE:-false}
   STORAGE_SCAN_MODE: external
   MALWARE_SCANNER_ENDPOINT: ${MALWARE_SCANNER_ENDPOINT:?MALWARE_SCANNER_ENDPOINT must be set}
-  MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:?MALWARE_SCANNER_API_KEY must be set}
+  MALWARE_SCANNER_API_KEY: ${MALWARE_SCANNER_API_KEY:-}
+  MALWARE_SCANNER_API_KEY_FILE: ${MALWARE_SCANNER_API_KEY_FILE:-}
   MALWARE_SCANNER_ALLOWED_HOSTS: ${MALWARE_SCANNER_ALLOWED_HOSTS:?MALWARE_SCANNER_ALLOWED_HOSTS must be set}
   MALWARE_SCANNER_TIMEOUT_MS: ${MALWARE_SCANNER_TIMEOUT_MS:-10000}
   CRITICAL_POLICY_ENABLED: ${CRITICAL_POLICY_ENABLED:-false}
@@ -52,11 +63,14 @@ x-app-environment: &app-environment
   WHATSAPP_API_VERSION: ${WHATSAPP_API_VERSION:-v26.0}
   WHATSAPP_PHONE_NUMBER_ID: ${WHATSAPP_PHONE_NUMBER_ID:-}
   WHATSAPP_ACCESS_TOKEN: ${WHATSAPP_ACCESS_TOKEN:-}
+  WHATSAPP_ACCESS_TOKEN_FILE: ${WHATSAPP_ACCESS_TOKEN_FILE:-}
   WHATSAPP_TEMPLATE_NAME: ${WHATSAPP_TEMPLATE_NAME:-}
   WHATSAPP_TEMPLATE_LANGUAGE: ${WHATSAPP_TEMPLATE_LANGUAGE:-pt_BR}
   WHATSAPP_TIMEOUT_MS: ${WHATSAPP_TIMEOUT_MS:-10000}
   WHATSAPP_APP_SECRET: ${WHATSAPP_APP_SECRET:-}
+  WHATSAPP_APP_SECRET_FILE: ${WHATSAPP_APP_SECRET_FILE:-}
   WHATSAPP_VERIFY_TOKEN: ${WHATSAPP_VERIFY_TOKEN:-}
+  WHATSAPP_VERIFY_TOKEN_FILE: ${WHATSAPP_VERIFY_TOKEN_FILE:-}
   WHATSAPP_WEBHOOK_RATE_LIMIT: ${WHATSAPP_WEBHOOK_RATE_LIMIT:-600}
   WHATSAPP_WEBHOOK_MAX_BYTES: ${WHATSAPP_WEBHOOK_MAX_BYTES:-262144}
   # Tunables documented in .env.production.example. --env-file only feeds
@@ -87,6 +101,7 @@ x-app-environment: &app-environment
   DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: ${DB_IDLE_IN_TRANSACTION_TIMEOUT_MS:-60000}
   # Optional Prometheus bearer for GET /api/v1/metrics (32+ characters; empty disables it).
   METRICS_SCRAPE_TOKEN: ${METRICS_SCRAPE_TOKEN:-}
+  METRICS_SCRAPE_TOKEN_FILE: ${METRICS_SCRAPE_TOKEN_FILE:-}
   METRICS_SCRAPE_RATE_LIMIT: ${METRICS_SCRAPE_RATE_LIMIT:-60}
   # Sample accession labels (PROD-405).
   ACCESSION_PREFIX: ${ACCESSION_PREFIX:-A}
@@ -127,7 +142,9 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:?}
       POSTGRES_USER: ${POSTGRES_USER:?}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      # The official image reads POSTGRES_PASSWORD_FILE itself (first initialization of the volume only).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:-}
     volumes:
       - cvg-postgres:/var/lib/postgresql/data
       - cvg-wal-archive:/wal-archive
@@ -149,10 +166,15 @@ services:
     command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
     environment:
       <<: *app-environment
-      DATABASE_ADMIN_URL: postgresql://${POSTGRES_USER:?}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
+      DATABASE_ADMIN_URL: postgresql://${POSTGRES_USER:?}:$${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-}
+      POSTGRES_PASSWORD_FILE: ${POSTGRES_PASSWORD_FILE:-}
       # Creates the cvg_backup role (REPLICATION) used by pg_basebackup in the backup service; unset = no role.
       POSTGRES_BACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:-}
-      MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-cvg_migrator}:${POSTGRES_MIGRATION_PASSWORD:?POSTGRES_MIGRATION_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:?}
+      POSTGRES_BACKUP_PASSWORD_FILE: ${POSTGRES_BACKUP_PASSWORD_FILE:-}
+      MIGRATION_DATABASE_URL: postgresql://${POSTGRES_MIGRATION_USER:-cvg_migrator}:$${POSTGRES_MIGRATION_PASSWORD}@postgres:5432/${POSTGRES_DB:?}
+      POSTGRES_MIGRATION_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:-}
+      POSTGRES_MIGRATION_PASSWORD_FILE: ${POSTGRES_MIGRATION_PASSWORD_FILE:-}
     depends_on:
       postgres: { condition: service_healthy }
     restart: "no"
@@ -236,7 +258,10 @@ services:
     restart: unless-stopped
     environment:
       APP_DOMAIN: ${APP_DOMAIN:?}
-      TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:?}
+      TRUST_PROXY_SHARED_SECRET: ${TRUST_PROXY_SHARED_SECRET:-}
+      TRUST_PROXY_SHARED_SECRET_FILE: ${TRUST_PROXY_SHARED_SECRET_FILE:-}
+    # Caddy reads the shared secret from the environment; with a Docker secret the wrapper exports it from the file.
+    command: ["/bin/sh", "-c", "if [ -n \"$$TRUST_PROXY_SHARED_SECRET_FILE\" ]; then TRUST_PROXY_SHARED_SECRET=\"$$(cat \"$$TRUST_PROXY_SHARED_SECRET_FILE\")\"; export TRUST_PROXY_SHARED_SECRET; fi; [ -n \"$$TRUST_PROXY_SHARED_SECRET\" ] || { echo 'TRUST_PROXY_SHARED_SECRET or TRUST_PROXY_SHARED_SECRET_FILE must be set' >&2; exit 1; }; exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
     ports:
       - "${HTTP_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80"
       - "${HTTP_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443"
@@ -257,12 +282,15 @@ services:
       PGHOST: postgres
       PGDATABASE: ${POSTGRES_DB:?}
       PGUSER: ${POSTGRES_RUNTIME_USER:-cvg_runtime}
-      PGPASSWORD: ${POSTGRES_RUNTIME_PASSWORD:?POSTGRES_RUNTIME_PASSWORD must be set}
+      PGPASSWORD: ${POSTGRES_RUNTIME_PASSWORD:-}
+      PGPASSWORD_FILE: ${POSTGRES_RUNTIME_PASSWORD_FILE:-}
       PGBACKUP_PASSWORD: ${POSTGRES_BACKUP_PASSWORD:-}
+      PGBACKUP_PASSWORD_FILE: ${POSTGRES_BACKUP_PASSWORD_FILE:-}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
     volumes:
       - ./deploy/backup/backup-loop.sh:/opt/backup-loop.sh:ro
+      - ./deploy/backup/secrets-env.sh:/opt/backup/secrets-env.sh:ro
       - cvg-backups:/backups
       - cvg-wal-archive:/wal-archive
     depends_on:
@@ -287,8 +315,20 @@ services:
       OFFSITE_SHIP_INTERVAL_SECONDS: ${OFFSITE_SHIP_INTERVAL_SECONDS:-300}
       BACKUP_INTERVAL_SECONDS: ${BACKUP_INTERVAL_SECONDS:-86400}
       OFFSITE_MAX_BACKUP_AGE_SECONDS: ${OFFSITE_MAX_BACKUP_AGE_SECONDS:-}
+      # Encrypted destination (D-051): the `offsitecrypt` remote wraps OFFSITE_CRYPT_REMOTE with the passphrase and salt
+      # read from files; OFFSITE_RCLONE_REMOTE=offsitecrypt: then. Plaintext destinations need OFFSITE_ALLOW_PLAINTEXT=true.
+      OFFSITE_CRYPT_REMOTE: ${OFFSITE_CRYPT_REMOTE:-}
+      OFFSITE_CRYPT_PASSWORD: ${OFFSITE_CRYPT_PASSWORD:-}
+      OFFSITE_CRYPT_PASSWORD_FILE: ${OFFSITE_CRYPT_PASSWORD_FILE:-}
+      OFFSITE_CRYPT_SALT: ${OFFSITE_CRYPT_SALT:-}
+      OFFSITE_CRYPT_SALT_FILE: ${OFFSITE_CRYPT_SALT_FILE:-}
+      OFFSITE_ALLOW_PLAINTEXT: ${OFFSITE_ALLOW_PLAINTEXT:-false}
     volumes:
       - ./deploy/backup/ship-offsite.sh:/opt/backup/ship-offsite.sh:ro
+      - ./deploy/backup/secrets-env.sh:/opt/backup/secrets-env.sh:ro
+      # Manual rclone runs inside this container (runbooks) go through the helper, which loads the *_FILE secrets
+      # and defines the crypt remote: docker compose ... exec offsite sh /opt/backup/rclone-with-secrets.sh lsd offsitecrypt:
+      - ./deploy/backup/rclone-with-secrets.sh:/opt/backup/rclone-with-secrets.sh:ro
       - ./deploy/backup/check-offsite.sh:/opt/backup/check-offsite.sh:ro
       - ${OFFSITE_RCLONE_CONFIG:-./deploy/backup/rclone.conf.example}:/config/rclone/rclone.conf:ro
       - cvg-wal-archive:/wal-archive:ro

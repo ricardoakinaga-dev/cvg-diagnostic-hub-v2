@@ -1,3 +1,4 @@
+import "./load-file-secrets";
 import { randomBytes } from "node:crypto";
 import { PostgresStore } from "../src/server/store/postgres-store";
 import { createDemoState } from "../src/server/store/fixtures";

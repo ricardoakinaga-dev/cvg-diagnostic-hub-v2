@@ -1,0 +1,25 @@
+# TLS edge with a certificate issued by the hospital's own CA (PROD-309), instead of ACME.
+# Use when the server has no inbound reach from the internet (D11, administration by VPN only) or when the
+# hospital issues certificates for its internal names. Mounted by docker-compose.internal-tls.yml:
+#   TLS_CERT_FILE=/etc/cvg-hub/tls/web.crt  TLS_KEY_FILE=/etc/cvg-hub/tls/web.key  (full chain in web.crt)
+# Everything else is identical to deploy/Caddyfile: incoming X-Forwarded-For is NOT trusted (no trusted_proxies),
+# the shared secret proves to the app that the request crossed this edge, and the body limit leaves headroom
+# over ATTACHMENT_MAX_BYTES.
+{
+	admin off
+}
+
+{$APP_DOMAIN} {
+	tls /certs/web.crt /certs/web.key
+
+	encode zstd gzip
+
+	request_body {
+		max_size 30MiB
+	}
+
+	reverse_proxy app:3000 {
+		header_up X-Cvg-Proxy-Secret {$TRUST_PROXY_SHARED_SECRET}
+		header_up X-Real-IP {remote_host}
+	}
+}

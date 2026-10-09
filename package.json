@@ -60,6 +60,7 @@
     "storage:init": "tsx scripts/init-storage.ts",
     "storage:verify": "tsx scripts/init-storage.ts --verify",
     "storage:backup:drill": "bash scripts/storage-backup-drill.sh",
+    "environments:drill": "bash scripts/environments-drill.sh",
     "scanner:drill": "bash scripts/scanner-drill.sh",
     "ci:storage-services": "node scripts/ci-storage-services.mjs",
     "validate:docs": "bash scripts/validate-docs.sh",
