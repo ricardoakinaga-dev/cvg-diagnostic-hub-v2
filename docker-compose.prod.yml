@@ -56,6 +56,8 @@ x-app-environment: &app-environment
   CRITICAL_POLICY_ESCALATION_AFTER_MS: ${CRITICAL_POLICY_ESCALATION_AFTER_MS:-900000,1800000,3600000}
   CRITICAL_POLICY_RECIPIENT_RULES: ${CRITICAL_POLICY_RECIPIENT_RULES:-REQUESTER,RESPONSIBLE,DEPARTMENT_MANAGER,ON_CALL,ADMIN_FALLBACK}
   CRITICAL_POLICY_DISTINCT_RECIPIENTS: ${CRITICAL_POLICY_DISTINCT_RECIPIENTS:-true}
+  # D-056: without WhatsApp, the hospital's written acceptance of "Hub only" for critical results (readiness check).
+  CRITICAL_POLICY_IN_APP_ONLY_APPROVAL_REF: ${CRITICAL_POLICY_IN_APP_ONLY_APPROVAL_REF:-}
   # PROD-402 (D3): WhatsApp Business channel of critical results. The app queues and receives the
   # delivery webhook, the worker sends; both read the same block. Off until the template is approved.
   WHATSAPP_ENABLED: ${WHATSAPP_ENABLED:-false}

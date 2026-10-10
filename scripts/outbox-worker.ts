@@ -68,6 +68,8 @@ async function runEscalation(): Promise<void> {
   try {
     const summary = await runCriticalEscalation(await getRuntimeStoreAsync());
     if (summary.due > 0) console.log(JSON.stringify({ event: "critical.escalation", ...summary }));
+    // D-056: a level that found nobody clinical is an incident, not a quiet audit row.
+    if (summary.unreachable > 0) console.error(JSON.stringify({ event: "critical.escalation_unreachable", errorCode: "CRITICAL_RECIPIENTS_UNAVAILABLE", unreachable: summary.unreachable }));
   } catch (error) {
     console.error(JSON.stringify({ event: "critical.escalation_error", errorCode: "CRITICAL_ESCALATION_FAILED" }));
     throw error;

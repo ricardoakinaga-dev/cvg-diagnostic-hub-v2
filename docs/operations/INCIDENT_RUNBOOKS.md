@@ -71,8 +71,21 @@ O WhatsApp é redundante: o alerta do Hub e a confirmação continuam valendo. N
 5. O crítico não escalou:
    - conferir se o worker tem a política (`CRITICAL_POLICY_ENABLED`, `VERSION`, `APPROVAL_REF`, `APPROVED_AT` e os limiares);
    - procurar `critical.escalation` ou `critical.escalation_error` no log do worker;
-   - ver os eventos `CriticalResultEscalated` da notificação do solicitante. A regra `NONE` quer dizer que ninguém do setor estava de plantão ou gerenciando.
+   - ver os eventos `CriticalResultEscalated` da notificação do solicitante. A regra `NONE` quer dizer que ninguém estava de plantão (no setor ou no hospital) nem gerenciando o setor; nesse caso a administração recebeu o alerta operacional (runbook "Crítico sem confirmação ou sem destinatário").
 6. Para desligar o canal: `WHATSAPP_ENABLED=false` no app e no worker. Os alertas na fila são encerrados como `SKIPPED/CHANNEL_DISABLED`, e o crítico segue só no Hub.
+
+## Crítico sem confirmação ou sem destinatário
+
+Dono: direção clínica / gestor do setor solicitante. A TI apoia, não confirma o resultado. Nunca copie valor, paciente ou tutor para o incidente; o protocolo da solicitação basta.
+
+1. `CvgCriticalUnacknowledged` (`cvg_critical_unacknowledged > 0`): um crítico subiu pelo menos um degrau da escada e ninguém confirmou. Em **Notificações › Crítica** do solicitante e dos escalonados, ver quem já recebeu (`escalation.level`, `whatsapp`); ligar para o solicitante ou para o plantão do setor; quem abrir o resultado confirma no Hub e a escada para.
+2. `CvgCriticalUnreachable` (`cvg_critical_unreachable > 0`): um degrau devido não alcançou ninguém clínico. Os ADMIN ativos receberam a notificação administrativa "Crítico sem confirmação e sem destinatário" (protocolo e setor) e o worker logou `critical.escalation_unreachable`; a auditoria tem `CriticalResultUnreachable` na notificação do solicitante. Acionar o setor por telefone, pedir que um profissional com acesso confirme no Hub e, em seguida, corrigir a causa:
+   - ninguém de plantão no setor solicitante: marcar **Colocar no plantão** em um profissional do setor (ou de outro setor: sem plantonista próprio, qualquer plantonista do hospital que consiga abrir o resultado entra no degrau `ON_CALL`);
+   - gestor sem o setor do exame: incluir o setor em **Setores gerenciados**;
+   - solicitante desativado ou sem acesso: ver `CriticalResultEscalated` com `rule NONE` e a regra seguinte da política.
+   O alerta é um por resultado; ele sai quando alguém confirma a versão. Não fecha sozinho.
+3. `CvgCriticalReadinessDegraded` (prontidão): a política está ativa, mas falta canal redundante aceito ou há setor solicitante sem plantonista por 15 minutos. Conferir **Sistema › Resultado crítico** (ou `GET /api/v1/critical-results/readiness`): política (`CRITICAL_POLICY_*` no app e no worker), canal (`WHATSAPP_ENABLED=true` ou o aceite nominal do hospital em `CRITICAL_POLICY_IN_APP_ONLY_APPROVAL_REF`), plantonistas por setor e administradores ativos. A prontidão informa; a liberação de um crítico nunca é bloqueada por ela.
+4. Registrar no incidente: protocolo, horários dos degraus (`CriticalResultEscalated`), quem confirmou e a correção aplicada ao plantão ou à política.
 
 ## Storage, upload ou scanner AV indisponível
 

@@ -25,7 +25,7 @@ Triggers use canonical events: `ResultReleased`, `RecollectionRequested`, `Diagn
 4. configured manager/fallback;
 5. unresolved recipient creates an operational alert, never a silently dropped notification.
 
-`OPEN QUESTION`: exact ownership, shift handoff and critical fallback are OQ-004/OQ-018.
+`DECISION` D-056 (2026-10-10): the escalation ladder of a critical result reaches, in policy order, the requester, the responsible professional, the on-call staff of the requesting department (any professional on call in the hospital only when that department has nobody on call), then the department manager. When a due level reaches nobody clinical, the active administrators receive an `ADMINISTRATIVE` operational alert that names the request protocol and the department, never the patient or the result, and the requester's notification is marked `escalation.unreachableAt`; `ADMIN_FALLBACK` in the policy names this alert, not a clinical recipient. Exact ownership and shift handoff remain OQ-004/OQ-018.
 
 ## 4. Delivery model
 
@@ -42,7 +42,7 @@ Delivery states: `PENDING`, `DELIVERED`, `SEEN`, `ACKNOWLEDGED`, `FAILED`, `SUPE
 - Correction creates a new notification decision; old acknowledgement remains historical and does not automatically acknowledge the new version.
 - When an unacknowledged critical version is amended or voided, its notification becomes `SUPERSEDED` and the current version requires a new notification decision.
 - Void of a released/reviewed/completed version creates `ResultVoided`, informs affected recipients that the prior version is invalid and points to the replacement/operational action; the void itself is never treated as a successful clinical result.
-- Failure to deliver/acknowledge stays in a manager queue and is visible in dashboard.
+- Failure to deliver/acknowledge stays in a manager queue and is visible in dashboard. Metrics `cvg_critical_unacknowledged` (roots that climbed at least one level without acknowledgement) and `cvg_critical_unreachable` (roots whose level found nobody) feed the alerts `CvgCriticalUnacknowledged` and `CvgCriticalUnreachable`; `GET /critical-results/readiness` and the system console show whether the approved policy, a redundant channel (WhatsApp or the hospital's named acceptance of "in-app only") and an on-call professional per requesting department exist (D-056). Readiness never blocks a release.
 
 ## 6. Fatigue controls
 

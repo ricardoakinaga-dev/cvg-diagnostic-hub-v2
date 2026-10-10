@@ -182,7 +182,11 @@ export function nextCriticalRecipients(
 
 /**
  * Everyone must belong to the department, except a manager: they are found through the departments they
- * manage, whatever their own department code.
+ * manage, whatever their own department code. The on-call rule prefers the requesting department; when that
+ * department has nobody on call at all, any professional on call in the hospital is the fallback (D-056),
+ * so a sector without its own roster is never left without a human on the ladder.
+ * ADMIN_FALLBACK names the technical role, which never opens a result: in the escalation job it is the
+ * operational alert raised when nobody clinical can be reached, not a clinical recipient.
  */
 function candidatesForRule(rule: CriticalRecipientRule, context: CriticalRecipientContext): CriticalRecipientCandidate[] {
   const departmentCode = normalizedCode(context.departmentCode, "departmentCode");
@@ -190,7 +194,10 @@ function candidatesForRule(rule: CriticalRecipientRule, context: CriticalRecipie
   const inDepartment = active.filter((candidate) => normalizedCode(candidate.departmentCode, "candidate.departmentCode") === departmentCode);
   if (rule === "REQUESTER") return inDepartment.filter((candidate) => candidate.userId === context.requesterId);
   if (rule === "RESPONSIBLE") return inDepartment.filter((candidate) => candidate.userId === context.responsibleUserId);
-  if (rule === "ON_CALL") return inDepartment.filter((candidate) => candidate.onCall === true);
+  if (rule === "ON_CALL") {
+    const departmentOnCall = inDepartment.filter((candidate) => candidate.onCall === true);
+    return departmentOnCall.length > 0 ? departmentOnCall : active.filter((candidate) => candidate.onCall === true);
+  }
   if (rule === "DEPARTMENT_MANAGER") {
     return active.filter((candidate) => candidate.role === "MANAGER" && (candidate.managedDepartmentCodes ?? [candidate.departmentCode]).some((code) => normalizedCode(code, "managedDepartmentCode") === departmentCode));
   }

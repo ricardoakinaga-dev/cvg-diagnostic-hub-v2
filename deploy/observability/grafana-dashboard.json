@@ -247,6 +247,16 @@
           "refId": "B",
           "expr": "cvg_critical_results{job=\"cvg-hub\"}",
           "legendFormat": "resultados críticos liberados"
+        },
+        {
+          "refId": "C",
+          "expr": "cvg_critical_unacknowledged{job=\"cvg-hub\"}",
+          "legendFormat": "críticos escalonados sem confirmação"
+        },
+        {
+          "refId": "D",
+          "expr": "cvg_critical_unreachable{job=\"cvg-hub\"}",
+          "legendFormat": "críticos sem destinatário alcançável"
         }
       ]
     },

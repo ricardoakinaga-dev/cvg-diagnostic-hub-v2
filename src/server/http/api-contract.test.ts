@@ -31,7 +31,8 @@ const EXPECTED_PERMISSION_ANCHORS = Object.freeze({
   closeEncounter: ["encounter.manage"],
   viewResult: ["result.view", "result.view.record"],
   downloadAttachment: ["attachment.download", "attachment.view"],
-  getManagementOverview: ["dashboard.view", "user_role.manage"]
+  getManagementOverview: ["dashboard.view", "user_role.manage"],
+  getCriticalReadiness: ["critical_result_policy.manage"]
 } as const);
 
 const expectedOperations = API_OPERATIONS.map(({ method, path }) => `${method} ${path}`).sort();
@@ -163,8 +164,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(87);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 80);
+    expect(API_OPERATIONS).toHaveLength(88);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 81);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 

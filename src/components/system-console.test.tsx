@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { AuditEvent, DeadLetterMessage, ManagedSession } from "@cvg/contracts";
+import type { AuditEvent, CriticalReadiness, DeadLetterMessage, ManagedSession } from "@cvg/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SystemConsole } from "./system-console";
 import SystemPage from "../app/system/page";
@@ -12,6 +12,7 @@ vi.mock("./app-shell", () => ({ AppShell: ({ children }: { children: React.React
 const session: ManagedSession = { id: "session-vet", userId: "user-vet", userDisplayName: "Dra. Marina Costa", userEmail: "vet@cvg.local", userRole: "VETERINARIAN", departmentCode: "INPATIENT", createdAt: "2026-10-03T00:00:00.000Z", expiresAt: "2026-10-03T08:00:00.000Z", status: "ACTIVE", current: false };
 const message: DeadLetterMessage = { id: "outbox-1", eventType: "ResultReleased", aggregateType: "Result", aggregateId: "result-1", status: "FAILED", attempts: 5, availableAt: "2026-10-03T00:00:00.000Z", correlationId: "corr-1", lastError: "sink unavailable" };
 const audit: AuditEvent = { id: "audit-1", eventType: "UserRoleUpdated", entityType: "USER", entityId: "user-vet", occurredAt: "2026-10-03T00:00:00Z", newState: "ACTIVE", metadata: {} };
+const readiness: CriticalReadiness = { asOf: "2026-10-10T00:00:00.000Z", policy: { status: "ACTIVE", version: "v1", approvalRef: "ATA-3" }, redundantChannel: { status: "IN_APP_ONLY_ACCEPTED", approvalRef: "ATA-3" }, onCall: { departments: [{ departmentCode: "INPATIENT", requesters: 2, onCall: 1 }], departmentsWithoutOnCall: [], total: 1 }, administrators: 1, ready: true };
 type Responder = (path: string, init?: RequestInit) => unknown;
 function mockApi(role = "ADMIN", respond?: Responder) {
   let currentSession = session;
@@ -23,6 +24,7 @@ function mockApi(role = "ADMIN", respond?: Responder) {
     if (path === "/sessions") return [currentSession] as T;
     if (path === "/outbox/dead-letters") return [currentMessage] as T;
     if (path === "/audit-events?limit=20") return [audit] as T;
+    if (path === "/critical-results/readiness") return readiness as T;
     if (path === "/sessions/session-vet/revoke") { currentSession = { ...currentSession, status: "REVOKED" }; return currentSession as T; }
     if (path === "/outbox/dead-letters/outbox-1/reprocess") { currentMessage = { ...currentMessage, status: "PENDING" }; return { message: currentMessage, action: "REPROCESSED" } as T; }
     if (path === "/outbox/dead-letters/outbox-1/discard") { currentMessage = { ...currentMessage, status: "DISCARDED" }; return { message: currentMessage, action: "DISCARDED" } as T; }
@@ -229,5 +231,33 @@ describe("SystemConsole", () => {
     mockApi("ADMIN", (path) => path === "/audit-events?limit=20" ? [{ ...audit, newState: undefined }] : undefined);
     render(<SystemConsole />);
     expect(await screen.findByText("registrado")).toBeInTheDocument();
+  });
+
+  it("shows the critical-result readiness and names the departments without anyone on call", async () => {
+    mockApi("ADMIN", (path) => path === "/critical-results/readiness"
+      ? { ...readiness, ready: false, policy: { status: "OFF" }, redundantChannel: { status: "MISSING" }, onCall: { departments: [{ departmentCode: "INPATIENT", requesters: 2, onCall: 0 }], departmentsWithoutOnCall: ["INPATIENT"], total: 0 }, administrators: 0 }
+      : undefined);
+    render(<SystemConsole />);
+    const panel = (await screen.findByRole("heading", { name: "Resultado crítico" })).closest("section")!;
+    expect(panel).toHaveTextContent("Pendente");
+    expect(panel).toHaveTextContent("Política desligada");
+    expect(panel).toHaveTextContent("Sem canal redundante nem aceite registrado");
+    expect(panel).toHaveTextContent("Ninguém de plantão");
+    expect(panel).toHaveTextContent("Sem plantonista: INPATIENT");
+    expect(panel).toHaveTextContent("Nenhum administrador ativo");
+  });
+
+  it("shows a ready critical-result flow and an empty state when readiness cannot be read", async () => {
+    mockApi();
+    render(<SystemConsole />);
+    const panel = (await screen.findByRole("heading", { name: "Resultado crítico" })).closest("section")!;
+    expect(panel).toHaveTextContent("Pronto");
+    expect(panel).toHaveTextContent("versão v1 · aprovação ATA-3");
+    expect(panel).toHaveTextContent("Só no Hub, aceito pelo hospital");
+    expect(panel).toHaveTextContent("1 de plantão");
+    cleanup(); vi.restoreAllMocks();
+    mockApi("ADMIN", (path) => path === "/critical-results/readiness" ? Promise.reject(new Error("down")) : undefined);
+    render(<SystemConsole />);
+    expect(await screen.findByText("Prontidão indisponível")).toBeInTheDocument();
   });
 });
