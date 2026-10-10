@@ -15,8 +15,36 @@ import { readFileSync } from "node:fs";
  * - connection strings may carry `${NAME}` placeholders (`DATABASE_URL`, `MIGRATION_DATABASE_URL`,
  *   `DATABASE_ADMIN_URL`): they are expanded after the files are read, with the password URL-encoded; an
  *   unknown placeholder is refused.
+ * - only the variables named in `FILE_SECRET_VARIABLES` are secrets. Any other `*_FILE` variable (a path the
+ *   process writes, such as `OUTBOX_HEARTBEAT_FILE`, or a tool's own configuration) is left alone: not read, not
+ *   exported. The full restore rehearsal of 2026-10-10 (D-057) found the worker refusing to start because the
+ *   loader tried to read its own heartbeat file before it existed. A new secret has to be added to the list; the
+ *   test that scans the Compose files for `/run/secrets/` mounts fails until it is.
  */
 export const FILE_SECRET_SUFFIX = "_FILE";
+export const FILE_SECRET_VARIABLES = Object.freeze([
+  "POSTGRES_PASSWORD_FILE",
+  "POSTGRES_MIGRATION_PASSWORD_FILE",
+  "POSTGRES_RUNTIME_PASSWORD_FILE",
+  "POSTGRES_BACKUP_PASSWORD_FILE",
+  "PGPASSWORD_FILE",
+  "PGBACKUP_PASSWORD_FILE",
+  "SESSION_SECRET_FILE",
+  "TRUST_PROXY_SHARED_SECRET_FILE",
+  "STORAGE_SECRET_KEY_FILE",
+  "STORAGE_ROOT_PASSWORD_FILE",
+  "OFFSITE_STORAGE_SECRET_KEY_FILE",
+  "MALWARE_SCANNER_API_KEY_FILE",
+  "METRICS_SCRAPE_TOKEN_FILE",
+  "WHATSAPP_ACCESS_TOKEN_FILE",
+  "WHATSAPP_APP_SECRET_FILE",
+  "WHATSAPP_VERIFY_TOKEN_FILE",
+  "OFFSITE_CRYPT_PASSWORD_FILE",
+  "OFFSITE_CRYPT_SALT_FILE",
+  "MINIO_ROOT_PASSWORD_FILE",
+  "MINIO_KMS_SECRET_KEY_FILE",
+  "RCLONE_CONFIG_MINIO_SECRET_ACCESS_KEY_FILE"
+]);
 export const TEMPLATE_VARIABLES = Object.freeze(["DATABASE_URL", "MIGRATION_DATABASE_URL", "DATABASE_ADMIN_URL"]);
 
 export interface FileSecretsResult {
@@ -36,7 +64,7 @@ export function loadFileSecrets(env: SecretEnvironment = process.env, options: F
   const read = options.readFile ?? ((path: string) => readFileSync(path, "utf8"));
   const loaded: string[] = [];
   for (const [key, path] of Object.entries(env)) {
-    if (!key.endsWith(FILE_SECRET_SUFFIX) || key === FILE_SECRET_SUFFIX || !path?.trim()) continue;
+    if (!FILE_SECRET_VARIABLES.includes(key) || !path?.trim()) continue;
     const name = key.slice(0, -FILE_SECRET_SUFFIX.length);
     let content: string;
     try {
