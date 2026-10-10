@@ -5,7 +5,7 @@ import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
 import { eventVisible } from "../../../../server/application/realtime-visibility";
 import { discardDeadLetterMessage, listDeadLetterMessages, reprocessDeadLetterMessage } from "../../../../server/operations/outbox";
-import { operationalAuditQuery, recordCriticalReadiness, refreshOperationalMetrics, renderPrometheus } from "../../../../server/observability/metrics";
+import { operationalAuditQuery, recordCriticalReadiness, recordWriteQueue, refreshOperationalMetrics, renderPrometheus } from "../../../../server/observability/metrics";
 import { criticalReadinessChecks, criticalResultReadiness } from "../../../../server/application/critical-readiness";
 import { createRealtimeResponse } from "../../../../server/observability/realtime-stream";
 import { acknowledgeNotificationSchema } from "../../../../server/http/command-schemas";
@@ -21,6 +21,7 @@ export async function metricsResponse(store: StateStore, correlationId: string):
   ]);
   refreshOperationalMetrics(state, new Date(), history, outbox);
   recordCriticalReadiness(criticalReadinessChecks(criticalResultReadiness(state)));
+  recordWriteQueue(store.writeQueueMetrics?.());
   const body = renderPrometheus();
   return new Response(body, { status: 200, headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store", "x-correlation-id": correlationId } });
 }

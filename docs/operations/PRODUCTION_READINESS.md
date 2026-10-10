@@ -8,6 +8,10 @@ Deploy path: [DEPLOYMENT.md](DEPLOYMENT.md) (images, first-admin bootstrap, migr
 
 Status: `NOT READY` until implementation, operational validation and human gates exist. This checklist defines what “ready” must prove.
 
+## Audit of 2026-10-10 (current)
+
+> [Relatório de prontidão de 10/10/2026](../RELATORIO_PRONTIDAO_2026-10-10.md): os quatro bloqueadores técnicos da auditoria (notificação depois de reduzir o acesso, emenda sem aviso, crítico sem saída operacional, gargalo do snapshot) estão corrigidos e cobertos por teste (D-055, D-056, D-058, D-059, D-061); o worker de produção, que não subia desde o #63, sobe (D-057); toda imagem diz de que commit veio (D-060). Provas locais: restore completo de banco e anexos com reconciliação (RPO 8–10 s, RTO 21–26 s), indisponibilidade de cada componente com as regras do Prometheus (D-062), [carga hospitalar](../RELATORIO_CARGA_HOSPITALAR_2026-10-10.md) com margem de 50× o pico D2 estimado, falhas sob carga sem perda e soak de 2 h. O status continua `NOT READY`: servidor de homologação, nomes da operação, conteúdo clínico, pentest, UAT, piloto e go/no-go são do hospital (§4 do relatório).
+
 ## Current local evidence (02/10/2026)
 
 > **Audit 02/10/2026:** [report](../RELATORIO_AUDITORIA_2026-10-02.md) — new critical finding F-01: the JSONB snapshot serializes every store operation per process and grows without pruning (~0.6 s CPU per request at 100k audit events). The item "JSONB snapshot replaced or formally approved" below can no longer be closed by approval alone; it is tracked as PROD-101…111 in the [production backlog](../build/PRODUCTION_BACKLOG.md).
@@ -74,7 +78,7 @@ PostgreSQL persistente em `127.0.0.1:5432` não foi tocado.
 ## Reliability/operations
 
 - [ ] Migrations tested from representative prior version; rollback/roll-forward plan.
-- [ ] The current JSONB snapshot is replaced or formally approved as a transitional boundary; relational clinical constraints, indexes and representative `EXPLAIN` evidence are reviewed. The local browser packet covers durable snapshot reads only and does not close this item.
+- [ ] The current JSONB snapshot is replaced or formally approved as a transitional boundary (10/10/2026: approved technically for the D2 volume with measured headroom and objective triggers for PROD-111, D-061; awaits the product owner's sign-off); relational clinical constraints, indexes and representative `EXPLAIN` evidence are reviewed. The local browser packet covers durable snapshot reads only and does not close this item.
 - [ ] PostgreSQL + object storage backups verified and restore drill passed against approved RPO/RTO. A local PostgreSQL-only restore smoke now passes with manifest/checksum verification; object storage, application recovery and approved RPO/RTO remain external.
 - [ ] `/livez`, `/readyz`, logs, metrics, correlation, outbox retry/dead letter and alert routing tested.
 - [ ] Storage scan/quarantine and signed downloads work.

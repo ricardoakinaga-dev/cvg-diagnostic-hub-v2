@@ -134,6 +134,14 @@ Alerta `CvgLoginDistributedAttempts` / log `security.login_distributed_attempts`
 3. Se o padrão continuar, confirme no proxy os endereços de origem (`X-Forwarded-For` confiável, DEPLOYMENT §5.1) e bloqueie-os na borda; não bloqueie a conta no Hub, pois isso trancaria o dono para fora.
 4. Aumente o limiar só se o alerta for ruído comprovado (estações atrás do mesmo NAT). Registre o incidente conforme o fechamento abaixo.
 
+## Fila de escrita saturada
+
+Alerta `CvgWriteQueueSaturated` ([D-061](../DECISION_LOG.md)): toda escrita clínica espera a única linha de runtime, e a espera média passou de 400 ms por 10 minutos. O [relatório de carga hospitalar](../RELATORIO_CARGA_HOSPITALAR_2026-10-10.md) mediu a saturação em cerca de 5 escritas por segundo num só host; o pico da D2 fica muito abaixo disso.
+
+1. Confirmar no Grafana: `cvg_write_queue_in_flight` e as taxas de `cvg_write_queue_wait_ms` e `cvg_write_transaction_ms`. Se a duração da transação subiu sem aumento de escritas, o problema é o banco (disco, autovacuum, lock): seguir [Banco ou readiness indisponível](#banco-ou-readiness-indisponível).
+2. Se o número de escritas por segundo subiu (por exemplo, importação de catálogo, reprocessamento em massa, integração nova), pausar a operação em lote e acompanhar a espera voltar.
+3. Se a espera continua alta com o uso normal do hospital, o volume passou do que o snapshot comporta: registrar o incidente e priorizar o [PROD-111](../build/PRODUCTION_BACKLOG.md) (núcleo clínico relacional), que é o caminho previsto para esse limite.
+
 ## Fechamento do incidente
 
 O incidente só pode ser fechado quando houver: causa ou limite documentado; evidência sanitizada; teste/regressão que detectaria a falha; impacto clínico avaliado; ação preventiva; owner e prazo; decisão explícita de reabrir tráfego, manter degradação ou fazer rollback. A ausência de logs por falha do logger não deve alterar a decisão: o boundary HTTP continua sendo a fonte da resposta e a auditoria durável permanece a fonte da ação clínica.

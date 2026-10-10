@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { PostgresStateCache } from "./postgres-state-cache";
 import { freezeState } from "./immutable-state";
 import { Pool, type PoolClient } from "pg";
-import { outboxEnvelopeFor, type ClinicalArchiveEntry, type ClinicalArchiveOptions, type ClinicalArchivePurgeOptions, type ClinicalArchivePurgeSummary, type ClinicalArchiveQuery, type ClinicalArchiveRow, type ClinicalArchiveSummary, type AuditEntity, type AuditMetrics, type AuditMetricsQuery, type AuditReadPage, type AuditReadQuery, type AuditTransactionReader, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User } from "../domain/models";
-import { auditEventsForReset, postgresAuditTransactionReader, readPostgresAuditActors, readPostgresAuditEvents, readPostgresAuditMetrics } from "./postgres-audit-read";
+import { outboxEnvelopeFor, type ClinicalArchiveEntry, type ClinicalArchiveOptions, type ClinicalArchivePurgeOptions, type ClinicalArchivePurgeSummary, type ClinicalArchiveQuery, type ClinicalArchiveRow, type ClinicalArchiveSummary, type AuditEntity, type AuditEvent, type AuditMetrics, type AuditMetricsQuery, type AuditReadPage, type AuditReadQuery, type AuditTransactionReader, type RuntimeRetentionOptions, type RuntimeRetentionSummary, type Session, type SessionActivity, type StateStore, type StoreState, type User, type WriteQueueMetrics } from "../domain/models";
+import { auditEventsForReset, insertPostgresAuditEvent, postgresAuditTransactionReader, readPostgresAuditActors, readPostgresAuditEvents, readPostgresAuditMetrics } from "./postgres-audit-read";
 import type { OutboxMessage, OutboxTransactionQuery } from "../domain/models";
 import { outboxReadLimit } from "../domain/outbox-read";
 import { hasClaimablePostgresOutbox, lockPostgresOutbox, outboxFromRow, prunePostgresOutbox, readPostgresOutbox, readPostgresOutboxMetrics, REALTIME_OUTBOX_SQL, RUNTIME_SEED_WITH_EVENTS_SQL, projectPostgresOutbox } from "./postgres-outbox-read";
@@ -93,6 +93,7 @@ export class PostgresStore implements StateStore {
   private readonly cache: PostgresStateCache;
   private readonly concurrentWork = new Set<Promise<unknown>>();
   private queue: Promise<unknown> = Promise.resolve();
+  private readonly writeQueue = { inFlight: 0, completed: 0, waitMsTotal: 0, holdMsTotal: 0 };
   private isClosing = false;
   private closePromise?: Promise<void>;
 
@@ -200,6 +201,11 @@ export class PostgresStore implements StateStore {
 
   async readAuditActors(entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]> {
     return this.concurrent(() => readPostgresAuditActors(this.pool, entities, actorIds));
+  }
+
+  /** Audit is outside the snapshot (PROD-101): an audited read inserts its row alone, beside the write queue (D-061). */
+  async appendReadAudit(event: AuditEvent): Promise<void> {
+    return this.concurrent(() => insertPostgresAuditEvent(this.pool, event));
   }
 
   async readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics> {
@@ -517,9 +523,26 @@ export class PostgresStore implements StateStore {
     return work;
   }
 
+  writeQueueMetrics(): WriteQueueMetrics {
+    return { ...this.writeQueue };
+  }
+
   private enqueue<T>(operation: () => Promise<T> | T): Promise<T> {
     if (this.isClosing) return Promise.reject(new Error("PostgreSQL store is closing or closed."));
-    const run = this.queue.then(operation);
+    // Every write waits here for the single runtime row (D-061): the wait and the hold are what to watch.
+    const queuedAt = performance.now();
+    this.writeQueue.inFlight += 1;
+    const run = this.queue.then(async () => {
+      const startedAt = performance.now();
+      try {
+        return await operation();
+      } finally {
+        this.writeQueue.inFlight -= 1;
+        this.writeQueue.completed += 1;
+        this.writeQueue.waitMsTotal += startedAt - queuedAt;
+        this.writeQueue.holdMsTotal += performance.now() - startedAt;
+      }
+    });
     this.queue = run.then(() => undefined, () => undefined);
     return run;
   }
@@ -532,13 +555,7 @@ export class PostgresStore implements StateStore {
     // complete; the opt-in relational adapter owns its broader projection.
     if (!this.relationalClinicalCore) await projectDurableNotificationRows(client, before, after);
     const previousAuditIds = new Set(before.auditEvents.map((event) => event.id));
-    for (const event of after.auditEvents.filter((entry) => !previousAuditIds.has(entry.id))) {
-      const inserted = await client.query(
-        "INSERT INTO audit_events (id, event_type, actor_id, entity_type, entity_id, previous_state, new_state, correlation_id, metadata, occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) ON CONFLICT (id) DO NOTHING RETURNING id",
-        [event.id, event.eventType, event.actorId ?? null, event.entityType, event.entityId, event.previousState ?? null, event.newState ?? null, event.correlationId, JSON.stringify(event.metadata), event.occurredAt]
-      );
-      if (inserted.rowCount !== 1) throw new Error(`POSTGRES_AUDIT_PROJECTION_DIVERGED:${event.id}`);
-    }
+    for (const event of after.auditEvents.filter((entry) => !previousAuditIds.has(entry.id))) await insertPostgresAuditEvent(client, event);
     await projectPostgresOutbox(client, before.outbox, after.outbox);
   }
 }

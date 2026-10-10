@@ -219,3 +219,23 @@ tests:
       - eval_time: 30m
         alertname: CvgCriticalReadinessDegraded
         exp_alerts: []
+
+  - name: the serial write queue alert fires only on a sustained mean wait (D-061)
+    interval: 30s
+    input_series:
+      # 2 writes a second: 100 ms of mean wait for 10 minutes, then 1 s.
+      - series: 'cvg_write_queue_wait_ms_sum{job="cvg-hub"}'
+        values: "0+6000x20 120000+60000x60"
+      - series: 'cvg_write_queue_wait_ms_count{job="cvg-hub"}'
+        values: "0+60x80"
+    alert_rule_test:
+      - eval_time: 10m
+        alertname: CvgWriteQueueSaturated
+        exp_alerts: []
+      - eval_time: 32m
+        alertname: CvgWriteQueueSaturated
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Escritas clínicas esperam em média mais de 400 ms na fila serial há 10 minutos: a carga se aproxima do limite medido."
+              runbook: "docs/operations/INCIDENT_RUNBOOKS.md#fila-de-escrita-saturada"

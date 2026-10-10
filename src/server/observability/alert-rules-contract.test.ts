@@ -3,7 +3,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
 import {
-  recordHttpRequest, recordReadinessFailure, recordRealtimeConnectionRejected, refreshOperationalMetrics,
+  recordHttpRequest, recordReadinessFailure, recordRealtimeConnectionRejected, recordWriteQueue, refreshOperationalMetrics,
   releaseRealtimeConnection, renderPrometheus, resetMetrics, tryAcquireRealtimeConnection
 } from "./metrics";
 
@@ -24,6 +24,8 @@ function renderedMetricNames(): Set<string> {
   recordRealtimeConnectionRejected("connection_limit");
   tryAcquireRealtimeConnection(10);
   refreshOperationalMetrics(createDemoState("alert-contract-password"), new Date(), { recollectionRate: undefined, resultViewLatencySeconds: undefined }, { pending: 0, deadLetters: 1 });
+  // What the metrics handler records from a PostgreSQL store (D-061).
+  recordWriteQueue({ inFlight: 0, completed: 1, waitMsTotal: 1, holdMsTotal: 1 });
   const rendered = renderPrometheus();
   releaseRealtimeConnection();
   return new Set(rendered.split("\n").filter((line) => line && !line.startsWith("#")).map((line) => line.split(/[{ ]/)[0]));

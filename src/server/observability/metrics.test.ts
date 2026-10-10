@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import { incrementGauge, recordAttachmentScan, recordCriticalReadiness, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
+import { incrementGauge, recordAttachmentScan, recordCriticalReadiness, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, recordWriteQueue, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
 
 describe("bounded metrics", () => {
   it("counts attachment scans by bounded verdict (PROD-308)", () => {
@@ -19,6 +19,24 @@ describe("bounded metrics", () => {
     expect(output).not.toContain("id-123");
     resetMetrics();
     expect(renderPrometheus()).toContain('cvg_attachment_scans_total{status="QUARANTINED"} 0');
+  });
+
+  it("exposes the serial write queue only once a store reports it, and drops a malformed report (D-061)", () => {
+    resetMetrics();
+    expect(renderPrometheus()).not.toContain("cvg_write_queue");
+    recordWriteQueue({ inFlight: 2, completed: 40, waitMsTotal: 1234.5678, holdMsTotal: 4000 });
+    const output = renderPrometheus();
+    expect(output).toContain("# TYPE cvg_write_queue_in_flight gauge");
+    expect(output).toContain("cvg_write_queue_in_flight 2");
+    expect(output).toContain("cvg_write_queue_wait_ms_sum 1234.568");
+    expect(output).toContain("cvg_write_queue_wait_ms_count 40");
+    expect(output).toContain("cvg_write_transaction_ms_sum 4000.000");
+    expect(output).toContain("cvg_write_transaction_ms_count 40");
+    recordWriteQueue({ inFlight: -1, completed: 40, waitMsTotal: Number.NaN, holdMsTotal: 4000 });
+    expect(renderPrometheus()).not.toContain("cvg_write_queue");
+    recordWriteQueue({ inFlight: 0, completed: 1, waitMsTotal: 1, holdMsTotal: 1 });
+    resetMetrics();
+    expect(renderPrometheus()).not.toContain("cvg_write_queue");
   });
 
   it("renders stable labels without identifiers or request payloads", () => {

@@ -1,4 +1,4 @@
-import type { ClinicalArchiveEntry, ClinicalArchiveOptions, ClinicalArchivePurgeOptions, ClinicalArchivePurgeSummary, ClinicalArchiveQuery, ClinicalArchiveRow, ClinicalArchiveSummary, AuditEntity, AuditMetrics, AuditMetricsQuery, AuditReadPage, AuditReadQuery, AuditTransactionReader, RuntimeRetentionOptions, RuntimeRetentionSummary, SessionActivity, StateStore, StoreState } from "../domain/models";
+import type { ClinicalArchiveEntry, ClinicalArchiveOptions, ClinicalArchivePurgeOptions, ClinicalArchivePurgeSummary, ClinicalArchiveQuery, ClinicalArchiveRow, ClinicalArchiveSummary, AuditEntity, AuditEvent, AuditMetrics, AuditMetricsQuery, AuditReadPage, AuditReadQuery, AuditTransactionReader, RuntimeRetentionOptions, RuntimeRetentionSummary, SessionActivity, StateStore, StoreState } from "../domain/models";
 import { auditPage } from "./audit-read";
 import { auditMetrics } from "../domain/audit-metrics";
 import { outboxMetrics, outboxPage } from "../domain/outbox-read";
@@ -66,6 +66,11 @@ export class MemoryStore implements StateStore {
 
   async outboxTransaction<T>(_query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T> {
     return this.transaction(operation);
+  }
+
+  /** The memory aggregate holds its audit trail, so the event is appended like any other change. */
+  async appendReadAudit(event: AuditEvent): Promise<void> {
+    await this.transaction((state) => ({ state: { ...state, auditEvents: [...state.auditEvents, event] }, result: undefined }));
   }
 
   async readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage> {
