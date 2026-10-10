@@ -85,7 +85,7 @@ describe("result correction notices (auditoria de 10/10/2026, D-055)", () => {
     const { store, service, vet, lab, onCall, release, notificationsOf, amend } = await released({ critical: true });
     const root = notificationsOf(vet.id).find((entry) => entry.category === "CRITICAL")!;
     const at = (minutes: number) => new Date(Date.parse(root.createdAt) + minutes * MINUTE);
-    expect(await runCriticalEscalation(store, { policy, now: at(16) })).toEqual({ due: 1, notified: 1 });
+    expect(await runCriticalEscalation(store, { policy, now: at(16) })).toEqual({ due: 1, notified: 1, unreachable: 0 });
     expect(notificationsOf(onCall.id)).toHaveLength(1);
 
     const amended = await amend();
