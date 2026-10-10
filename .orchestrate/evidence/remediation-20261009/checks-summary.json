@@ -1,0 +1,15 @@
+{
+  "head": "3d47f1fc3a92f697e4eb008a05694e91a9a4eab9",
+  "runtime": "Node22.23.2",
+  "typecheck": "exit0",
+  "lint": "exit0, no warnings",
+  "validate:docs": "exit0,89required files",
+  "validate:openapi": "exit0,86operations79paths,1oneOfwarning",
+  "validate:migrations": "exit0,001-017",
+  "unit": "exit0,2134/169files288.36s",
+  "postgres": "exit0,109/19files129.81s",
+  "config": "exit0,178native+7tsx",
+  "home-isolated": "exit0,3projects30.8s",
+  "staleCSVrepro": "exit1 expected regressionassertion, FIRSTremoved despite selectedCSVFIRST+SECOND",
+  "backupPartialRepro": "ship_exit0 health_exit0 remoteonlyWAL"
+}

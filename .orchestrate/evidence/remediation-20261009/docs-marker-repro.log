@@ -1,0 +1,4 @@
+Synthetic mirror of tracked tree; merge conflict markers appended only in mirror docs/GLOSSARY.md
+Documentation validation engine: rg
+Documentation validation PASS: 89 required files and cross-document gates checked (motor: rg).
+EXIT=0
