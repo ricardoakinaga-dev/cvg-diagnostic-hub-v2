@@ -114,6 +114,11 @@ done
 worker_container="$(compose ps -q worker || true)"
 [[ -n "$worker_container" && "$("$DOCKER" inspect --format '{{.State.Running}}' "$worker_container" 2>/dev/null || true)" == true ]] \
   || fail release.worker_down "worker is not running"
+# The containers that answer must be the release, not an older container Compose kept (audit of 2026-10-10).
+for container in "$app_container" "$worker_container"; do
+  running="$("$DOCKER" inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container" 2>/dev/null || true)"
+  [[ -n "$running" && "$running" == "$commit"* ]] || fail release.running_revision_mismatch "a running container is not built from commit $commit"
+done
 
 mkdir -p "$state_dir"
 previous="$(cat "$state_dir/$project.current" 2>/dev/null || true)"

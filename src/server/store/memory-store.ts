@@ -184,6 +184,8 @@ export class MemoryStore implements StateStore {
   ): Promise<T> {
     const run = this.queue.then(async () => {
       const outcome = await operation(this.state, { hasAuditEvent: async (query) => this.state.auditEvents.some((event) => event.eventType === query.eventType && event.entityType === query.entityType && event.entityId === query.entityId && event.actorId === query.actorId) });
+      // Like PostgreSQL, an unchanged state is not a write and does not move the version.
+      if (outcome.state === this.state) return outcome.result;
       const nextState = freezeState(outcome.state);
       const nextActivity = new Map(this.activity);
       const previousSessionIds = new Set(this.state.sessions.map((session) => session.id));

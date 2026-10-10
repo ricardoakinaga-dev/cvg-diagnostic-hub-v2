@@ -69,6 +69,14 @@ COPY --chown=node:node packages ./packages
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node src ./src
 
+# Provenance: the commit this image was built from, as an OCI label for `docker inspect` and in the process
+# environment for the startup log and the cvg_build_info metric. The release pipeline and
+# `SOURCE_REVISION=$(git rev-parse HEAD) docker compose build` set it; an unstamped build says "unknown".
+# Declared last, so a new commit only rebuilds this layer.
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+ENV CVG_BUILD_REVISION=$SOURCE_REVISION
+
 USER node
 
 CMD ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
@@ -94,6 +102,14 @@ RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack 
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
     && mkdir -p .data/uploads \
     && chown -R node:node .data
+
+# Provenance: the commit this image was built from, as an OCI label for `docker inspect` and in the process
+# environment for the startup log and the cvg_build_info metric. The release pipeline and
+# `SOURCE_REVISION=$(git rev-parse HEAD) docker compose build` set it; an unstamped build says "unknown".
+# Declared last, so a new commit only rebuilds this layer.
+ARG SOURCE_REVISION=unknown
+LABEL org.opencontainers.image.revision=$SOURCE_REVISION
+ENV CVG_BUILD_REVISION=$SOURCE_REVISION
 
 USER node
 

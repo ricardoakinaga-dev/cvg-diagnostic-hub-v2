@@ -86,6 +86,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getTimeline: "TimelineEventList",
   getDashboard: "DashboardView",
   getManagementOverview: "ManagementOverview",
+  getCriticalReadiness: "CriticalReadiness",
   listDeadLetters: "DeadLetterList",
   reprocessDeadLetter: "DeadLetterMutation",
   discardDeadLetter: "DeadLetterMutation"
@@ -449,6 +450,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   }),
   read("/dashboard", "getDashboard", "Read the operational dashboard", "Operations"),
   read("/management/overview", "getManagementOverview", "Read the management overview", "Operations"),
+  read("/critical-results/readiness", "getCriticalReadiness", "Read critical-result readiness: approved policy, redundant channel and on-call coverage by department", "Operations", { errorStatuses: [401, 404, 429, 500] }),
   read("/outbox/dead-letters", "listDeadLetters", "List outbox dead-letter messages", "Operations", { queryParameters: [{ name: "limit", schema: "Limit" }] }),
   command("POST", "/outbox/dead-letters/{messageId}/reprocess", "reprocessDeadLetter", "Reprocess an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
   command("POST", "/outbox/dead-letters/{messageId}/discard", "discardDeadLetter", "Discard an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
@@ -584,6 +586,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getTimeline: authorization(["timeline.view"], REQUEST),
   getDashboard: authorization(["dashboard.view"], DEPARTMENT),
   getManagementOverview: authorization(["dashboard.view", "user_role.manage"], [...DEPARTMENT, "role must be MANAGER"]),
+  getCriticalReadiness: authorization(["critical_result_policy.manage"], [...ROLE, "role must be ADMIN"]),
   listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
@@ -626,7 +629,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getReport: [401, 404, 429, 500], listAuditEvents: [400, 401, 404, 429, 500], listNotifications: [400, 401, 404, 429, 500],
   acknowledgeNotification: [400, 401, 403, 404, 409, 415, 429, 500], listQueueItems: [400, 401, 404, 429, 500],
   searchDiagnostics: [400, 401, 404, 429, 500], getTimeline: [400, 401, 404, 429, 500], getDashboard: [401, 404, 429, 500],
-  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500],
+  getManagementOverview: [401, 404, 429, 500], getCriticalReadiness: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500],
   verifyWhatsAppWebhook: [403, 404, 429, 500], receiveWhatsAppStatus: [400, 401, 404, 415, 429, 500]
 } satisfies Record<string, ReadonlyArray<number>>);
 

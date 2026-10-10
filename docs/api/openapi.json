@@ -22732,6 +22732,214 @@
         }
       }
     },
+    "/critical-results/readiness": {
+      "get": {
+        "operationId": "getCriticalReadiness",
+        "summary": "Read critical-result readiness: approved policy, redundant channel and on-call coverage by department",
+        "description": "Read critical-result readiness: approved policy, redundant channel and on-call coverage by department. Responses never expose internal exception or persistence details.",
+        "tags": [
+          "Operations"
+        ],
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "x-required-permissions": [
+          "critical_result_policy.manage"
+        ],
+        "x-conditional-permission-rules": [],
+        "x-authorization-conditions": [
+          "authenticated active session",
+          "permission is evaluated against the actor's current role",
+          "role must be ADMIN"
+        ],
+        "x-step-up-required": false,
+        "parameters": [
+          {
+            "name": "X-Correlation-Id",
+            "in": "header",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 100,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Operation completed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/getCriticalReadinessSuccessResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid or malformed request",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Authentication failed",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Resource or concealed route not found",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Rate limit exceeded",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected safe server error",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Required dependency is unavailable",
+            "headers": {
+              "X-Correlation-Id": {
+                "$ref": "#/components/headers/CorrelationId"
+              },
+              "Cache-Control": {
+                "required": true,
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "no-store"
+                  ]
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/outbox/dead-letters": {
       "get": {
         "operationId": "listDeadLetters",
@@ -29317,6 +29525,10 @@
               "lastEscalatedAt": {
                 "type": "string",
                 "format": "date-time"
+              },
+              "unreachableAt": {
+                "type": "string",
+                "format": "date-time"
               }
             }
           },
@@ -29536,6 +29748,132 @@
           "$ref": "#/components/schemas/DeadLetterMessage"
         },
         "maxItems": 100
+      },
+      "CriticalReadiness": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "asOf",
+          "policy",
+          "redundantChannel",
+          "onCall",
+          "administrators",
+          "ready"
+        ],
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "policy": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "OFF",
+                  "INVALID"
+                ]
+              },
+              "version": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100
+              },
+              "approvalRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          },
+          "redundantChannel": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "status"
+            ],
+            "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "WHATSAPP",
+                  "IN_APP_ONLY_ACCEPTED",
+                  "MISSING"
+                ]
+              },
+              "approvalRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            }
+          },
+          "onCall": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "departments",
+              "departmentsWithoutOnCall",
+              "total"
+            ],
+            "properties": {
+              "departments": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "departmentCode",
+                    "requesters",
+                    "onCall"
+                  ],
+                  "properties": {
+                    "departmentCode": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 60
+                    },
+                    "requesters": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "onCall": {
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  }
+                },
+                "maxItems": 100
+              },
+              "departmentsWithoutOnCall": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60
+                },
+                "maxItems": 100
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "administrators": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "ready": {
+            "type": "boolean"
+          }
+        }
       },
       "DeadLetterMutation": {
         "type": "object",
@@ -33722,6 +34060,22 @@
         "properties": {
           "data": {
             "$ref": "#/components/schemas/ManagementOverview"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/ResponseMeta"
+          }
+        }
+      },
+      "getCriticalReadinessSuccessResponse": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "data",
+          "meta"
+        ],
+        "properties": {
+          "data": {
+            "$ref": "#/components/schemas/CriticalReadiness"
           },
           "meta": {
             "$ref": "#/components/schemas/ResponseMeta"

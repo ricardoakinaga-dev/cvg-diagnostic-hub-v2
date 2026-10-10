@@ -156,6 +156,13 @@ describe("escalation ladder (PROD-402)", () => {
     expect(() => nextCriticalRecipients(context, policy({ recipientRules: [] }), new Set())).toThrow("CRITICAL_POLICY_RECIPIENT_RULES_EMPTY");
   });
 
+  it("falls back to any professional on call when the requesting department has nobody on call (D-056)", () => {
+    const withoutDepartmentOnCall = { ...context, candidates: people.filter((candidate) => !["on-call-a", "on-call-b"].includes(candidate.userId)) };
+    expect(nextCriticalRecipients(withoutDepartmentOnCall, ladder, new Set(["requester"]))).toEqual({ rule: "ON_CALL", recipients: [people.find((candidate) => candidate.userId === "on-call-away")] });
+    // With somebody on call in the department, the other departments are never reached by this rule.
+    expect(nextCriticalRecipients(context, ladder, new Set(["requester", "on-call-a", "on-call-b"]))?.rule).toBe("DEPARTMENT_MANAGER");
+  });
+
   it("keeps the single on-call recipient of the release-time resolution", () => {
     expect(resolveCriticalRecipients(context, policy({ recipientRules: ["ON_CALL", "ADMIN_FALLBACK"] })).map((candidate) => candidate.userId)).toEqual(["on-call-a"]);
   });

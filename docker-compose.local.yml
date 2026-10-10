@@ -114,7 +114,7 @@ services:
       retries: 6
 
   migrate:
-    build: { context: ., target: ops }
+    build: { context: ., target: ops, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
     image: cvg-diagnostic-local-ops:20261003
     command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
     environment:
@@ -155,7 +155,7 @@ services:
     cpus: 1
 
   app:
-    build: { context: ., target: runner }
+    build: { context: ., target: runner, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
     image: cvg-diagnostic-local:20261003
     restart: unless-stopped
     environment: *runtime-environment

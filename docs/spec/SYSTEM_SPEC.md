@@ -111,6 +111,7 @@ Toda command clínica segue a ordem:
 - apontar `result.current_version_id`;
 - atualizar item para `RESULT_AVAILABLE`;
 - invalidar revisão anterior quando emenda;
+- quando a versão liberada substitui outra (`supersedesId`), intitular a notificação como retificação e avisar também quem recebeu a versão anterior (D-055);
 - criar audit/domain events;
 - criar notification/outbox intents.
 
