@@ -6,7 +6,7 @@ import { outboxEnvelopeFor, type ClinicalArchiveEntry, type ClinicalArchiveOptio
 import { auditEventsForReset, postgresAuditTransactionReader, readPostgresAuditActors, readPostgresAuditEvents, readPostgresAuditMetrics } from "./postgres-audit-read";
 import type { OutboxMessage, OutboxTransactionQuery } from "../domain/models";
 import { outboxReadLimit } from "../domain/outbox-read";
-import { lockPostgresOutbox, outboxFromRow, prunePostgresOutbox, readPostgresOutbox, readPostgresOutboxMetrics, REALTIME_OUTBOX_SQL, RUNTIME_SEED_WITH_EVENTS_SQL, projectPostgresOutbox } from "./postgres-outbox-read";
+import { hasClaimablePostgresOutbox, lockPostgresOutbox, outboxFromRow, prunePostgresOutbox, readPostgresOutbox, readPostgresOutboxMetrics, REALTIME_OUTBOX_SQL, RUNTIME_SEED_WITH_EVENTS_SQL, projectPostgresOutbox } from "./postgres-outbox-read";
 import { assertRuntimeSchemaReady } from "./migrations";
 import {
   assertAuditEventsAppendOnly,
@@ -187,6 +187,10 @@ export class PostgresStore implements StateStore {
   }
 
   async outboxTransaction<T>(query: OutboxTransactionQuery, operation: (state: StoreState) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T> {
+    // An idle worker cycle must not queue behind, nor hold, the runtime row lock of the clinical writes.
+    if (query.kind === "claim" && !(await this.concurrent(() => hasClaimablePostgresOutbox(this.pool, query)))) {
+      return (await operation(freezeState({ ...this.cache.current().state, outbox: [] }))).result;
+    }
     return this.runExclusiveTransaction((_client, state) => operation(state), { outboxScope: query });
   }
 
@@ -440,6 +444,11 @@ export class PostgresStore implements StateStore {
           : baseState);
         const previousSessionIds = new Set(currentState.sessions.map((session) => session.id));
         const outcome = await operation(client, currentState);
+        // Nothing changed: no new version, no rewrite of the header or entity rows (D-059).
+        if (outcome.state === currentState) {
+          await client.query("COMMIT");
+          return outcome.result;
+        }
         const nextState = stateFromRow(outcome.state);
         assertAuditEventsAppendOnly(currentState, nextState);
         if (this.relationalClinicalCore) {

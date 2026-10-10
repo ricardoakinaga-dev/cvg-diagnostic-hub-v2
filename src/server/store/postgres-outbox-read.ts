@@ -39,13 +39,25 @@ export async function lockPostgresOutbox(client: PoolClient, query: OutboxTransa
     const result = await client.query<OutboxMessage>(`SELECT ${COLUMNS} FROM outbox_messages WHERE id = $1 FOR UPDATE`, [query.id]);
     return result.rows.map(outboxFromRow);
   }
+  return findClaimableOutbox(client, query, "FOR UPDATE SKIP LOCKED");
+}
+
+/**
+ * Most worker cycles find nothing to claim. Looking without any lock first lets such a cycle skip the
+ * runtime row lock that every clinical write waits on (audit of 2026-10-10, D-059).
+ */
+export async function hasClaimablePostgresOutbox(client: SqlQueryable, query: Extract<OutboxTransactionQuery, { kind: "claim" }>): Promise<boolean> {
+  return (await findClaimableOutbox(client, query, "")).length > 0;
+}
+
+async function findClaimableOutbox(client: SqlQueryable, query: Extract<OutboxTransactionQuery, { kind: "claim" }>, lock: "" | "FOR UPDATE SKIP LOCKED"): Promise<OutboxMessage[]> {
   let cursor = "0";
   for (;;) {
-    const result = await client.query<OutboxMessage & { position: string }>(`SELECT ${COLUMNS}, event_position::text AS position
+    const result = await client.query(`SELECT ${COLUMNS}, event_position::text AS position
       FROM outbox_messages WHERE event_position > $1::bigint AND
       ((status = 'PENDING' AND available_at <= $2::timestamptz) OR
        (status = 'PROCESSING' AND (locked_at IS NULL OR locked_at <= $2::timestamptz - $3::double precision * interval '1 millisecond')))
-      ORDER BY event_position LIMIT 100 FOR UPDATE SKIP LOCKED`, [cursor, query.now, query.leaseMs]);
+      ORDER BY event_position LIMIT 100 ${lock}`, [cursor, query.now, query.leaseMs]) as { rows: (OutboxMessage & { position: string })[] };
     for (const row of result.rows) {
       const { position, ...raw } = row;
       cursor = position;

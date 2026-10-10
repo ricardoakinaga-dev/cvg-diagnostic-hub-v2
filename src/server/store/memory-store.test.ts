@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { createDemoState } from "./fixtures";
 import { MemoryStore } from "./memory-store";
 import type { OutboxMessage } from "../domain/models";
+import { InProcessEventBus, processOutboxBatch } from "../operations/outbox";
 
 describe("memory store narrow seams", () => {
   it("exposes only replayable messages in creation order through the bounded outbox seams", async () => {
@@ -121,6 +122,16 @@ describe("memory store narrow seams", () => {
 
     await store.compactRuntimeState();
     expect(await store.readStateVersion()).toBe(4);
+  });
+
+  it("treats an unchanged state as no write: an idle worker cycle leaves the version alone (audit of 2026-10-10)", async () => {
+    const store = new MemoryStore(createDemoState("memory-store-idle-password"));
+    const before = await store.readStateSnapshot();
+    await expect(store.transaction((state) => ({ state, result: "unchanged" }))).resolves.toBe("unchanged");
+    expect(await processOutboxBatch(store, new InProcessEventBus(), { batchSize: 5 })).toEqual({ claimed: 0, processed: 0, retried: 0, failed: 0 });
+    const after = await store.readStateSnapshot();
+    expect(after.version).toBe(before.version);
+    expect(after.state).toBe(before.state);
   });
 
   it("fails the healthcheck for an aggregate that lost its shape", async () => {
