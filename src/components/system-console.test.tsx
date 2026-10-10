@@ -243,7 +243,7 @@ describe("SystemConsole", () => {
     expect(panel).toHaveTextContent("Política desligada");
     expect(panel).toHaveTextContent("Sem canal redundante nem aceite registrado");
     expect(panel).toHaveTextContent("Ninguém de plantão");
-    expect(panel).toHaveTextContent("Sem plantonista: INPATIENT");
+    expect(panel).toHaveTextContent("Sem plantonista próprio (a escada cai na reserva de todo o hospital): INPATIENT");
     expect(panel).toHaveTextContent("Nenhum administrador ativo");
   });
 
