@@ -20998,7 +20998,8 @@
         "x-conditional-permission-rules": [],
         "x-authorization-conditions": [
           "authenticated active session",
-          "permission is evaluated against the actor's current role"
+          "permission is evaluated against the actor's current role",
+          "only notifications whose result or request the actor can still open are listed"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -21229,7 +21230,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "notification must belong to the actor; a manager may use authorized request context"
+          "notification must belong to the actor and its result or request stay open to them; a manager may use authorized request context"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
