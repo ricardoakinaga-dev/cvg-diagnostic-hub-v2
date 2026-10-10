@@ -158,6 +158,39 @@ describe("PROD-102 PostgreSQL outbox read authority", () => {
 
   });
 
+  it("runs an idle worker cycle without waiting for, taking or rewriting the runtime row, and still claims due work (audit of 2026-10-10)", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      // Domain history is PENDING forever and no worker sink accepts it: the cycle has nothing to do.
+      const store = await database.createStore(fixture([message("domain-history")]));
+      const sink = postgresSink(database);
+      const row = async () => (await database.query("SELECT version::text, updated_at FROM cvg_runtime_state WHERE id = 1")).rows[0];
+      const before = await row();
+      const holder = new Pool({ connectionString: database.connectionString(), max: 1 });
+      const client = await holder.connect();
+      try {
+        // A clinical write holds the runtime row lock for as long as it runs.
+        await client.query("BEGIN");
+        await client.query("SELECT version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE");
+        const idle = processOutboxBatch(store, sink, { now: () => NOW, workerId: "idle-worker", batchSize: 5 });
+        const timeout = new Promise((resolve) => setTimeout(() => resolve("blocked"), 3_000));
+        await expect(Promise.race([idle, timeout])).resolves.toEqual({ claimed: 0, processed: 0, retried: 0, failed: 0 });
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+        await holder.end();
+      }
+      await expect(store.transaction((state) => ({ state, result: "unchanged" }))).resolves.toBe("unchanged");
+      expect(await row()).toEqual(before);
+      expect(await database.query("SELECT status, attempts FROM outbox_messages WHERE id = 'domain-history'")).toEqual({ rows: [{ status: "PENDING", attempts: 0 }], rowCount: 1 });
+
+      await store.transaction((state) => ({ state: { ...state, notifications: [notification("notification-due")], outbox: [delivery("due")] }, result: undefined }));
+      expect(await processOutboxBatch(store, sink, { now: () => NOW, workerId: "busy-worker", batchSize: 5 })).toEqual({ claimed: 1, processed: 1, retried: 0, failed: 0 });
+      // The write, the claim and the completion are the only new versions.
+      expect(await row()).toMatchObject({ version: String(Number((before as { version: string }).version) + 3) });
+      await database.closeStore(store);
+    });
+  });
+
   it("serializes concurrent worker claims, selects supported due routes, and persists one delivery and audit per notification", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       const entries = [message("unsupported"), delivery("future", { availableAt: "2026-10-05T12:00:00.000Z" }), delivery("worker-a"), delivery("worker-b")];

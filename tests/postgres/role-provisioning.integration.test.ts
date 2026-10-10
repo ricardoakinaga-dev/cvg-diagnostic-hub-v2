@@ -85,14 +85,30 @@ describe("production role provisioning from a single-superuser installation", ()
         await runtimePool.end();
       }
 
-      // Idempotent re-run with rotated passwords: the old password stops working, the new one works.
+      // Idempotent re-run with rotated passwords: the stored verifier changes, the old password stops working
+      // and the new one works.
+      const verifier = async () => (await database.query("SELECT rolpassword FROM pg_authid WHERE rolname = $1", [runtime])).rows[0];
+      const connects = async (password: string) => {
+        const pool = new Pool({ connectionString: urlFor(adminUrl, runtime, password), max: 1 });
+        // The disposable database is dropped with this idle connection still open.
+        pool.on("error", () => undefined);
+        try {
+          await pool.query("SELECT 1");
+          return true;
+        } catch (error) {
+          if ((error as { code?: string }).code === "28P01") return false;
+          throw error;
+        } finally {
+          await pool.end().catch(() => undefined);
+        }
+      };
+      const previous = await verifier();
       await provision("migrator-pass-2", "runtime-pass-2");
-      const stale = new Pool({ connectionString: urlFor(adminUrl, runtime, "runtime-pass-1"), max: 1 });
-      await expect(stale.query("SELECT 1")).rejects.toMatchObject({ code: "28P01" });
-      await stale.end().catch(() => undefined);
-      const fresh = new Pool({ connectionString: urlFor(adminUrl, runtime, "runtime-pass-2"), max: 1 });
-      await expect(fresh.query("SELECT 1 AS ok")).resolves.toMatchObject({ rows: [{ ok: 1 }] });
-      await fresh.end();
+      expect(await verifier()).not.toEqual(previous);
+      // Only a server that checks passwords on this connection can refuse the old one: the official image
+      // trusts 127.0.0.1 when it runs on the host network (audit of 2026-10-10).
+      if (!(await connects("not-the-runtime-password"))) expect(await connects("runtime-pass-1")).toBe(false);
+      expect(await connects("runtime-pass-2")).toBe(true);
 
       await expect(provisionDatabaseRoles({ adminUrl, migrationUrl: urlFor(adminUrl, migrator, "x"), runtimeUrl: urlFor(adminUrl, migrator, "y") }))
         .rejects.toThrow("DATABASE_ROLES_MUST_BE_SEPARATE");
