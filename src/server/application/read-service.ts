@@ -10,6 +10,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import { decodeQueueCursor, encodeQueueCursor } from "./queue-pagination";
 import * as helpers from "./service-common";
 import { auditScopeForActor, requestAuditScope } from "./audit-read";
+import { canViewNotification } from "./notification-visibility";
 import { encountersForPatient, findById, samplesForItem } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
@@ -225,7 +226,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const limit = pageSize(options.limit);
       const cursor = decodeRequestCursor(options.cursor);
       const notifications = state.notifications
-        .filter((notification) => notification.recipientUserId === currentActor.id)
+        .filter((notification) => notification.recipientUserId === currentActor.id && canViewNotification(state, currentActor, notification))
         .filter((notification) => filter === "ALL" || (filter === "UNREAD" && notification.state !== "SEEN" && notification.state !== "ACKNOWLEDGED" && notification.state !== "SUPERSEDED") || (filter === "ACTIONABLE" && notification.category === "ACTIONABLE") || (filter === "CRITICAL" && notification.category === "CRITICAL"))
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.id.localeCompare(right.id));
       const afterCursor = cursor
@@ -261,6 +262,8 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         if (notification.recipientUserId !== currentActor.id) {
           const request = requestForNotification(originalState, notification);
           if (currentActor.role !== "MANAGER" || !request || !hasManagerRequestContext(originalState, currentActor, request)) throw new ApiError("NOT_FOUND", "Notificação não encontrada.", 404);
+        } else if (!canViewNotification(originalState, currentActor, notification)) {
+          throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
         }
         if (notification.category === "CRITICAL" && notification.entityType === "RESULT_VERSION") {
           // AUD-02: confirming stops the escalation, so only someone who can open the result may confirm it.
@@ -470,7 +473,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const terminalStatuses = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
       const activeItems = visibleItems.filter((item) => !terminalStatuses.has(item.status));
       const laboratoryItems = visibleItems.filter((item) => item.workflowType === "LABORATORY");
-      const criticalNotifications = state.notifications.filter((notification) => notification.recipientUserId === currentActor.id && notification.category === "CRITICAL");
+      const criticalNotifications = state.notifications.filter((notification) => notification.recipientUserId === currentActor.id && notification.category === "CRITICAL" && canViewNotification(state, currentActor, notification));
       const overdue = activeItems.filter((item) => new Date(item.dueAt).getTime() < currentTime).length;
       const recollections = visibleItems.filter((item) => item.status === "RECOLLECTION_REQUIRED").length;
       const newResults = visibleItems.filter((item) => item.status === "RESULT_AVAILABLE").length;

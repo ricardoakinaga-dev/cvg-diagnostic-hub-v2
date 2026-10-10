@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:config": "node --test scripts/next-config.test.mjs scripts/eslint-glob.test.mjs scripts/privacy-scan.test.mjs scripts/backup-wal.test.mjs scripts/scanner.test.mjs scripts/release-deploy.test.mjs && node --import tsx --test scripts/demo-workload.test.ts scripts/catalog-import.test.ts",
+    "test:config": "node --test scripts/next-config.test.mjs scripts/eslint-glob.test.mjs scripts/privacy-scan.test.mjs scripts/backup-wal.test.mjs scripts/scanner.test.mjs scripts/release-deploy.test.mjs scripts/installation-provenance.test.mjs scripts/outbox-worker-boot.test.mjs && node --import tsx --test scripts/demo-workload.test.ts scripts/catalog-import.test.ts",
     "vendor:fast-glob": "node scripts/vendor-fast-glob.mjs",
     "test:coverage": "node scripts/test-coverage.mjs && npm run coverage:gate",
     "test:coverage:unit": "vitest run --coverage",

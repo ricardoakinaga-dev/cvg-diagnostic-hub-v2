@@ -86,6 +86,7 @@ export const API_SUCCESS_DATA_SCHEMAS = Object.freeze({
   getTimeline: "TimelineEventList",
   getDashboard: "DashboardView",
   getManagementOverview: "ManagementOverview",
+  getCriticalReadiness: "CriticalReadiness",
   listDeadLetters: "DeadLetterList",
   reprocessDeadLetter: "DeadLetterMutation",
   discardDeadLetter: "DeadLetterMutation"
@@ -156,7 +157,8 @@ export type ApiAuthorizationCondition =
   | "x-duplicate-override=true additionally requires request.duplicate_override"
   | "the result state selects result.view or result.draft.edit_own"
   | "the result state selects result.view or result.draft.edit_own and attachment.view is always required"
-  | "notification must belong to the actor; a manager may use authorized request context"
+  | "only notifications whose result or request the actor can still open are listed"
+  | "notification must belong to the actor and its result or request stay open to them; a manager may use authorized request context"
   | "role must be MANAGER"
   | "patient must be active and have no open encounter"
   | "encounter must be OPEN; pending diagnostic items stay with the requester"
@@ -448,6 +450,7 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
   }),
   read("/dashboard", "getDashboard", "Read the operational dashboard", "Operations"),
   read("/management/overview", "getManagementOverview", "Read the management overview", "Operations"),
+  read("/critical-results/readiness", "getCriticalReadiness", "Read critical-result readiness: approved policy, redundant channel and on-call coverage by department", "Operations", { errorStatuses: [401, 404, 429, 500] }),
   read("/outbox/dead-letters", "listDeadLetters", "List outbox dead-letter messages", "Operations", { queryParameters: [{ name: "limit", schema: "Limit" }] }),
   command("POST", "/outbox/dead-letters/{messageId}/reprocess", "reprocessDeadLetter", "Reprocess an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
   command("POST", "/outbox/dead-letters/{messageId}/discard", "discardDeadLetter", "Discard an outbox dead-letter message", "Operations", jsonBody("DeadLetterCommand"), { headers: [IDEMPOTENCY_REQUIRED], errorStatuses: [400, 401, 403, 404, 409, 415, 429, 500] }),
@@ -576,13 +579,14 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
     { when: "current result version status is RELEASED", allOf: ["result.view"] }
   ]),
   listAuditEvents: authorization(["audit.view"], DEPARTMENT),
-  listNotifications: authorization(["notification.view"], ROLE),
-  acknowledgeNotification: authorization(["notification.view", "notification.acknowledge"], [...ROLE, "notification must belong to the actor; a manager may use authorized request context"]),
+  listNotifications: authorization(["notification.view"], [...ROLE, "only notifications whose result or request the actor can still open are listed"]),
+  acknowledgeNotification: authorization(["notification.view", "notification.acknowledge"], [...ROLE, "notification must belong to the actor and its result or request stay open to them; a manager may use authorized request context"]),
   listQueueItems: authorization(["queue.view"], DEPARTMENT),
   searchDiagnostics: authorization(["search.execute"], REQUEST),
   getTimeline: authorization(["timeline.view"], REQUEST),
   getDashboard: authorization(["dashboard.view"], DEPARTMENT),
   getManagementOverview: authorization(["dashboard.view", "user_role.manage"], [...DEPARTMENT, "role must be MANAGER"]),
+  getCriticalReadiness: authorization(["critical_result_policy.manage"], [...ROLE, "role must be ADMIN"]),
   listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
   discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
@@ -625,7 +629,7 @@ const ERROR_STATUSES_BY_OPERATION = Object.freeze({
   getReport: [401, 404, 429, 500], listAuditEvents: [400, 401, 404, 429, 500], listNotifications: [400, 401, 404, 429, 500],
   acknowledgeNotification: [400, 401, 403, 404, 409, 415, 429, 500], listQueueItems: [400, 401, 404, 429, 500],
   searchDiagnostics: [400, 401, 404, 429, 500], getTimeline: [400, 401, 404, 429, 500], getDashboard: [401, 404, 429, 500],
-  getManagementOverview: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500],
+  getManagementOverview: [401, 404, 429, 500], getCriticalReadiness: [401, 404, 429, 500], listDeadLetters: [400, 401, 403, 404, 429, 500], reprocessDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], discardDeadLetter: [400, 401, 403, 404, 409, 415, 429, 500], streamRealtimeEvents: [400, 401, 404, 429, 500],
   verifyWhatsAppWebhook: [403, 404, 429, 500], receiveWhatsAppStatus: [400, 401, 404, 415, 429, 500]
 } satisfies Record<string, ReadonlyArray<number>>);
 

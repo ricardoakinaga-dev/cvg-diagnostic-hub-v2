@@ -78,6 +78,36 @@ groups:
           summary: "Conexões de tempo real recusadas por limite de capacidade nos últimos 10 minutos."
           runbook: "docs/operations/INCIDENT_RUNBOOKS.md#realtime-degradado"
 
+  - name: cvg-hub-clinical
+    rules:
+      # D-056: a critical result that climbed the ladder and is still unacknowledged is a clinical incident,
+      # owned by the clinical direction / sector manager, not by TI.
+      - alert: CvgCriticalUnacknowledged
+        expr: cvg_critical_unacknowledged > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Há resultado crítico escalonado e ainda sem confirmação: localizar o destinatário ou o plantão e registrar a confirmação."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário"
+      - alert: CvgCriticalUnreachable
+        expr: cvg_critical_unreachable > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "A escada do crítico não alcançou ninguém (sem plantonista nem gestor): a administração foi avisada e precisa acionar o setor por telefone."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário"
+      - alert: CvgCriticalReadinessDegraded
+        expr: |
+          min(cvg_critical_readiness{check!="policy"}) == 0
+            and on() cvg_critical_readiness{check="policy"} == 1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Política de crítico ativa sem canal redundante aceito ou sem plantonista em algum setor solicitante por 15 minutos."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário"
+
   - name: cvg-hub-security
     rules:
       - alert: CvgAttachmentQuarantined

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
-import { incrementGauge, recordAttachmentScan, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, recordWriteQueue, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
+import { incrementGauge, recordAttachmentScan, recordCriticalReadiness, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, recordWriteQueue, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
 
 describe("bounded metrics", () => {
   it("counts attachment scans by bounded verdict (PROD-308)", () => {
@@ -251,5 +251,35 @@ describe("bounded metrics", () => {
     expect(output).toContain("cvg_login_distributed_attempt_signals_total 2");
     resetMetrics();
     expect(renderPrometheus()).toContain("cvg_login_distributed_attempt_signals_total 0");
+  });
+
+  it("renders the critical-result gauges and readiness checks from the state and the environment (D-056)", () => {
+    resetMetrics();
+    const state = createDemoState("metrics-critical-password");
+    const root = { id: "notification-root", category: "CRITICAL" as const, priority: "URGENT" as const, recipientUserId: "user-vet", entityType: "RESULT_VERSION" as const, entityId: "result-version-1", deepLink: "/results/result-1", title: "Resultado crítico requer confirmação", body: "x", dedupeKey: "release:result-version-1:user-vet", state: "DELIVERED" as const, createdAt: "2026-10-10T10:00:00.000Z", attempts: 1, version: 1 };
+    state.notifications = [
+      root,
+      { ...root, id: "notification-escalated", dedupeKey: "release:result-version-2:user-vet", entityId: "result-version-2", escalation: { level: 1, lastEscalatedAt: "2026-10-10T10:16:00.000Z" } },
+      { ...root, id: "notification-copy", recipientUserId: "user-vet-on-call", dedupeKey: "escalation:x", entityId: "result-version-2", escalationOf: "notification-escalated" },
+      { ...root, id: "notification-unreachable", dedupeKey: "release:result-version-3:user-vet", entityId: "result-version-3", escalation: { level: 2, lastEscalatedAt: "2026-10-10T10:31:00.000Z", unreachableAt: "2026-10-10T10:31:00.000Z" } },
+      { ...root, id: "notification-acked", dedupeKey: "release:result-version-4:user-vet", entityId: "result-version-4", escalation: { level: 3, lastEscalatedAt: "2026-10-10T11:00:00.000Z", unreachableAt: "2026-10-10T11:00:00.000Z" } },
+      { ...root, id: "notification-acked-copy", recipientUserId: "user-manager", dedupeKey: "escalation:y", entityId: "result-version-4", escalationOf: "notification-acked", state: "ACKNOWLEDGED" as const }
+    ];
+    refreshOperationalMetrics(state, new Date("2026-10-10T12:00:00.000Z"));
+    let output = renderPrometheus();
+    expect(output).toContain("cvg_critical_unacknowledged 2");
+    expect(output).toContain("cvg_critical_unreachable 1");
+    expect(output).toContain('cvg_critical_readiness{check="on_call"} 0');
+    expect(output).toContain('cvg_critical_readiness{check="policy"} 0');
+    expect(output).toContain('cvg_critical_readiness{check="redundant_channel"} 0');
+    expect(output).not.toContain("notification-root");
+
+    recordCriticalReadiness({ policy: 1, redundant_channel: 1, on_call: 1 });
+    output = renderPrometheus();
+    expect(output).toContain('cvg_critical_readiness{check="on_call"} 1');
+    expect(output).toContain('cvg_critical_readiness{check="policy"} 1');
+    expect(output).toContain('cvg_critical_readiness{check="redundant_channel"} 1');
+    resetMetrics();
+    expect(renderPrometheus()).toContain('cvg_critical_readiness{check="policy"} 0');
   });
 });

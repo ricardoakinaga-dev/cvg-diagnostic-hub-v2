@@ -152,6 +152,74 @@ tests:
         alertname: CvgAttachmentQuarantined
         exp_alerts: []
 
+  - name: critical results without acknowledgement or recipient alert the clinical owners (D-056)
+    interval: 30s
+    input_series:
+      - series: 'cvg_critical_unacknowledged{job="cvg-hub"}'
+        values: "0x10 1x20 0x10"
+      - series: 'cvg_critical_unreachable{job="cvg-hub"}'
+        values: "0x20 1x10 0x10"
+      - series: 'cvg_critical_readiness{job="cvg-hub",check="policy"}'
+        values: "1x80"
+      - series: 'cvg_critical_readiness{job="cvg-hub",check="redundant_channel"}'
+        values: "1x80"
+      - series: 'cvg_critical_readiness{job="cvg-hub",check="on_call"}'
+        values: "1x10 0x40 1x30"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: CvgCriticalUnacknowledged
+        exp_alerts: []
+      - eval_time: 7m
+        alertname: CvgCriticalUnacknowledged
+        exp_alerts:
+          - exp_labels: { severity: critical, job: cvg-hub }
+            exp_annotations:
+              summary: "Há resultado crítico escalonado e ainda sem confirmação: localizar o destinatário ou o plantão e registrar a confirmação."
+              runbook: "docs/operations/INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário"
+      - eval_time: 16m
+        alertname: CvgCriticalUnacknowledged
+        exp_alerts: []
+      - eval_time: 9m
+        alertname: CvgCriticalUnreachable
+        exp_alerts: []
+      - eval_time: 11m
+        alertname: CvgCriticalUnreachable
+        exp_alerts:
+          - exp_labels: { severity: critical, job: cvg-hub }
+            exp_annotations:
+              summary: "A escada do crítico não alcançou ninguém (sem plantonista nem gestor): a administração foi avisada e precisa acionar o setor por telefone."
+              runbook: "docs/operations/INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário"
+      - eval_time: 16m
+        alertname: CvgCriticalUnreachable
+        exp_alerts: []
+      - eval_time: 10m
+        alertname: CvgCriticalReadinessDegraded
+        exp_alerts: []
+      - eval_time: 21m
+        alertname: CvgCriticalReadinessDegraded
+        exp_alerts:
+          - exp_labels: { severity: warning }
+            exp_annotations:
+              summary: "Política de crítico ativa sem canal redundante aceito ou sem plantonista em algum setor solicitante por 15 minutos."
+              runbook: "docs/operations/INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário"
+      - eval_time: 30m
+        alertname: CvgCriticalReadinessDegraded
+        exp_alerts: []
+
+  - name: an inactive critical policy does not report degraded readiness
+    interval: 30s
+    input_series:
+      - series: 'cvg_critical_readiness{job="cvg-hub",check="policy"}'
+        values: "0x80"
+      - series: 'cvg_critical_readiness{job="cvg-hub",check="redundant_channel"}'
+        values: "0x80"
+      - series: 'cvg_critical_readiness{job="cvg-hub",check="on_call"}'
+        values: "0x80"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: CvgCriticalReadinessDegraded
+        exp_alerts: []
+
   - name: the serial write queue alert fires only on a sustained mean wait (D-061)
     interval: 30s
     input_series:

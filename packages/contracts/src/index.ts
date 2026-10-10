@@ -316,6 +316,16 @@ export interface DeadLetterMutationResult {
 
 export type DeadLetterList = DeadLetterMessage[];
 
+/** GET /critical-results/readiness (D-056): can a critical result released now reach someone beyond the requester? */
+export interface CriticalReadiness {
+  asOf: string;
+  policy: { status: "ACTIVE" | "OFF" | "INVALID"; version?: string; approvalRef?: string };
+  redundantChannel: { status: "WHATSAPP" | "IN_APP_ONLY_ACCEPTED" | "MISSING"; approvalRef?: string };
+  onCall: { departments: Array<{ departmentCode: string; requesters: number; onCall: number }>; departmentsWithoutOnCall: string[]; total: number };
+  administrators: number;
+  ready: boolean;
+}
+
 export interface Patient {
   id: string;
   displayName: string;
@@ -423,7 +433,8 @@ export interface Notification {
   version: number;
   /** PROD-402: redundant WhatsApp alert of a critical notification. */
   whatsapp?: { status: "QUEUED" | "SENT" | "DELIVERED" | "READ" | "FAILED" | "SKIPPED"; updatedAt: string; messageId?: string; errorCode?: string };
-  escalation?: { level: number; lastEscalatedAt: string };
+  /** PROD-402: escalation level reached; `unreachableAt` marks the level at which nobody clinical could be notified (D-056). */
+  escalation?: { level: number; lastEscalatedAt: string; unreachableAt?: string };
   escalationOf?: string;
 }
 

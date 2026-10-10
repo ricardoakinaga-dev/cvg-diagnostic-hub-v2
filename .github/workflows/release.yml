@@ -65,11 +65,13 @@ jobs:
         run: |
           set -Eeuo pipefail
           labels=(--label "org.opencontainers.image.revision=$COMMIT" --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.created=$CREATED")
+          # The running app and worker report the same commit (startup log, cvg_build_info), not only the label.
+          stamp=(--build-arg "SOURCE_REVISION=$COMMIT")
           # Base images and the Dockerfile frontend come from Google's Docker Hub mirror: Docker Hub rate-limits and refuses
           # anonymous pulls from shared runner IPs (scripts/ci-docker-build.sh, same as CI).
           export DOCKER_HUB_MIRROR=mirror.gcr.io
-          bash scripts/ci-docker-build.sh --pull "${labels[@]}" --tag "$PREFIX:$TAG" .
-          bash scripts/ci-docker-build.sh --target ops "${labels[@]}" --tag "$PREFIX-ops:$TAG" .
+          bash scripts/ci-docker-build.sh --pull "${labels[@]}" "${stamp[@]}" --tag "$PREFIX:$TAG" .
+          bash scripts/ci-docker-build.sh --target ops "${labels[@]}" "${stamp[@]}" --tag "$PREFIX-ops:$TAG" .
           # On-prem object storage (docker-compose.onprem.yml, D-050): MinIO built from the pinned source with the
           # dependency bumps of deploy/minio/Dockerfile, released with the same commit tag so deploy.sh pulls it too.
           bash scripts/ci-docker-build.sh --file deploy/minio/Dockerfile "${labels[@]}" --tag "$PREFIX-minio:$TAG" .

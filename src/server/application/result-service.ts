@@ -11,7 +11,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import { withCriticalWhatsAppAlert } from "./critical-alert-channel";
 import * as helpers from "./service-common";
 import { reprojectCommandRequest } from "./request-projection";
-import { findById } from "../domain/state-index";
+import { findById, resultVersionsForResult } from "../domain/state-index";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -138,6 +138,52 @@ function supersedeCriticalNotifications(state: StoreState, resultVersionId: stri
       ...affected.map((notification) => createAudit("CriticalNotificationSuperseded", actorId, "Notification", notification.id, correlationId, notification.state, "SUPERSEDED", { resultVersionId }))
     ]
   };
+}
+
+/**
+ * Everyone who received a notification about any version of this result: the requester, the professionals
+ * reached by a critical escalation, managers... A correction or an invalidation must reach the same people,
+ * not only the requester (auditoria de 10/10/2026). Deactivated accounts are left out.
+ */
+function priorResultRecipients(state: StoreState, resultId: string, excludeUserId?: string): User[] {
+  const versionIds = new Set(resultVersionsForResult(state, resultId).map((version) => version.id));
+  const recipientIds = new Set(
+    state.notifications
+      .filter((notification) => notification.entityType === "RESULT_VERSION" && versionIds.has(notification.entityId))
+      .map((notification) => notification.recipientUserId)
+  );
+  return [...recipientIds]
+    .filter((userId) => userId !== excludeUserId)
+    .sort()
+    .map((userId) => findById(state.users, userId))
+    .filter((user): user is User => Boolean(user && user.active !== false));
+}
+
+type ResultNoticeTemplate = Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version" | "recipientUserId" | "dedupeKey">;
+
+/**
+ * One in-app notification and one durable delivery intent per recipient, in the same transaction as the
+ * clinical change. The dedupe key keeps a repeated command from notifying anyone twice.
+ */
+function notifyResultRecipients(
+  state: StoreState,
+  recipients: readonly User[],
+  template: ResultNoticeTemplate,
+  dedupePrefix: string,
+  eventType: string,
+  correlationId: string,
+  payload: Record<string, unknown>
+): StoreState {
+  let nextState = state;
+  for (const recipient of recipients) {
+    const dedupeKey = `${dedupePrefix}:${recipient.id}`;
+    const before = nextState.notifications.length;
+    nextState = notificationFor(nextState, { ...template, recipientUserId: recipient.id, dedupeKey });
+    if (nextState.notifications.length === before) continue;
+    const created = nextState.notifications.at(-1)!;
+    nextState = { ...nextState, outbox: [...nextState.outbox, createOutbox(eventType, "Notification", created.id, correlationId, { ...payload, notificationId: created.id, recipientUserId: recipient.id })] };
+  }
+  return nextState;
 }
 
 function requireResultMutationPermission(
@@ -337,10 +383,22 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const correlationId = input.correlationId ?? id("corr");
         let nextState = nextRequestState({ ...releaseState, results: releaseState.results.map((entry) => entry.id === result.id ? releasedResult : entry), resultVersions: releaseState.resultVersions.map((entry) => entry.id === view.version.id ? releasedVersion : entry) }, view.request, [releasedItem]);
         const requester = findOrThrow(findById(releaseState.users, view.request.requesterId));
-        const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: releasedVersion.critical ? "CRITICAL" : "ACTIONABLE", priority: releasedVersion.critical ? "URGENT" : "HIGH", recipientUserId: requester.id, entityType: "RESULT_VERSION", entityId: releasedVersion.id, deepLink: `/results/${result.id}`, title: releasedVersion.critical ? "Resultado crítico requer confirmação" : "Resultado disponível", body: `${view.patient.displayName} · ${view.service.name} · versão ${releasedVersion.sequence} liberada.`, dedupeKey: `release:${releasedVersion.id}:${requester.id}` };
+        // A version that supersedes another is a correction: the requester, and everyone who saw the earlier
+        // version, learn that the result they hold has changed (D-055).
+        const corrected = releasedVersion.supersedesId !== undefined;
+        const releaseTitle = releasedVersion.critical
+          ? (corrected ? "Resultado crítico retificado requer confirmação" : "Resultado crítico requer confirmação")
+          : (corrected ? "Resultado retificado" : "Resultado disponível");
+        const releaseBody = `${view.patient.displayName} · ${view.service.name} · versão ${releasedVersion.sequence} ${corrected ? "retificada e liberada" : "liberada"}.`;
+        const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: releasedVersion.critical ? "CRITICAL" : "ACTIONABLE", priority: releasedVersion.critical ? "URGENT" : "HIGH", recipientUserId: requester.id, entityType: "RESULT_VERSION", entityId: releasedVersion.id, deepLink: `/results/${result.id}`, title: releaseTitle, body: releaseBody, dedupeKey: `release:${releasedVersion.id}:${requester.id}` };
         nextState = notificationFor(nextState, notification);
         const notificationId = nextState.notifications.find((entry) => entry.dedupeKey === notification.dedupeKey && entry.recipientUserId === notification.recipientUserId)?.id;
         nextState = withCriticalWhatsAppAlert(nextState, notificationId, view.request, correlationId);
+        if (corrected) {
+          nextState = notifyResultRecipients(nextState, priorResultRecipients(nextState, result.id, requester.id), {
+            category: "ACTIONABLE", priority: "HIGH", entityType: "RESULT_VERSION", entityId: releasedVersion.id, deepLink: `/results/${result.id}`, title: "Resultado retificado", body: releaseBody
+          }, `release:${releasedVersion.id}`, "ResultReleased", correlationId, { resultId: result.id, versionId: releasedVersion.id, supersedesId: releasedVersion.supersedesId, critical: releasedVersion.critical });
+        }
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("ResultReleased", currentActor.id, "ResultVersion", releasedVersion.id, correlationId, "DRAFT", "RELEASED", { resultId, critical: releasedVersion.critical }), createAudit("DiagnosticItemResultAvailable", currentActor.id, "DiagnosticRequestItem", releasedItem.id, correlationId, view.item.status, releasedItem.status, {})], outbox: [...nextState.outbox, createOutbox("ResultReleased", "Result", result.id, correlationId, { versionId: releasedVersion.id, critical: releasedVersion.critical, ...(notificationId ? { notificationId } : {}) })] };
         const response = { result: releasedResult, version: releasedVersion, item: releasedItem, request: requestViewForActor(nextState, currentActor, requestFor(nextState, view.request.id)) };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, response, { resultId, input }), result: response };
@@ -367,6 +425,13 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const amendedItem = { ...view.item, status: transitionItem(view.item.status, "RESULT_VOIDED", view.item.workflowType), version: view.item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         let nextState = supersedeCriticalNotifications(nextRequestState({ ...originalState, results: originalState.results.map((entry) => entry.id === result.id ? amendedResult : entry), resultVersions: [...originalState.resultVersions.map((entry) => entry.id === view.version.id ? supersededVersion : entry), nextVersion] }, view.request, [amendedItem]), view.version.id, currentActor.id, correlationId);
+        // The superseded version is no longer valid and the corrected one is not released yet: everyone who
+        // received the earlier version must stop acting on it now, not when the correction is released (D-055).
+        const requester = findOrThrow(findById(originalState.users, view.request.requesterId));
+        nextState = notifyResultRecipients(nextState, [requester, ...priorResultRecipients(nextState, result.id, requester.id)], {
+          category: "ACTIONABLE", priority: view.version.critical ? "URGENT" : "HIGH", entityType: "RESULT_VERSION", entityId: supersededVersion.id, deepLink: `/results/${result.id}`,
+          title: "Resultado em retificação", body: `${view.patient.displayName} · ${view.service.name} · versão ${supersededVersion.sequence} substituída: aguarde a nova liberação antes de agir.`
+        }, `amend:${supersededVersion.id}`, "ResultAmended", correlationId, { resultId: result.id, versionId: nextVersion.id, supersedesId: supersededVersion.id });
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("ResultAmended", currentActor.id, "ResultVersion", nextVersion.id, correlationId, view.version.status, "DRAFT", { resultId, supersedesId: view.version.id, reason })], outbox: [...nextState.outbox, createOutbox("ResultAmended", "Result", result.id, correlationId, { versionId: nextVersion.id, supersedesId: view.version.id })] };
         const response = { result: amendedResult, version: nextVersion, previousVersion: supersededVersion, item: amendedItem, request: requestViewForActor(nextState, currentActor, requestFor(nextState, view.request.id)) };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, response, { resultId, input }), result: response };
@@ -395,6 +460,9 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: "ACTIONABLE", priority: "HIGH", recipientUserId: requester.id, entityType: "RESULT_VERSION", entityId: voidedVersion.id, deepLink: `/results/${result.id}`, title: "Resultado invalidado", body: `${view.patient.displayName} · ${view.service.name}: um novo resultado é necessário.`, dedupeKey: `void:${voidedVersion.id}:${requester.id}` };
         nextState = notificationFor(nextState, notification);
         const notificationId = nextState.notifications.find((entry) => entry.dedupeKey === notification.dedupeKey && entry.recipientUserId === notification.recipientUserId)?.id;
+        nextState = notifyResultRecipients(nextState, priorResultRecipients(nextState, result.id, requester.id), {
+          category: "ACTIONABLE", priority: "HIGH", entityType: "RESULT_VERSION", entityId: voidedVersion.id, deepLink: `/results/${result.id}`, title: notification.title, body: notification.body
+        }, `void:${voidedVersion.id}`, "ResultVoided", correlationId, { resultId: result.id, versionId: voidedVersion.id });
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("ResultVoided", currentActor.id, "ResultVersion", voidedVersion.id, correlationId, view.version.status, "VOIDED", { resultId, reason })], outbox: [...nextState.outbox, createOutbox("ResultVoided", "Result", result.id, correlationId, { versionId: voidedVersion.id, reason, ...(notificationId ? { notificationId } : {}) })] };
         const response = { result: voidedResult, version: voidedVersion, item: updatedItem, request: requestViewForActor(nextState, currentActor, requestFor(nextState, view.request.id)), replacementRequired: true };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, response, { resultId, input }), result: response };

@@ -5,7 +5,8 @@ import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
 import { eventVisible } from "../../../../server/application/realtime-visibility";
 import { discardDeadLetterMessage, listDeadLetterMessages, reprocessDeadLetterMessage } from "../../../../server/operations/outbox";
-import { operationalAuditQuery, recordWriteQueue, refreshOperationalMetrics, renderPrometheus } from "../../../../server/observability/metrics";
+import { operationalAuditQuery, recordCriticalReadiness, recordWriteQueue, refreshOperationalMetrics, renderPrometheus } from "../../../../server/observability/metrics";
+import { criticalReadinessChecks, criticalResultReadiness } from "../../../../server/application/critical-readiness";
 import { createRealtimeResponse } from "../../../../server/observability/realtime-stream";
 import { acknowledgeNotificationSchema } from "../../../../server/http/command-schemas";
 import { codePointLength, responseFor, objectBody, parseCommandBody, commandMeta, parseLimit, parseItemState, parseBooleanFilter, parseDateTimeFilter, parseSearchTypes, parseCursor } from "./route-support";
@@ -19,6 +20,7 @@ export async function metricsResponse(store: StateStore, correlationId: string):
     store.readOutboxMetrics()
   ]);
   refreshOperationalMetrics(state, new Date(), history, outbox);
+  recordCriticalReadiness(criticalReadinessChecks(criticalResultReadiness(state)));
   recordWriteQueue(store.writeQueueMetrics?.());
   const body = renderPrometheus();
   return new Response(body, { status: 200, headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store", "x-correlation-id": correlationId } });
@@ -87,6 +89,11 @@ export const operationsHandlers = {
     } },
   getManagementOverview: { authentication: "session", handle: async ({ correlationId, id, service, actor }) => {
       return responseFor(await service.managementOverview(actor), correlationId, id);
+    } },
+  getCriticalReadiness: { authentication: "session", handle: async ({ correlationId, id, store, actor }) => {
+      if (!canAccessResource(actor, "critical_result_policy.manage", {}))
+        throw new ApiError("NOT_FOUND", "Rota não encontrada.", 404);
+      return responseFor(criticalResultReadiness(await store.readState()), correlationId, id);
     } },
   listDeadLetters: { authentication: "session", handle: async ({ request, correlationId, id, store, actor }) => {
       if (!canAccessResource(actor, "outbox.manage", {}))
