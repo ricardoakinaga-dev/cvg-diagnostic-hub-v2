@@ -458,45 +458,44 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       });
     },
 
+    // Audited reads answer from the current snapshot and record the access beside the write queue (D-061): opening
+    // a result must not wait behind, nor delay, the clinical writes.
     async getResult(actor: User, resultId: string): Promise<ResultView> {
-      return store.transaction((state) => {
-        const currentActor = requireActiveUser(state, actor);
-        const result = resultFor(state, resultId);
-        const view = resultView(state, result);
-        const eventType = requireCurrentResultRead(currentActor, view);
-        const response = { ...view, request: requestViewForActor(state, currentActor, view.request) };
-        const audit = createAudit(eventType, currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id });
-        return { state: { ...state, auditEvents: [...state.auditEvents, audit] }, result: response };
-      });
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const result = resultFor(state, resultId);
+      const view = resultView(state, result);
+      const eventType = requireCurrentResultRead(currentActor, view);
+      const response = { ...view, request: requestViewForActor(state, currentActor, view.request) };
+      await store.appendReadAudit(createAudit(eventType, currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id }));
+      return response;
     },
 
     async getReport(actor: User, reportId: string): Promise<ReportView> {
-      return store.transaction((state) => {
-        const currentActor = requireActiveUser(state, actor);
-        const result = resultFor(state, reportId);
-        const view = resultView(state, result);
-        requireCurrentResultRead(currentActor, view);
-        requirePermission(currentActor, "attachment.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
-        const attachments = state.attachments
-          .filter((attachment) => attachment.resultVersionId === view.version.id && attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED")
-          .map(publicAttachment);
-        const response = { ...view, request: requestViewForActor(state, currentActor, view.request), attachments };
-        const audit = createAudit("ReportRead", currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id, attachmentCount: attachments.length });
-        return { state: { ...state, auditEvents: [...state.auditEvents, audit] }, result: response };
-      });
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const result = resultFor(state, reportId);
+      const view = resultView(state, result);
+      requireCurrentResultRead(currentActor, view);
+      requirePermission(currentActor, "attachment.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+      const attachments = state.attachments
+        .filter((attachment) => attachment.resultVersionId === view.version.id && attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED")
+        .map(publicAttachment);
+      const response = { ...view, request: requestViewForActor(state, currentActor, view.request), attachments };
+      await store.appendReadAudit(createAudit("ReportRead", currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id, attachmentCount: attachments.length }));
+      return response;
     },
 
     async listResultVersions(actor: User, resultId: string): Promise<ResultVersion[]> {
-      return store.transaction((state) => {
-        const currentActor = requireActiveUser(state, actor);
-        const result = resultFor(state, resultId);
-        const view = resultView(state, result);
-        requirePermission(currentActor, "result.history.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
-        const versions = visibleResultVersions(state, result.id);
-        if (versions.length === 0) throw new ApiError("NOT_FOUND", "Resultado não disponível.", 404);
-        const audit = createAudit("ResultHistoryRead", currentActor.id, "Result", result.id, id("corr"), undefined, undefined, { versionCount: versions.length });
-        return { state: { ...state, auditEvents: [...state.auditEvents, audit] }, result: versions };
-      });
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const result = resultFor(state, resultId);
+      const view = resultView(state, result);
+      requirePermission(currentActor, "result.history.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+      const versions = visibleResultVersions(state, result.id);
+      if (versions.length === 0) throw new ApiError("NOT_FOUND", "Resultado não disponível.", 404);
+      await store.appendReadAudit(createAudit("ResultHistoryRead", currentActor.id, "Result", result.id, id("corr"), undefined, undefined, { versionCount: versions.length }));
+      return versions;
     },
 
   };

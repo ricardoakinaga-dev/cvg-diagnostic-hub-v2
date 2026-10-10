@@ -550,6 +550,17 @@ export interface ClinicalArchivePurgeSummary {
   readonly attachmentKeys: string[];
 }
 
+/** The serial write path (one runtime row, D-061): totals since the process started. */
+export interface WriteQueueMetrics {
+  /** Writes waiting for the path or holding it right now. */
+  readonly inFlight: number;
+  readonly completed: number;
+  /** Milliseconds spent waiting in the queue, summed over the completed writes. */
+  readonly waitMsTotal: number;
+  /** Milliseconds spent holding the path (the whole transaction), summed over the completed writes. */
+  readonly holdMsTotal: number;
+}
+
 export interface StateStore {
   /** Relational outbox reads never restore delivery history into the snapshot. */
   readOutbox(query: { kind: "replay" | "dead-letter"; limit: number }): Promise<OutboxMessage[]>;
@@ -570,6 +581,14 @@ export interface StateStore {
   readStateVersion(): Promise<number>;
   /** Scoped historical reads; PostgreSQL reads the append-only table. */
   readAuditEvents(query: AuditReadQuery): Promise<AuditReadPage>;
+  /**
+   * Records an audited read (a result, a report, a result history) without making it a clinical write: no runtime
+   * version, no runtime row lock, no wait in the serial write queue. It is durable before it resolves, so the read
+   * answers only once the access is recorded (D-061).
+   */
+  appendReadAudit(event: AuditEvent): Promise<void>;
+  /** How busy the serial write path is; a store without one (a test double) omits it. */
+  writeQueueMetrics?(): WriteQueueMetrics;
   /** Distinct (entity, actor) pairs of these entities; with `actorIds`, only those actors (the search passes the users that match). */
   readAuditActors(entities: AuditEntity[], actorIds?: readonly string[]): Promise<{ entityId: string; actorId: string }[]>;
   readAuditMetrics(query: AuditMetricsQuery): Promise<AuditMetrics>;

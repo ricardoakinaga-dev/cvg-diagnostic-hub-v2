@@ -25,6 +25,7 @@ function countingStore(): { store: StateStore; reads: () => number } {
     outboxTransaction: backing.outboxTransaction.bind(backing),
     readStateVersion: backing.readStateVersion.bind(backing),
     readAuditEvents: backing.readAuditEvents.bind(backing),
+    appendReadAudit: backing.appendReadAudit.bind(backing),
     readAuditActors: backing.readAuditActors.bind(backing),
     readAuditMetrics: backing.readAuditMetrics.bind(backing),
     readAuthorizationSnapshot: backing.readAuthorizationSnapshot.bind(backing),

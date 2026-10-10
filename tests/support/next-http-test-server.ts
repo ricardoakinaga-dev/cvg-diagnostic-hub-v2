@@ -21,6 +21,11 @@ export interface NextHttpTestServer {
   readonly port: number;
   readonly applicationName: string;
   stop(): Promise<void>;
+  /** SIGKILL, like a crashed container: keeps the build so the same port and bundle can start again. */
+  crash(): Promise<void>;
+  /** Whether the process has exited on its own (or was stopped), and the tail of its output. */
+  exited(): boolean;
+  output(): string;
 }
 
 export interface NextHttpTestBuild {
@@ -144,6 +149,14 @@ export async function startNextHttpTestServer(options: NextHttpTestServerOptions
     await rm(storageRoot, { recursive: true, force: true });
   };
 
+  const crash = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    signalChild("SIGKILL");
+    await waitForExit(SHUTDOWN_TIMEOUT_MS);
+    await rm(storageRoot, { recursive: true, force: true });
+  };
+
   try {
     await waitForLiveness(`http://127.0.0.1:${port}`, child, () => exited, () => capturedOutput);
   } catch (error) {
@@ -152,7 +165,7 @@ export async function startNextHttpTestServer(options: NextHttpTestServerOptions
     throw new Error(`Next HTTP test server failed to start on port ${port}.${detail}`, { cause: error });
   }
 
-  return { baseUrl: `http://127.0.0.1:${port}`, port, applicationName: options.applicationName, stop };
+  return { baseUrl: `http://127.0.0.1:${port}`, port, applicationName: options.applicationName, stop, crash, exited: () => exited, output: () => capturedOutput };
 }
 
 export async function buildNextHttpTestBundle(options: Omit<NextHttpTestServerOptions, "mode" | "port" | "distDir"> & { distDir?: string }): Promise<NextHttpTestBuild> {
@@ -193,13 +206,13 @@ export async function buildNextHttpTestBundle(options: Omit<NextHttpTestServerOp
   };
 }
 
-function withApplicationName(databaseUrl: string, applicationName: string): string {
+export function withApplicationName(databaseUrl: string, applicationName: string): string {
   const parsed = new URL(databaseUrl);
   parsed.searchParams.set("application_name", applicationName);
   return parsed.toString();
 }
 
-function nextHttpEnvironment(options: {
+export function nextHttpEnvironment(options: {
   databaseUrl: string;
   mode: "dev" | "start";
   port: number;

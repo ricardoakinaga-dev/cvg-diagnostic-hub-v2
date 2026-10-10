@@ -112,6 +112,13 @@ export function recordLoginDistributedAttemptSignal(): void {
   loginDistributedAttemptSignals += 1;
 }
 
+let writeQueue: { inFlight: number; completed: number; waitMsTotal: number; holdMsTotal: number } | undefined;
+
+/** The serial write path of the store (D-061), read on each scrape; absent until a store reports it. */
+export function recordWriteQueue(metrics: { inFlight: number; completed: number; waitMsTotal: number; holdMsTotal: number } | undefined): void {
+  writeQueue = metrics && [metrics.inFlight, metrics.completed, metrics.waitMsTotal, metrics.holdMsTotal].every((value) => Number.isFinite(value) && value >= 0) ? { ...metrics } : undefined;
+}
+
 export function recordReadinessFailure(): void {
   incrementGauge("readiness_failures");
 }
@@ -259,6 +266,21 @@ export function renderPrometheus(): string {
     lines.push(`cvg_realtime_poll_duration_ms_count{${labels}} ${metric.count}`);
     lines.push(`cvg_realtime_poll_duration_ms_max{${labels}} ${metric.maxDurationMs.toFixed(3)}`);
   }
+  if (writeQueue) {
+    lines.push(
+      "# HELP cvg_write_queue_in_flight Clinical writes waiting for or holding the serial write path (one runtime row, D-061).",
+      "# TYPE cvg_write_queue_in_flight gauge",
+      `cvg_write_queue_in_flight ${writeQueue.inFlight}`,
+      "# HELP cvg_write_queue_wait_ms Time clinical writes waited in the serial write queue.",
+      "# TYPE cvg_write_queue_wait_ms summary",
+      `cvg_write_queue_wait_ms_sum ${writeQueue.waitMsTotal.toFixed(3)}`,
+      `cvg_write_queue_wait_ms_count ${writeQueue.completed}`,
+      "# HELP cvg_write_transaction_ms Time clinical writes held the serial write path.",
+      "# TYPE cvg_write_transaction_ms summary",
+      `cvg_write_transaction_ms_sum ${writeQueue.holdMsTotal.toFixed(3)}`,
+      `cvg_write_transaction_ms_count ${writeQueue.completed}`
+    );
+  }
   appendCounter(lines, "cvg_realtime_poll_failures_total", "Realtime poll failures.", realtimePollFailures, ["mode", "reason"]);
   appendCounter(lines, "cvg_realtime_stream_closures_total", "Realtime stream closures by bounded reason.", realtimeStreamClosures, ["reason"]);
   appendCounter(lines, "cvg_realtime_resyncs_total", "Realtime resync signals emitted.", realtimeResyncs, ["reason"]);
@@ -291,6 +313,7 @@ export function resetMetrics(): void {
   attachmentScans.clear();
   seedAttachmentScans();
   gauges.clear();
+  writeQueue = undefined;
   loginDistributedAttemptSignals = 0;
 }
 

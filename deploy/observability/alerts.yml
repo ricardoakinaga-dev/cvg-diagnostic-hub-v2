@@ -39,6 +39,18 @@ groups:
         annotations:
           summary: "Latência média das requisições acima de 1 s por 15 minutos."
           runbook: "docs/operations/DEPLOYMENT.md#66-memória-e-volume-de-dados"
+      # D-061: every clinical write waits for one runtime row. The hospital load report measured the queue saturating at
+      # about 5 writes a second on one host; a mean wait above 400 ms means the volume is approaching that limit.
+      - alert: CvgWriteQueueSaturated
+        expr: |
+          sum(rate(cvg_write_queue_wait_ms_sum{job="cvg-hub"}[10m]))
+            / clamp_min(sum(rate(cvg_write_queue_wait_ms_count{job="cvg-hub"}[10m])), 1e-9) > 400
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Escritas clínicas esperam em média mais de 400 ms na fila serial há 10 minutos: a carga se aproxima do limite medido."
+          runbook: "docs/operations/INCIDENT_RUNBOOKS.md#fila-de-escrita-saturada"
 
   - name: cvg-hub-delivery
     rules:

@@ -22,6 +22,7 @@ function storeRecordingTouches(): { store: StateStore; touches: { sessionId: str
     readStateSnapshot: backing.readStateSnapshot.bind(backing),
     readStateVersion: backing.readStateVersion.bind(backing),
     readAuditEvents: backing.readAuditEvents.bind(backing),
+    appendReadAudit: backing.appendReadAudit.bind(backing),
     readAuditActors: backing.readAuditActors.bind(backing),
     readAuditMetrics: backing.readAuditMetrics.bind(backing),
     readOutbox: backing.readOutbox.bind(backing),

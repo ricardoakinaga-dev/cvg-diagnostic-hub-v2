@@ -296,6 +296,52 @@ describe("PROD-101 PostgreSQL audit read authority", () => {
     });
   });
 
+  it("records an audited result read beside the write queue: durable, without a runtime version and without waiting for the row lock (D-061)", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      const store = await database.createStore(createDemoState(TEST_PASSWORD));
+      const service = createApplicationService(store);
+      const user = (id: string) => store.getState().users.find((entry) => entry.id === id)!;
+      const request = await service.createRequest(user("user-vet"), { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-crp" }] }, { idempotencyKey: "audited-read-request" });
+      const received = await service.receiveSample(user("user-lab"), [request.items[0].id], { sampleType: "EDTA", expectedVersion: request.items[0].version, idempotencyKey: "audited-read-receive" });
+      const started = await service.startProcessing(user("user-lab"), request.items[0].id, { expectedVersion: received.items[0].version, idempotencyKey: "audited-read-start" });
+      const draft = await service.createResultDraft(user("user-lab"), request.items[0].id, { narrative: "Sem alterações.", content: {}, expectedVersion: started.item.version, idempotencyKey: "audited-read-draft" });
+      const released = await service.releaseResult(user("user-lab"), draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "audited-read-release" });
+      const version = async () => (await database.query("SELECT version::text FROM cvg_runtime_state WHERE id = 1")).rows[0];
+      const before = await version();
+      // Five clinical writes went through the serial path; the audited reads below do not.
+      const queue = store.writeQueueMetrics();
+      expect(queue).toMatchObject({ inFlight: 0 });
+      expect(queue.completed).toBeGreaterThanOrEqual(5);
+      expect(queue.holdMsTotal).toBeGreaterThan(0);
+      expect(queue.waitMsTotal).toBeGreaterThanOrEqual(0);
+      const holder = new Pool({ connectionString: database.connectionString(), max: 1 });
+      const client = await holder.connect();
+      try {
+        // A clinical write is in progress and holds the runtime row.
+        await client.query("BEGIN");
+        await client.query("SELECT version FROM cvg_runtime_state WHERE id = 1 FOR UPDATE");
+        const read = Promise.all([service.getResult(user("user-vet"), released.result.id), service.listResultVersions(user("user-vet"), released.result.id)]);
+        const blocked = new Promise((resolve) => setTimeout(() => resolve("blocked"), 3_000));
+        await expect(Promise.race([read.then(([result, versions]) => [result.version.id, versions.length]), blocked])).resolves.toEqual([released.version.id, 1]);
+      } finally {
+        await client.query("ROLLBACK");
+        client.release();
+        await holder.end();
+      }
+      expect(await version()).toEqual(before);
+      expect(store.writeQueueMetrics().completed).toBe(queue.completed);
+      const audits = await database.query("SELECT event_type, actor_id, entity_id FROM audit_events WHERE event_type IN ('ResultRead', 'ResultHistoryRead') ORDER BY event_type");
+      expect(audits.rows).toEqual([
+        { event_type: "ResultHistoryRead", actor_id: "user-vet", entity_id: released.result.id },
+        { event_type: "ResultRead", actor_id: "user-vet", entity_id: released.version.id }
+      ]);
+      // The same event twice is a divergence, never a silent no-op.
+      const [event] = (await store.readAuditEvents({ ...ALL_AUDITS, order: "desc", limit: 1 })).items;
+      await expect(store.appendReadAudit(event!)).rejects.toThrow(`POSTGRES_AUDIT_PROJECTION_DIVERGED:${event!.id}`);
+      await database.closeStore(store);
+    });
+  });
+
   it("requires this actor's real ResultViewed evidence and retains it after reopening with a single-client pool", async () => {
     vi.stubEnv("DB_POOL_MAX", "1");
     try {

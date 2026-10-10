@@ -168,8 +168,28 @@ jobs:
           PERF_POSTGRES_P95_CEILING_FACTOR: "4"
           PERF_POSTGRES_REPORT: logs/perf-postgres-12m.json
         run: npm --silent run perf:postgres 2>&1 | tee logs/perf-postgres-12m.log
+      # Audit of 2026-10-10 (blocker 4): complete clinical journeys over HTTP with the real worker, the app and then the
+      # worker killed with SIGKILL under load. Fails if an acknowledged write is lost or applied twice, a released result
+      # is not delivered exactly once, or a journey does not finish (RELATORIO_CARGA_HOSPITALAR_2026-10-10).
+      - name: Run hospital journeys through an app and a worker crash
+        shell: bash
+        env:
+          PERF_HOSPITAL_MONTHS: "1"
+          PERF_HOSPITAL_AUDIT_EVENTS: "1000"
+          PERF_HOSPITAL_LEVELS: "25"
+          PERF_HOSPITAL_LEVEL_SECONDS: "60"
+          PERF_HOSPITAL_FAULTS: app,worker
+          PERF_HOSPITAL_FAULT_LEVEL: "25"
+          PERF_HOSPITAL_FAULT_INTERVAL_SECONDS: "30"
+          PERF_HOSPITAL_VETS: "8"
+          PERF_HOSPITAL_SSE: "4"
+          PERF_HOSPITAL_THINK_MIN_MS: "500"
+          PERF_HOSPITAL_THINK_MAX_MS: "1500"
+          PERF_HOSPITAL_REPORT: logs/perf-hospital.json
+          PERF_HOSPITAL_WORKER_LOG: logs/perf-hospital-worker.log
+        run: npm --silent run perf:hospital 2>&1 | tee logs/perf-hospital.log
       - name: Scan the benchmark server logs for personal data
-        run: npm run privacy:scan -- --logs logs/perf-postgres.log logs/perf-postgres-12m.log
+        run: npm run privacy:scan -- --logs logs/perf-postgres.log logs/perf-postgres-12m.log logs/perf-hospital.log logs/perf-hospital-worker.log
       - name: Upload PostgreSQL benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v7

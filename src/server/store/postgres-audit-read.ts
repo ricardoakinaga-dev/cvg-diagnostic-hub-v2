@@ -88,3 +88,12 @@ export async function auditEventsForReset(sql: SqlQueryable, events: AuditEvent[
     return false;
   });
 }
+
+/** Inserts one audit event into the append-only table; a second insert of the same id is a divergence, never a no-op. */
+export async function insertPostgresAuditEvent(sql: SqlQueryable, event: AuditEvent): Promise<void> {
+  const inserted = await sql.query(
+    "INSERT INTO audit_events (id, event_type, actor_id, entity_type, entity_id, previous_state, new_state, correlation_id, metadata, occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10) ON CONFLICT (id) DO NOTHING RETURNING id",
+    [event.id, event.eventType, event.actorId ?? null, event.entityType, event.entityId, event.previousState ?? null, event.newState ?? null, event.correlationId, JSON.stringify(event.metadata), event.occurredAt]
+  );
+  if (inserted.rowCount !== 1) throw new Error(`POSTGRES_AUDIT_PROJECTION_DIVERGED:${event.id}`);
+}
