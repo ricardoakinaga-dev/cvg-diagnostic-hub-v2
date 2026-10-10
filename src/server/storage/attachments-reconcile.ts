@@ -1,9 +1,16 @@
-import type { Attachment } from "../domain/models";
-
 /** Objects the bucket hardening writes and removes by itself (scripts/init-storage.ts); never attachments. */
 export const BUCKET_PROBE_PREFIX = ".cvg-bucket-probe/";
 
-export type ReconcilableAttachment = Pick<Attachment, "id" | "storageKey" | "uploadStatus" | "uploadClaimToken">;
+/**
+ * The fields of an attachment that the reconciliation reads. Declared here, not picked from the domain model: the
+ * storage layer depends on nothing else (architecture fitness test); an `Attachment` satisfies it structurally.
+ */
+export interface ReconcilableAttachment {
+  readonly id: string;
+  readonly storageKey: string;
+  readonly uploadStatus: "INITIATED" | "UPLOADED" | "FINALIZED";
+  readonly uploadClaimToken?: string;
+}
 
 export interface ArchivedAttachmentKey {
   readonly requestId: string;
