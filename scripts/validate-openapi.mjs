@@ -482,7 +482,7 @@ const notificationSchema = strictObject({
     status: { type: "string", enum: ["QUEUED", "SENT", "DELIVERED", "READ", "FAILED", "SKIPPED"] }, updatedAt: timestamp,
     messageId: stringSchema(1, 200), errorCode: stringSchema(1, 100)
   }, ["status", "updatedAt"]),
-  escalation: strictObject({ level: { type: "integer", minimum: 1, maximum: 8 }, lastEscalatedAt: timestamp }, ["level", "lastEscalatedAt"]),
+  escalation: strictObject({ level: { type: "integer", minimum: 1, maximum: 8 }, lastEscalatedAt: timestamp, unreachableAt: timestamp }, ["level", "lastEscalatedAt"]),
   escalationOf: identifier
 }, ["id", "category", "priority", "recipientUserId", "entityType", "entityId", "deepLink", "title", "body", "dedupeKey", "state", "createdAt", "attempts", "version"]);
 const auditEventSchema = strictObject({
@@ -573,6 +573,18 @@ const responseDataSchemas = {
   ManagedUserList: arrayOf(schemaReference("ManagedUser")),
   ManagedSessionList: arrayOf(schemaReference("ManagedSession"), { maxItems: 100 }),
   DeadLetterList: arrayOf(schemaReference("DeadLetterMessage"), { maxItems: 100 }),
+  CriticalReadiness: strictObject({
+    asOf: timestamp,
+    policy: strictObject({ status: { type: "string", enum: ["ACTIVE", "OFF", "INVALID"] }, version: stringSchema(1, 100), approvalRef: stringSchema(1, 200) }, ["status"]),
+    redundantChannel: strictObject({ status: { type: "string", enum: ["WHATSAPP", "IN_APP_ONLY_ACCEPTED", "MISSING"] }, approvalRef: stringSchema(1, 200) }, ["status"]),
+    onCall: strictObject({
+      departments: arrayOf(strictObject({ departmentCode: stringSchema(1, 60), requesters: nonNegativeInteger, onCall: nonNegativeInteger }, ["departmentCode", "requesters", "onCall"]), { maxItems: 100 }),
+      departmentsWithoutOnCall: arrayOf(stringSchema(1, 60), { maxItems: 100 }),
+      total: nonNegativeInteger
+    }, ["departments", "departmentsWithoutOnCall", "total"]),
+    administrators: nonNegativeInteger,
+    ready: { type: "boolean" }
+  }, ["asOf", "policy", "redundantChannel", "onCall", "administrators", "ready"]),
   DeadLetterMutation: strictObject({ message: schemaReference("DeadLetterMessage"), action: { type: "string", enum: ["REPROCESSED", "DISCARDED"] } }, ["message", "action"]),
   DiagnosticServiceList: arrayOf(schemaReference("DiagnosticService")),
   ReasonCodeList: arrayOf(schemaReference("ReasonCode")),
@@ -823,7 +835,7 @@ function assertSemanticDrift(document, expected) {
   }
   if (document.components?.operations !== undefined) throw new Error("components.operations is not a standard OpenAPI component category.");
   // 87/80 since PROD-502 added GET /data-subject-exports; 86/79 since PROD-202 added POST /users/{userId}/password-reset-link and POST /session/password/reset; 84/77 since PROD-501 added GET /patients/{patientId}/archive and GET /archive/requests/{requestId}; 82/75 since PROD-406 added POST /patients/{patientId}/encounters and POST /encounters/{encounterId}/close; 80/74 since PROD-402 added GET/POST /webhooks/whatsapp; 78/73 since PROD-405 added GET /samples/{sampleId}/label; 77/72 since PROD-407 added POST /diagnostic-services/import; 76/71 since PROD-402 added PUT /session/alert-contact and PUT /users/{userId}/on-call (2026-10-08).
-  if (API_OPERATIONS.length !== 87 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 80) throw new Error("The audited API surface must remain exactly 87 operations across 80 paths.");
+  if (API_OPERATIONS.length !== 88 || new Set(API_OPERATIONS.map(({ path }) => path)).size !== 81) throw new Error("The audited API surface must remain exactly 88 operations across 81 paths.");
   const operationIds = API_OPERATIONS.map(({ operationId }) => operationId);
   if (new Set(operationIds).size !== operationIds.length) throw new Error("Manifest operationId values must be unique.");
   for (const operation of API_OPERATIONS) {

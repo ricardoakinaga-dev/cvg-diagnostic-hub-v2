@@ -23,6 +23,8 @@ function seedAttachmentScans(): void {
 }
 seedAttachmentScans();
 const gauges = new Map<string, number>();
+// D-056: readiness of the critical-result flow, one 0/1 series per check, rendered from the first scrape.
+const criticalReadinessChecks = new Map<string, number>([["policy", 0], ["redundant_channel", 0], ["on_call", 0]]);
 let loginDistributedAttemptSignals = 0;
 const allowedGauges = new Set([
   "outbox_pending",
@@ -40,6 +42,8 @@ const allowedGauges = new Set([
   "diagnostic_turnaround_time_seconds",
   "recollection_rate",
   "critical_results",
+  "critical_unacknowledged",
+  "critical_unreachable",
   "overdue_items",
   "result_view_latency_seconds"
 ]);
@@ -56,6 +60,8 @@ const gaugeHelp = new Map([
   ["realtime_shared_reads_total", "Full runtime-state aggregate reads performed by the shared realtime reader."],
   ["diagnostic_requests_created", "Current snapshot count of diagnostic requests."],
   ["diagnostic_items_completed", "Current snapshot count of completed diagnostic items."],
+  ["critical_unacknowledged", "Critical results that reached at least one escalation level and nobody has acknowledged yet."],
+  ["critical_unreachable", "Unacknowledged critical results whose escalation found nobody clinical to notify (administrators alerted, D-056)."],
   ["diagnostic_turnaround_time_seconds", "Average seconds from item request to release or completion."],
   ["recollection_rate", "Fraction of requests with at least one recollection request."],
   ["critical_results", "Current released critical result versions."],
@@ -205,6 +211,7 @@ export function refreshOperationalMetrics(
   setGauge("diagnostic_items_completed", state.items.filter((item) => item.status === "COMPLETED").length);
   const currentVersionIds = new Set(state.results.map((result) => result.currentVersionId).filter((id): id is string => Boolean(id)));
   setGauge("critical_results", state.resultVersions.filter((version) => version.status === "RELEASED" && version.critical && currentVersionIds.has(version.id)).length);
+  refreshCriticalMetrics(state);
   const nowMs = now.getTime();
   const overdueItems = state.items.filter((item) => {
     if (terminalItemStates.has(item.status)) return false;
@@ -220,6 +227,28 @@ export function refreshOperationalMetrics(
 
   setOptionalGauge("recollection_rate", history.recollectionRate);
   setOptionalGauge("result_view_latency_seconds", history.resultViewLatencySeconds);
+}
+
+/**
+ * PROD-401/402 (D-056): an unacknowledged critical result is a clinical signal, not an outbox one. Roots are
+ * the requester's critical notifications; a result acknowledged by anyone leaves both gauges.
+ */
+function refreshCriticalMetrics(state: StoreState): void {
+  const acknowledged = new Set(state.notifications.filter((entry) => entry.category === "CRITICAL" && entry.state === "ACKNOWLEDGED").map((entry) => entry.entityId));
+  const openRoots = state.notifications.filter((entry) =>
+    entry.category === "CRITICAL" && entry.entityType === "RESULT_VERSION" && entry.escalationOf === undefined
+    && entry.state !== "SUPERSEDED" && entry.state !== "ACKNOWLEDGED" && !acknowledged.has(entry.entityId));
+  setGauge("critical_unacknowledged", openRoots.filter((entry) => (entry.escalation?.level ?? 0) >= 1).length);
+  setGauge("critical_unreachable", openRoots.filter((entry) => entry.escalation?.unreachableAt !== undefined).length);
+}
+
+export type CriticalReadinessCheck = "policy" | "redundant_channel" | "on_call";
+
+/** The 0/1 readiness checks are computed by the application layer (critical-readiness.ts) and recorded here on each scrape. */
+export function recordCriticalReadiness(checks: Readonly<Record<CriticalReadinessCheck, 0 | 1>>): void {
+  for (const [check, value] of Object.entries(checks)) {
+    if (criticalReadinessChecks.has(check)) criticalReadinessChecks.set(check, value === 1 ? 1 : 0);
+  }
 }
 
 /** Memory against the heap limit is the capacity signal of the in-memory aggregate (DEPLOYMENT §6.6). */
@@ -275,6 +304,10 @@ export function renderPrometheus(): string {
     const metricName = `cvg_${name}`;
     lines.push(`# HELP ${metricName} ${gaugeHelp.get(name) ?? "Bounded application gauge."}`, `# TYPE ${metricName} gauge`, `${metricName} ${value}`);
   }
+  lines.push("# HELP cvg_critical_readiness Critical-result flow readiness by check (1 = ready): approved policy, redundant channel, on-call coverage of every requesting department.", "# TYPE cvg_critical_readiness gauge");
+  for (const [check, value] of [...criticalReadinessChecks.entries()].sort(([left], [right]) => left.localeCompare(right))) {
+    lines.push(`cvg_critical_readiness{check="${check}"} ${value}`);
+  }
   return `${lines.join("\n")}\n`;
 }
 
@@ -291,6 +324,7 @@ export function resetMetrics(): void {
   attachmentScans.clear();
   seedAttachmentScans();
   gauges.clear();
+  for (const check of criticalReadinessChecks.keys()) criticalReadinessChecks.set(check, 0);
   loginDistributedAttemptSignals = 0;
 }
 

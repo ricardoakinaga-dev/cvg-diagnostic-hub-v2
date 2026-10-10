@@ -25,7 +25,7 @@ Triggers use canonical events: `ResultReleased`, `RecollectionRequested`, `Diagn
 4. configured manager/fallback;
 5. unresolved recipient creates an operational alert, never a silently dropped notification.
 
-`OPEN QUESTION`: exact ownership, shift handoff and critical fallback are OQ-004/OQ-018.
+`DECISION` D-056 (2026-10-10): the escalation ladder of a critical result reaches, in policy order, the requester, the responsible professional, the on-call staff of the requesting department (any professional on call in the hospital only when that department has nobody on call), then the department manager. When a due level reaches nobody clinical, the active administrators receive an `ADMINISTRATIVE` operational alert that names the request protocol and the department, never the patient or the result, and the requester's notification is marked `escalation.unreachableAt`; `ADMIN_FALLBACK` in the policy names this alert, not a clinical recipient. Exact ownership and shift handoff remain OQ-004/OQ-018.
 
 ## 4. Delivery model
 
@@ -44,7 +44,7 @@ Delivery states: `PENDING`, `DELIVERED`, `SEEN`, `ACKNOWLEDGED`, `FAILED`, `SUPE
 - Amendment (`DECISION` D-055, 2026-10-10): at the moment a released version is amended, every recipient of any notification about a version of that result (requester, escalated on-call staff, managers) receives an `ACTIONABLE` notice "Resultado em retificação" (`URGENT` when the superseded version was critical; dedupe `amend:<supersededVersionId>:<userId>`) with its own outbox delivery intent, in the same transaction as the `ResultAmended` event. The corrected version is a draft until released again; the notice says to wait for the new release.
 - Release of a version with `supersedesId` is titled "Resultado retificado" (critical: "Resultado crítico retificado requer confirmação") and reaches the requester plus the same earlier recipients (dedupe `release:<versionId>:<userId>`); only the requester's critical notification is a root of the escalation ladder. Deactivated accounts receive nothing.
 - Void of a released/reviewed/completed version creates `ResultVoided`, informs affected recipients — the requester and everyone notified about an earlier version (D-055) — that the prior version is invalid and points to the replacement/operational action; the void itself is never treated as a successful clinical result.
-- Failure to deliver/acknowledge stays in a manager queue and is visible in dashboard.
+- Failure to deliver/acknowledge stays in a manager queue and is visible in dashboard. Metrics `cvg_critical_unacknowledged` (roots that climbed at least one level without acknowledgement) and `cvg_critical_unreachable` (roots whose level found nobody) feed the alerts `CvgCriticalUnacknowledged` and `CvgCriticalUnreachable`; `GET /critical-results/readiness` and the system console show whether the approved policy, a redundant channel (WhatsApp or the hospital's named acceptance of "in-app only") and an on-call professional per requesting department exist (D-056). Readiness never blocks a release.
 
 ## 6. Fatigue controls
 

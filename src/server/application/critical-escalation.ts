@@ -9,7 +9,12 @@ import { createAudit, createOutbox, criticalResultResource, id, notificationFor,
 export interface CriticalEscalationSummary {
   due: number;
   notified: number;
+  /** Roots whose due level found nobody clinical to notify: the administrators were alerted instead (D-056). */
+  unreachable: number;
 }
+
+/** Outbox event of the operational alert; its payload carries a notificationId, so it is delivered in-app. */
+export const CRITICAL_UNREACHABLE_EVENT = "CriticalResultUnreachable";
 
 export interface CriticalEscalationOptions {
   now?: Date;
@@ -64,14 +69,15 @@ function grantPatientScope(state: StoreState, userId: string, patientId: string,
  */
 export async function runCriticalEscalation(store: StateStore, options: CriticalEscalationOptions = {}): Promise<CriticalEscalationSummary> {
   const policy = options.policy ?? criticalPolicyFromEnvironment(options.environment ?? process.env);
-  if (!policy) return { due: 0, notified: 0 };
+  if (!policy) return { due: 0, notified: 0, unreachable: 0 };
   const at = options.now ?? new Date();
   // Most cycles have nothing due: decide on the cached read before taking the write lock.
-  if (dueEscalations(await store.readState(), policy, at).length === 0) return { due: 0, notified: 0 };
+  if (dueEscalations(await store.readState(), policy, at).length === 0) return { due: 0, notified: 0, unreachable: 0 };
   return store.transaction((original) => {
     const due = dueEscalations(original, policy, at);
     let state = original;
     let notified = 0;
+    let unreachable = 0;
     for (const { root, decision } of due) {
       const correlationId = id("corr");
       const escalatedAt = at.toISOString();
@@ -93,10 +99,20 @@ export async function runCriticalEscalation(store: StateStore, options: Critical
       state = {
         ...state,
         // Like the WhatsApp status, the climb annotates the requester's notification without bumping its version.
+        // A level that reaches someone clears the unreachable mark; alertAdministrators restores it otherwise.
         notifications: state.notifications.map((entry) => entry.id === root.id ? { ...entry, escalation: { level: decision.level, lastEscalatedAt: escalatedAt } } : entry),
         auditEvents: [...state.auditEvents, audit]
       };
-      if (!request || !step) continue;
+      if (!request) continue;
+      if (!step) {
+        // Nobody clinical is left to notify: a silent audit row is not an answer for a critical result.
+        // The administrators get an operational alert without clinical data and the root keeps the mark,
+        // so metrics and the Prometheus rule see it until someone acknowledges the result (D-056).
+        const alerted = alertAdministrators(state, root, request, decision.level, escalatedAt, correlationId);
+        if (alerted.firstTime) unreachable += 1;
+        state = alerted.state;
+        continue;
+      }
       for (const recipient of step.recipients) {
         state = grantPatientScope(state, recipient.userId, request.patientId, root.id, correlationId);
         const dedupeKey = `escalation:${root.id}:${recipient.userId}`;
@@ -110,6 +126,46 @@ export async function runCriticalEscalation(store: StateStore, options: Critical
         notified += 1;
       }
     }
-    return { state, result: { due: due.length, notified } };
+    return { state, result: { due: due.length, notified, unreachable } };
   });
+}
+
+/**
+ * The operational alert of an exhausted ladder: every active administrator receives an ADMINISTRATIVE
+ * notification that names the request protocol and the requesting department, never the patient or the
+ * result, with its own delivery intent. One alert per root, whatever the number of levels that find nobody.
+ */
+function alertAdministrators(
+  state: StoreState,
+  root: Notification,
+  request: { id: string; requestCode: string; requestingDepartmentCode: string },
+  level: number,
+  at: string,
+  correlationId: string
+): { state: StoreState; firstTime: boolean } {
+  const firstTime = root.escalation?.unreachableAt === undefined;
+  let next: StoreState = {
+    ...state,
+    notifications: state.notifications.map((entry) => entry.id === root.id
+      ? { ...entry, escalation: { level, lastEscalatedAt: at, unreachableAt: root.escalation?.unreachableAt ?? at } }
+      : entry),
+    auditEvents: [...state.auditEvents, createAudit("CriticalResultUnreachable", undefined, "Notification", root.id, correlationId, undefined, undefined, {
+      level, departmentCode: request.requestingDepartmentCode, requestCode: request.requestCode, resultVersionId: root.entityId
+    })]
+  };
+  const administrators = next.users.filter((user) => user.role === "ADMIN" && user.active !== false).sort((left, right) => left.id.localeCompare(right.id));
+  for (const administrator of administrators) {
+    const dedupeKey = `critical-unreachable:${root.id}:${administrator.id}`;
+    const before = next.notifications.length;
+    next = notificationFor(next, {
+      category: "ADMINISTRATIVE", priority: "URGENT", recipientUserId: administrator.id, entityType: "REQUEST", entityId: request.id, deepLink: "/system",
+      title: "Crítico sem confirmação e sem destinatário",
+      body: `Solicitação ${request.requestCode} · setor ${request.requestingDepartmentCode}: nenhum plantonista ou gestor alcançável para o resultado crítico. Acione o setor por telefone e registre a confirmação.`,
+      dedupeKey
+    });
+    if (next.notifications.length === before) continue;
+    const created = next.notifications.at(-1)!;
+    next = { ...next, outbox: [...next.outbox, createOutbox(CRITICAL_UNREACHABLE_EVENT, "Notification", created.id, correlationId, { notificationId: created.id, escalationOf: root.id, level })] };
+  }
+  return { state: next, firstTime };
 }
