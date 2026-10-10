@@ -134,7 +134,7 @@ curl -fsS "https://$APP_DOMAIN/api/v1/readyz"
 
 ### 4.3 Verificação depois de qualquer restore
 
-Checksums e contagens (solicitações, resultados, anexos), versão do schema, `/readyz`, login, visão de uma solicitação com escopo, resultado/versão/linha do tempo e fila de notificações; compare com os totais anotados antes do incidente e registre horário do último commit recuperado (o `lastReplayedTimestamp` do PITR) para medir a perda real.
+**Reconciliação banco × bucket (D-062):** `npm run attachments:reconcile` (mesmo ambiente do worker: `APP_DATA_MODE=postgres`, `DATABASE_URL`, `STORAGE_*`) prova que todo anexo finalizado ou arquivado tem o seu objeto e que nenhum objeto do bucket ficou sem anexo; imprime um JSON (`attachments.reconciled` ou `attachments.divergent`, com os ids dos anexos sem objeto e a contagem de órfãos) e sai com 1 em qualquer divergência. Um restore de banco e de bucket só está aceito com essa saída limpa. Em seguida: checksums e contagens (solicitações, resultados, anexos), versão do schema, `/readyz`, login, visão de uma solicitação com escopo, resultado/versão/linha do tempo e fila de notificações; compare com os totais anotados antes do incidente e registre horário do último commit recuperado (o `lastReplayedTimestamp` do PITR) para medir a perda real.
 
 ### 4.4 Ensaio automatizado (`npm run db:backup:drill`)
 
@@ -161,9 +161,13 @@ docker compose ... run --rm --no-deps --entrypoint sh storage-iam /usr/local/bin
 
 O destino pode ter objetos que o expurgo já apagou do servidor: eles voltam com o `copy`, e o banco restaurado não os referencia. Se o restore for posterior a um expurgo, rode `npm run runtime:archive -- --dry-run --purge` para ver o que seria removido de novo e aplique o expurgo quando o jurídico confirmar. Ensaio reproduzível: `npm run storage:backup:drill` (medidas no §5).
 
+### 4.6 Ensaio completo: banco e anexos perdidos juntos (`npm run restore:drill`)
+
+`scripts/full-restore-drill.sh` é o cenário do PROD-514 inteiro, num projeto Compose descartável com os overlays `prod + onprem + secrets + storage-drill` (segredos em arquivo, destino externo `crypt`): sobe `postgres`, `migrate`, `backup`, `storage`, `storage-init`, `storage-iam` e `offsite`; cria o primeiro administrador (`bootstrap`); grava `DRILL_ATTACHMENT_COUNT` anexos pelo **store e file store da aplicação** (`scripts/drill-seed-attachments.ts`, rodando com a definição do serviço `worker`) e reconcilia linhas e objetos; força a troca de WAL e espera WAL, dump e objetos chegarem à cópia externa (**RPO medido** = última gravação → cópia externa); destrói os volumes de PostgreSQL, backups locais, arquivo de WAL e storage; baixa a cópia externa pelo remoto `crypt`, restaura o banco até o fim do arquivo (`restore-pitr.sh --latest`) e o bucket num bucket novo endurecido (`storage-restore`, usuário do app); reconcilia o banco restaurado contra o bucket restaurado (**RTO medido** = baixar + banco + bucket + reconciliação); e prova que a reconciliação detecta um objeto removido e um objeto órfão. O JSON final traz `rpo`, `rto`, `reconciliation` e as contagens. Nunca aponte para um projeto de produção: o script recusa `cvg-hub`, `cvg-prod`, `cvg-hml` e `cvg-diagnostic-local` e roda `down -v` no projeto do ensaio.
+
 ## 5. Cadência dos ensaios e evidência
 
-- **Mensal:** `npm run db:backup:drill` em máquina de homologação (ou na do hospital, em projeto Compose separado, nunca sobre produção) e conferência de que `check-offsite.sh` está verde há 30 dias.
+- **Mensal:** `npm run restore:drill` (banco e anexos juntos, §4.6) e `npm run db:backup:drill` em máquina de homologação (ou na do hospital, em projeto Compose separado, nunca sobre produção) e conferência de que `check-offsite.sh` está verde há 30 dias.
 - **Trimestral e antes da entrada em produção:** restore completo cronometrado no servidor real a partir do **destino externo** (sem os volumes locais), com o PITR do §4.1, a subida da aplicação e a verificação do §4.3, assinado pelo responsável. Esse ensaio mede o que o laboratório não mede: provisionamento, banda do link e o S3 (PROD-514).
 - Evidência de cada ensaio: ID e horário do backup base, alvo, duração, JSON do drill, contagens e o responsável. Nunca execute restore destrutivo sobre produção.
 
@@ -203,6 +207,28 @@ Leitura honesta: o RPO nominal é 600 s (300 de `archive_timeout` + 300 de envio
 O ensaio prova o mecanismo (write-once, recusa sem fonte, restore íntegro num bucket endurecido), não o RTO de produção: baixar do destino real e provisionar o servidor dependem do hospital (PROD-514).
 
 Repetido em 09/10/2026 depois de D-051 (segredos em arquivo, usuários de menor privilégio, destino `crypt`): 200 objetos, cópia externa 14 s (207 arquivos cifrados no destino cru, nenhum nome original nem byte em claro), restore pelo `storage-restore` com o usuário do app em 1 s, tentativa de restore com o usuário só leitura negada, `storage.verified` e `cvg-storage-iam-verify` 17/17 depois do restore; ensaio inteiro em 36 s. O ensaio do PITR (`npm run db:backup:drill`) passou a enviar e a restaurar pelo mesmo remoto cifrado.
+
+### Evidência medida do ensaio completo banco + anexos (2026-10-10, laboratório local)
+
+`npm run restore:drill` (§4.6) em projeto Compose descartável nesta máquina: overlays `prod + onprem + secrets + storage-drill`, segredos em arquivo, MinIO `7aac2a2`, `rclone/rclone:1.71.2`, destino `crypt` sobre `:local:`, envio a cada 15 s. Anexos gravados pelo store e file store da aplicação (uma linha de aggregate e um objeto cada), primeiro administrador pelo `bootstrap`.
+
+| Medida | 50 anexos × 64 KiB | 500 anexos × 256 KiB |
+| --- | --- | --- |
+| Banco no momento da perda | 10,7 MB | 11,0 MB |
+| Reconciliação antes da perda | 50 linhas = 50 objetos | 500 = 500 |
+| **RPO medido: última gravação → WAL, dump e objetos na cópia externa** | **10 s** | **8 s** |
+| Perda simulada | volumes `cvg-postgres`, `cvg-backups`, `cvg-wal-archive` e `cvg-storage` removidos | idem |
+| Baixar a cópia externa pelo remoto `crypt` | 3 s | 2 s |
+| Restore do banco até o fim do arquivo (4 segmentos de WAL) | 2 s | 8 s |
+| Bucket novo endurecido + restore dos objetos (usuário do app) | 20 s | 11 s |
+| Reconciliação banco restaurado × bucket restaurado | 1 s, `ok`, 0 faltantes, 0 órfãos | 0 s, `ok`, 0 faltantes, 0 órfãos |
+| **RTO medido (baixar + banco + bucket + reconciliar)** | **26 s** | **21 s** |
+| Controles negativos | objeto apagado → `attachments.divergent` com o id do anexo; objeto estranho → `orphanObjects: 1` | idem |
+| Ensaio completo | 107 s | 140 s |
+
+Leitura honesta: o RPO nominal continua 600 s (`archive_timeout` + envio) e o ensaio força a troca de WAL; o RTO mede o mecanismo com volumes locais, não o download do destino real nem a provisão do servidor do hospital. O que o ensaio acrescenta ao PROD-514 é a prova de que **banco e bucket restaurados batem entre si** e de que a reconciliação acusa um objeto a menos ou a mais. O destino, o servidor e o restore cronometrado neles continuam a cargo do hospital (PROD-514 `BLOCKED`).
+
+**Achado colateral (D-057):** este ensaio foi o primeiro a subir o worker de produção com a definição real do serviço e encontrou o worker recusando partir (`SECRET_FILE_UNREADABLE:OUTBOX_HEARTBEAT`): o carregador de segredos lia `OUTBOX_HEARTBEAT_FILE` como se fosse um segredo. Corrigido com allowlist explícita e teste de boot do worker.
 
 ## 6. Failure handling
 
