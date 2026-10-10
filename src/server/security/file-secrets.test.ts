@@ -1,8 +1,8 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { loadFileSecrets } from "./file-secrets";
+import { FILE_SECRET_VARIABLES, loadFileSecrets } from "./file-secrets";
 
 const files = new Map<string, string>();
 const readFile = (file: string): string => {
@@ -102,6 +102,31 @@ describe("file secrets (PROD-302)", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it("ignores every *_FILE variable outside the allowlist, such as the worker's heartbeat path (D-057)", () => {
+    const env: Record<string, string | undefined> = { OUTBOX_HEARTBEAT_FILE: "/tmp/outbox-worker-heartbeat.json", COMPOSE_FILE: "docker-compose.prod.yml", MY_REPORT_FILE: "/nonexistent", SESSION_SECRET_FILE: "/run/secrets/session" };
+    const opened: string[] = [];
+    const read = (path: string) => {
+      opened.push(path);
+      if (path === "/run/secrets/session") return "s3cret\n";
+      throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    };
+    expect(loadFileSecrets(env, { readFile: read })).toEqual({ loaded: ["SESSION_SECRET"], expanded: [] });
+    expect(opened).toEqual(["/run/secrets/session"]);
+    expect(env).toMatchObject({ OUTBOX_HEARTBEAT_FILE: "/tmp/outbox-worker-heartbeat.json", SESSION_SECRET: "s3cret" });
+    for (const name of ["OUTBOX_HEARTBEAT", "COMPOSE", "MY_REPORT"]) expect(name in env).toBe(false);
+    expect(FILE_SECRET_VARIABLES).not.toContain("OUTBOX_HEARTBEAT_FILE");
+  });
+
+  it("lists every secret file the Compose files mount under /run/secrets", () => {
+    const root = path.resolve(__dirname, "../../..");
+    const mounted = new Set<string>();
+    for (const file of readdirSync(root).filter((entry) => /^docker-compose.*\.ya?ml$/.test(entry))) {
+      for (const match of readFileSync(path.join(root, file), "utf8").matchAll(/^\s*([A-Z0-9_]+_FILE):\s*(?:"|')?\/run\/secrets\//gm)) mounted.add(match[1]);
+    }
+    expect(mounted.size).toBeGreaterThan(10);
+    for (const name of mounted) expect(FILE_SECRET_VARIABLES, `${name} is mounted as a secret but the loader does not know it`).toContain(name);
   });
 });
 
