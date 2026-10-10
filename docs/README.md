@@ -32,6 +32,10 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
+## Auditoria histórica de dependências (07/10/2026)
+
+A [revisão dos PRs de dependências #15 e #23](RELATORIO_AUDITORIA_DEPENDENCIAS_2026-10-07.md) confere os merges, o CI remoto, a revalidação local sob Node 22, as regras do Dependabot e os limites das migrações adiadas.
+
 ## Auditoria corrente — experiência Plane (06/10/2026)
 
 O [relatório de 06/10/2026](RELATORIO_AUDITORIA_2026-10-06.md) registra os achados, correções e validações da migração D-029 na branch `feat/plane-experience`. A evidência desta interface complementa os gates e pendências institucionais do programa de produção.
@@ -41,6 +45,8 @@ A [auditoria de prontidão de 06/10/2026](RELATORIO_AUDITORIA_PRODUCAO_2026-10-0
 O [pacote de decisões de 08/10/2026](build/PACOTE_DECISOES_2026-10-08.md) reúne, para os responsáveis do hospital, as 12 decisões (D1–D12) que faltam para a produção, com opções, propostas e o que cada uma destrava.
 
 O [relatório de escala de 08/10/2026](RELATORIO_ESCALA_2026-10-08.md) mede o runtime de 1 a 35 meses de dados depois do snapshot compartilhado, dos índices e do armazenamento por entidade (D-030, migration 015), e registra o dimensionamento de memória.
+
+O [registro da auditoria de remediação de 09/10/2026](RELATORIO_AUDITORIA_REMEDIACAO_2026-10-09.md) conserva a revisão do candidato `3d47f1f`, as evidências locais e os dois achados médios. O relatório identifica as correções posteriores já presentes na main e não substitui sua revalidação.
 
 ## Snapshot executável anterior — auditoria de 04/10/2026
 

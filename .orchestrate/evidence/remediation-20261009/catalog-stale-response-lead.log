@@ -1,0 +1,36 @@
+
+ RUN  v4.1.11 /tmp/cvg-remediation-clinical-harness-20261009
+
+ ↓ catalog-ui.test.tsx > AUD07 actual dry-run report renders removals; apply click intentionally removes listed analyte
+stdout | catalog-ui.test.tsx > AUD07 changing selected CSV during pending validation must discard old response
+AUD07 changed file while pending: old report restored true
+
+stdout | catalog-ui.test.tsx > AUD07 changing selected CSV during pending validation must discard old response
+AUD07 stale apply observation {"selectedFilename":"new-preserving-both.csv","submittedCodes":["SECOND"],"storedCodes":["SECOND"]}
+
+ × catalog-ui.test.tsx > AUD07 changing selected CSV during pending validation must discard old response 356ms
+   → expected [ 'SECOND' ] to deeply equal [ 'FIRST', 'SECOND' ]
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  catalog-ui.test.tsx > AUD07 changing selected CSV during pending validation must discard old response
+AssertionError: expected [ 'SECOND' ] to deeply equal [ 'FIRST', 'SECOND' ]
+
+- Expected
++ Received
+
+  [
+-   "FIRST",
+    "SECOND",
+  ]
+
+ ❯ catalog-ui.test.tsx:43:43
+
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 1 skipped (2)
+   Start at  07:11:00
+   Duration  1.56s (transform 525ms, setup 88ms, import 706ms, tests 358ms, environment 297ms)
