@@ -157,7 +157,8 @@ export type ApiAuthorizationCondition =
   | "x-duplicate-override=true additionally requires request.duplicate_override"
   | "the result state selects result.view or result.draft.edit_own"
   | "the result state selects result.view or result.draft.edit_own and attachment.view is always required"
-  | "notification must belong to the actor; a manager may use authorized request context"
+  | "only notifications whose result or request the actor can still open are listed"
+  | "notification must belong to the actor and its result or request stay open to them; a manager may use authorized request context"
   | "role must be MANAGER"
   | "patient must be active and have no open encounter"
   | "encounter must be OPEN; pending diagnostic items stay with the requester"
@@ -578,8 +579,8 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
     { when: "current result version status is RELEASED", allOf: ["result.view"] }
   ]),
   listAuditEvents: authorization(["audit.view"], DEPARTMENT),
-  listNotifications: authorization(["notification.view"], ROLE),
-  acknowledgeNotification: authorization(["notification.view", "notification.acknowledge"], [...ROLE, "notification must belong to the actor; a manager may use authorized request context"]),
+  listNotifications: authorization(["notification.view"], [...ROLE, "only notifications whose result or request the actor can still open are listed"]),
+  acknowledgeNotification: authorization(["notification.view", "notification.acknowledge"], [...ROLE, "notification must belong to the actor and its result or request stay open to them; a manager may use authorized request context"]),
   listQueueItems: authorization(["queue.view"], DEPARTMENT),
   searchDiagnostics: authorization(["search.execute"], REQUEST),
   getTimeline: authorization(["timeline.view"], REQUEST),
