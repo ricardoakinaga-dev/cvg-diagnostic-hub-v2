@@ -1,0 +1,14 @@
+{
+  "auditedCommit": "3d47f1fc3a92f697e4eb008a05694e91a9a4eab9",
+  "publicationBase": "64209e108111ed96f9fe54479d27f54edd952f67",
+  "ciRun": 37887071373,
+  "scope": "Historical audit of the audited commit; no new runtime validation of publicationBase",
+  "files": {
+    "docs/RELATORIO_AUDITORIA_REMEDIACAO_2026-10-09.md": "3a991ccde1635344b1366f1055e2a8cd2322a8c3ac8a4be9d26636bf25d3fc8f",
+    ".orchestrate/evidence/remediation-20261009/checks-summary.json": "1ee990fa67ad7efd27ec59c39bae18a3e86abc3ee44e8c32310c499dd59dc4c4",
+    ".orchestrate/evidence/remediation-20261009/backup-partial-lead.log": "187b1e63db12726d920d7177c0e39f48c1f53aa0ca2fb0610386aa149b965100",
+    ".orchestrate/evidence/remediation-20261009/catalog-stale-response-lead.log": "7ee729fb1e24bb2c516905565db65e290d36da4e4798f61633f196c93fc04ec8",
+    ".orchestrate/evidence/remediation-20261009/catalog-long-message.log": "9217f0d80a4f846101f185c1b8e56a5a3c1d43a85c631b10ff3597a03c83e909",
+    ".orchestrate/evidence/remediation-20261009/docs-marker-repro.log": "8f7e3fb213456459570959a123d3e6df9c915caa8dc5305301150afad3df9f10"
+  }
+}

@@ -42,6 +42,8 @@ O [pacote de decisões de 08/10/2026](build/PACOTE_DECISOES_2026-10-08.md) reún
 
 O [relatório de escala de 08/10/2026](RELATORIO_ESCALA_2026-10-08.md) mede o runtime de 1 a 35 meses de dados depois do snapshot compartilhado, dos índices e do armazenamento por entidade (D-030, migration 015), e registra o dimensionamento de memória.
 
+O [registro da auditoria de remediação de 09/10/2026](RELATORIO_AUDITORIA_REMEDIACAO_2026-10-09.md) conserva a revisão do candidato `3d47f1f`, as evidências locais e os dois achados médios. O relatório identifica as correções posteriores já presentes na main e não substitui sua revalidação.
+
 ## Snapshot executável anterior — auditoria de 04/10/2026
 
 Reproduzido na [auditoria de 04/10/2026](RELATORIO_AUDITORIA_2026-10-04.md) com PostgreSQL 16 descartável: **1.449/1.449 testes unitários** em 126 arquivos e **96/96 testes PostgreSQL** em 17 arquivos. Cobertura agregada de **96,83% lines, 95,48% functions e 89,47% branches**; `coverage:gate` PASS com **22 exceções** declaradas, nenhuma nova. `validate:docs`, OpenAPI (**73 operações em 68 paths**), rastreabilidade (43/43), migrations (**001–014**), `perf:snapshot:gate`, `perf:realtime-budget`, typecheck, lint, build e `npm audit` (0 vulnerabilidades) passaram.
