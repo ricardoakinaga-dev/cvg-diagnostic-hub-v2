@@ -1,0 +1,6 @@
+{"event":"offsite.shipped","walSegments":1,"bytes":24576}
+ship_exit=0
+{"lastShippedAt":"2026-10-09T10:14:23Z","lastShippedEpoch":1791540863,"lastAttemptAt":"2026-10-09T10:14:23Z","lastResult":"ok","walSegments":1,"bytes":24576}
+/case/remote/wal/000000010000000000000001
+{"event":"offsite.check","result":"ok","ageSeconds":0,"limitSeconds":900}
+health_exit=0
