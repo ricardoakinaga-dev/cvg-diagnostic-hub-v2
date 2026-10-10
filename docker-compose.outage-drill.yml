@@ -1,0 +1,32 @@
+# Override used ONLY by scripts/outage-drill.sh (PROD-513/PROD-515) on a DISPOSABLE Compose project: the whole
+# production stack (prod + onprem + secrets overlays) plus a Prometheus that evaluates deploy/observability/alerts.yml
+# against the real /api/v1/metrics, so each outage (PostgreSQL, MinIO, ClamAV, worker, app) is proven to reach the
+# rule that owns it. The edge is a plain-HTTP Caddy on loopback (the TLS edge is rehearsed elsewhere); it still
+# injects the proxy secret and the client address the application requires.
+#
+#   docker compose -p <project> -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.secrets.yml \
+#     -f docker-compose.outage-drill.yml --env-file <drill.env> up -d
+services:
+  offsite:
+    volumes:
+      - drill-offsite:/offsite-destination
+  proxy:
+    ports: !override
+      - "127.0.0.1:${DRILL_PROXY_PORT:?}:8080"
+    volumes: !override
+      - ${DRILL_CADDYFILE:?}:/etc/caddy/Caddyfile:ro
+  prometheus:
+    image: ${PROMETHEUS_IMAGE:-prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e}
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=1d"]
+    mem_limit: 256m
+    ports:
+      - "127.0.0.1:${DRILL_PROMETHEUS_PORT:?}:9090"
+    volumes:
+      - ${DRILL_PROMETHEUS_CONFIG:?}:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ${SECRETS_DIR:?}/metrics_scrape_token:/etc/prometheus/secrets/metrics-scrape-token:ro
+    depends_on:
+      proxy: { condition: service_started }
+
+volumes:
+  drill-offsite:

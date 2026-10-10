@@ -146,6 +146,22 @@ npm run test:recovery
 npm run test:perf
 npm run security:scan
 npm --silent run security:sbom > sbom.cdx.json
+npm run restore:drill     # banco + anexos perdidos e restaurados da cópia externa, com reconciliação (BACKUP_RESTORE §4.6)
+npm run outage:drill      # PostgreSQL, MinIO, ClamAV, worker e app indisponíveis, um a um, com as regras do Prometheus disparando
 ```
+
+`scripts/outage-drill.sh` (D-062) sobe a pilha de produção inteira (overlays `prod + onprem + secrets`, borda HTTP em loopback) mais um Prometheus com as regras de `deploy/observability/alerts.yml` lendo o `/api/v1/metrics` real, e ensaia os runbooks deste documento: worker parado (entrega enfileirada pelo outbox da aplicação, `cvg_outbox_oldest_age_seconds` passa de 300 s, `CvgOutboxStalled` dispara e resolve quando o worker volta), ClamAV parado (adaptador `scanner` fica não saudável; readiness continua, nenhum anexo é liberado sem verificação), MinIO e PostgreSQL parados (`/readyz` 503, `cvg_readiness_failures` sobe, `CvgHubReadinessFailing` dispara, recuperação ao voltar) e app parado (`up == 0`, `CvgHubScrapeDown` após 2 min). O JSON final traz, por cenário, segundos até detectar, até o alerta e até recuperar. Donos e roteamento dos alertas continuam a cargo do hospital (PROD-516).
+
+Evidência medida em 10/10/2026 (laboratório local, `npm run outage:drill`, Prometheus v3.15 com `scrape_interval`/`evaluation_interval` de 15 s, regras com os `for` de produção):
+
+| Cenário | Sinal observado | Regra | Até detectar | Até o alerta | Até recuperar |
+| --- | --- | --- | --- | --- | --- |
+| worker parado (1 entrega enfileirada pelo outbox da aplicação) | `cvg_outbox_oldest_age_seconds` 606 s no disparo | `CvgOutboxStalled` (`> 300 s for 5m`) | — | 612 s depois da fila | entrega 12 s após o worker voltar; alerta resolvido no ciclo seguinte |
+| ClamAV parado | healthcheck do `scanner` (`/health` faz `PING` no clamd) `unhealthy`; `/readyz` continua 200 | — (nenhum anexo é liberado sem verificação; upload recusado) | 53 s | — | 19 s |
+| MinIO parado | `/readyz` 503, `cvg_readiness_failures` sobe | `CvgHubReadinessFailing` | 0 s | 37 s | 3 s |
+| PostgreSQL parado | `/readyz` 503, `cvg_readiness_failures` sobe | `CvgHubReadinessFailing` (ainda ativo da janela de 10 min do cenário anterior) | 0 s | 0 s | 3 s |
+| app parado | `up{job="cvg-hub"} == 0` | `CvgHubScrapeDown` (`for 2m`) | 9 s | 127 s | 6 s |
+
+Ensaio completo em 851 s. O tempo até `CvgOutboxStalled` (~10 min) é o desenho da regra: idade da mensagem acima de 300 s **e** 5 min de `for`; quem precisar de reação mais rápida muda a regra, não o worker. Limites: borda HTTP em loopback (o TLS real é outro ensaio), `cvg_readiness_failures` só cresce quando alguém chama `/readyz` (aqui, o próprio ensaio e o healthcheck do app), e o roteamento até um dono nomeado não existe até o PROD-516.
 
 Esses comandos demonstram controles locais. Eles não provam RPO/RTO aprovado, failover do ambiente-alvo, restore de object storage/configuração/chaves, piloto ou autoridade de release.
