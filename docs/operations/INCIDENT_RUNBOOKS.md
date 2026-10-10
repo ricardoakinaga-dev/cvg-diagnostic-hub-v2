@@ -149,6 +149,6 @@ Evidência medida em 10/10/2026 (laboratório local, `npm run outage:drill`, Pro
 | PostgreSQL parado | `/readyz` 503, `cvg_readiness_failures` sobe | `CvgHubReadinessFailing` (ainda ativo da janela de 10 min do cenário anterior) | 0 s | 0 s | 3 s |
 | app parado | `up{job="cvg-hub"} == 0` | `CvgHubScrapeDown` (`for 2m`) | 9 s | 127 s | 6 s |
 
-Ensaio completo em 851 s. Limites: borda HTTP em loopback (o TLS real é outro ensaio), `cvg_readiness_failures` só cresce quando alguém chama `/readyz` (aqui, o próprio ensaio e o healthcheck do app), e o roteamento até um dono nomeado não existe até o PROD-516.
+Ensaio completo em 851 s. O tempo até `CvgOutboxStalled` (~10 min) é o desenho da regra: idade da mensagem acima de 300 s **e** 5 min de `for`; quem precisar de reação mais rápida muda a regra, não o worker. Limites: borda HTTP em loopback (o TLS real é outro ensaio), `cvg_readiness_failures` só cresce quando alguém chama `/readyz` (aqui, o próprio ensaio e o healthcheck do app), e o roteamento até um dono nomeado não existe até o PROD-516.
 
 Esses comandos demonstram controles locais. Eles não provam RPO/RTO aprovado, failover do ambiente-alvo, restore de object storage/configuração/chaves, piloto ou autoridade de release.

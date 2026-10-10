@@ -14,8 +14,8 @@ const source = readFileSync(drill, "utf8");
 const outage = path.join(root, "scripts", "outage-drill.sh");
 const outageSource = readFileSync(outage, "utf8");
 
-test("the full restore drill refuses production and local Compose projects before touching Docker", () => {
-  for (const project of ["cvg-hub", "cvg-diagnostic-hub-v2", "cvg-diagnostic-local", "cvg-prod", "cvg-hml", "Bad Project"]) {
+test("the full restore drill accepts only project names that say 'drill' (allowlist by shape), before touching Docker", () => {
+  for (const project of ["cvg-hub", "cvg-diagnostic-hub-v2", "cvg-diagnostic-local", "cvg-prod", "cvg-hml", "cvg-prod-2", "hospital-sao-lucas", "Bad Project", "drill/../x"]) {
     const result = spawnSync("bash", [drill], { env: { ...process.env, DRILL_PROJECT: project }, encoding: "utf8" });
     assert.equal(result.status, 2, `${project}: ${result.stderr}`);
   }
@@ -55,7 +55,7 @@ test("package.json exposes the drill and the reconciliation, and the CLI refuses
 });
 
 test("the outage drill refuses production projects and proves each outage against the Prometheus rules", () => {
-  for (const project of ["cvg-hub", "cvg-prod", "cvg-hml", "cvg-diagnostic-local"]) {
+  for (const project of ["cvg-hub", "cvg-prod", "cvg-hml", "cvg-diagnostic-local", "cvg-prod-2", "hospital-sao-lucas"]) {
     const result = spawnSync("bash", [outage], { env: { ...process.env, DRILL_PROJECT: project }, encoding: "utf8" });
     assert.equal(result.status, 2, `${project}: ${result.stderr}`);
   }

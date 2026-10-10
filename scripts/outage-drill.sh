@@ -21,7 +21,7 @@
 # Environment: DRILL_PROJECT (default cvg-outage-drill), DRILL_PROXY_PORT (loopback HTTP edge, default 58080),
 # DRILL_PROMETHEUS_PORT (loopback, default 59090), DRILL_IMAGE_PREFIX (default = project), DOCKER_HUB_MIRROR (optional
 # registry mirror for the Prometheus image, as in CI). The edge is plain HTTP on loopback: TLS is rehearsed elsewhere.
-# Never point it at a production Compose project: it runs `down -v` on DRILL_PROJECT.
+# Never point it at a production Compose project: DRILL_PROJECT must contain "drill" and the script runs `down -v` on it.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -31,10 +31,8 @@ PROM_PORT="${DRILL_PROMETHEUS_PORT:-59090}"
 KEEP="false"
 [[ "${1:-}" == "--keep" ]] && KEEP="true"
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
-[[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "DRILL_PROJECT inválido" >&2; exit 2; }
-for forbidden in cvg-hub cvg-diagnostic-hub-v2 cvg-diagnostic-local cvg-prod cvg-hml; do
-  [[ "$PROJECT" != "$forbidden" ]] || { echo "recusando usar o projeto $PROJECT: use um projeto descartável" >&2; exit 2; }
-done
+# Allowlist by shape, not denylist by name: the project runs `down -v`, so only a name that says "drill" is accepted.
+[[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*drill[a-z0-9_-]*$ ]] || { echo "DRILL_PROJECT inválido: use um projeto descartável cujo nome contenha 'drill' (recebido: $PROJECT)" >&2; exit 2; }
 [[ "$PROXY_PORT" =~ ^[0-9]+$ && "$PROM_PORT" =~ ^[0-9]+$ ]] || { echo "DRILL_PROXY_PORT e DRILL_PROMETHEUS_PORT devem ser inteiros" >&2; exit 2; }
 command -v python3 >/dev/null || { echo "python3 é necessário para ler as respostas do Prometheus" >&2; exit 2; }
 

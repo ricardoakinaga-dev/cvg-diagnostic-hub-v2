@@ -20,7 +20,7 @@
 # 55514), DRILL_STORAGE_PORT (loopback port of MinIO for the host-side reconciliation, default 59014),
 # DRILL_SHIP_INTERVAL_SECONDS (default 15), DRILL_ATTACHMENT_COUNT (default 50), DRILL_ATTACHMENT_KB (default 64),
 # DRILL_IMAGE_PREFIX (default = project). Needs the repository's node_modules (host-side reconciliation).
-# Never point it at a production Compose project: it runs `down -v` on DRILL_PROJECT.
+# Never point it at a production Compose project: DRILL_PROJECT must contain "drill" and the script runs `down -v` on it.
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -33,10 +33,8 @@ ATTACHMENT_KB="${DRILL_ATTACHMENT_KB:-64}"
 KEEP="false"
 [[ "${1:-}" == "--keep" ]] && KEEP="true"
 [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]] && { sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0; }
-[[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || { echo "DRILL_PROJECT inválido" >&2; exit 2; }
-for forbidden in cvg-hub cvg-diagnostic-hub-v2 cvg-diagnostic-local cvg-prod cvg-hml; do
-  [[ "$PROJECT" != "$forbidden" ]] || { echo "recusando usar o projeto $PROJECT: use um projeto descartável" >&2; exit 2; }
-done
+# Allowlist by shape, not denylist by name: the project runs `down -v`, so only a name that says "drill" is accepted.
+[[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*drill[a-z0-9_-]*$ ]] || { echo "DRILL_PROJECT inválido: use um projeto descartável cujo nome contenha 'drill' (recebido: $PROJECT)" >&2; exit 2; }
 [[ "$PORT" =~ ^[0-9]+$ && "$STORAGE_PORT" =~ ^[0-9]+$ && "$ATTACHMENT_COUNT" =~ ^[0-9]+$ && "$ATTACHMENT_KB" =~ ^[0-9]+$ && "$SHIP_INTERVAL" =~ ^[0-9]+$ ]] \
   || { echo "DRILL_PORT, DRILL_STORAGE_PORT, DRILL_ATTACHMENT_COUNT, DRILL_ATTACHMENT_KB e DRILL_SHIP_INTERVAL_SECONDS devem ser inteiros" >&2; exit 2; }
 [[ -d "$ROOT_DIR/node_modules/.bin" ]] || { echo "node_modules ausente: rode npm ci antes (a reconciliação roda no host)" >&2; exit 2; }
