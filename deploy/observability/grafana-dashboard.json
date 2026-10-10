@@ -292,6 +292,44 @@
           "legendFormat": "uptime (s)"
         }
       ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Fila serial de escrita (D-061)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${datasource}"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 32,
+        "w": 12,
+        "h": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms"
+        },
+        "overrides": []
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rate(cvg_write_queue_wait_ms_sum{job=\"cvg-hub\"}[5m]) / clamp_min(rate(cvg_write_queue_wait_ms_count{job=\"cvg-hub\"}[5m]), 1e-9)",
+          "legendFormat": "espera média na fila (ms)"
+        },
+        {
+          "refId": "B",
+          "expr": "rate(cvg_write_transaction_ms_sum{job=\"cvg-hub\"}[5m]) / clamp_min(rate(cvg_write_transaction_ms_count{job=\"cvg-hub\"}[5m]), 1e-9)",
+          "legendFormat": "duração média da escrita (ms)"
+        },
+        {
+          "refId": "C",
+          "expr": "cvg_write_queue_in_flight{job=\"cvg-hub\"}",
+          "legendFormat": "escritas em andamento"
+        }
+      ]
     }
   ]
 }
