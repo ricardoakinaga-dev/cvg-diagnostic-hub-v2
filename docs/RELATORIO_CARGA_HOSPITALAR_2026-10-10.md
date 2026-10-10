@@ -80,7 +80,20 @@ Na primeira tentativa, o próprio harness matava só o processo `tsx` do worker 
 
 ## 5. Soak
 
-_Em medição._
+Duas horas seguidas a **5× o pico D2** (187 exames por hora, um dia cheio comprimido), com os 42 profissionais consultando as telas e as 30 conexões SSE abertas o tempo todo:
+
+| Medida | Resultado |
+| --- | --- |
+| Jornadas | 370, todas concluídas |
+| Requisições | 41.051, **nenhum erro** |
+| Leitura p95 por minuto | 82 a 130 ms; último terço / primeiro terço = **0,97** |
+| Escrita p95 por minuto | até 373 ms; último terço / primeiro terço = **0,94** |
+| Memória do app (RSS) | 414 → 464 MB, pico de 550 MB; tendência de **+5 MB por hora** (dentro do ruído do coletor de lixo) |
+| Banco | 346 → 361 MB (histórico e auditoria das jornadas) |
+| Espera por lock no PostgreSQL | no máximo 1 sessão |
+| Integridade | 370/370 duráveis, nenhuma duplicada, 370 notificações entregues uma vez |
+
+Veredito do harness: **estável** (deriva de latência ≤ 1,5, crescimento de memória abaixo de 200 MB/h, erros ≤ 1%). Duas horas não substituem uma semana de operação: a homologação deve repetir o soak por pelo menos 24 h no servidor do hospital, com o `CvgWriteQueueSaturated` e as regras de memória ligados.
 
 ## 6. Decisão (D-061)
 
