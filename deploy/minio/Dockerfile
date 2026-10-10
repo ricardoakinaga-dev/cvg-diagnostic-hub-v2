@@ -15,7 +15,8 @@ RUN tar -xzf /tmp/minio-source.tar.gz --strip-components=1 \
       github.com/go-jose/go-jose/v4@v4.1.4 \
       github.com/prometheus/prometheus@v0.311.3 \
       github.com/rabbitmq/amqp091-go@v1.13.0 \
-      golang.org/x/crypto@v0.55.0 \
+      golang.org/x/crypto@v0.57.0 \
+      golang.org/x/net@v0.60.0 \
       google.golang.org/grpc@v1.83.2 \
     && CGO_ENABLED=0 GOTOOLCHAIN=local go build -mod=mod -trimpath -o /out/minio . \
     && tar -czf /out/source.tar.gz .

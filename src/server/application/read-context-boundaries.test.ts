@@ -17,7 +17,10 @@ function notification(id: string, changes: Partial<Notification> = {}): Notifica
 describe("application reads validate filters and resolve current context", () => {
   it("paginates equal-time notifications without duplicates, isolates recipients and filters critical entries", async () => {
     const c = setup();
-    const notifications = [notification("n-b"), notification("n-a"), notification("n-old", { category: "INFORMATIONAL", createdAt: "2026-10-03T10:00:00.000Z" }), notification("n-other", { recipientUserId: c.lab.id })];
+    const request = await c.service.createRequest(c.vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "paginate-notification-request" });
+    const about = { entityId: request.id };
+    // A notification whose request no longer exists is not listed, whatever its recipient.
+    const notifications = [notification("n-b", about), notification("n-a", about), notification("n-old", { ...about, category: "INFORMATIONAL", createdAt: "2026-10-03T10:00:00.000Z" }), notification("n-other", { ...about, recipientUserId: c.lab.id }), notification("n-gone", { category: "INFORMATIONAL" })];
     await c.store.transaction((state) => ({ state: { ...state, notifications }, result: undefined }));
     const first = await c.service.listNotifications(c.vet, "ALL", { limit: 1 });
     expect(first.items.map((entry) => entry.id)).toEqual(["n-a"]);
@@ -42,7 +45,8 @@ describe("application reads validate filters and resolve current context", () =>
 
   it("requires explicit acknowledgement and a delivered notification before persisting a decision", async () => {
     const c = setup();
-    await c.store.transaction((state) => ({ state: { ...state, notifications: [notification("pending", { category: "INFORMATIONAL", state: "PENDING" }), notification("delivered", { category: "INFORMATIONAL" })] }, result: undefined }));
+    const request = await c.service.createRequest(c.vet, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }] }, { idempotencyKey: "acknowledge-notification-request" });
+    await c.store.transaction((state) => ({ state: { ...state, notifications: [notification("pending", { category: "INFORMATIONAL", state: "PENDING", entityId: request.id }), notification("delivered", { category: "INFORMATIONAL", entityId: request.id })] }, result: undefined }));
     const input = { confirm: true as const, reason: "Recebimento confirmado", expectedVersion: 1, idempotencyKey: "read-acknowledge" };
     const before = c.store.getState();
     await expect(Reflect.apply(c.service.acknowledgeNotification, c.service, [c.vet, "delivered", { ...input, confirm: false }])).rejects.toMatchObject({ code: "VALIDATION_ERROR", status: 400 });
