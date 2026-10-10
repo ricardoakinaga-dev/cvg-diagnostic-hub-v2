@@ -161,7 +161,7 @@ services:
   # administrative and DDL credentials: it creates/rotates the migration and runtime roles, hands the
   # schema to the migration role, applies migrations and grants the runtime role DML only.
   migrate:
-    build: { context: ., target: ops }
+    build: { context: ., target: ops, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
     image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
     command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
     environment:
@@ -206,7 +206,7 @@ services:
     # on 2026-10-08: peak RSS 539 MB at 12 months (55k exams, 700 MB heap) and
     # 912 MB at 24 months (110k, 1200 MB heap). Size both values from D2.
     mem_limit: ${APP_MEM_LIMIT:-2g}
-    build: { context: ., target: runner }
+    build: { context: ., target: runner, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
     image: ${IMAGE_PREFIX:-cvg-hub}:${IMAGE_TAG:-latest}
     environment:
       <<: *app-environment

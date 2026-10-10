@@ -487,6 +487,28 @@ O diretório `/opt/cvg-hub` é um checkout do repositório. Os arquivos de Compo
 | Servidor | `docker login` no registry com token **somente leitura**, caso a imagem seja privada, e os timers acima. |
 
 O primeiro deploy de um ambiente continua sendo o §3. A única diferença é que, em vez de `build`, o operador exporta `IMAGE_PREFIX` e `IMAGE_TAG=sha-…` e roda `pull`.
+
+### 11.1 Provar o commit de uma instalação
+
+A auditoria de 10/10/2026 encontrou a instalação local com imagens `20261003`, sem commit, e não pôde provar que ela correspondia ao código revisado ([D-060](../DECISION_LOG.md)). Agora toda imagem do app e do `ops` leva o commit em três lugares:
+
+- **label OCI** `org.opencontainers.image.revision`, que o `deploy.sh` confere antes do deploy (imagem puxada) **e depois** (contêineres `app` e `worker` em execução; `release.running_revision_mismatch` se um deles não for a release);
+- **variável** `CVG_BUILD_REVISION` no processo, escrita no log de início (`{"event":"app.start","revision":"…"}` e `worker.start`);
+- **métrica** `cvg_build_info{revision="…"} 1` no `/api/v1/metrics`.
+
+O pipeline de release preenche os três. Um build local precisa passar o commit, senão a imagem diz `unknown`:
+
+```bash
+SOURCE_REVISION="$(git rev-parse HEAD)" docker compose -f docker-compose.prod.yml --env-file <arquivo> build
+```
+
+Para conferir uma instalação em execução (sai com erro se `app` ou `worker` não tiver commit, se os dois divergirem ou se não for o commit esperado):
+
+```bash
+deploy/release/installation-provenance.sh --project cvg-prod --expect <commit>
+```
+
+Uma instalação que mostra `unknown` foi construída antes desta regra ou sem `SOURCE_REVISION`: reconstrua do commit revisado ou faça o deploy pela release.
 ## 12. Armazenamento e antivírus no servidor do hospital (modo on-prem, PROD-307/308/514)
 
 D11 põe o servidor dentro do hospital. O overlay [`docker-compose.onprem.yml`](../../docker-compose.onprem.yml) acrescenta ao stack de produção o armazenamento de objetos e o antivírus, sem nenhuma porta publicada, e a decisão está em [D-050](../DECISION_LOG.md):
