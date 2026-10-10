@@ -341,9 +341,11 @@ Cada mudança gera um evento de auditoria (`CriticalAlertWhatsApp*`) sem o núme
 **Escalonamento ao plantão:** quem roda é o worker, a cada ciclo, só com a política crítica ativa.
 - Se ninguém confirmou o crítico, a cada limiar de `CRITICAL_POLICY_ESCALATION_AFTER_MS` (padrão 15, 30 e 60 min após a liberação) o Hub avisa o próximo degrau de `CRITICAL_POLICY_RECIPIENT_RULES`. Cada degrau é a primeira regra que alcança alguém ainda não avisado.
 - A D3 pede o plantão primeiro. Uma escada que segue isso: `REQUESTER,ON_CALL,RESPONSIBLE,DEPARTMENT_MANAGER`.
-- Plantão: todos os profissionais ativos do setor solicitante marcados com **Colocar no plantão**.
+- Plantão: todos os profissionais ativos do setor solicitante marcados com **Colocar no plantão**. Se o setor solicitante não tem nenhum plantonista, entram os profissionais de plantão de qualquer setor que consigam abrir o resultado (D-056).
 - Gestor: quem gerencia o setor solicitante, mesmo lotado em outro setor, e também o setor do exame (sem ele, o gestor não abre o resultado).
 - Só entra quem consegue abrir o resultado, depois da concessão de paciente abaixo. ADMIN e VIEWER ficam de fora, um executor só entra se tiver o exame no seu escopo e um gestor só se gerenciar o setor do exame. Quem não consegue abrir é pulado, e o degrau vai para a próxima regra.
+- Degrau sem ninguém (D-056): os ADMIN ativos recebem a notificação administrativa "Crítico sem confirmação e sem destinatário" (protocolo e setor, sem paciente nem resultado), uma por crítico; o worker loga `critical.escalation_unreachable`, a métrica `cvg_critical_unreachable` sobe e `CvgCriticalUnreachable` dispara até alguém confirmar. `ADMIN_FALLBACK` na política nomeia esse alerta; o ADMIN nunca recebe o crítico em si.
+- Prontidão: **Sistema › Resultado crítico** (`GET /api/v1/critical-results/readiness`) mostra se a política está aprovada, se há canal redundante (`WHATSAPP_ENABLED=true` ou o aceite nominal do hospital em `CRITICAL_POLICY_IN_APP_ONLY_APPROVAL_REF`, D3) e quais setores solicitantes estão sem plantonista; `cvg_critical_readiness{check}` e `CvgCriticalReadinessDegraded` acompanham. Ligar a política sem essas condições não impede nenhuma liberação, mas o alerta fica aberto.
 - Cada pessoa avisada recebe a própria notificação crítica, no Hub e pelo WhatsApp se tiver número cadastrado.
 - Veterinários e equipe de internação passam a ter o paciente no escopo para abrir o resultado. A concessão fica auditada (`CriticalEscalationPatientAccessGranted`).
 - A confirmação de qualquer pessoa que consiga abrir o resultado interrompe a escalada. Quem perdeu o acesso (por exemplo, mudou de perfil depois de avisado) recebe `SCOPE_DENIED` ao confirmar, e a escalada continua.
@@ -487,6 +489,28 @@ O diretório `/opt/cvg-hub` é um checkout do repositório. Os arquivos de Compo
 | Servidor | `docker login` no registry com token **somente leitura**, caso a imagem seja privada, e os timers acima. |
 
 O primeiro deploy de um ambiente continua sendo o §3. A única diferença é que, em vez de `build`, o operador exporta `IMAGE_PREFIX` e `IMAGE_TAG=sha-…` e roda `pull`.
+
+### 11.1 Provar o commit de uma instalação
+
+A auditoria de 10/10/2026 encontrou a instalação local com imagens `20261003`, sem commit, e não pôde provar que ela correspondia ao código revisado ([D-060](../DECISION_LOG.md)). Agora toda imagem do app e do `ops` leva o commit em três lugares:
+
+- **label OCI** `org.opencontainers.image.revision`, que o `deploy.sh` confere antes do deploy (imagem puxada) **e depois** (contêineres `app` e `worker` em execução; `release.running_revision_mismatch` se um deles não for a release);
+- **variável** `CVG_BUILD_REVISION` no processo, escrita no log de início (`{"event":"app.start","revision":"…"}` e `worker.start`);
+- **métrica** `cvg_build_info{revision="…"} 1` no `/api/v1/metrics`.
+
+O pipeline de release preenche os três. Um build local precisa passar o commit, senão a imagem diz `unknown`:
+
+```bash
+SOURCE_REVISION="$(git rev-parse HEAD)" docker compose -f docker-compose.prod.yml --env-file <arquivo> build
+```
+
+Para conferir uma instalação em execução (sai com erro se `app` ou `worker` não tiver commit, se os dois divergirem ou se não for o commit esperado):
+
+```bash
+deploy/release/installation-provenance.sh --project cvg-prod --expect <commit>
+```
+
+Uma instalação que mostra `unknown` foi construída antes desta regra ou sem `SOURCE_REVISION`: reconstrua do commit revisado ou faça o deploy pela release.
 ## 12. Armazenamento e antivírus no servidor do hospital (modo on-prem, PROD-307/308/514)
 
 D11 põe o servidor dentro do hospital. O overlay [`docker-compose.onprem.yml`](../../docker-compose.onprem.yml) acrescenta ao stack de produção o armazenamento de objetos e o antivírus, sem nenhuma porta publicada, e a decisão está em [D-050](../DECISION_LOG.md):
@@ -569,6 +593,8 @@ Com [`docker-compose.secrets.yml`](../../docker-compose.secrets.yml) (e o overla
 | `malware_scanner_api_key` | `scanner`, `app`, `worker`, `migrate`, `bootstrap`, `storage-init` | `--rotate` + `up -d --force-recreate scanner app worker` |
 | `metrics_scrape_token` | `app` | `--rotate` + `up -d --force-recreate app` + o Prometheus |
 | `offsite_crypt_password`, `offsite_crypt_salt` | `offsite`, `storage-restore` | **não rotacionar**: a cópia externa inteira foi cifrada com eles; trocar exige novo caminho no destino e recópia (§10) |
+
+Só os nomes da lista `FILE_SECRET_VARIABLES` ([`file-secrets.ts`](../../src/server/security/file-secrets.ts)) são lidos como segredo; qualquer outra variável terminada em `_FILE` (como `OUTBOX_HEARTBEAT_FILE`, que o worker escreve) é ignorada (D-057). Para um segredo novo: criar o arquivo em `secrets-init.sh`, montá-lo no `docker-compose.secrets.yml` e acrescentar o nome à lista; o teste `file-secrets.test.ts` falha enquanto um `/run/secrets/` do Compose estiver fora dela.
 
 Runbook de rotação (ensaiado no `environments:drill` com a senha de runtime da homologação): (1) `bash scripts/secrets-init.sh <SECRETS_DIR> --rotate <nome>`; (2) o comando da tabela; (3) conferir `docker compose ... logs --tail 20 <serviço>` (`secrets.loaded` lista os nomes, nunca os valores) e `/readyz`; (4) para senhas de banco, confirmar que a senha antiga é recusada (`psql` com ela falha); (5) registrar a rotação (data, nome, quem) no cofre. Cópia dos arquivos no cofre do hospital é obrigatória: `minio-kms.key`, `offsite_crypt_*` e `storage_root_password` são as chaves de tudo o que está cifrado.
 

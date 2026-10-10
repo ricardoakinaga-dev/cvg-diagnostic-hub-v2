@@ -13,7 +13,8 @@ ADD --checksum=sha256:95cd293c7119f16921a6dc515a1fb74a2227f19fd994b9c8b770a154e8
 RUN tar -xzf /tmp/mc-source.tar.gz --strip-components=1 \
     && GOTOOLCHAIN=local go get \
       github.com/prometheus/prometheus@v0.311.3 \
-      golang.org/x/crypto@v0.55.0 \
+      golang.org/x/crypto@v0.57.0 \
+      golang.org/x/net@v0.60.0 \
       google.golang.org/grpc@v1.83.2 \
     && CGO_ENABLED=0 GOTOOLCHAIN=local go build -mod=mod -trimpath -o /out/mc . \
     && tar -czf /out/source.tar.gz .

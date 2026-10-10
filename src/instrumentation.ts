@@ -13,4 +13,7 @@ export async function register(): Promise<void> {
     // Names only, never values.
     console.log(JSON.stringify({ event: "secrets.loaded", loaded, expanded }));
   }
+  // The commit this process serves, so the logs prove which build ran when (D-060).
+  const { startupEvent } = await import("./server/observability/build-info");
+  console.log(startupEvent("app"));
 }

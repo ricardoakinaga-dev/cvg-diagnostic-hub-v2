@@ -1074,6 +1074,31 @@ describe("versioned API boundary", () => {
     expect(outboxRead).not.toHaveBeenCalled();
   });
 
+  it("exposes the critical-result readiness to ADMIN only and renders its checks on the metrics scrape (D-056)", async () => {
+    const admin = await login("admin@cvg.local");
+    const response = await GET(new Request("http://localhost/api/v1/critical-results/readiness", { headers: { cookie: admin.cookie } }), params(["critical-results", "readiness"]));
+    expect(response.status).toBe(200);
+    const body = await response.json() as { data: { policy: { status: string }; redundantChannel: { status: string }; onCall: { total: number; departmentsWithoutOnCall: string[] }; administrators: number; ready: boolean } };
+    expect(body.data).toMatchObject({ policy: { status: "OFF" }, redundantChannel: { status: "MISSING" }, ready: false, administrators: 1 });
+    expect(body.data.onCall.total).toBe(0);
+    expect(body.data.onCall.departmentsWithoutOnCall.length).toBeGreaterThan(0);
+    expect(JSON.stringify(body)).not.toContain("patient-thor");
+
+    const metrics = await GET(new Request("http://localhost/api/v1/metrics", { headers: { cookie: admin.cookie } }), params(["metrics"]));
+    const text = await metrics.text();
+    expect(text).toContain('cvg_critical_readiness{check="policy"} 0');
+    expect(text).toContain('cvg_critical_readiness{check="redundant_channel"} 0');
+    expect(text).toContain('cvg_critical_readiness{check="on_call"} 0');
+    expect(text).toContain("cvg_critical_unacknowledged 0");
+    expect(text).toContain("cvg_critical_unreachable 0");
+
+    const vet = await login();
+    const denied = await GET(new Request("http://localhost/api/v1/critical-results/readiness", { headers: { cookie: vet.cookie } }), params(["critical-results", "readiness"]));
+    expect(denied.status).toBe(404);
+    const unauthenticated = await GET(new Request("http://localhost/api/v1/critical-results/readiness"), params(["critical-results", "readiness"]));
+    expect(unauthenticated.status).toBe(401);
+  });
+
   it("serves metrics to the Prometheus scrape token without a session and never treats it as one", async () => {
     const token = "prometheus-scrape-token-0123456789abcdef";
     vi.stubEnv("METRICS_SCRAPE_TOKEN", token);

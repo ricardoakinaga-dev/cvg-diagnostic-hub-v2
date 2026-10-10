@@ -281,8 +281,11 @@ export interface Notification {
   version: number;
   /** PROD-402: the redundant WhatsApp alert of a critical notification, updated by the worker and the webhook. */
   whatsapp?: NotificationChannelDelivery;
-  /** PROD-402: on the requester's critical notification, the escalation level already reached. */
-  escalation?: { level: number; lastEscalatedAt: Timestamp };
+  /**
+   * PROD-402: on the requester's critical notification, the escalation level already reached and, when a
+   * level found nobody clinical to notify, the moment the operational alert went to the administrators (D-056).
+   */
+  escalation?: { level: number; lastEscalatedAt: Timestamp; unreachableAt?: Timestamp };
   /** PROD-402: set on a critical notification created by escalation; points at the requester's notification. */
   escalationOf?: string;
 }

@@ -7,6 +7,7 @@ import { pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { createRuntimeRetentionSchedule, runScheduledRuntimeRetention } from "../src/server/operations/runtime-retention-job";
 import { clinicalArchiveConfig, createClinicalArchiveSchedule, runScheduledClinicalArchive } from "../src/server/operations/clinical-archive-job";
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
+import { startupEvent } from "../src/server/observability/build-info";
 import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
@@ -68,6 +69,8 @@ async function runEscalation(): Promise<void> {
   try {
     const summary = await runCriticalEscalation(await getRuntimeStoreAsync());
     if (summary.due > 0) console.log(JSON.stringify({ event: "critical.escalation", ...summary }));
+    // D-056: a level that found nobody clinical is an incident, not a quiet audit row.
+    if (summary.unreachable > 0) console.error(JSON.stringify({ event: "critical.escalation_unreachable", errorCode: "CRITICAL_RECIPIENTS_UNAVAILABLE", unreachable: summary.unreachable }));
   } catch (error) {
     console.error(JSON.stringify({ event: "critical.escalation_error", errorCode: "CRITICAL_ESCALATION_FAILED" }));
     throw error;
@@ -115,6 +118,7 @@ function heartbeatStatus(heartbeat: OutboxHeartbeat | undefined): { timestamp?: 
 }
 
 async function main(): Promise<void> {
+  console.log(startupEvent("worker"));
   const workerSink = createWorkerSink();
   try {
     if (once) {

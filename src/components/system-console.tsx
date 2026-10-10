@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AuditEvent, DeadLetterMessage, ManagedSession, SessionResponse } from "@cvg/contracts";
+import type { AuditEvent, CriticalReadiness, DeadLetterMessage, ManagedSession, SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { useConfirm } from "./confirm-dialog";
@@ -12,6 +12,7 @@ export function SystemConsole() {
   const [sessions, setSessions] = useState<ManagedSession[]>([]);
   const [deadLetters, setDeadLetters] = useState<DeadLetterMessage[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [readiness, setReadiness] = useState<CriticalReadiness | null>(null);
   const [allowed, setAllowed] = useState(false);
   const [denied, setDenied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -20,21 +21,22 @@ export function SystemConsole() {
   const load = useCallback(async () => {
     const version = ++generation.current;
     setLoading(true); setError(""); setDenied(false); setAllowed(false);
-    setSessions([]); setDeadLetters([]); setAuditEvents([]);
+    setSessions([]); setDeadLetters([]); setAuditEvents([]); setReadiness(null);
     try {
       const identity = await apiFetch<SessionResponse>("/session/me");
       if (version !== generation.current) return;
       if (identity.user.role !== "ADMIN") { setDenied(true); return; }
       const results = await Promise.allSettled([
-        apiFetch<ManagedSession[]>("/sessions"), apiFetch<DeadLetterMessage[]>("/outbox/dead-letters"), apiFetch<AuditEvent[]>("/audit-events?limit=20")
+        apiFetch<ManagedSession[]>("/sessions"), apiFetch<DeadLetterMessage[]>("/outbox/dead-letters"), apiFetch<AuditEvent[]>("/audit-events?limit=20"), apiFetch<CriticalReadiness>("/critical-results/readiness")
       ]);
       if (version !== generation.current) return;
-      const [sessionResult, messageResult, auditResult] = results;
+      const [sessionResult, messageResult, auditResult, readinessResult] = results;
       if (results.some((result) => result.status === "rejected" && result.reason instanceof ApiClientError && result.reason.code === "SCOPE_DENIED")) { setDenied(true); return; }
       setAllowed(true);
       if (sessionResult.status === "fulfilled") setSessions(sessionResult.value);
       if (messageResult.status === "fulfilled") setDeadLetters(messageResult.value);
       if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value);
+      if (readinessResult.status === "fulfilled") setReadiness(readinessResult.value);
       if (results.some((result) => result.status === "rejected")) setError("Parte dos dados do sistema está indisponível. Tente atualizar.");
     } catch (cause) {
       if (version !== generation.current) return;
@@ -52,11 +54,27 @@ export function SystemConsole() {
       {error && <ErrorState title="Sistema indisponível" message={error} onRetry={load} />}
       {allowed && <>
         <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><h2>Dispositivos e acessos ativos</h2><span>{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="As sessões aparecerão aqui." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={session.id} session={session} onSaved={load} />)}</div>}</section>
+        <CriticalReadinessPanel readiness={readiness} />
         <section className="panel admin-audit-panel" id="dead-letters"><div className="panel-heading"><h2>Dead-letter do outbox</h2><span>{deadLetters.length}</span></div>{deadLetters.length === 0 ? <EmptyState title="Nenhuma mensagem retida" message="Mensagens com falha de entrega aparecerão aqui." /> : <div className="admin-list">{deadLetters.map((message) => <DeadLetterRow key={message.id} message={message} onSaved={load} />)}</div>}</section>
         <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><h2>Auditoria recente</h2><span>{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento recente" message="As alterações aparecerão aqui." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="admin-audit-state">{event.newState ?? "registrado"}</span></li>)}</ul>}</section>
       </>}
     </>}
   </div>;
+}
+
+const POLICY_LABEL: Record<CriticalReadiness["policy"]["status"], string> = { ACTIVE: "Política ativa", OFF: "Política desligada", INVALID: "Política ligada com configuração inválida" };
+const CHANNEL_LABEL: Record<CriticalReadiness["redundantChannel"]["status"], string> = { WHATSAPP: "WhatsApp ligado", IN_APP_ONLY_ACCEPTED: "Só no Hub, aceito pelo hospital", MISSING: "Sem canal redundante nem aceite registrado" };
+
+/** D-056: whether a critical result released now reaches someone beyond the requester; informative, never a gate on release. */
+function CriticalReadinessPanel({ readiness }: { readiness: CriticalReadiness | null }) {
+  return <section className="panel admin-audit-panel" id="critical-readiness"><div className="panel-heading"><h2>Resultado crítico</h2><span>{readiness ? (readiness.ready ? "Pronto" : "Pendente") : "—"}</span></div>
+    {!readiness ? <EmptyState title="Prontidão indisponível" message="Não foi possível ler a prontidão do fluxo crítico." /> : <ul className="admin-audit-list">
+      <li><span className="audit-dot" aria-hidden="true" /><span><strong>{POLICY_LABEL[readiness.policy.status]}</strong><small>{readiness.policy.version ? `versão ${readiness.policy.version} · aprovação ${readiness.policy.approvalRef}` : "Defina CRITICAL_POLICY_* no app e no worker."}</small></span><span className="admin-audit-state">{readiness.policy.status === "ACTIVE" ? "ok" : "pendente"}</span></li>
+      <li><span className="audit-dot" aria-hidden="true" /><span><strong>{CHANNEL_LABEL[readiness.redundantChannel.status]}</strong><small>{readiness.redundantChannel.approvalRef ? `aceite ${readiness.redundantChannel.approvalRef}` : "D3 pede Hub + WhatsApp; sem WhatsApp, registre o aceite em CRITICAL_POLICY_IN_APP_ONLY_APPROVAL_REF."}</small></span><span className="admin-audit-state">{readiness.redundantChannel.status === "MISSING" ? "pendente" : "ok"}</span></li>
+      <li><span className="audit-dot" aria-hidden="true" /><span><strong>{readiness.onCall.total === 0 ? "Ninguém de plantão" : `${readiness.onCall.total} de plantão`}</strong><small>{readiness.onCall.departmentsWithoutOnCall.length === 0 ? "Todos os setores solicitantes têm plantonista." : `Sem plantonista próprio (a escada cai na reserva de todo o hospital): ${readiness.onCall.departmentsWithoutOnCall.join(", ")}`}</small></span><span className="admin-audit-state">{readiness.onCall.total > 0 && readiness.onCall.departmentsWithoutOnCall.length === 0 ? "ok" : "pendente"}</span></li>
+      <li><span className="audit-dot" aria-hidden="true" /><span><strong>{readiness.administrators === 0 ? "Nenhum administrador ativo" : `${readiness.administrators} administrador(es) para o alerta operacional`}</strong><small>Quando a escada não alcança ninguém, o aviso vem para a administração.</small></span><span className="admin-audit-state">{readiness.administrators > 0 ? "ok" : "pendente"}</span></li>
+    </ul>}
+  </section>;
 }
 
 function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSaved: () => Promise<void> }) {

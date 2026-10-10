@@ -34,6 +34,7 @@ case "$1" in
     exit 0 ;;
   inspect)
     [[ "$args" == *State.Running* ]] && { echo "\${FAKE_RUNNING:-true}"; exit 0; }
+    [[ "$args" == *image.revision* ]] && { echo "\${FAKE_RUNNING_REVISION-${COMMIT}}"; exit 0; }
     echo "\${FAKE_HEALTH:-healthy}"; exit 0 ;;
 esac
 exit 0
@@ -107,7 +108,9 @@ test("a rolling deploy pulls, checks the commit, backs up, starts and records th
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test ps -q app",
     "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} app-container",
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test ps -q worker",
-    "inspect --format {{.State.Running}} worker-container"
+    "inspect --format {{.State.Running}} worker-container",
+    `inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} app-container`,
+    `inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} worker-container`
   ]);
   assert.equal(readFileSync(path.join(ws.state, "cvg-hml.current"), "utf8"), `${TAG}\n`);
   assert.match(readFileSync(path.join(ws.state, "cvg-hml.history"), "utf8"), new RegExp(`^\\d{4}-\\d\\d-\\d\\dT\\S+Z ${TAG}\\n$`));
@@ -170,6 +173,15 @@ test("an app that never turns healthy or a stopped worker fails the release with
   const stopped = workspace();
   const worker = deploy(stopped, [], { FAKE_RUNNING: "false" });
   assert.equal(events(worker.stderr)[0].event, "release.worker_down");
+
+  // A container that answers but runs another build (or an unstamped one) is not the release.
+  for (const revision of ["fedcba9876543210fedcba9876543210fedcba98", "unknown", ""]) {
+    const stale = workspace();
+    const running = deploy(stale, [], { FAKE_RUNNING_REVISION: revision });
+    assert.equal(running.status, 1, revision);
+    assert.equal(events(running.stderr)[0].event, "release.running_revision_mismatch");
+    assert.ok(!existsSync(path.join(stale.state, "cvg-hml.current")));
+  }
 });
 
 function fakeDeploy(ws, status = 0) {

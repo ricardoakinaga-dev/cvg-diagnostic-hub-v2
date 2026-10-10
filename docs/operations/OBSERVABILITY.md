@@ -32,6 +32,8 @@ The local `GET /api/v1/metrics` implementation exposes the bounded technical reg
 
 Metrics use bounded labels (service code, department code, priority); never patient name, result value or unbounded ID.
 
+`cvg_critical_unacknowledged`, `cvg_critical_unreachable` and `cvg_critical_readiness{check="policy"|"redundant_channel"|"on_call"}` (D-056) are computed from the runtime state at scrape time: roots of the critical ladder still unacknowledged after at least one escalation level, roots whose level found nobody clinical (administrators alerted), and the 0/1 readiness checks behind `GET /critical-results/readiness`. They carry no labels beyond `check`. Alerts: `CvgCriticalUnacknowledged`, `CvgCriticalUnreachable` (severity critical, clinical owner) and `CvgCriticalReadinessDegraded` (warning, only while the policy is active) → [INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário).
+
 `cvg_attachment_scans_total{status="CLEAN"|"QUARANTINED"|"FAILED"}` (PROD-308) counts every upload scanned by the malware scanner; a `QUARANTINED` increase fires `CvgAttachmentQuarantined` for the quarantine owner ([INCIDENT_RUNBOOKS.md](INCIDENT_RUNBOOKS.md#storage-upload-ou-scanner-av-indisponível)). The matching log event `attachment.quarantined` carries the attachment and result-version ids and the MIME pair, never the file name or content.
 
 ## 3. Correlation and audit
@@ -55,7 +57,8 @@ Alert on: readiness failure, error-rate/latency threshold, outbox age/dead lette
 | --- | --- | --- | --- |
 | readiness/database failure | TI/On-call | incident + restore/runbook | stop retry storms; use approved fallback communication |
 | outbox age/dead letters | TI + Operations | outbox retry/dead-letter procedure | inspect critical notifications; manual escalation if policy requires |
-| critical ack overdue | Direção clínica/sector manager | critical-result workflow | identify recipient/fallback and record acknowledgement |
+| critical ack overdue (`CvgCriticalUnacknowledged`) or ladder exhausted (`CvgCriticalUnreachable`) | Direção clínica/sector manager; administrators receive the in-app operational alert | [critical without acknowledgement or recipient](INCIDENT_RUNBOOKS.md#crítico-sem-confirmação-ou-sem-destinatário) | reach the sector by phone, identify recipient/fallback and record acknowledgement |
+| critical readiness degraded (`CvgCriticalReadinessDegraded`) | TI + sector managers | same runbook, §prontidão | register the on-call roster per requesting department or the redundant channel/acceptance |
 | storage/scan failure or attachment quarantined (`CvgAttachmentQuarantined`) | TI/Security (quarantine owner, PROD-308) | [attachment quarantine/storage incident](INCIDENT_RUNBOOKS.md#storage-upload-ou-scanner-av-indisponível) | do not release affected result with unsafe attachment |
 | backup failure/restore mismatch | TI/Operations | [`BACKUP_RESTORE.md`](BACKUP_RESTORE.md) | block release gate until recovery evidence exists |
 | auth abuse/IDOR signal | Security/TI | security incident response | revoke session/contain; preserve audit |
