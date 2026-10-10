@@ -7,6 +7,7 @@ import { pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { createRuntimeRetentionSchedule, runScheduledRuntimeRetention } from "../src/server/operations/runtime-retention-job";
 import { clinicalArchiveConfig, createClinicalArchiveSchedule, runScheduledClinicalArchive } from "../src/server/operations/clinical-archive-job";
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
+import { startupEvent } from "../src/server/observability/build-info";
 import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
@@ -117,6 +118,7 @@ function heartbeatStatus(heartbeat: OutboxHeartbeat | undefined): { timestamp?: 
 }
 
 async function main(): Promise<void> {
+  console.log(startupEvent("worker"));
   const workerSink = createWorkerSink();
   try {
     if (once) {

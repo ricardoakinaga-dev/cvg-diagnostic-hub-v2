@@ -2,6 +2,7 @@ import { getHeapStatistics } from "node:v8";
 import type { AuditMetrics, AuditMetricsQuery, StoreState } from "../domain/models";
 import { auditMetrics } from "../domain/audit-metrics";
 import { outboxMetrics } from "../domain/outbox-read";
+import { buildRevision } from "./build-info";
 
 type HttpMetric = { count: number; totalDurationMs: number; maxDurationMs: number };
 export type RealtimePollMode = "stream" | "snapshot";
@@ -262,6 +263,9 @@ export function refreshProcessMetrics(): void {
 
 export function renderPrometheus(): string {
   const lines = [
+    "# HELP cvg_build_info Commit the running image was built from (\"unknown\" for an unstamped build).",
+    "# TYPE cvg_build_info gauge",
+    `cvg_build_info{revision="${escapeLabel(buildRevision())}"} 1`,
     "# HELP http_requests_total Total HTTP requests handled by the application.",
     "# TYPE http_requests_total counter"
   ];
