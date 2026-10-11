@@ -88,13 +88,15 @@ export const rejectSchema = z.object({
 export const sampleSchema = z.object({
   accessionCode: z.string().regex(/^[A-Z0-9][A-Z0-9-]{2,39}$/).optional(),
   sampleType: boundedText(100).optional(),
-  expectedVersion
+  expectedVersion,
+  expectedSampleVersion: expectedVersion
 }).strict();
 
 export const recollectionSchema = z.object({
   reasonCode: boundedText(60),
   note: boundedText(2000).optional(),
-  expectedVersion
+  expectedVersion,
+  expectedSampleVersion: expectedVersion
 }).strict();
 
 export const scheduleSchema = z.object({

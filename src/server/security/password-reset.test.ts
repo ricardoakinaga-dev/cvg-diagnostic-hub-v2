@@ -45,6 +45,11 @@ describe("password reset helpers", () => {
     expect(passwordResetUrl("tok", { APP_ORIGIN: "https://hub.example///" })).toBe("https://hub.example/reset-password?token=tok");
     expect(passwordResetUrl("tok", {})).toBe("/reset-password?token=tok");
   });
+
+  it("fails closed when production has no usable server secret", () => {
+    expect(() => hashResetToken("token", { NODE_ENV: "production" })).toThrow(INVALID_MESSAGE);
+    expect(() => hashResetToken("token", { NODE_ENV: "production", SESSION_SECRET: "short" })).toThrow(INVALID_MESSAGE);
+  });
 });
 
 describe("completePasswordReset", () => {
@@ -145,6 +150,20 @@ describe("completePasswordReset", () => {
       return original(operation);
     });
     await expect(completePasswordReset(store, token, NEW, "corr")).rejects.toMatchObject({ code: "PASSWORD_RESET_INVALID" });
+  });
+
+  it("rejects a secret rotation between initial validation and the commit", async () => {
+    const { store, issue } = setup();
+    const environment = { SESSION_SECRET: "reset-first-secret-01234567890123456789", NODE_ENV: "production" };
+    const token = await issue("user-vet", environment);
+    const original = store.transaction.bind(store);
+    vi.spyOn(store, "transaction").mockImplementationOnce(async (operation) => {
+      environment.SESSION_SECRET = "reset-second-secret-01234567890123456789";
+      return original(operation);
+    });
+    await expect(completePasswordReset(store, token, NEW, "corr-rotation", environment)).rejects.toMatchObject({ code: "PASSWORD_RESET_INVALID" });
+    expect(verifyPassword(OLD, store.getState().users.find((user) => user.id === "user-vet")!.passwordHash)).toBe(true);
+    expect(store.getState().auditEvents.some((event) => event.eventType === "PasswordResetCompleted")).toBe(false);
   });
 });
 

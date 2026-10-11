@@ -1,10 +1,12 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Pool } from "pg";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StoreState } from "../../src/server/domain/models";
 import { createDemoState } from "../../src/server/store/fixtures";
 import { LATEST_RUNTIME_SCHEMA_VERSION } from "../../src/server/store/migrations";
 import { buildRuntimeRoleGrants } from "../../src/server/store/postgres-privileges";
+import { createApplicationService } from "../../src/server/application/service";
+import type { FileStore } from "../../src/server/storage/file-store";
 import { ARCHIVE_NOW, RECENT, withCompletedRequest } from "../../src/test/archive-fixtures";
 import { withDisposablePostgresDatabase, type DisposablePostgresDatabase } from "../support/postgres-test-harness";
 
@@ -24,6 +26,31 @@ async function count(database: DisposablePostgresDatabase, sql: string, values: 
 }
 
 describe("clinical archive on disposable PostgreSQL (PROD-501)", () => {
+  it("audits archived narratives and downloads with a one-connection runtime pool", async () => {
+    vi.stubEnv("DB_POOL_MAX", "1");
+    try {
+      await withDisposablePostgresDatabase(async (database) => {
+        const content = Buffer.from("%PDF-1.4\nsynthetic-postgres-archive\n");
+        const state = seeded();
+        state.attachments = state.attachments.map((attachment) => ({ ...attachment, sizeBytes: content.length, checksum: createHash("sha256").update(content).digest("hex") }));
+        const store = await database.createStore(state);
+        await store.archiveClinicalRecords({ now: ARCHIVE_NOW });
+        const storage: FileStore = { put: vi.fn(), get: vi.fn(async () => content), remove: vi.fn(), exists: vi.fn(async () => true) };
+        const service = createApplicationService(store, { storage });
+        const actor = store.getState().users.find((user) => user.email === "vet@cvg.local")!;
+        const view = await service.getArchivedRequest(actor, "request-old", "corr-pg-archive");
+        expect(view.items[0].results[0].versions).toHaveLength(2);
+        expect((await service.downloadAttachment(actor, "attachment-old")).content).toEqual(content);
+        expect((await database.query("SELECT event_type, entity_id, metadata FROM audit_events WHERE event_type IN ('ArchivedRequestRead','AttachmentDownloaded') ORDER BY occurred_at")).rows).toMatchObject([
+          { event_type: "ArchivedRequestRead", entity_id: "request-old", metadata: { archived: true, versionCount: 2 } },
+          { event_type: "AttachmentDownloaded", entity_id: "attachment-old", metadata: { archived: true, requestId: "request-old" } }
+        ]);
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("creates the archive tables with the collection guard at the latest schema version", async () => {
     await withDisposablePostgresDatabase(async (database) => {
       await database.createStore(createDemoState(PASSWORD));
@@ -138,6 +165,8 @@ describe("clinical archive on disposable PostgreSQL (PROD-501)", () => {
       expect(rows?.find((row) => row.collection === "resultVersions" && row.entityKey === "version-old-2")?.data).toMatchObject({ narrative: "Versão final." });
       expect(await store.readArchivedRequest("request-recent")).toBeUndefined();
       expect(await store.readArchivedRequest("request-missing")).toBeUndefined();
+      expect(await store.readArchivedAttachmentRequest("attachment-old")).toEqual(rows);
+      expect(await store.readArchivedAttachmentRequest("attachment-missing")).toBeUndefined();
       expect(store.getState().requests.map((request) => request.id)).toEqual(["request-recent"]);
     });
   });
@@ -154,17 +183,43 @@ describe("clinical archive on disposable PostgreSQL (PROD-501)", () => {
       const dry = await store.purgeClinicalArchive({ now: dueAt, purgeAfterMonths: 120, dryRun: true });
       expect(dry).toMatchObject({ requestsPurged: 2, entitiesPurged: 22 });
       expect(await count(database, "SELECT count(*)::int FROM cvg_clinical_archive")).toBe(22);
+      expect(await store.readArchiveObjectDeletionMetrics()).toEqual({ pending: 0 });
 
       const purged = await store.purgeClinicalArchive({ now: dueAt, purgeAfterMonths: 120 });
       expect(purged.requestsPurged).toBe(2);
       expect(purged.entitiesPurged).toBe(22);
       expect(purged.attachmentKeys.sort()).toEqual(["attachments/result-mel/uuid-mel/laudo.pdf", "attachments/result-old/uuid-old/laudo.pdf"]);
       expect(await count(database, "SELECT count(*)::int FROM cvg_clinical_archive")).toBe(0);
+      expect(await store.readPendingArchiveObjectDeletions(5)).toEqual(["attachments/result-mel/uuid-mel/laudo.pdf", "attachments/result-old/uuid-old/laudo.pdf"]);
+      expect(await store.readArchiveObjectDeletionMetrics()).toMatchObject({ pending: 2 });
       // The batch ledger and the audit trail survive the purge.
       expect(await count(database, "SELECT count(*)::int FROM cvg_clinical_archive_batches")).toBe(1);
       expect((await database.query("SELECT metadata FROM audit_events WHERE event_type = 'ClinicalArchivePurged'")).rows).toEqual([{ metadata: { requestsPurged: 2, entitiesPurged: 22, attachmentsPurged: 2 } }]);
       expect(await store.purgeClinicalArchive({ now: dueAt, purgeAfterMonths: 120 })).toEqual({ requestsPurged: 0, entitiesPurged: 0, attachmentKeys: [] });
       expect(await count(database, "SELECT count(*)::int FROM audit_events WHERE event_type = 'ClinicalArchivePurged'")).toBe(1);
+      // The intents survive a worker/store restart after the clinical rows are gone.
+      await database.closeStore(store);
+      const restarted = await database.createStore();
+      expect(await restarted.readPendingArchiveObjectDeletions(1)).toEqual(["attachments/result-mel/uuid-mel/laudo.pdf"]);
+      await restarted.completeArchiveObjectDeletion("attachments/result-mel/uuid-mel/laudo.pdf");
+      await restarted.completeArchiveObjectDeletion("attachments/result-mel/uuid-mel/laudo.pdf");
+      expect(await restarted.readArchiveObjectDeletionMetrics()).toMatchObject({ pending: 1 });
+      await restarted.completeArchiveObjectDeletion("attachments/result-old/uuid-old/laudo.pdf");
+      expect(await restarted.readArchiveObjectDeletionMetrics()).toEqual({ pending: 0 });
+    });
+  });
+
+  it("rolls back deletion intents and clinical purge together when archive deletion fails", async () => {
+    await withDisposablePostgresDatabase(async (database) => {
+      const store = await database.createStore(createDemoState(PASSWORD));
+      await store.transaction(() => ({ state: seeded(), result: undefined }));
+      await store.archiveClinicalRecords({ now: ARCHIVE_NOW });
+      await database.query("CREATE FUNCTION deny_audit_purge_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'synthetic purge interruption'; END $$");
+      await database.query("CREATE TRIGGER deny_audit_purge_test BEFORE DELETE ON cvg_clinical_archive FOR EACH ROW EXECUTE FUNCTION deny_audit_purge_test()");
+      await expect(store.purgeClinicalArchive({ now: new Date('2036-10-09T00:00:00.000Z'), purgeAfterMonths: 120 })).rejects.toThrow("synthetic purge interruption");
+      expect(await count(database, "SELECT count(*)::int FROM cvg_clinical_archive")).toBe(22);
+      expect(await store.readPendingArchiveObjectDeletions(5)).toEqual([]);
+      expect(await count(database, "SELECT count(*)::int FROM audit_events WHERE event_type = 'ClinicalArchivePurged'")).toBe(0);
     });
   });
 

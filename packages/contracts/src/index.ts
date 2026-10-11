@@ -591,7 +591,7 @@ export interface RequestSample {
 }
 
 export interface SampleLabel {
-  sample: { id: string; accessionCode: string; sampleType: string; status: SampleStatus };
+  sample: { id: string; accessionCode: string; sampleType: string; status: SampleStatus; version: number };
   request: { id: string; requestCode: string; priority: Priority };
   patient: { id: string; displayName: string; species: string; externalId: string };
   services: Array<{ code: string; name: string }>;

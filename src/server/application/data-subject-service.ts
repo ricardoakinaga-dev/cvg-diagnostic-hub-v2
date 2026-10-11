@@ -237,17 +237,24 @@ export function createDataSubjectService({ store }: ApplicationServiceContext) {
       const exportedAt = new Date().toISOString();
       const result = buildPatientDataExport(state, patient, archived, exportedAt);
       const correlationId = meta.correlationId ?? id("corr");
-      await store.transaction((current) => ({
-        state: {
-          ...current,
-          auditEvents: [...current.auditEvents, createAudit("PatientDataExported", currentActor.id, "Patient", patient.id, correlationId, undefined, undefined, {
-            requests: result.requests.filter((request) => !request.archived).length,
-            archivedRequests: result.requests.filter((request) => request.archived).length
-          })]
-        },
-        result: undefined
-      }));
-      return result;
+      return store.transaction((current) => {
+        // Archive pagination awaits multiple reads. Access can be revoked, the
+        // user's profile changed or step-up expired while gathering the file.
+        // Revalidate against the commit state before auditing and releasing it.
+        const authorized = requireActiveUser(current, currentActor);
+        requirePermission(authorized, "patient.data_export", {});
+        requireRecentReauthentication(authorized);
+        return {
+          state: {
+            ...current,
+            auditEvents: [...current.auditEvents, createAudit("PatientDataExported", authorized.id, "Patient", patient.id, correlationId, undefined, undefined, {
+              requests: result.requests.filter((request) => !request.archived).length,
+              archivedRequests: result.requests.filter((request) => request.archived).length
+            })]
+          },
+          result
+        };
+      });
     }
   };
 }

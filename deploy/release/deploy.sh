@@ -5,7 +5,7 @@
 #     --prefix ghcr.io/<owner>/cvg-hub [--compose-file docker-compose.prod.yml ...] [--maintenance]
 #
 # Order: pull both images -> check that they carry the commit of the tag -> backup -> migrate + up -> wait until
-# the app is healthy -> record the release. --maintenance stops proxy, app, worker and backup first and runs the
+# app and worker are healthy -> record the release. --maintenance stops proxy, app, worker and backup first and runs the
 # migrate alone (coordinated cutover migrations, DEPLOYMENT §4.1). Nothing is rolled back automatically: a release
 # that migrated the database is undone by the restore of the backup taken here (DEPLOYMENT §8).
 set -Eeuo pipefail
@@ -69,6 +69,7 @@ done
 [[ "$prefix" =~ ^[a-z0-9][a-z0-9._/:-]*[a-z0-9]$ ]] || { echo "--prefix: image name without tag, e.g. ghcr.io/<owner>/cvg-hub" >&2; exit 2; }
 [[ -f "$env_file" ]] || { echo "--env-file: file not found" >&2; exit 2; }
 [[ "$health_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "--health-timeout: positive number of seconds" >&2; exit 2; }
+[[ "$health_poll" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "RELEASE_HEALTH_POLL_SECONDS: non-negative number of seconds" >&2; exit 2; }
 for file in "${compose_files[@]}"; do [[ -f "$file" ]] || { echo "--compose-file: $file not found" >&2; exit 2; }; done
 
 # Compose reads IMAGE_PREFIX and IMAGE_TAG from the shell before the env file, so the release wins over any
@@ -107,13 +108,17 @@ deadline=$((SECONDS + health_timeout))
 while :; do
   app_container="$(compose ps -q app || true)"
   health="$([[ -n "$app_container" ]] && "$DOCKER" inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$app_container" 2>/dev/null || true)"
-  [[ "$health" == healthy ]] && break
-  ((SECONDS < deadline)) || fail release.unhealthy "app did not become healthy within ${health_timeout}s (last: ${health:-missing})"
+  worker_container="$(compose ps -q worker || true)"
+  worker_running="$([[ -n "$worker_container" ]] && "$DOCKER" inspect --format '{{.State.Running}}' "$worker_container" 2>/dev/null || true)"
+  [[ "$worker_running" == true ]] || fail release.worker_down "worker is not running"
+  worker_health="$("$DOCKER" inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$worker_container" 2>/dev/null || true)"
+  [[ "$health" == healthy && "$worker_health" == healthy ]] && break
+  if ((SECONDS >= deadline)); then
+    [[ "$health" == healthy ]] || fail release.unhealthy "app did not become healthy within ${health_timeout}s (last: ${health:-missing})"
+    fail release.worker_unhealthy "worker did not become healthy within ${health_timeout}s (last: ${worker_health:-missing})"
+  fi
   sleep "$health_poll"
 done
-worker_container="$(compose ps -q worker || true)"
-[[ -n "$worker_container" && "$("$DOCKER" inspect --format '{{.State.Running}}' "$worker_container" 2>/dev/null || true)" == true ]] \
-  || fail release.worker_down "worker is not running"
 # The containers that answer must be the release, not an older container Compose kept (audit of 2026-10-10).
 for container in "$app_container" "$worker_container"; do
   running="$("$DOCKER" inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$container" 2>/dev/null || true)"

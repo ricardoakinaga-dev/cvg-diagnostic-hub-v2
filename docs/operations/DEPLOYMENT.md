@@ -36,7 +36,7 @@ Armazenamento S3 e antivírus são **serviços obrigatórios fora do processo**:
 
 O `/readyz` falha (503) em produção, antes de tocar no banco, se `SESSION_SECRET` ou `TRUST_PROXY_SHARED_SECRET` tiverem menos de 32 caracteres ou se `TRUST_PROXY` não for `true`.
 
-**Girar o `SESSION_SECRET`** encerra todas as sessões abertas e **invalida os links de redefinição de senha ainda não usados** (a impressão digital do token é calculada com o segredo, PROD-202). Faça a troca em janela de manutenção e, se alguém estava com um link pendente, emita outro depois (`POST /users/{id}/password-reset-link` ou `npm run db:reset-link`).
+**Girar o `SESSION_SECRET`** invalida as sessões anteriores e **os links de redefinição de senha ainda não usados**. A impressão digital da sessão usa HMAC-SHA256 e inclui um identificador derivado da geração do segredo; a autorização verifica essa geração mesmo para SSE já aberto e sem mudança no banco. Sessões antigas sem chave expiram no primeiro deploy desta versão. Faça a troca em janela de manutenção, interrompa o acesso e recrie **todas** as instâncias `app` e `worker` com o novo segredo; uma instância ainda com o segredo antigo continuará aceitando a sua geração. Não volte ao segredo antigo. Confira a recusa de cookies e links antigos e o encerramento dos streams, além do login novo. Se alguém estava com um link pendente, emita outro depois (`POST /users/{id}/password-reset-link` ou `npm run db:reset-link`).
 
 ## 3. Primeiro deploy
 
@@ -288,7 +288,7 @@ O app só responde atrás da borda em produção, porque o proxy injeta a identi
 
 `npm run observability:check` valida a configuração, as regras e os testes com o `promtool` da imagem fixada por digest; a CI roda o mesmo comando. Em 08/10/2026, um Prometheus 3.15 real coletou a pilha de smoke em Compose pela borda TLS com o token: 105 amostras por coleta, heap em 3% de um limite de 1.304 MB e as 9 regras carregadas. O teste `alert-rules-contract.test.ts` falha se uma regra ou um painel citar uma métrica que o app não expõe.
 
-Fica para o ambiente (D2, D11, PROD-513): donos e roteamento dos alertas; disparo de cada um em staging; métricas do PostgreSQL (`postgres_exporter`); validade do certificado e falha de backup (blackbox/cron). Os limiares são pontos de partida técnicos, e os clínicos (atraso de SLA, crítico) dependem de D3 e D7.
+O stack de monitoramento externo e o procedimento estão em [MONITORING.md](MONITORING.md). Para fechar D2, D11 e PROD-513, o hospital deve definir um titular e um substituto para os alertas, configurar o destino real e comprovar em staging a entrega e a confirmação de cada alerta, inclusive com o host do Hub fora do ar. Configuração e teste com receptor sintético não comprovam entrega ao plantão. Os limiares são pontos de partida técnicos, e os clínicos (atraso de SLA, crítico) dependem de D3 e D7.
 
 ### 6.8 Etiquetas e leitor de código de barras (PROD-405)
 

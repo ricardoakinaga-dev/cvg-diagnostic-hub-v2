@@ -58,6 +58,9 @@ describe("strict command schemas", () => {
     expect(emptyCommandSchema.safeParse({ expectedVersion: 2 }).success).toBe(true);
     expect(emptyCommandSchema.safeParse({ expectedVersion: 0 }).success).toBe(false);
     expect(recollectionSchema.safeParse({ reasonCode: "HEMOLYZED", note: "ok", expectedVersion: 1 }).success).toBe(true);
+    expect(recollectionSchema.safeParse({ reasonCode: "HEMOLYZED", expectedVersion: 3, expectedSampleVersion: 2 }).success).toBe(true);
+    expect(sampleSchema.safeParse({ expectedVersion: 4, expectedSampleVersion: 1 }).success).toBe(true);
+    expect(sampleSchema.safeParse({ expectedSampleVersion: 0 }).success).toBe(false);
     expect(reviewResultSchema.safeParse({ versionId: "version-1", expectedVersion: 1 }).success).toBe(true);
   });
 

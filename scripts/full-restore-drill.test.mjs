@@ -29,7 +29,15 @@ test("the drill restores database and bucket from the off-site copy only, after 
   for (const volume of ["cvg-postgres", "cvg-backups", "cvg-wal-archive", "cvg-storage"]) assert.match(source, new RegExp(volume));
   assert.match(source, /storage-restore copy "offsitecrypt:" \/out/);
   assert.match(source, /restore-pitr\.sh" --base "\$base_dir" --wal "\$offsite_dir\/wal" --latest/);
-  assert.match(source, /copy "offsitecrypt:objects" "minio:\$bucket" --ignore-existing/);
+  assert.match(source, /copy "offsitecrypt:objects" "minio:\$bucket" --files-from-raw \/restore-objects\.list --ignore-existing/);
+  assert.match(source, /scripts\/attachments-restore-plan\.ts --source "\$offsite_dir\/objects"/);
+  assert.match(source, /drill-delete-attachment\.ts/);
+  assert.match(source, /--target-time "\$before_delete_at"/);
+  assert.match(source, /objects-before-delete\.list/);
+  assert.match(source, /"preservedEvidenceObjects":1/);
+  assert.match(source, /storage-restore check \/verified-evidence "minio:\$bucket" --files-from-raw \/restore-objects\.list --one-way --download/);
+  assert.match(source, /if check_bucket_bytes; then/);
+  assert.match(source, /"detectsCorruptObject":true/);
   // The reconciliation runs as the runtime role with the password from the secret file, never interpolated.
   assert.match(source, /DATABASE_URL="postgresql:\/\/\$\{runtime_user\}:\\\$\{POSTGRES_RUNTIME_PASSWORD\}@127\.0\.0\.1/);
   assert.match(source, /POSTGRES_RUNTIME_PASSWORD_FILE=/);

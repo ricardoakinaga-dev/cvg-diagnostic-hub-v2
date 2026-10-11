@@ -6,6 +6,7 @@ import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, Rec
 import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { assertPasswordPolicy } from "../security/password-policy";
+import { sessionTerminallyExpired } from "../security/session";
 import { aggregateRequestStatus, transitionItem } from "../domain/state-machine";
 import { findById, idempotencyRecordFor, itemsForRequest, notificationForDedupe, positionOfId, requestsForPatient, resultVersionsForResult, samplesForItem } from "../domain/state-index";
 import { legacyServiceSlaPolicy, startSlaClock } from "./sla-policy";
@@ -90,10 +91,9 @@ export function managedUser(user: User): ManagedUser {
 }
 
 export function managedSession(session: StoreState["sessions"][number], user: User, currentSessionId?: string): ManagedSession {
-  const nowMs = Date.now();
   const status = session.revokedAt
     ? "REVOKED"
-    : Date.parse(session.expiresAt) <= nowMs || user.active === false
+    : sessionTerminallyExpired(session) || user.active === false
       ? "EXPIRED"
       : "ACTIVE";
   return {
@@ -228,7 +228,7 @@ export function requireActiveUser(state: StoreState, actor: User): User {
     // request was authenticated with, so a stale snapshot can only ever see less, never more.
     || current.role !== actor.role
     || current.departmentCode !== actor.departmentCode
-    || (actor.sessionId !== undefined && (!session || session.revokedAt !== undefined || Date.parse(session.expiresAt) <= Date.now()))
+    || (actor.sessionId !== undefined && (!session || sessionTerminallyExpired(session)))
   ) {
     throw new ApiError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401);
   }
@@ -450,8 +450,21 @@ export function validateServiceResultSchema(
 }
 
 export function serviceFor(state: StoreState, serviceId: string): DiagnosticService {
-  const service = findById(state.services, serviceId);
-  return findOrThrow(service?.active ? service : undefined, "NOT_FOUND", "Serviço diagnóstico indisponível.");
+  // Deactivation removes the offering from new requests while preserving clinical history.
+  return findOrThrow(findById(state.services, serviceId), "NOT_FOUND", "Serviço diagnóstico indisponível.");
+}
+
+export function activeServiceFor(state: StoreState, serviceId: string): DiagnosticService {
+  const service = serviceFor(state, serviceId);
+  return findOrThrow(service.active ? service : undefined, "NOT_FOUND", "Serviço diagnóstico indisponível.");
+}
+
+export function requireReceivedSample(state: StoreState, item: DiagnosticItem, allowHistoricalReplacement = false): void {
+  if (item.workflowType !== "LABORATORY") return;
+  const sample = findById(state.samples, item.currentSampleId);
+  if (!sample || !(sample.status === "RECEIVED" || allowHistoricalReplacement && sample.status === "REPLACED") || sample.requestId !== item.requestId || !sample.itemIds.includes(item.id)) {
+    throw new ApiError("INVALID_STATE_TRANSITION", "O exame exige uma amostra recebida e válida antes do processamento ou da liberação.", 409);
+  }
 }
 
 export function requestFor(state: StoreState, requestId: string): DiagnosticRequest {

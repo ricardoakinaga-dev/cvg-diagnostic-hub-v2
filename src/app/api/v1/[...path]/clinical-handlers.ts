@@ -26,7 +26,7 @@ export const clinicalHandlers = {
       return responseFor(await service.listPatientArchive(actor, path[1], { limit: parseLimit(new URL(request.url).searchParams.get("limit")) }), correlationId, id);
     } },
   getArchivedRequest: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
-      return responseFor(await service.getArchivedRequest(actor, path[2]), correlationId, id);
+      return responseFor(await service.getArchivedRequest(actor, path[2], correlationId), correlationId, id);
     } },
   exportPatientData: { authentication: "session", handle: async ({ request, correlationId, id, service, actor }) => {
       const externalId = new URL(request.url).searchParams.get("externalId") ?? "";

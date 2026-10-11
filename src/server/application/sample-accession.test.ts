@@ -174,7 +174,7 @@ describe("receipt by scan", () => {
     await expect(c.service.receiveSample(crpTech, [crp.id], { accessionCode: tube.accessionCode, expectedVersion: crp.version + 1, idempotencyKey: "aud03-again" })).rejects.toMatchObject({ code: "INVALID_STATE_TRANSITION", status: 409 });
   });
 
-  it("receives the rest of a received tube without a scan and falls back to a new tube when the assigned one was rejected", async () => {
+  it("receives the rest of a received tube without a scan and preserves it when another examination is rejected", async () => {
     const c = setup();
     await c.catalog({ "service-hemogram": "EDTA", "service-crp": "EDTA" });
     await c.store.transaction((state) => ({ state: { ...state, users: state.users.map((user: User) => user.id === c.lab.id ? { ...user, serviceCodes: ["HEMOGRAM"] } : user) }, result: undefined }));
@@ -189,17 +189,17 @@ describe("receipt by scan", () => {
     expect(typed.sample.id).toBe(tube.id);
     expect(typed.items.map((item) => item.id)).toEqual([crp.id]);
 
-    // Rejecting the received hemogram rejects the tube; a still-requested tube-mate then needs a new sample.
+    // Rejecting an examination leaves its received material available to the tube-mate.
     const again = await c.create(["service-hemogram", "service-crp"], "patient-mel");
     const [tube2] = again.samples;
     const [hemo2, crp2] = again.items;
     await c.service.receiveSample(hemoOnly, [hemo2.id], { expectedVersion: hemo2.version });
     const received = c.store.getState().items.find((item) => item.id === hemo2.id)!;
     await c.service.rejectItem(full, hemo2.id, { reasonCode: "UNPROCESSABLE", expectedVersion: received.version, idempotencyKey: "aud03-reject" });
-    expect(c.store.getState().samples.find((sample) => sample.id === tube2.id)?.status).toBe("REJECTED");
+    expect(c.store.getState().samples.find((sample) => sample.id === tube2.id)?.status).toBe("RECEIVED");
     const fresh = await c.service.receiveSample(full, [crp2.id], { sampleType: "EDTA", expectedVersion: crp2.version });
-    expect(fresh.sample.id).not.toBe(tube2.id);
-    expect(fresh.sample).toMatchObject({ status: "RECEIVED", itemIds: [crp2.id] });
+    expect(fresh.sample.id).toBe(tube2.id);
+    expect(fresh.items.map((item) => item.id)).toEqual([crp2.id]);
     void first;
   });
 

@@ -42,6 +42,7 @@ const serviceIdentifier = { ...identifier, pattern: "^[A-Za-z0-9_-]+$" };
 const pathIdentifier = { ...identifier, pattern: "^[^/%]+$" };
 const strictDateTime = { type: "string", format: "date-time", minLength: 1, maxLength: 100, pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}T.*(?:Z|[+-][0-9]{2}:[0-9]{2})$" };
 const expectedVersion = { type: "integer", minimum: 1, maximum: 999999999999999 };
+const expectedSampleVersion = { ...expectedVersion, description: "Versão da amostra física; independente da versão de cada exame. Recomendada para recoleta e obrigatória para receber tubos compartilhados com versões de exames divergentes." };
 const accessionCodeSchema = { type: "string", minLength: 3, maxLength: 40, pattern: "^[A-Z0-9][A-Z0-9-]{2,39}$" };
 const passwordPattern = "^(?=.*[A-Za-z])(?=.*[0-9]).+$";
 const supportedAttachmentMediaTypes = ["application/pdf", "image/jpeg", "image/png"];
@@ -207,8 +208,8 @@ const requestSchemas = {
   VersionCommand: strictObject({ expectedVersion }),
   CancelCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), reason: normalizedTextSchema(1, 500), itemIds: { type: "array", maxItems: 20, uniqueItems: true, items: normalizedTextSchema(1, 100) }, expectedVersion }, ["reasonCode"]),
   RejectCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), note: normalizedTextSchema(1, 2000), expectedVersion }, ["reasonCode"]),
-  SampleCommand: strictObject({ accessionCode: accessionCodeSchema, sampleType: normalizedTextSchema(1, 100), expectedVersion }),
-  RecollectionCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), note: normalizedTextSchema(1, 2000), expectedVersion }, ["reasonCode"]),
+  SampleCommand: strictObject({ accessionCode: accessionCodeSchema, sampleType: normalizedTextSchema(1, 100), expectedVersion, expectedSampleVersion }),
+  RecollectionCommand: strictObject({ reasonCode: normalizedTextSchema(1, 60), note: normalizedTextSchema(1, 2000), expectedVersion, expectedSampleVersion }, ["reasonCode"]),
   ScheduleCommand: {
     ...strictObject({
       startsAt: strictDateTime,
@@ -362,7 +363,7 @@ const patientWorkspaceRequestViewSchema = strictObject({
   items: arrayOf(schemaReference("PatientWorkspaceRequestItem"))
 }, [...diagnosticRequestSchema.required, "patient", "encounter", "items"]);
 const sampleLabelSchema = strictObject({
-  sample: strictObject({ id: identifier, accessionCode: accessionCodeSchema, sampleType: stringSchema(1, 100), status: { type: "string", enum: ["EXPECTED", "RECEIVED", "REJECTED", "REPLACED"] } }, ["id", "accessionCode", "sampleType", "status"]),
+  sample: strictObject({ id: identifier, accessionCode: accessionCodeSchema, sampleType: stringSchema(1, 100), status: { type: "string", enum: ["EXPECTED", "RECEIVED", "REJECTED", "REPLACED"] }, version: expectedVersion }, ["id", "accessionCode", "sampleType", "status", "version"]),
   request: strictObject({ id: identifier, requestCode: stringSchema(1, 40), priority: { type: "string", enum: ["ROUTINE", "URGENT", "EMERGENCY"] } }, ["id", "requestCode", "priority"]),
   patient: strictObject({ id: identifier, displayName: stringSchema(1, 120), species: stringSchema(1, 60), externalId: stringSchema(1, 80) }, ["id", "displayName", "species", "externalId"]),
   services: arrayOf(strictObject({ code: stringSchema(1, 60), name: stringSchema(1, 120) }, ["code", "name"]), { maxItems: 20 }),

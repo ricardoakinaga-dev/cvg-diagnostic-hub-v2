@@ -57,6 +57,7 @@ const {
   validatedSlaHours,
   validateServiceDefinition,
   serviceFor,
+  activeServiceFor,
   requestFor,
   itemFor,
   resultFor,
@@ -131,6 +132,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         // original request was committed.
         const idempotent = withIdempotency<RequestView>(originalState, currentActor.id, scope, meta.idempotencyKey, { input, allowDuplicateOverride: meta.allowDuplicateOverride });
         if (idempotent.found) return { state: originalState, result: reprojectRequestForActor(originalState, currentActor, (idempotent.existing as RequestView).id) };
+        input.items.forEach((entry) => activeServiceFor(originalState, entry.serviceId));
         const duplicateItems = requestsForPatient(originalState, patient.id)
           .flatMap((request) => itemsForRequest(originalState, request.id))
           .filter((item) =>
@@ -437,7 +439,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
       const encounter = findOrThrow(findById(state.encounters, request.encounterId));
       const { widthMm, heightMm } = labelDimensionsFromEnv();
       return {
-        sample: { id: sample.id, accessionCode: sample.accessionCode, sampleType: sample.sampleType, status: sample.status },
+        sample: { id: sample.id, accessionCode: sample.accessionCode, sampleType: sample.sampleType, status: sample.status, version: sample.version },
         request: { id: request.id, requestCode: request.requestCode, priority: request.priority },
         patient: { id: patient.id, displayName: patient.displayName, species: patient.species, externalId: patient.externalId },
         services: visibleItems.map((item) => serviceFor(state, item.serviceId)).map((entry) => ({ code: entry.code, name: entry.name })),

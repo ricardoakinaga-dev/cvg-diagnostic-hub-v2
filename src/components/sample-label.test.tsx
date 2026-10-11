@@ -11,7 +11,7 @@ vi.mock("next/link", () => ({
 }));
 
 const label: SampleLabel = {
-  sample: { id: "sample-1", accessionCode: "A261008-00015", sampleType: "EDTA", status: "EXPECTED" },
+  sample: { id: "sample-1", accessionCode: "A261008-00015", sampleType: "EDTA", status: "EXPECTED", version: 1 },
   request: { id: "request-1", requestCode: "EX-261008-0001", priority: "URGENT" },
   patient: { id: "patient-1", displayName: "Thor", species: "Canino", externalId: "HIS-THOR-001" },
   services: [{ code: "HEMOGRAM", name: "Hemograma" }, { code: "CRP", name: "Proteína C reativa" }],

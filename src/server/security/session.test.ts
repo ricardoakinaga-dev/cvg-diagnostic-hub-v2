@@ -39,6 +39,10 @@ function createRacingStore(readState: StoreState, transactionState: StoreState) 
       archiveClinicalRecords: delegate.archiveClinicalRecords.bind(delegate),
       readClinicalArchive: delegate.readClinicalArchive.bind(delegate),
       readArchivedRequest: delegate.readArchivedRequest.bind(delegate),
+      readArchivedAttachmentRequest: delegate.readArchivedAttachmentRequest.bind(delegate),
+      readPendingArchiveObjectDeletions: delegate.readPendingArchiveObjectDeletions.bind(delegate),
+      completeArchiveObjectDeletion: delegate.completeArchiveObjectDeletion.bind(delegate),
+      readArchiveObjectDeletionMetrics: delegate.readArchiveObjectDeletionMetrics.bind(delegate),
       purgeClinicalArchive: delegate.purgeClinicalArchive.bind(delegate),
       transaction: transaction as StateStore["transaction"]
     } satisfies StateStore,
@@ -253,6 +257,10 @@ describe("secure server sessions", () => {
       archiveClinicalRecords: store.archiveClinicalRecords.bind(store),
       readClinicalArchive: store.readClinicalArchive.bind(store),
       readArchivedRequest: store.readArchivedRequest.bind(store),
+      readArchivedAttachmentRequest: store.readArchivedAttachmentRequest.bind(store),
+      readPendingArchiveObjectDeletions: store.readPendingArchiveObjectDeletions.bind(store),
+      completeArchiveObjectDeletion: store.completeArchiveObjectDeletion.bind(store),
+      readArchiveObjectDeletionMetrics: store.readArchiveObjectDeletionMetrics.bind(store),
       purgeClinicalArchive: store.purgeClinicalArchive.bind(store),
       transaction: store.transaction.bind(store)
     };

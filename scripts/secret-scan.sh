@@ -86,13 +86,18 @@ esac
 
 # Arquivos .env locais não podem ser versionáveis (nem versionados, nem sem ignore).
 list_env_candidates() {
+  # rg respects ignored parent directories even when an .env file was forced
+  # into the index. Include the Git inventory before traversing local files.
+  if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    git ls-files -z --cached -- ':(glob)**/.env' ':(glob)**/.env.*'
+  fi
   if [[ "$ENGINE" == "rg" ]]; then
-    rg --files --hidden \
+    rg --files --hidden --null \
       -g '.env' -g '.env.*' \
-      -g '!node_modules/**' -g '!.git/**' -g '!.env.example' -g '!.env.production.example' 2>/dev/null || true
+      -g '!node_modules/**' -g '!.git/**' 2>/dev/null || true
   else
     find . -path ./node_modules -prune -o -path ./.git -prune -o \
-      -type f \( -name '.env' -o -name '.env.*' \) -print 2>/dev/null | sed 's|^\./||'
+      -type f \( -name '.env' -o -name '.env.*' \) -print0 2>/dev/null
   fi
 }
 
@@ -101,9 +106,9 @@ env_failure() {
   exit 1
 }
 
-while IFS= read -r env_file; do
-  [[ -z "$env_file" || "$env_file" == ".env.example" || "$env_file" == ".env.production.example" ]] && continue
-  [[ -f "$env_file" ]] || continue
+while IFS= read -r -d '' env_file; do
+  env_file="${env_file#./}"
+  [[ -z "$env_file" || "$env_file" == ".env.example" || "$env_file" == ".env.production.example" || "$env_file" == ".env.monitoring.example" ]] && continue
   if ! command -v git >/dev/null 2>&1 || ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     printf 'Secret scan ERRO: git indisponível — não é possível determinar se %s é versionável.\n' "$env_file" >&2
     exit 2
@@ -111,6 +116,7 @@ while IFS= read -r env_file; do
   if git ls-files --error-unmatch -- "$env_file" >/dev/null 2>&1; then
     env_failure "$env_file"
   fi
+  [[ -f "$env_file" ]] || continue
   if ! git check-ignore -q -- "$env_file"; then
     env_failure "$env_file"
   fi

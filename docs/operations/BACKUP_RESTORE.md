@@ -134,7 +134,7 @@ curl -fsS "https://$APP_DOMAIN/api/v1/readyz"
 
 ### 4.3 Verificação depois de qualquer restore
 
-**Reconciliação banco × bucket (D-062):** `npm run attachments:reconcile` (mesmo ambiente do worker: `APP_DATA_MODE=postgres`, `DATABASE_URL`, `STORAGE_*`) prova que todo anexo finalizado ou arquivado tem o seu objeto e que nenhum objeto do bucket ficou sem anexo; imprime um JSON (`attachments.reconciled` ou `attachments.divergent`, com os ids dos anexos sem objeto e a contagem de órfãos) e sai com 1 em qualquer divergência. Um restore de banco e de bucket só está aceito com essa saída limpa. Exceção a ler com cuidado: depois de um **PITR para um instante anterior** ao último estado, o bucket (restaurado da cópia write-once) pode ter objetos de anexos gravados **depois** do ponto de recuperação; eles aparecem como órfãos e são **investigação**, não perda — anote-os no incidente, não os apague antes de decidir o ponto de recuperação final. Um anexo **sem objeto** é sempre perda. Em seguida: checksums e contagens (solicitações, resultados, anexos), versão do schema, `/readyz`, login, visão de uma solicitação com escopo, resultado/versão/linha do tempo e fila de notificações; compare com os totais anotados antes do incidente e registre horário do último commit recuperado (o `lastReplayedTimestamp` do PITR) para medir a perda real.
+**Reconciliação banco × bucket (D-062):** `npm run attachments:reconcile` (mesmo ambiente do worker: `APP_DATA_MODE=postgres`, `DATABASE_URL`, `STORAGE_*`) prova que todo anexo finalizado ou arquivado tem o seu objeto e que nenhum objeto do bucket ficou sem anexo; imprime um JSON (`attachments.reconciled` ou `attachments.divergent`, com os ids dos anexos sem objeto e a contagem de órfãos) e sai com 1 em qualquer divergência. Um restore de banco e de bucket só está aceito com essa saída limpa. A cópia externa write-once contém também objetos excluídos antes do ponto recuperado e objetos criados depois dele. Use o plano seletivo do §4.5 antes de preencher um bucket novo: restaure somente as chaves referenciadas pelo banco recuperado e preserve os demais bytes na cópia externa e na evidência baixada para investigação. Não flexibilize a reconciliação para aceitar órfãos no bucket vivo. Um anexo finalizado ou arquivado **sem objeto** é perda e bloqueia o plano. Em seguida: checksums e contagens (solicitações, resultados, anexos), versão do schema, `/readyz`, login, visão de uma solicitação com escopo, resultado/versão/linha do tempo e fila de notificações; compare com os totais anotados antes do incidente e registre horário do último commit recuperado (o `lastReplayedTimestamp` do PITR) para medir a perda real.
 
 ### 4.4 Ensaio automatizado (`npm run db:backup:drill`)
 
@@ -144,26 +144,39 @@ curl -fsS "https://$APP_DOMAIN/api/v1/readyz"
 
 Quando o volume `cvg-storage` (ou o servidor) se perde. O banco restaurado (§4.1 ou §4.2) tem as chaves dos anexos; os bytes vêm de `<OFFSITE_RCLONE_REMOTE>/objects`.
 
+Pare app, worker, backup e offsite enquanto define o ponto recuperado. Não reutilize um bucket que já contenha objetos: crie um bucket vazio e mantenha a cópia anterior como evidência. O gerador abaixo lê o banco recuperado, sem alterar o banco ou os objetos; requer o ambiente PostgreSQL do worker e seus segredos em arquivo. Diretório, lista e relatório pertencem ao responsável pelo incidente; a lista e o relatório são criados com permissão `0600`, sem sobrescrever arquivos existentes.
+
 ```bash
-# 1. Suba o storage vazio e deixe o storage-init endurecer o bucket (versionamento, SSE, policy, ciclo de vida).
-docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production up -d storage storage-init
-docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml --env-file .env.production logs storage-init   # storage.hardened, problems: []
-# 2. Copie do destino cifrado para o bucket com o serviço storage-restore (usuário do app: o da cópia externa só lê).
-#    Nada é apagado em lugar nenhum.
-docker compose -f docker-compose.prod.yml -f docker-compose.onprem.yml -f docker-compose.secrets.yml --env-file /etc/cvg-hub/prod.env \
-  --profile restore run --rm --no-deps storage-restore copy offsitecrypt:objects "minio:$STORAGE_BUCKET" --ignore-existing
-# 3. Confira contagem e integridade contra o destino, o endurecimento do bucket restaurado e os usuários.
-docker compose ... --profile restore run --rm --no-deps storage-restore check offsitecrypt:objects "minio:$STORAGE_BUCKET" --one-way
+# 1. Baixe uma evidência completa da cópia externa cifrada, sem apagar nem alterar o destino.
+mkdir -p /restore/offsite/objects
+docker compose ... --profile restore run --rm --no-deps -T -v /restore/offsite/objects:/evidence \
+  storage-restore copy offsitecrypt:objects /evidence --ignore-existing
+# 2. No ambiente do banco já recuperado, produza a lista exata do ponto recuperado.
+# APP_DATA_MODE=postgres, DATABASE_URL e POSTGRES_RUNTIME_PASSWORD_FILE devem apontar para esse banco.
+node_modules/.bin/tsx scripts/attachments-restore-plan.ts --source /restore/offsite/objects \
+  --output /restore/objects.list --report /restore/objects-plan.json
+# 3. Suba um bucket NOVO e vazio e confira endurecimento e IAM (procedimento on-prem).
+docker compose ... up -d storage storage-init storage-iam
+# 4. Copie só a seleção. A evidência completa e o destino externo preservam os objetos excluídos.
+docker compose ... --profile restore run --rm --no-deps -T -v /restore/objects.list:/restore-objects.list:ro \
+  storage-restore copy offsitecrypt:objects "minio:$STORAGE_BUCKET" --files-from-raw /restore-objects.list --ignore-existing
+# 5. Verifique bytes selecionados e reconciliação; qualquer divergência bloqueia o aceite.
+docker compose ... --profile restore run --rm --no-deps -T \
+  -v /restore/offsite/objects:/verified-evidence:ro -v /restore/objects.list:/restore-objects.list:ro \
+  storage-restore check /verified-evidence "minio:$STORAGE_BUCKET" --files-from-raw /restore-objects.list --one-way --download
+npm run attachments:reconcile
 docker compose ... run --rm --no-deps storage-init node_modules/.bin/tsx scripts/init-storage.ts --verify
 docker compose ... run --rm --no-deps --entrypoint sh storage-iam /usr/local/bin/cvg-storage-iam-verify
-# 4. Suba app e worker e abra um anexo de cada setor pela tela (download passa por checksum e scanStatus).
+# 6. Após aceite do incidente, suba app e worker e abra um anexo de cada setor pela tela.
 ```
 
-O destino pode ter objetos que o expurgo já apagou do servidor: eles voltam com o `copy`, e o banco restaurado não os referencia. Se o restore for posterior a um expurgo, rode `npm run runtime:archive -- --dry-run --purge` para ver o que seria removido de novo e aplique o expurgo quando o jurídico confirmar. Ensaio reproduzível: `npm run storage:backup:drill` (medidas no §5).
+Complete `docker compose ...` com os arquivos `prod + onprem + secrets`, projeto e env do procedimento de restauração. O plano identifica todas as chaves finalizadas e arquivadas; uploads pendentes só entram quando seus bytes existem. Antes de produzir a lista, lê integralmente cada arquivo selecionado e verifica seu SHA-256 e tamanho contra os metadados ativos ou arquivados do banco recuperado. Objeto exigido ausente, bytes incorretos na mesma chave, metadados ausentes ou contraditórios e links simbólicos bloqueiam a restauração; nenhuma lista pronta para copiar é escrita. O relatório privado registra `integrity.verifiedObjects` e os erros por chave. A evidência deve permanecer privada e sem outros escritores durante o planejamento e a cópia. `attachments:reconcile` verifica referências e existência; a garantia dos bytes vem dessa verificação por arquivo e do `rclone check` depois da transferência. `excludedObjectKeys` inventaria o que permanece como evidência: objetos excluídos/expurgados ou posteriores ao instante escolhido. Não tente repetir o expurgo para descobrir essas chaves: suas linhas podem já ter sido removidas do banco. Antes da exclusão o plano exige o objeto; depois dela o exclui do bucket recuperado, preservando a possibilidade de PITR anterior. `rclone copy --ignore-existing` do offsite continua sem apagar ou sobrescrever o histórico.
+
+O `--download` compara os bytes lendo ambos os lados, inclusive quando o remoto não fornece hashes; é obrigatório neste procedimento conforme a [documentação oficial de `rclone check`](https://rclone.org/commands/rclone_check/). O tempo e o tráfego dessa leitura integral fazem parte do RTO. Um `check` comum pode não verificar conteúdo quando o remoto `crypt` não fornece hashes comparáveis.
 
 ### 4.6 Ensaio completo: banco e anexos perdidos juntos (`npm run restore:drill`)
 
-`scripts/full-restore-drill.sh` é o cenário do PROD-514 inteiro, num projeto Compose descartável com os overlays `prod + onprem + secrets + storage-drill` (segredos em arquivo, destino externo `crypt`): sobe `postgres`, `migrate`, `backup`, `storage`, `storage-init`, `storage-iam` e `offsite`; cria o primeiro administrador (`bootstrap`); grava `DRILL_ATTACHMENT_COUNT` anexos pelo **store e file store da aplicação** (`scripts/drill-seed-attachments.ts`, rodando com a definição do serviço `worker`) e reconcilia linhas e objetos; força a troca de WAL e espera WAL, dump e objetos chegarem à cópia externa (**RPO medido** = última gravação → cópia externa); destrói os volumes de PostgreSQL, backups locais, arquivo de WAL e storage; baixa a cópia externa pelo remoto `crypt`, restaura o banco até o fim do arquivo (`restore-pitr.sh --latest`) e o bucket num bucket novo endurecido (`storage-restore`, usuário do app); reconcilia o banco restaurado contra o bucket restaurado (**RTO medido** = baixar + banco + bucket + reconciliação); e prova que a reconciliação detecta um objeto removido e um objeto órfão. O JSON final traz `rpo`, `rto`, `reconciliation` e as contagens. Nunca aponte para um projeto de produção: o script recusa `cvg-hub`, `cvg-prod`, `cvg-hml` e `cvg-diagnostic-local` e roda `down -v` no projeto do ensaio.
+`scripts/full-restore-drill.sh` é o cenário do PROD-514 inteiro, num projeto Compose descartável com os overlays `prod + onprem + secrets + storage-drill` (segredos em arquivo, destino externo `crypt`): sobe `postgres`, `migrate`, `backup`, `storage`, `storage-init`, `storage-iam` e `offsite`; cria o primeiro administrador (`bootstrap`); grava `DRILL_ATTACHMENT_COUNT` anexos pelo **store e file store da aplicação** (`scripts/drill-seed-attachments.ts`, rodando com a definição do serviço `worker`) e reconcilia linhas e objetos; força a troca de WAL e espera WAL, dump e objetos chegarem à cópia externa (**RPO medido** = última gravação → cópia externa); destrói os volumes de PostgreSQL, backups locais, arquivo de WAL e storage; baixa a cópia externa pelo remoto `crypt`, restaura o banco até o fim do arquivo (`restore-pitr.sh --latest`) e também um PITR anterior à exclusão de um anexo sintético; verifica que o plano anterior exige esse objeto e o plano posterior o exclui mantendo seus bytes como evidência; copia apenas a seleção posterior para um bucket novo endurecido (`storage-restore`, usuário do app); reconcilia o banco restaurado contra o bucket restaurado (**RTO medido** = baixar + banco + bucket + reconciliação); e prova que a reconciliação detecta um objeto removido e um objeto órfão. O JSON final traz `rpo`, `rto`, `reconciliation` e as contagens. Nunca aponte para um projeto de produção: o script recusa `cvg-hub`, `cvg-prod`, `cvg-hml` e `cvg-diagnostic-local` e roda `down -v` no projeto do ensaio.
 
 ## 5. Cadência dos ensaios e evidência
 
@@ -201,7 +214,7 @@ Leitura honesta: o RPO nominal é 600 s (300 de `archive_timeout` + 300 de envio
 | Cópia externa completa (`objects: 200`, `check-offsite.sh` ok) | 12 s depois do início do upload |
 | Perda simulada | `docker volume rm` do `cvg-storage`; bucket novo vazio e endurecido |
 | **Restore dos 200 objetos a partir da cópia externa** | **1 s** |
-| Verificação | `rclone check` sem divergência; `storage.verified` no bucket restaurado; leitura anônima `403` |
+| Verificação | SHA-256 e tamanho dos arquivos selecionados contra o banco, `rclone check --download` do bucket contra essa evidência sem divergência; `storage.verified`; leitura anônima `403` |
 | Ensaio completo | 35 s |
 
 O ensaio prova o mecanismo (write-once, recusa sem fonte, restore íntegro num bucket endurecido), não o RTO de produção: baixar do destino real e provisionar o servidor dependem do hospital (PROD-514).

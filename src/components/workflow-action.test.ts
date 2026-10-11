@@ -7,6 +7,7 @@ const item = (status: ItemState, workflowType: WorkflowType, currentResultId?: s
 describe("workflow action mapping", () => {
   it("maps the next executable action by workflow capability", () => {
     expect(workflowActionFor(item("REQUESTED", "LABORATORY"))).toBe("RECEIVE_SAMPLE");
+    expect(workflowActionFor(item("FAILED", "LABORATORY"))).toBe("RECEIVE_SAMPLE");
     expect(workflowActionFor(item("REQUESTED", "RADIOLOGY"))).toBe("START_PROCEDURE");
     expect(workflowActionFor(item("REQUESTED", "ULTRASOUND"))).toBe("SCHEDULE");
     expect(workflowActionFor(item("RECEIVED", "LABORATORY"))).toBe("START_PROCESSING");

@@ -64,6 +64,16 @@ describe("database role separation", () => {
                 ["privilege-probe-event"]
               );
               expect(inserted.rows[0]?.count).toBe("1");
+              await client.query("INSERT INTO cvg_archive_object_deletions (storage_key) VALUES ($1)", ["privilege-probe-object"]);
+              expect((await client.query("SELECT storage_key FROM cvg_archive_object_deletions")).rows)
+                .toEqual([{ storage_key: "privilege-probe-object" }]);
+              await expect(client.query("UPDATE cvg_archive_object_deletions SET storage_key = 'rewritten'"))
+                .rejects.toMatchObject({ code: "42501" });
+              await expect(client.query("TRUNCATE cvg_archive_object_deletions"))
+                .rejects.toMatchObject({ code: "42501" });
+              await client.query("DELETE FROM cvg_archive_object_deletions WHERE storage_key = $1", ["privilege-probe-object"]);
+              expect((await client.query("SELECT count(*)::text AS count FROM cvg_archive_object_deletions")).rows[0]?.count)
+                .toBe("0");
             } finally {
               client.release();
             }
@@ -107,10 +117,12 @@ describe("database role separation", () => {
     expect(statements).toMatch(/REVOKE UPDATE, DELETE, TRUNCATE ON TABLE audit_events FROM cvg_runtime/);
     expect(statements).toMatch(/GRANT SELECT, INSERT ON TABLE audit_events TO cvg_runtime/);
     expect(statements).toMatch(/REVOKE CREATE ON SCHEMA public FROM cvg_runtime/);
-    // The clinical archive is the only other restricted table: no rewrite, no truncate.
-    expect(ARCHIVE_RUNTIME_TABLES).toEqual(["cvg_clinical_archive", "cvg_clinical_archive_batches"]);
+    // Archive rows and deletion intents permit insertion/removal, never rewriting or truncation.
+    expect(ARCHIVE_RUNTIME_TABLES).toEqual(["cvg_clinical_archive", "cvg_clinical_archive_batches", "cvg_archive_object_deletions"]);
     expect(statements).toMatch(/GRANT SELECT, INSERT, DELETE ON TABLE cvg_clinical_archive TO cvg_runtime/);
     expect(statements).toMatch(/REVOKE UPDATE, TRUNCATE ON TABLE cvg_clinical_archive_batches FROM cvg_runtime/);
+    expect(statements).toMatch(/GRANT SELECT, INSERT, DELETE ON TABLE cvg_archive_object_deletions TO cvg_runtime/);
+    expect(statements).toMatch(/REVOKE UPDATE, TRUNCATE ON TABLE cvg_archive_object_deletions FROM cvg_runtime/);
   });
 });
 

@@ -38,6 +38,8 @@ export const NEXT_HTTP_TEST_PROXY_HEADERS = Object.freeze({
   "x-forwarded-for": "127.0.0.1"
 });
 
+export const NEXT_HTTP_TEST_SESSION_SECRET = "cvg-http-test-session-secret-012345678901234567890123";
+
 const STARTUP_TIMEOUT_MS = 60_000;
 const SHUTDOWN_TIMEOUT_MS = 5_000;
 const BUILD_TIMEOUT_MS = 120_000;
@@ -262,7 +264,7 @@ export function nextHttpEnvironment(options: {
     } : {
       STORAGE_SCAN_MODE: "local"
     }),
-    SESSION_SECRET: "cvg-http-test-session-secret-012345678901234567890123",
+    SESSION_SECRET: NEXT_HTTP_TEST_SESSION_SECRET,
     OUTBOX_INLINE_LOCAL: "false",
     TRUST_PROXY: "true",
     TRUST_PROXY_SHARED_SECRET: NEXT_HTTP_TEST_PROXY_HEADERS["x-cvg-proxy-secret"]

@@ -168,6 +168,14 @@ Cada substituição referencia `replaces_sample_id`; não se reutiliza accession
 
 O vínculo entre as máquinas é explícito: `SampleRejected`/`RecollectionRequested` grava a amostra como `REJECTED`/`REPLACED` e move cada `DiagnosticRequestItem` afetado para `RECOLLECTION_REQUIRED`; `replacement_received` cria/recebe o novo sample (`EXPECTED → RECEIVED`) e move somente os itens vinculados de volta para `RECEIVED`. Uma amostra rejeitada não pode, sozinha, devolver o item ao processamento.
 
+`RejectItem` rejeita o exame selecionado. Se o tubo já recebido continua ligado a outro exame não cancelado/rejeitado, inclusive a um resultado liberado ou concluído, o tubo permanece `RECEIVED`; rejeitar o último exame útil rejeita o tubo. A rejeição de exame não reescreve tubos históricos `REPLACED`/`REJECTED`. Problemas físicos do material usam recoleta: apenas os exames atuais `RECEIVED`/`IN_PROGRESS` migram para a nova amostra; resultados liberados, concluídos e exames cancelados conservam seu vínculo histórico. O processamento, o draft e a liberação de um novo resultado exigem uma amostra `RECEIVED`, ligada ao mesmo exame e solicitação. Uma retificação explícita de resultado já liberado pode conservar o tubo histórico `REPLACED`, sem representar nova análise do material.
+
+As versões dos exames de um mesmo tubo são independentes. A recoleta por exame compara `expectedVersion` somente com o exame iniciador; `expectedSampleVersion`, obtida na etiqueta, protege a amostra física. O recebimento da substituta usa essa versão da amostra, evitando exigir que exames em fases distintas tenham a mesma versão. Cada comando preserva a atomicidade, valida os estados atuais e não movimenta exames terminais.
+
+Para recuperar pedidos antigos cujo exame permaneceu `RECEIVED`/`IN_PROGRESS` ligado a tubo `REJECTED`, a recoleta explícita também aceita esse tubo, registra `REJECTED → REPLACED` com motivo e cria a substituta `EXPECTED`. Permissões e motivo continuam obrigatórios, e as versões informadas são verificadas; somente os exames atuais elegíveis migram. Nenhum resultado anterior é excluído ou liberado automaticamente, e o tubo rejeitado nunca volta a ser material válido.
+
+Um exame que permaneceu `REQUESTED` por escopo de recebimento, ou em recuperação `FAILED`, continua apto ao recebimento normal de amostra. Se o tubo atribuído foi `REPLACED`/`REJECTED`, o comando cria material novo e conserva o tubo antigo inválido; seu accession não pode ser reutilizado. Para `FAILED` com tubo ainda válido, a recuperação explícita permite `FAILED → RECEIVED` no mesmo material antes de reiniciar o processamento.
+
 ## 7. Critical result notification
 
 ```mermaid

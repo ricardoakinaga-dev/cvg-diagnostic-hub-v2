@@ -8,11 +8,19 @@ Deploy path: [DEPLOYMENT.md](DEPLOYMENT.md) (images, first-admin bootstrap, migr
 
 Status: `NOT READY` until implementation, operational validation and human gates exist. This checklist defines what “ready” must prove.
 
-## Audit of 2026-10-10 (current)
+## Corrections of 2026-10-11 (current)
+
+> O [relatório de correções de 11/10/2026](../RELATORIO_CORRECOES_AUDITORIA_2026-10-11.md) registra o fechamento técnico de A01–A05, acesso/auditoria do arquivo, exportação concorrente, expurgo com fila durável, gate de CI da release e mecanismos de recuperação/monitoramento. A candidata local passou 2.415 testes unitários/PostgreSQL e 105 de navegador, além de build, tipos, lint e gates documentais/operacionais locais. O status clínico permanece `NOT READY`: publicação do novo SHA, infraestrutura, restore/alertas/carga no alvo e aceite hospitalar continuam exigindo evidência própria. Os checklists abaixo não são marcados como concluídos por testes locais.
+
+## Audit of 2026-10-11 (before the corrections)
+
+> A [auditoria de produção de 11/10/2026](../RELATORIO_AUDITORIA_PRODUCAO_2026-10-11.md), base `6fb180a`, reproduziu cinco novos defeitos P1 e reabriu o aceite de piloto clínico. Essa é a evidência da base anterior. O relatório de correções acima descreve a candidata posterior; os responsáveis e os critérios externos da auditoria continuam válidos.
+
+## Audit of 2026-10-10 (previous assessment)
 
 > [Relatório de prontidão de 10/10/2026](../RELATORIO_PRONTIDAO_2026-10-10.md): os quatro bloqueadores técnicos da auditoria (notificação depois de reduzir o acesso, emenda sem aviso, crítico sem saída operacional, gargalo do snapshot) estão corrigidos e cobertos por teste (D-055, D-056, D-058, D-059, D-061); o worker de produção, que não subia desde o #63, sobe (D-057); toda imagem diz de que commit veio (D-060). Provas locais: restore completo de banco e anexos com reconciliação (RPO 8–10 s, RTO 21–26 s), indisponibilidade de cada componente com as regras do Prometheus (D-062), [carga hospitalar](../RELATORIO_CARGA_HOSPITALAR_2026-10-10.md) com margem de 50× o pico D2 estimado, falhas sob carga sem perda e soak de 2 h. O status continua `NOT READY`: servidor de homologação, nomes da operação, conteúdo clínico, pentest, UAT, piloto e go/no-go são do hospital (§4 do relatório).
 
-## Current local evidence (02/10/2026)
+## Historical local evidence (02–04/10/2026; superseded)
 
 > **Audit 02/10/2026:** [report](../RELATORIO_AUDITORIA_2026-10-02.md) — new critical finding F-01: the JSONB snapshot serializes every store operation per process and grows without pruning (~0.6 s CPU per request at 100k audit events). The item "JSONB snapshot replaced or formally approved" below can no longer be closed by approval alone; it is tracked as PROD-101…111 in the [production backlog](../build/PRODUCTION_BACKLOG.md).
 

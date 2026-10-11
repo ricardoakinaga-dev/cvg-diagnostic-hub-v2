@@ -20,7 +20,7 @@ vi.mock("pg", () => ({
 }));
 
 import { PostgresStore } from "./postgres-store";
-import { insertClinicalArchive, purgeClinicalArchiveRows, readArchivedRequestRows, readClinicalArchiveRows } from "./postgres-clinical-archive";
+import { archiveDeletionReadLimit, insertClinicalArchive, purgeClinicalArchiveRows, readArchivedRequestRows, readClinicalArchiveRows } from "./postgres-clinical-archive";
 
 const readyRuntimeSchema = {
   state_exists: true, latest_migration_applied: true, runtime_state_shape_ready: true, migration_ledger_shape_ready: true,
@@ -215,6 +215,15 @@ describe("PostgresStore clinical archive", () => {
 });
 
 describe("clinical archive SQL helpers", () => {
+  it.each([0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY, 5_001])("rejects unbounded archive deletion batches: %s", (limit) => {
+    expect(() => archiveDeletionReadLimit(limit)).toThrow("ARCHIVE_OBJECT_DELETION_LIMIT_INVALID");
+  });
+
+  it("accepts the smallest and largest archive deletion batches", () => {
+    expect(archiveDeletionReadLimit(1)).toBe(1);
+    expect(archiveDeletionReadLimit(5_000)).toBe(5_000);
+  });
+
   const archiveClientStub = (rowCount: (values: readonly unknown[] | undefined, text: string) => number | null) => ({
     query: vi.fn(async (text: string, values?: unknown[]) => ({ rows: [], rowCount: rowCount(values, text) }))
   });

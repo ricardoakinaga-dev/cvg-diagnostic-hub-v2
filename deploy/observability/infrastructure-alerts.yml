@@ -1,0 +1,77 @@
+groups:
+  - name: cvg-infrastructure
+    rules:
+      - alert: CvgHostDown
+        expr: up{job="cvg-host"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Servidor do Hub ou agente VPN indisponível.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgHostCollectorStale
+        expr: time() - cvg_host_collector_timestamp_seconds > 120 or absent(cvg_host_collector_timestamp_seconds{job="cvg-host"})
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Coletor local sem atualização há mais de 2 minutos.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgHostCollectorErrors
+        expr: cvg_host_collector_failures > 0
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "Coletor não conseguiu verificar um componente obrigatório.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgRequiredContainerDown
+        expr: cvg_container_running == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Um serviço obrigatório da produção está parado ou ausente.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgScannerUnhealthy
+        expr: cvg_container_healthy{service=~"clamav|scanner"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "ClamAV ou adaptador de scanner indisponível, mesmo sem uploads.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgWorkerHeartbeatStale
+        expr: time() - cvg_worker_heartbeat_timestamp_seconds > 60 or cvg_worker_heartbeat_ok == 0 or cvg_container_healthy{service="worker"} == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Worker parado, sem heartbeat ou com erro persistente, mesmo com outbox vazio.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgBackupMissingOrStale
+        expr: time() - cvg_backup_dump_timestamp_seconds > 172800 or time() - cvg_backup_base_timestamp_seconds > 172800
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Dump ou backup base inexistente ou mais antigo que 48 horas.", runbook: "docs/operations/BACKUP_RESTORE.md"}
+      - alert: CvgOffsiteMissingOrStale
+        expr: time() - cvg_offsite_success_timestamp_seconds > 900 or cvg_offsite_last_attempt_ok == 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "Cópia externa sem sucesso recente ou último ciclo falhou.", runbook: "docs/operations/BACKUP_RESTORE.md"}
+      - alert: CvgWalArchiveBlocked
+        expr: cvg_postgres_wal_archive_oldest_pending_seconds > 600 or cvg_postgres_wal_archive_check_ok == 0 or increase(cvg_postgres_wal_archive_failures_total[10m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "WAL aguardando arquivo há mais de 10 minutos ou arquivador falhou.", runbook: "docs/operations/BACKUP_RESTORE.md"}
+      - alert: CvgDiskNearFull
+        expr: node_filesystem_avail_bytes{job="cvg-host",fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes < 0.15
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: "Filesystem do servidor com menos de 15% livre (inclui dados e WAL).", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgHttpsUnavailable
+        expr: probe_success{job="cvg-https"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Acesso HTTPS externo ao Hub falhou.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgTlsExpiresSoon
+        expr: probe_ssl_earliest_cert_expiry{job="cvg-https"} - time() < 1209600
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Certificado HTTPS expira em menos de 14 dias.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgArchiveObjectDeletionBacklog
+        expr: cvg_archive_object_deletions_pending > 0 and cvg_archive_object_deletions_oldest_age_seconds > 3600
+        for: 15m
+        labels: {severity: critical}
+        annotations: {summary: "Expurgo com exclusões de objetos pendentes há mais de 1 hora.", runbook: "docs/operations/DATA_SUBJECT_REQUESTS.md"}
+      - alert: CvgAlertDeliveryFailed
+        expr: increase(alertmanager_notifications_failed_total[10m]) > 0 or increase(prometheus_notifications_errors_total[10m]) > 0
+        for: 1m
+        labels: {severity: critical}
+        annotations: {summary: "A entrega de alertas ao Alertmanager ou a um destino falhou.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgMonitoringWatchdog
+        expr: vector(1)
+        labels: {severity: info}
+        annotations: {summary: "Heartbeat do monitor externo; ausência deve acionar o plantão no serviço independente.", runbook: "docs/operations/MONITORING.md"}

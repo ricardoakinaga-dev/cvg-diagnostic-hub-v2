@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEvent, Notification } from "../domain/models";
 import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
-import { auditEventItemIds, canViewManagementAudit, ensureExpectedVersion, hasServicePatientContext, notificationFor, requestForAuditEvent, requestForNotification, requestViewForActor, requireActiveUser, requirePatientPermission, resultView, saveIdempotency, serviceFor, visibleResultVersions, withIdempotency } from "./service-common";
+import { activeServiceFor, auditEventItemIds, canViewManagementAudit, ensureExpectedVersion, hasServicePatientContext, notificationFor, requestForAuditEvent, requestForNotification, requestViewForActor, requireActiveUser, requirePatientPermission, resultView, saveIdempotency, serviceFor, visibleResultVersions, withIdempotency } from "./service-common";
 import { freezeState } from "../store/immutable-state";
 import { createApplicationService } from "./service";
 import { MemoryStore } from "../store/memory-store";
@@ -169,10 +169,11 @@ describe("indexed lookups over the frozen snapshot", () => {
     expect(withIdempotency(saved, "user-vet", "scope", undefined, {})).toEqual({ found: false, state: saved });
   });
 
-  it("refuses an inactive service even when it exists", () => {
+  it("keeps an inactive service in the clinical record and refuses it only for a new offering", () => {
     const base = createDemoState("service-common-inactive-password");
     const state = freezeState({ ...base, services: base.services.map((service) => service.id === "service-hemogram" ? { ...service, active: false } : service) });
-    expect(() => serviceFor(state, "service-hemogram")).toThrow("Serviço diagnóstico indisponível.");
+    expect(serviceFor(state, "service-hemogram")).toMatchObject({ active: false });
+    expect(() => activeServiceFor(state, "service-hemogram")).toThrow("Serviço diagnóstico indisponível.");
     expect(() => serviceFor(state, "service-missing")).toThrow("Serviço diagnóstico indisponível.");
   });
 

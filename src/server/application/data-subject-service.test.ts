@@ -1,10 +1,11 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClinicalArchiveRow, ResultVersion, StoreState, User } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { ARCHIVE_NOW, RECENT, withCompletedRequest } from "../../test/archive-fixtures";
 import { buildPatientDataExport, PATIENT_DATA_EXPORT_FORMAT, PATIENT_DATA_EXPORT_OMITS } from "./data-subject-service";
 import { createApplicationService } from "./service";
+import { loginUser, reauthenticateUser } from "../security/session";
 
 function stateWithHistory(mutate: (state: StoreState) => StoreState = (state) => state): StoreState {
   let state = createDemoState("data-subject-password");
@@ -36,6 +37,12 @@ async function exportContext(mutate?: (state: StoreState) => StoreState) {
 }
 
 describe("LGPD export of a patient's records (PROD-502)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+    vi.unstubAllEnvs();
+  });
+
   it("exports the active and the archived history of the patient, newest first, and audits it", async () => {
     const { store, service, user, reauthenticated } = await exportContext();
     const admin = await reauthenticated(user("ADMIN"));
@@ -139,5 +146,62 @@ describe("LGPD export of a patient's records (PROD-502)", () => {
     const exported = await service.exportPatientData(await reauthenticated(user("ADMIN")), "HIS-THOR-001");
     expect(exported.requests.filter((request) => request.archived)).toHaveLength(206);
     expect(reads.mock.calls.map(([query]) => query.offset)).toEqual([0, 100, 200]);
+  });
+
+  it.each(["revocation", "session-expiry", "deactivation", "profile-change", "step-up-expiry", "step-up-removal"] as const)(
+    "does not release or audit an export when %s lands while reading the archive",
+    async (change) => {
+      const { store, service, user, reauthenticated } = await exportContext();
+      const admin = await reauthenticated(user("ADMIN"));
+      const readArchive = store.readArchivedRequest.bind(store);
+      vi.spyOn(store, "readArchivedRequest").mockImplementationOnce(async (requestId) => {
+        const rows = await readArchive(requestId);
+        await store.transaction((current) => ({ state: {
+          ...current,
+          users: current.users.map((entry) => entry.id !== admin.id ? entry
+            : change === "deactivation" ? { ...entry, active: false }
+              : change === "profile-change" ? { ...entry, role: "VIEWER", version: entry.version + 1 } : entry),
+          sessions: current.sessions.map((entry) => entry.id !== admin.sessionId ? entry
+            : change === "revocation" ? { ...entry, revokedAt: new Date().toISOString() }
+              : change === "session-expiry" ? { ...entry, expiresAt: new Date(Date.now() - 1).toISOString() }
+                : change === "step-up-expiry" ? { ...entry, reauthenticatedAt: new Date(Date.now() - 11 * 60_000).toISOString() }
+                  : change === "step-up-removal" ? { ...entry, reauthenticatedAt: undefined } : entry)
+        }, result: undefined }));
+        return rows;
+      });
+      await expect(service.exportPatientData(admin, "HIS-THOR-001"))
+        .rejects.toMatchObject({ code: change.startsWith("step-up") ? "REAUTH_REQUIRED" : "UNAUTHENTICATED" });
+      expect(store.getState().auditEvents.some((event) => event.eventType === "PatientDataExported")).toBe(false);
+    }
+  );
+
+  it("checks the step-up clock again after a slow archive read", async () => {
+    vi.useFakeTimers();
+    const { store, service, user, reauthenticated } = await exportContext();
+    const admin = await reauthenticated(user("ADMIN"));
+    const readArchive = store.readArchivedRequest.bind(store);
+    vi.spyOn(store, "readArchivedRequest").mockImplementationOnce(async (requestId) => {
+      const rows = await readArchive(requestId);
+      vi.setSystemTime(Date.now() + 11 * 60_000);
+      return rows;
+    });
+    await expect(service.exportPatientData(admin, "HIS-THOR-001")).rejects.toMatchObject({ code: "REAUTH_REQUIRED" });
+    expect(store.getState().auditEvents.some((event) => event.eventType === "PatientDataExported")).toBe(false);
+  });
+
+  it("refuses a prepared export after the server secret is rotated", async () => {
+    vi.stubEnv("SESSION_SECRET", "export-first-secret-01234567890123456789");
+    const { store, service } = await exportContext();
+    const login = await loginUser(store, "admin@cvg.local", "data-subject-password");
+    const request = new Request("http://localhost", { headers: { cookie: `cvg_session=${login.sessionToken}` } });
+    const actor = await reauthenticateUser(store, request, "data-subject-password");
+    const readArchive = store.readArchivedRequest.bind(store);
+    vi.spyOn(store, "readArchivedRequest").mockImplementationOnce(async (requestId) => {
+      const rows = await readArchive(requestId);
+      vi.stubEnv("SESSION_SECRET", "export-second-secret-01234567890123456789");
+      return rows;
+    });
+    await expect(service.exportPatientData(actor, "HIS-THOR-001")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    expect(store.getState().auditEvents.some((event) => event.eventType === "PatientDataExported")).toBe(false);
   });
 });

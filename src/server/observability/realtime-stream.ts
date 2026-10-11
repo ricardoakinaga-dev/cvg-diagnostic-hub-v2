@@ -393,7 +393,12 @@ async function assertCurrentRealtimeAuthorization(
   policy: RealtimeAccessPolicy
 ): Promise<void> {
   const currentVersion = await readWithRealtimeDeadline(() => store.readStateVersion(), timeoutMs, signal);
-  if (currentVersion === snapshot.version) return;
+  if (currentVersion === snapshot.version) {
+    // The DB version cannot observe a local SESSION_SECRET rotation. Recheck
+    // the policy after the awaited version read before delivering any payload.
+    assertRealtimeAuthorization(snapshot.state, actor, policy);
+    return;
+  }
   recordRealtimeAuthorizationStaleness();
   const current = await readRealtimeAuthorization(store, actor, timeoutMs, signal);
   assertRealtimeAuthorization({ ...snapshot.state, users: current.user ? [current.user] : [], sessions: current.session ? [current.session] : [] }, actor, policy);

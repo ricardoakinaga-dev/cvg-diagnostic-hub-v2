@@ -21,7 +21,7 @@ export const APPEND_ONLY_RUNTIME_TABLES = ["audit_events"] as const;
  * The clinical archive (PROD-501) is written once and removed only by the
  * purge: the runtime may read, add and delete rows but never rewrite one.
  */
-export const ARCHIVE_RUNTIME_TABLES = ["cvg_clinical_archive", "cvg_clinical_archive_batches"] as const;
+export const ARCHIVE_RUNTIME_TABLES = ["cvg_clinical_archive", "cvg_clinical_archive_batches", "cvg_archive_object_deletions"] as const;
 
 /**
  * Grants the runtime data access over whatever the schema actually contains,

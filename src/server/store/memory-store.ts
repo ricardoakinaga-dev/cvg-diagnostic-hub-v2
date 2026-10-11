@@ -24,6 +24,7 @@ export class MemoryStore implements StateStore {
   private readonly activity = new Map<string, SessionActivity>();
   /** The clinical archive (D5) that PostgreSQL keeps in cvg_clinical_archive. */
   private archive: ClinicalArchiveRow[] = [];
+  private readonly archiveObjectDeletions = new Map<string, string>();
   /** Mirrors the runtime state row version that PostgreSQL bumps per write. */
   private version = 1;
 
@@ -163,6 +164,30 @@ export class MemoryStore implements StateStore {
     return rows.some((row) => row.collection === "requests") ? structuredClone(rows) : undefined;
   }
 
+  async readArchivedAttachmentRequest(attachmentId: string): Promise<ClinicalArchiveRow[] | undefined> {
+    await this.readState();
+    const attachment = this.archive.find((row) => row.collection === "attachments" && row.entityKey === attachmentId);
+    return attachment ? this.readArchivedRequest(attachment.requestId) : undefined;
+  }
+
+  async readPendingArchiveObjectDeletions(limit: number): Promise<string[]> {
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5_000) throw new Error("ARCHIVE_OBJECT_DELETION_LIMIT_INVALID");
+    await this.readState();
+    return [...this.archiveObjectDeletions].sort(([a, atA], [b, atB]) => atA.localeCompare(atB) || a.localeCompare(b)).slice(0, limit).map(([key]) => key);
+  }
+
+  async completeArchiveObjectDeletion(key: string): Promise<void> {
+    const run = this.queue.then(() => { this.archiveObjectDeletions.delete(key); });
+    this.queue = run.then(() => undefined, () => undefined);
+    await run;
+  }
+
+  async readArchiveObjectDeletionMetrics(): Promise<{ pending: number; oldestRequestedAt?: string }> {
+    await this.readState();
+    const oldest = [...this.archiveObjectDeletions.values()].sort()[0];
+    return { pending: this.archiveObjectDeletions.size, ...(oldest ? { oldestRequestedAt: oldest } : {}) };
+  }
+
   async purgeClinicalArchive(options: ClinicalArchivePurgeOptions = {}): Promise<ClinicalArchivePurgeSummary> {
     const now = options.now ?? new Date();
     const cutoff = purgeCutoff(now, options.purgeAfterMonths);
@@ -174,6 +199,9 @@ export class MemoryStore implements StateStore {
         attachmentKeys: due.filter((row) => row.collection === "attachments").map((row) => String(row.data.storageKey))
       };
       if (options.dryRun || due.length === 0) return summary;
+      for (const key of summary.attachmentKeys) {
+        if (!this.archiveObjectDeletions.has(key)) this.archiveObjectDeletions.set(key, now.toISOString());
+      }
       const purged = new Set(due);
       this.archive = this.archive.filter((row) => !purged.has(row));
       this.state = freezeState({ ...this.state, auditEvents: [...this.state.auditEvents, purgeAuditEvent(summary, now)] });
@@ -188,7 +216,13 @@ export class MemoryStore implements StateStore {
     operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }
   ): Promise<T> {
     const run = this.queue.then(async () => {
-      const outcome = await operation(this.state, { hasAuditEvent: async (query) => this.state.auditEvents.some((event) => event.eventType === query.eventType && event.entityType === query.entityType && event.entityId === query.entityId && event.actorId === query.actorId) });
+      const outcome = await operation(this.state, {
+        hasAuditEvent: async (query) => this.state.auditEvents.some((event) => event.eventType === query.eventType && event.entityType === query.entityType && event.entityId === query.entityId && event.actorId === query.actorId),
+        readArchivedRequest: async (requestId) => {
+          const rows = this.archive.filter((row) => row.requestId === requestId);
+          return rows.some((row) => row.collection === "requests") ? structuredClone(rows) : undefined;
+        }
+      });
       // Like PostgreSQL, an unchanged state is not a write and does not move the version.
       if (outcome.state === this.state) return outcome.result;
       const nextState = freezeState(outcome.state);
@@ -214,6 +248,7 @@ export class MemoryStore implements StateStore {
 
   async reset(state: StoreState): Promise<void> {
     this.archive = [];
+    this.archiveObjectDeletions.clear();
     await this.transaction(() => ({ state: cloneState(state), result: undefined }));
   }
 

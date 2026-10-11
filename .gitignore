@@ -13,6 +13,7 @@ test-results/
 .env.*
 !.env.example
 !.env.production.example
+!.env.monitoring.example
 *.log
 *.tsbuildinfo
 next-env.d.ts

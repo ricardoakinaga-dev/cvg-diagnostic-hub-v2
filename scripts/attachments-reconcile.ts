@@ -6,11 +6,9 @@ import "./load-file-secrets";
 //   npm run attachments:reconcile            # same environment as the worker (APP_DATA_MODE=postgres, DATABASE_URL, STORAGE_*)
 //   npm run attachments:reconcile -- --json-only
 import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
-import type { ArchivedCollection, StateStore } from "../src/server/domain/models";
-import { reconcileAttachments, type ArchivedAttachmentKey } from "../src/server/storage/attachments-reconcile";
+import { reconcileAttachments } from "../src/server/storage/attachments-reconcile";
 import { getRuntimeStoreAsync } from "../src/server/store/runtime";
-
-const ARCHIVE_PAGE = 200;
+import { archivedAttachmentKeys } from "./attachment-references";
 
 interface BucketAccess { readonly client: S3Client; readonly bucket: string }
 
@@ -34,24 +32,6 @@ async function listObjectKeys({ client, bucket }: BucketAccess): Promise<string[
     token = page.IsTruncated ? page.NextContinuationToken : undefined;
   } while (token);
   return keys;
-}
-
-/** Archived attachments stay in the bucket until the purge (PROD-501): read them request by request, in pages. */
-async function archivedAttachmentKeys(store: StateStore): Promise<ArchivedAttachmentKey[]> {
-  const keys: ArchivedAttachmentKey[] = [];
-  const collection: ArchivedCollection = "attachments";
-  for (let offset = 0; ; offset += ARCHIVE_PAGE) {
-    const entries = await store.readClinicalArchive({ limit: ARCHIVE_PAGE, offset });
-    for (const entry of entries) {
-      const rows = await store.readArchivedRequest(entry.requestId);
-      for (const row of rows ?? []) {
-        if (row.collection !== collection) continue;
-        const storageKey = row.data.storageKey;
-        if (typeof storageKey === "string" && storageKey) keys.push({ requestId: entry.requestId, storageKey });
-      }
-    }
-    if (entries.length < ARCHIVE_PAGE) return keys;
-  }
 }
 
 async function main(): Promise<void> {

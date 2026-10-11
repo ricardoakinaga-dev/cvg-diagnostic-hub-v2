@@ -5,7 +5,7 @@ import { createOutboxSinkFromEnv, type ConfiguredOutboxSink, type OutboxProcessS
 import { nextOutboxHeartbeatErrorCount, outboxCycleHeartbeatResult, resolveOutboxHeartbeatFile, writeOutboxHeartbeat, type OutboxHeartbeat, type OutboxHeartbeatResult } from "../src/server/operations/outbox-heartbeat";
 import { pruneRateLimitBuckets } from "../src/server/security/rate-limit";
 import { createRuntimeRetentionSchedule, runScheduledRuntimeRetention } from "../src/server/operations/runtime-retention-job";
-import { clinicalArchiveConfig, createClinicalArchiveSchedule, runScheduledClinicalArchive } from "../src/server/operations/clinical-archive-job";
+import { clinicalArchiveConfig, createArchiveObjectRemovalSchedule, createClinicalArchiveMaintenance, createClinicalArchiveSchedule, removePendingArchiveObjects, runScheduledClinicalArchive } from "../src/server/operations/clinical-archive-job";
 import { closeRealtimeNotificationAdapter } from "../src/server/observability/realtime";
 import { startupEvent } from "../src/server/observability/build-info";
 import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
@@ -23,6 +23,11 @@ const retentionSchedule = createRuntimeRetentionSchedule();
 // PROD-501 (D5): archiving after the active window, with its own daily cadence.
 const archiveConfig = clinicalArchiveConfig();
 const archiveSchedule = createClinicalArchiveSchedule(archiveConfig.intervalMs);
+// Deletion throughput and retries are independent of the daily archive cadence.
+const archiveObjectSchedule = createArchiveObjectRemovalSchedule();
+const archiveMaintenance = createClinicalArchiveMaintenance(() => {
+  console.error(JSON.stringify({ event: "clinical.archive_error", errorCode: "CLINICAL_ARCHIVE_FAILED" }));
+});
 let stopping = false;
 let consecutiveCycleErrors = 0;
 
@@ -53,12 +58,19 @@ async function runRetention(): Promise<void> {
 }
 
 async function runArchive(): Promise<void> {
+  const store = await getRuntimeStoreAsync();
+  const fileStore = getRuntimeFileStore();
+  await runScheduledClinicalArchive(store, archiveSchedule, { config: archiveConfig, fileStore, deferObjectRemoval: true });
+  const nowMs = Date.now();
+  if (stopping || !archiveObjectSchedule.shouldRun(nowMs)) return;
+  archiveObjectSchedule.record(nowMs);
   try {
-    const store = await getRuntimeStoreAsync();
-    // Objects are only removed after a purge, which needs the legal period to be configured.
-    await runScheduledClinicalArchive(store, archiveSchedule, { config: archiveConfig, fileStore: archiveConfig.purgeAfterMonths ? getRuntimeFileStore() : undefined });
+    // Drain authorized intents even when future archiving or purges are disabled.
+    const objects = await removePendingArchiveObjects(store, fileStore, { shouldStop: () => stopping });
+    if (objects.removed > 0 || objects.failures > 0) console.log(JSON.stringify({ event: "clinical.archive_objects_removed", objectsRemoved: objects.removed, objectRemovalFailures: objects.failures }));
+    if (objects.failures > 0) throw new Error("ARCHIVE_OBJECT_REMOVAL_PENDING");
   } catch (error) {
-    console.error(JSON.stringify({ event: "clinical.archive_error", errorCode: "CLINICAL_ARCHIVE_FAILED" }));
+    archiveObjectSchedule.failed(Date.now());
     throw error;
   }
 }
@@ -81,7 +93,7 @@ async function runCycle(sink: ConfiguredOutboxSink): Promise<void> {
   try {
     await runRetention();
     await runEscalation();
-    await runArchive();
+    archiveMaintenance.start(runArchive);
     const summary = await runOnce(sink);
     const lastResult: OutboxHeartbeatResult = outboxCycleHeartbeatResult(summary);
     const heartbeat = await updateHeartbeat(lastResult);
@@ -134,6 +146,9 @@ async function main(): Promise<void> {
       await new Promise<void>((resolve) => setTimeout(resolve, intervalMs));
     }
   } finally {
+    stopping = true;
+    // Finish/acknowledge the one operation already in flight before closing its pool.
+    await archiveMaintenance.close();
     try {
       await workerSink.close();
     } finally {

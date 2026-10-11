@@ -18,6 +18,14 @@ export function passwordResetTtlMs(environment: Readonly<Record<string, string |
 
 const RESET_TOKEN_PEPPER_FALLBACK = "cvg-reset-token-pepper";
 
+function resetTokenPepper(environment: Readonly<Record<string, string | undefined>>): string {
+  const secret = environment.SESSION_SECRET?.trim();
+  if (environment.NODE_ENV === "production" && (!secret || secret.length < 32)) {
+    throw new ApiError("PASSWORD_RESET_INVALID", INVALID_MESSAGE, 400);
+  }
+  return secret || RESET_TOKEN_PEPPER_FALLBACK;
+}
+
 /**
  * Fingerprint of the reset token, keyed by the server secret: scrypt over the
  * 32 random bytes with SESSION_SECRET as salt. A copy of the users table alone
@@ -25,7 +33,7 @@ const RESET_TOKEN_PEPPER_FALLBACK = "cvg-reset-token-pepper";
  * pending link (sessions die with it anyway).
  */
 export function hashResetToken(token: string, environment: Readonly<Record<string, string | undefined>> = process.env): string {
-  const pepper = environment.SESSION_SECRET?.trim() || RESET_TOKEN_PEPPER_FALLBACK;
+  const pepper = resetTokenPepper(environment);
   return scryptSync(token, pepper, 32).toString("hex");
 }
 
@@ -94,6 +102,7 @@ export async function completePasswordReset(
   correlationId: string,
   environment: BreachCheckEnvironment = process.env
 ): Promise<{ email: string }> {
+  const tokenPepper = resetTokenPepper(environment);
   const tokenHash = hashResetToken(token, environment);
   const state = await store.readState();
   const user = userForToken(state, tokenHash);
@@ -110,7 +119,7 @@ export async function completePasswordReset(
   return store.transaction((current) => {
     const target = findById(current.users, user.id);
     const grant = target?.passwordReset;
-    if (!target || !grant || grant.tokenHash !== tokenHash || Date.parse(grant.expiresAt) <= Date.now() || !target.active) {
+    if (!target || !grant || grant.tokenHash !== tokenHash || resetTokenPepper(environment) !== tokenPepper || Date.parse(grant.expiresAt) <= Date.now() || !target.active) {
       throw invalid();
     }
     const { passwordReset: _consumed, ...rest } = target;

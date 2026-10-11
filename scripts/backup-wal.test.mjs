@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -23,6 +23,56 @@ test("every WAL archiving and PITR script parses", () => {
   for (const file of shellScripts) {
     const result = spawnSync(file.startsWith("deploy") ? "sh" : "bash", ["-n", path.join(root, file)], { encoding: "utf8" });
     assert.equal(result.status, 0, `${file}: ${result.stderr}`);
+  }
+});
+
+test("secret-scan guards exact templates and forced tracked env files with rg and fallback grep", () => {
+  const resolve = (name) => spawnSync("bash", ["-c", `command -v ${name}`], { encoding: "utf8" }).stdout.trim();
+  const rg = resolve("rg");
+  for (const engine of ["grep", ...(rg ? ["rg"] : [])]) {
+    const dir = temp();
+    try {
+      const bin = path.join(dir, "bin");
+      mkdirSync(bin);
+      mkdirSync(path.join(dir, "scripts"));
+      copyFileSync(path.join(root, "scripts/secret-scan.sh"), path.join(dir, "scripts/secret-scan.sh"));
+      for (const name of ["bash", "dirname", "git", "grep", "find"]) symlinkSync(resolve(name), path.join(bin, name));
+      if (engine === "rg") symlinkSync(rg, path.join(bin, "rg"));
+      const git = (...args) => {
+        const result = spawnSync("git", args, { cwd: dir, encoding: "utf8" });
+        assert.equal(result.status, 0, result.stderr);
+      };
+      git("init", "--quiet");
+      const ignore = ".env\n.env.*\nprivate/\n!.env.example\n!.env.production.example\n!.env.monitoring.example\n";
+      writeFileSync(path.join(dir, ".gitignore"), ignore);
+      for (const name of [".env.example", ".env.production.example", ".env.monitoring.example"]) writeFileSync(path.join(dir, name), "PLACEHOLDER=\n");
+      git("add", ".");
+      const check = (status) => {
+        const result = spawnSync(path.join(bin, "bash"), ["scripts/secret-scan.sh"], { cwd: dir, env: { PATH: bin }, encoding: "utf8" });
+        assert.equal(result.status, status, `${engine}: ${result.stdout}${result.stderr}`);
+        assert.match(result.stdout, engine === "rg" ? /motor: rg/ : /fallback; rg ausente/);
+      };
+      check(0); // Only the three root templates are allowed in the index.
+      writeFileSync(path.join(dir, ".env"), "PLACEHOLDER=\n");
+      check(0); // An ignored local file is never published.
+      git("add", "--force", ".env");
+      check(1);
+      git("rm", "--cached", "--force", ".env");
+      writeFileSync(path.join(dir, ".gitignore"), "private/\n");
+      check(1); // An untracked but publishable real .env is also refused.
+      writeFileSync(path.join(dir, ".gitignore"), ignore);
+      mkdirSync(path.join(dir, "private"));
+      for (const name of [".env.production", ".env.monitoring.example"]) {
+        const file = `private/${name}`;
+        writeFileSync(path.join(dir, file), "PLACEHOLDER=\n");
+        git("add", "--force", file);
+        check(1); // Ignored parents cannot hide indexed files; nested templates are not allowlisted.
+        git("rm", "--cached", "--force", file);
+        rmSync(path.join(dir, file));
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   }
 });
 
