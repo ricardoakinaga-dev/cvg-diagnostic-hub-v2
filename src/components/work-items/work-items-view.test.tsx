@@ -364,6 +364,29 @@ describe("WorkItemsView", () => {
     expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" }) !== null).toBe(role === "MANAGER");
   });
 
+  it("shows a sole future routine REQUESTED exam in SUPERADMIN Meu trabalho", async () => {
+    navigation.params = new URLSearchParams("view=mine");
+    const routineRequest = requests[1];
+    mockApi({ ...lab, role: "SUPERADMIN", departmentCode: "IT" }, { requests: [routineRequest] });
+    vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? [routineRequest] : [], meta: {} }) as never);
+    render(<WorkItemsView />);
+    expect(await screen.findByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(screen.getByText("1 itens")).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "Solicitado: 1 exames" })).toBeInTheDocument();
+  });
+
+  it.each(["SUPERADMIN", "MANAGER"] as const)("keeps terminal exams outside Meu trabalho and preserves routine scope for %s", async (role) => {
+    navigation.params = new URLSearchParams("view=mine");
+    const terminalItems = (["COMPLETED", "CANCELLED", "REJECTED"] as const).map((status) => ({ ...requests[1].items[0], id: `terminal-${status}`, status, priority: "EMERGENCY" as const, service: { id: `service-${status}`, code: status, name: `Histórico ${status}` } }));
+    const data = [requests[0], { ...requests[1], items: [...requests[1].items, ...terminalItems] }];
+    mockApi({ ...lab, role, departmentCode: "IT", managedDepartmentCodes: ["LABORATORY", "RADIOLOGY"] }, { requests: data });
+    vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? data : [], meta: {} }) as never);
+    render(<WorkItemsView />);
+    expect(await screen.findByRole("button", { name: "Abrir RX de tórax — Thor" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" }) !== null).toBe(role === "SUPERADMIN");
+    for (const status of ["COMPLETED", "CANCELLED", "REJECTED"]) expect(screen.queryByRole("button", { name: `Abrir Histórico ${status} — Mel` })).not.toBeInTheDocument();
+  });
+
   it("keeps row actions available while a background refresh is loading", async () => {
     await renderView();
     // Another user's activity triggers a refresh that is still loading.

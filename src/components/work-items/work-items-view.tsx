@@ -119,7 +119,8 @@ export function WorkItemsView() {
   const scoped = useMemo(() => {
     if (!mine || !user) return items;
     if (["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(user.role)) return items.filter((item) => item.requesterId === user.id);
-    if (user.role === "MANAGER" || user.role === "SUPERADMIN") return items.filter((item) => !isTerminal(item.status) && (item.overdue || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.priority !== "ROUTINE"));
+    if (user.role === "SUPERADMIN") return items.filter((item) => !isTerminal(item.status));
+    if (user.role === "MANAGER") return items.filter((item) => !isTerminal(item.status) && (item.overdue || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.priority !== "ROUTINE"));
     return items.filter((item) => item.departmentCode === user.departmentCode && !isTerminal(item.status));
   }, [items, mine, user]);
   const visible = useMemo(() => sortItems(applyFilters(scoped, filters), display.orderBy), [scoped, filters, display.orderBy]);
