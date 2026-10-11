@@ -13,7 +13,7 @@ if ! command -v "$RUNTIME" >/dev/null 2>&1; then
   echo "Canonical E2E needs Docker or Podman and the pinned CI image; install a container runtime or run this command on the CI runner." >&2
   exit 2
 fi
-if ! rg -qF "$IMAGE" "$REPO_ROOT/.github/workflows/ci.yml"; then
+if ! grep -qF -- "$IMAGE" "$REPO_ROOT/.github/workflows/ci.yml"; then
   echo "The CI browser image changed; update IMAGE in this script before running." >&2
   exit 2
 fi

@@ -8,13 +8,15 @@ import { fileURLToPath } from "node:url";
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-test("canonical E2E preserves failure evidence and baselines and returns the browser exit code", () => {
+test("canonical E2E without rg preserves failure evidence, image guard and baselines", () => {
   const fixture = mkdtempSync(path.join(os.tmpdir(), "cvg-canonical-test-"));
   try {
     mkdirSync(path.join(fixture, "scripts"), { recursive: true });
     mkdirSync(path.join(fixture, ".github/workflows"), { recursive: true });
     mkdirSync(path.join(fixture, "tests/e2e/visual.spec.ts-snapshots"), { recursive: true });
     mkdirSync(path.join(fixture, "bin"));
+    // Ubuntu runners may have grep and Docker without ripgrep installed.
+    writeFileSync(path.join(fixture, "bin/rg"), "#!/bin/sh\nexit 127\n", { mode: 0o755 });
     copyFileSync(path.join(repo, "scripts/test-e2e-canonical.sh"), path.join(fixture, "scripts/test-e2e-canonical.sh"));
     copyFileSync(path.join(repo, ".github/workflows/ci.yml"), path.join(fixture, ".github/workflows/ci.yml"));
     const baseline = path.join(fixture, "tests/e2e/visual.spec.ts-snapshots/dashboard.png");
@@ -52,6 +54,14 @@ process.exit(7);
     rmSync(capture);
     const update = spawnSync("bash", ["scripts/test-e2e-canonical.sh", "--update-snapshots"], { cwd: fixture, env: environment, encoding: "utf8" });
     assert.equal(update.status, 2);
+    assert.equal(existsSync(capture), false);
+    assert.equal(readFileSync(baseline, "utf8"), "existing baseline");
+
+    // A mismatched CI digest still prevents the container from being called.
+    writeFileSync(path.join(fixture, ".github/workflows/ci.yml"), "name: fixture without the pinned image\n");
+    const changedImage = spawnSync("bash", ["scripts/test-e2e-canonical.sh"], { cwd: fixture, env: environment, encoding: "utf8" });
+    assert.equal(changedImage.status, 2);
+    assert.match(changedImage.stderr, /CI browser image changed/);
     assert.equal(existsSync(capture), false);
     assert.equal(readFileSync(baseline, "utf8"), "existing baseline");
   } finally {
