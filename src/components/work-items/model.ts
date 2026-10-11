@@ -64,6 +64,11 @@ export function isTerminal(status: ItemState): boolean {
   return terminalStates.has(status);
 }
 
+/** The API already scopes access; active work includes other care-team authors. */
+export function activeWorkItems(items: readonly WorkItem[]): WorkItem[] {
+  return items.filter((item) => !isTerminal(item.status));
+}
+
 export function isOverdue(item: Pick<WorkItem, "status" | "dueAt">, now = Date.now()): boolean {
   const due = Date.parse(item.dueAt);
   return !isTerminal(item.status) && Number.isFinite(due) && due < now;

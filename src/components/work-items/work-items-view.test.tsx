@@ -17,6 +17,17 @@ vi.mock("@/components/api-client", async (importOriginal) => ({ ...await importO
 
 const lab: SessionUser = { id: "user-lab", email: "lab@cvg.local", displayName: "Joana Lima", role: "LAB_TECH", departmentCode: "LABORATORY", timezone: "UTC" };
 const vet: SessionUser = { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina", role: "VETERINARIAN", departmentCode: "INPATIENT", timezone: "UTC" };
+const operationalScopes = [
+  ["SUPERADMIN", "IT", "LABORATORY"],
+  ["VETERINARIAN", "INPATIENT", "LABORATORY"],
+  ["VET", "INPATIENT", "LABORATORY"],
+  ["INPATIENT_TEAM", "INPATIENT", "LABORATORY"],
+  ["MANAGER", "IT", "RADIOLOGY"],
+  ["VIEWER", "IT", "LABORATORY"],
+  ["LAB_TECH", "LABORATORY", "LABORATORY"],
+  ["RADIOLOGY_TEAM", "RADIOLOGY", "RADIOLOGY"],
+  ["ULTRASOUND_TEAM", "ULTRASOUND", "ULTRASOUND"]
+] as const;
 const future = new Date(Date.now() + 6 * 3600_000).toISOString();
 const past = new Date(Date.now() - 3600_000).toISOString();
 
@@ -240,12 +251,12 @@ describe("WorkItemsView", () => {
     expect(screen.queryByRole("button", { name: /^Estado: Amostra recebida/ })).not.toBeInTheDocument();
   });
 
-  it("shows only the clinician's own requests in Meu trabalho and lets them create", async () => {
+  it("shows the clinician's authorized care-team requests in Meu trabalho and lets them create", async () => {
     navigation.params = new URLSearchParams("view=mine");
     mockApi(vet);
     await renderView();
     expect(screen.getByRole("navigation", { name: "Você está em" })).toHaveTextContent("Meu trabalho");
-    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Abrir RX de tórax — Thor" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Estado: Amostra recebida" })).toBeDisabled();
     expect(screen.getAllByRole("button", { name: "Nova solicitação" }).length).toBeGreaterThan(0);
@@ -356,34 +367,36 @@ describe("WorkItemsView", () => {
     expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" })).not.toBeInTheDocument();
   });
 
-  it.each(["MANAGER", "LAB_TECH"] as const)("scopes Meu trabalho for %s", async (role) => {
-    navigation.params = new URLSearchParams("view=mine");
-    mockApi({ ...lab, role });
+  it.each(["MANAGER", "VETERINARIAN"] as const)("keeps explicit department filters in %s Meu trabalho", async (role) => {
+    navigation.params = new URLSearchParams("view=mine&dept=LABORATORY");
+    mockApi({ ...vet, role, managedDepartmentCodes: role === "MANAGER" ? ["LABORATORY", "RADIOLOGY"] : undefined });
     await renderView();
-    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" }) !== null).toBe(role === "LAB_TECH");
-    expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" }) !== null).toBe(role === "MANAGER");
+    expect(screen.getByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" })).not.toBeInTheDocument();
   });
 
-  it("shows a sole future routine REQUESTED exam in SUPERADMIN Meu trabalho", async () => {
+  it.each(operationalScopes)("shows another professional's sole authorized future routine exam in %s Meu trabalho", async (role, departmentCode, workflowType) => {
     navigation.params = new URLSearchParams("view=mine");
-    const routineRequest = requests[1];
-    mockApi({ ...lab, role: "SUPERADMIN", departmentCode: "IT" }, { requests: [routineRequest] });
+    const routineRequest: RequestListEntry = { ...requests[1], requesterId: "another-professional", items: [{ ...requests[1].items[0], workflowType, departmentCode: workflowType }] };
+    mockApi({ ...vet, role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined }, { requests: [routineRequest] });
     vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? [routineRequest] : [], meta: {} }) as never);
     render(<WorkItemsView />);
     expect(await screen.findByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
     expect(screen.getByText("1 itens")).toBeInTheDocument();
     expect(screen.getByRole("listitem", { name: "Solicitado: 1 exames" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("button", { name: "Nova solicitação" }).length > 0).toBe(["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(role));
   });
 
-  it.each(["SUPERADMIN", "MANAGER"] as const)("keeps terminal exams outside Meu trabalho and preserves routine scope for %s", async (role) => {
+  it.each(operationalScopes)("keeps COMPLETED, CANCELLED and REJECTED outside %s Meu trabalho while retaining routine work", async (role, departmentCode, workflowType) => {
     navigation.params = new URLSearchParams("view=mine");
-    const terminalItems = (["COMPLETED", "CANCELLED", "REJECTED"] as const).map((status) => ({ ...requests[1].items[0], id: `terminal-${status}`, status, priority: "EMERGENCY" as const, service: { id: `service-${status}`, code: status, name: `Histórico ${status}` } }));
-    const data = [requests[0], { ...requests[1], items: [...requests[1].items, ...terminalItems] }];
-    mockApi({ ...lab, role, departmentCode: "IT", managedDepartmentCodes: ["LABORATORY", "RADIOLOGY"] }, { requests: data });
+    const routineRequest: RequestListEntry = { ...requests[1], requesterId: "another-professional", items: [{ ...requests[1].items[0], workflowType, departmentCode: workflowType }] };
+    const terminalItems = (["COMPLETED", "CANCELLED", "REJECTED"] as const).map((status) => ({ ...routineRequest.items[0], requestId: "terminal-request", id: `terminal-${status}`, status, priority: "EMERGENCY" as const, service: { id: `service-${status}`, code: status, name: `Histórico ${status}` } }));
+    const data = [routineRequest, { ...requests[1], id: "terminal-request", requesterId: vet.id, items: terminalItems }];
+    mockApi({ ...vet, role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined }, { requests: data });
     vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? data : [], meta: {} }) as never);
     render(<WorkItemsView />);
-    expect(await screen.findByRole("button", { name: "Abrir RX de tórax — Thor" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" }) !== null).toBe(role === "SUPERADMIN");
+    expect(await screen.findByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(screen.getByText("1 itens")).toBeInTheDocument();
     for (const status of ["COMPLETED", "CANCELLED", "REJECTED"]) expect(screen.queryByRole("button", { name: `Abrir Histórico ${status} — Mel` })).not.toBeInTheDocument();
   });
 

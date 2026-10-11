@@ -10,7 +10,7 @@ import { PageHeader } from "./page-header";
 import { Icon, type IconName } from "./ui-icons";
 import { DepartmentIcon, PriorityIcon, StateIcon } from "./work-items/icons";
 import { useWorkItems } from "./work-items/use-work-items";
-import { CLINICAL_DEPARTMENTS, STATE_GROUP, STATE_LABELS, departmentLabel, formatDue, isTerminal, sortItems, workItemKey, type WorkItem } from "./work-items/model";
+import { CLINICAL_DEPARTMENTS, STATE_GROUP, STATE_LABELS, activeWorkItems, departmentLabel, formatDue, sortItems, workItemKey, type WorkItem } from "./work-items/model";
 
 function greeting(date: Date): string {
   const hour = date.getHours();
@@ -55,15 +55,13 @@ function ClinicalHome({ user }: { user: SessionUser }) {
     return () => { window.clearTimeout(timer); window.removeEventListener("cvg:realtime-updated", refresh); window.removeEventListener("cvg:realtime-resync", refresh); };
   }, [loadDashboard]);
 
-  const isClinician = ["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(user.role);
-  const active = useMemo(() => items.filter((item) => !isTerminal(item.status)), [items]);
+  const active = useMemo(() => activeWorkItems(items), [items]);
   const attention = useMemo(() => sortItems(active.filter((item) => item.overdue || item.priority !== "ROUTINE" || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.status === "RECOLLECTION_REQUIRED"), "priority").slice(0, 6), [active]);
   const results = useMemo(() => sortItems(items.filter((item) => item.status === "RESULT_AVAILABLE"), "recent").slice(0, 5), [items]);
   const recent = useMemo(() => sortItems(items, "recent").slice(0, 6), [items]);
-  const myScope = useMemo(() => user.role === "SUPERADMIN" ? active : isClinician ? items.filter((item) => item.requesterId === user.id && !isTerminal(item.status)) : active.filter((item) => item.departmentCode === user.departmentCode), [active, isClinician, items, user]);
 
   const quick: QuickCard[] = [
-    { label: isClinician ? "Minhas solicitações" : "Na minha fila", value: myScope.length, hint: "ativos agora", href: "/queues?view=mine", icon: "user-check", tone: "accent" },
+    { label: "Na minha fila", value: active.length, hint: "ativos agora", href: "/queues?view=mine", icon: "user-check", tone: "accent" },
     { label: "Atrasados", value: dashboard?.overdue ?? active.filter((item) => item.overdue).length, hint: "precisam de intervenção", href: "/queues?preset=overdue", icon: "clock", tone: "danger" },
     { label: "Resultados novos", value: dashboard?.newResults ?? results.length, hint: "aguardando revisão", href: "/queues?preset=results", icon: "check", tone: "review" },
     { label: "Recoletas", value: dashboard?.recollections ?? active.filter((item) => item.status === "RECOLLECTION_REQUIRED").length, hint: "aguardando nova amostra", href: "/queues", icon: "refresh", tone: "warning" }

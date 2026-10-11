@@ -15,7 +15,7 @@ import { BoardLayout, CalendarLayout, ListLayout, SpreadsheetLayout } from "./la
 import { PeekOverview } from "./peek-overview";
 import { useWorkItems } from "./use-work-items";
 import {
-  CLINICAL_DEPARTMENTS, DEFAULT_DISPLAY, DISPLAY_PROPERTY_LABELS, EMPTY_FILTERS, GROUP_BY_LABELS, LAYOUT_LABELS, ORDER_BY_LABELS, PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, activeFilterCount, applyFilters, departmentLabel, groupItems, isTerminal, sortItems,
+  CLINICAL_DEPARTMENTS, DEFAULT_DISPLAY, DISPLAY_PROPERTY_LABELS, EMPTY_FILTERS, GROUP_BY_LABELS, LAYOUT_LABELS, ORDER_BY_LABELS, PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, activeFilterCount, activeWorkItems, applyFilters, departmentLabel, groupItems, sortItems,
   type DisplayOptions, type Layout, type WorkItem, type WorkItemFilters
 } from "./model";
 
@@ -116,13 +116,7 @@ export function WorkItemsView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [canCreate]);
 
-  const scoped = useMemo(() => {
-    if (!mine || !user) return items;
-    if (["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(user.role)) return items.filter((item) => item.requesterId === user.id);
-    if (user.role === "SUPERADMIN") return items.filter((item) => !isTerminal(item.status));
-    if (user.role === "MANAGER") return items.filter((item) => !isTerminal(item.status) && (item.overdue || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.priority !== "ROUTINE"));
-    return items.filter((item) => item.departmentCode === user.departmentCode && !isTerminal(item.status));
-  }, [items, mine, user]);
+  const scoped = useMemo(() => mine ? activeWorkItems(items) : items, [items, mine]);
   const visible = useMemo(() => sortItems(applyFilters(scoped, filters), display.orderBy), [scoped, filters, display.orderBy]);
   const departments = useMemo(() => Array.from(new Set(scoped.map((item) => item.departmentCode))).sort(), [scoped]);
   const services = useMemo(() => Array.from(new Map(scoped.map((item) => [item.service.code, { code: item.service.code, name: item.service.name }])).values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")), [scoped]);
@@ -276,7 +270,7 @@ function WorkItemsEmpty({ filtered, mine, canCreate, onClear, onCreate }: { filt
   return <div className="empty-panel" role="status">
     <span className="empty-panel-icon" aria-hidden="true"><Icon name={filtered ? "filter" : "layers"} size={26} /></span>
     <h2>{filtered ? "Nenhum exame com estes filtros" : mine ? "Nada esperando por você" : "Nenhum exame por aqui ainda"}</h2>
-    <p>{filtered ? "Ajuste ou limpe os filtros para ver mais exames." : mine ? "Quando um exame precisar da sua ação, ele aparece aqui." : "Exames solicitados para os setores que você acompanha aparecem nesta lista."}</p>
+    <p>{filtered ? "Ajuste ou limpe os filtros para ver mais exames." : mine ? "Os exames ativos que você pode acompanhar aparecem aqui." : "Exames solicitados para os setores que você acompanha aparecem nesta lista."}</p>
     <div className="empty-panel-actions">
       {filtered && <button type="button" className="header-button" onClick={onClear}>Limpar filtros</button>}
       {canCreate && !filtered && <button type="button" className="button-primary-sm" onClick={onCreate}><Icon name="add" size={14} />Nova solicitação</button>}
