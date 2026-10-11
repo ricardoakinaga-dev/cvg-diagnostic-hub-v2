@@ -35,6 +35,10 @@ function countingStore(): { store: StateStore; reads: () => number } {
     archiveClinicalRecords: backing.archiveClinicalRecords.bind(backing),
     readClinicalArchive: backing.readClinicalArchive.bind(backing),
     readArchivedRequest: backing.readArchivedRequest.bind(backing),
+    readArchivedAttachmentRequest: backing.readArchivedAttachmentRequest.bind(backing),
+    readPendingArchiveObjectDeletions: backing.readPendingArchiveObjectDeletions.bind(backing),
+    completeArchiveObjectDeletion: backing.completeArchiveObjectDeletion.bind(backing),
+    readArchiveObjectDeletionMetrics: backing.readArchiveObjectDeletionMetrics.bind(backing),
     purgeClinicalArchive: backing.purgeClinicalArchive.bind(backing),
     transaction: backing.transaction.bind(backing)
   };

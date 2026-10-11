@@ -54,6 +54,7 @@ const {
   validatedSlaHours,
   validateServiceDefinition,
   serviceFor,
+  requireReceivedSample,
   requestFor,
   itemFor,
   resultFor,
@@ -222,6 +223,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         if (!["IN_PROGRESS", "AWAITING_REPORT", "RESULT_VOIDED"].includes(item.status)) {
           throw new ApiError("RESULT_RELEASE_BLOCKED", "O item ainda não está pronto para receber um resultado.", 422);
         }
+        requireReceivedSample(originalState, item);
         const narrative = requireText(input.narrative, "narrative", MAX_RESULT_NARRATIVE_LENGTH);
         const itemResults = originalState.results.filter((entry) => entry.itemId === item.id);
         if (itemResults.length > 1) {
@@ -327,6 +329,9 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(result.version, input.expectedVersion);
         if (view.version.status !== "DRAFT") throw new ApiError("INVALID_STATE_TRANSITION", "Somente um draft pode ser liberado.", 409);
+        const previousVersion = findById(originalState.resultVersions, view.version.supersedesId);
+        const historicalCorrection = Boolean(view.version.amendmentReason && previousVersion?.resultId === result.id && previousVersion.status === "SUPERSEDED");
+        requireReceivedSample(originalState, view.item, historicalCorrection);
         const normalizedReleaseContent = normalizedResultContent(view.service, view.version.content, { requireStructured: true });
         const releaseCheckTime = Date.now();
         const blockedAttachments = originalState.attachments.filter((attachment) =>

@@ -35,7 +35,7 @@ export interface User extends Actor {
   version: number;
   /** Temporary credentials can only establish a session for password replacement. */
   mustChangePassword?: boolean;
-  /** Pending administrator-issued reset (PROD-202). Only the SHA-256 of the token is stored; never returned by the API. */
+  /** Pending administrator-issued reset (PROD-202). Only the keyed token fingerprint is stored; never returned by the API. */
   passwordReset?: PasswordResetGrant;
   /** PROD-402: E.164 number for critical-result alerts over WhatsApp, set only by the user with consent. */
   whatsappPhone?: string;
@@ -469,6 +469,8 @@ export interface AuditReadPage {
 }
 
 export interface AuditTransactionReader {
+  /** Archive reads on the same locked transaction; avoids a second pool/queue. */
+  readArchivedRequest?(requestId: string): Promise<ClinicalArchiveRow[] | undefined>;
   hasAuditEvent(query: { eventType: string; entityType: string; entityId: string; actorId: string }): Promise<boolean>;
 }
 
@@ -621,6 +623,13 @@ export interface StateStore {
   readClinicalArchive(query: ClinicalArchiveQuery): Promise<ClinicalArchiveEntry[]>;
   /** Every archived entity of one request, in original collection order, or undefined. */
   readArchivedRequest(requestId: string): Promise<ClinicalArchiveRow[] | undefined>;
+  /** Indexed attachment lookup followed by the archived request containing it. */
+  readArchivedAttachmentRequest(attachmentId: string): Promise<ClinicalArchiveRow[] | undefined>;
+  /** Durable deletion intents, oldest first, bounded to one worker batch. */
+  readPendingArchiveObjectDeletions(limit: number): Promise<string[]>;
+  /** Call only after idempotent object-store deletion succeeds. */
+  completeArchiveObjectDeletion(key: string): Promise<void>;
+  readArchiveObjectDeletionMetrics(): Promise<{ pending: number; oldestRequestedAt?: Timestamp }>;
   /** Deletes archive rows older than `purgeAfterMonths` and returns their attachment keys. */
   purgeClinicalArchive(options?: ClinicalArchivePurgeOptions): Promise<ClinicalArchivePurgeSummary>;
   transaction<T>(operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T }): Promise<T>;

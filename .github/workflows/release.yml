@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     permissions:
+      actions: read
       contents: read
       packages: write
     outputs:
@@ -55,6 +56,12 @@ jobs:
             echo "tag=sha-${commit:0:12}"
             echo "created=$(git show -s --format=%cI HEAD)"
           } >> "$GITHUB_OUTPUT"
+      - name: Require green CI for the exact release commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+          RELEASE_COMMIT: ${{ steps.release.outputs.commit }}
+        run: bash deploy/release/verify-ci.sh
       - name: Build application, operational, object storage and storage client images
         env:
           PREFIX: ${{ steps.release.outputs.prefix }}

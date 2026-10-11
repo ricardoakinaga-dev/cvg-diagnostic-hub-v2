@@ -1,0 +1,11 @@
+[Unit]
+Description=Collect CVG host metrics every 15 seconds
+
+[Timer]
+OnBootSec=15s
+OnUnitInactiveSec=15s
+AccuracySec=1s
+Unit=cvg-host-collector.service
+
+[Install]
+WantedBy=timers.target

@@ -1309,7 +1309,7 @@ describe("versioned API boundary", () => {
     }
   });
 
-  it.each(["readAuditMetrics", "readOutboxMetrics"] as const)("fails metrics closed when %s is unavailable", async (method) => {
+  it.each(["readAuditMetrics", "readOutboxMetrics", "readArchiveObjectDeletionMetrics"] as const)("fails metrics closed when %s is unavailable", async (method) => {
     const admin = await login("admin@cvg.local");
     const store = await getRuntimeStoreAsync();
     const failedRead = vi.spyOn(store, method).mockRejectedValue(new Error("aggregate-private-database-failure"));

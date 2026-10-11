@@ -1,0 +1,76 @@
+# Run on an independent host/power/link. No Docker socket or patient volumes. Configuration and secret files are
+# mandatory; the startup validator refuses placeholders, missing TLS/auth and stale generated config.
+services:
+  validate:
+    image: node:22-bookworm-slim
+    user: "${MONITOR_UID:?Set MONITOR_UID}:${MONITOR_GID:?Set MONITOR_GID}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      MONITOR_ROLE: external
+      MONITOR_HUB_URL: ${MONITOR_HUB_URL:?Set the actual Hub HTTPS URL}
+      MONITOR_AGENT_URL: ${MONITOR_AGENT_URL:?Set the VPN agent HTTPS URL}
+      MONITOR_HUB_PRIVATE_CA: ${MONITOR_HUB_PRIVATE_CA:-false}
+      MONITOR_WEBHOOK_PRIVATE_CA: ${MONITOR_WEBHOOK_PRIVATE_CA:-false}
+      MONITOR_CONFIG_DIR: /etc/cvg-monitor
+      MONITOR_SECRETS_DIR: /run/secrets
+    volumes:
+      - ./scripts/monitoring-config.mjs:/validate/monitoring-config.mjs:ro
+      - ${MONITOR_CONFIG_DIR:?Generate the private monitor configuration}:/etc/cvg-monitor:ro
+      - ${MONITOR_SECRETS_DIR:?Set the private secret directory}:/run/secrets:ro
+    command: [node, /validate/monitoring-config.mjs, --check]
+    network_mode: none
+
+  prometheus:
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    user: "${MONITOR_UID:?}:${MONITOR_GID:?}"
+    restart: unless-stopped
+    mem_limit: ${PROMETHEUS_MEM_LIMIT:-512m}
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--config.file=/etc/cvg-monitor/prometheus.yml", "--storage.tsdb.path=/prometheus", "--storage.tsdb.retention.time=30d"]
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"]
+    volumes:
+      - ${MONITOR_CONFIG_DIR:?}:/etc/cvg-monitor:ro
+      - ${MONITOR_SECRETS_DIR:?}:/run/secrets:ro
+      - ./deploy/observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - ./deploy/observability/infrastructure-alerts.yml:/etc/prometheus/infrastructure-alerts.yml:ro
+      - ${MONITOR_DATA_DIR:?Create private data directories}/prometheus:/prometheus
+    depends_on:
+      validate: { condition: service_completed_successfully }
+      alertmanager: { condition: service_started }
+      blackbox: { condition: service_started }
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    user: "${MONITOR_UID:?}:${MONITOR_GID:?}"
+    restart: unless-stopped
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--config.file=/etc/cvg-monitor/alertmanager.yml", "--storage.path=/alertmanager", "--cluster.listen-address="]
+    ports: ["127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093"]
+    volumes:
+      - ${MONITOR_CONFIG_DIR:?}:/etc/cvg-monitor:ro
+      - ${MONITOR_SECRETS_DIR:?}:/run/secrets:ro
+      - ${MONITOR_DATA_DIR:?}/alertmanager:/alertmanager
+    depends_on:
+      validate: { condition: service_completed_successfully }
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.29.0
+    user: "${MONITOR_UID:?}:${MONITOR_GID:?}"
+    restart: unless-stopped
+    mem_limit: 64m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    command: ["--config.file=/etc/cvg-monitor/blackbox.yml"]
+    volumes:
+      - ${MONITOR_CONFIG_DIR:?}:/etc/cvg-monitor:ro
+      - ${MONITOR_SECRETS_DIR:?}:/run/secrets:ro
+    depends_on:
+      validate: { condition: service_completed_successfully }

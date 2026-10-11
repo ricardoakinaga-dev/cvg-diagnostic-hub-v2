@@ -10,6 +10,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
 import { findById } from "../domain/state-index";
 import { reportAttachmentScan } from "../security/attachment-scan-signal";
+import { archivedAttachmentForActor } from "./archive-service";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -258,6 +259,28 @@ export function createAttachmentService({ store, storage, scanner }: Application
     async downloadAttachment(actor: User, attachmentId: string): Promise<{ attachment: Attachment; content: Buffer }> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
+      if (!findById(state.attachments, attachmentId)) {
+        const rows = await store.readArchivedAttachmentRequest(attachmentId);
+        const initial = archivedAttachmentForActor(state, currentActor, rows, attachmentId);
+        let content: Buffer;
+        try {
+          content = await storage.get(initial.attachment.storageKey);
+        } catch {
+          throw new ApiError("STORAGE_UNAVAILABLE", "O conteúdo do anexo não está disponível.", 503, { retryable: true });
+        }
+        const auditedAttachment = await store.transaction(async (currentState, reader) => {
+          const auditedActor = requireActiveUser(currentState, currentActor);
+          if (!reader?.readArchivedRequest) throw new ApiError("STORAGE_UNAVAILABLE", "Não foi possível validar o arquivo clínico.", 503, { retryable: true });
+          const currentRows = await reader.readArchivedRequest(initial.request.id);
+          const current = archivedAttachmentForActor(currentState, auditedActor, currentRows, attachmentId);
+          if (current.attachment.storageKey !== initial.attachment.storageKey || content.byteLength !== current.attachment.sizeBytes || createHash("sha256").update(content).digest("hex") !== current.attachment.checksum) {
+            throw new ApiError("ATTACHMENT_INTEGRITY_FAILED", "A integridade do anexo armazenado não pôde ser confirmada.", 503, { retryable: false });
+          }
+          const audit = createAudit("AttachmentDownloaded", auditedActor.id, "Attachment", current.attachment.id, id("corr"), undefined, undefined, { resultVersionId: current.version.id, requestId: current.request.id, archived: true });
+          return { state: { ...currentState, auditEvents: [...currentState.auditEvents, audit] }, result: current.attachment };
+        });
+        return { attachment: auditedAttachment, content };
+      }
       const attachment = attachmentFor(state, attachmentId);
       const version = findOrThrow(findById(state.resultVersions, attachment.resultVersionId));
       const result = resultFor(state, version.resultId);

@@ -6,7 +6,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { StoreState } from "../src/server/domain/models";
 import { withDisposablePostgresDatabase } from "../tests/support/postgres-test-harness";
-import { buildNextHttpTestBundle, NEXT_HTTP_TEST_PROXY_HEADERS, startNextHttpTestServer } from "../tests/support/next-http-test-server";
+import { buildNextHttpTestBundle, NEXT_HTTP_TEST_PROXY_HEADERS, NEXT_HTTP_TEST_SESSION_SECRET, startNextHttpTestServer } from "../tests/support/next-http-test-server";
+import { hashSessionToken } from "../src/server/security/session";
 import { buildAuditHeavyState } from "./perf-snapshot";
 import { summarize, round, type PerfSample } from "./perf-report";
 import { assessPostgresPerf } from "./perf-postgres-report";
@@ -67,7 +68,7 @@ function fixture(auditEvents: number, clients: number, writes: number, clinical?
   const session = (userId: string): Client => {
     const token = randomBytes(32).toString("base64url");
     const csrf = randomBytes(32).toString("base64url");
-    state.sessions.push({ id: randomUUID(), userId, tokenHash: hash(token), csrfTokenHash: hash(csrf), createdAt, expiresAt, version: 1 });
+    state.sessions.push({ id: randomUUID(), userId, tokenHash: hashSessionToken(token, { SESSION_SECRET: NEXT_HTTP_TEST_SESSION_SECRET }), csrfTokenHash: hash(csrf), createdAt, expiresAt, version: 1 });
     return { cookie: `cvg_session=${token}; cvg_csrf=${csrf}`, csrf };
   };
   const syntheticClients = Array.from({ length: clients }, (_, index) => {

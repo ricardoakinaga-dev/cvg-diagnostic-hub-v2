@@ -290,6 +290,10 @@ describe("secure attachment lifecycle", () => {
         archiveClinicalRecords: context.store.archiveClinicalRecords.bind(context.store),
         readClinicalArchive: context.store.readClinicalArchive.bind(context.store),
         readArchivedRequest: context.store.readArchivedRequest.bind(context.store),
+        readArchivedAttachmentRequest: context.store.readArchivedAttachmentRequest.bind(context.store),
+        readPendingArchiveObjectDeletions: context.store.readPendingArchiveObjectDeletions.bind(context.store),
+        completeArchiveObjectDeletion: context.store.completeArchiveObjectDeletion.bind(context.store),
+        readArchiveObjectDeletionMetrics: context.store.readArchiveObjectDeletionMetrics.bind(context.store),
         purgeClinicalArchive: context.store.purgeClinicalArchive.bind(context.store),
         transaction: async (operation) => {
           if (!simulatedCommitFailure) {
@@ -583,6 +587,10 @@ describe("secure attachment lifecycle", () => {
         archiveClinicalRecords: context.store.archiveClinicalRecords.bind(context.store),
         readClinicalArchive: context.store.readClinicalArchive.bind(context.store),
         readArchivedRequest: context.store.readArchivedRequest.bind(context.store),
+        readArchivedAttachmentRequest: context.store.readArchivedAttachmentRequest.bind(context.store),
+        readPendingArchiveObjectDeletions: context.store.readPendingArchiveObjectDeletions.bind(context.store),
+        completeArchiveObjectDeletion: context.store.completeArchiveObjectDeletion.bind(context.store),
+        readArchiveObjectDeletionMetrics: context.store.readArchiveObjectDeletionMetrics.bind(context.store),
         purgeClinicalArchive: context.store.purgeClinicalArchive.bind(context.store),
         transaction: async (operation) => {
           const result = await context.store.transaction(operation);

@@ -1,5 +1,5 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
-import type { StateStore, StoreState, User } from "../domain/models";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import type { Session, StateStore, StoreState, User } from "../domain/models";
 import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivity } from "../domain/session-activity";
 import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
@@ -15,6 +15,41 @@ const DUMMY_PASSWORD_HASH = "cvg-dummy-salt:fc81e88c18ea45b82209799aa84e44e5ad0f
 
 function hash(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+type SessionEnvironment = Readonly<Record<string, string | undefined>>;
+
+function sessionSecret(environment: SessionEnvironment): string | undefined {
+  return environment.SESSION_SECRET?.trim() || undefined;
+}
+
+function sessionKeyId(secret: string): string {
+  return createHmac("sha256", secret).update("cvg.session.key-id.v1").digest("hex");
+}
+
+/**
+ * Persist both the keyed token fingerprint and its generation in tokenHash.
+ * The generation lets authorization by session id (including an open SSE)
+ * detect a rotated secret without needing the plaintext cookie or a DB write.
+ * Legacy SHA-256 tokens remain usable only in development/test without a secret.
+ */
+export function hashSessionToken(token: string, environment: SessionEnvironment = process.env): string {
+  const secret = sessionSecret(environment);
+  if (environment.NODE_ENV === "production" && (!secret || secret.length < 32)) throw new ApiError("UNAUTHENTICATED", "Configuração de sessão indisponível.", 503);
+  if (!secret) {
+    return hash(token);
+  }
+  const fingerprint = createHmac("sha256", secret).update("cvg.session.token.v1\0").update(token).digest("hex");
+  return `v1:${sessionKeyId(secret)}:${fingerprint}`;
+}
+
+function sessionUsesCurrentKey(tokenHash: string, environment: SessionEnvironment): boolean {
+  const secret = sessionSecret(environment);
+  if (environment.NODE_ENV === "production" && (!secret || secret.length < 32)) return false;
+  if (!secret) return environment.NODE_ENV !== "production" && !tokenHash.startsWith("v1:");
+  const parts = tokenHash.split(":");
+  if (parts.length !== 3 || parts[0] !== "v1" || !/^[a-f0-9]{64}$/.test(parts[1]) || !/^[a-f0-9]{64}$/.test(parts[2])) return false;
+  return timingSafeEqual(Buffer.from(parts[1], "hex"), Buffer.from(sessionKeyId(secret), "hex"));
 }
 
 function sameScope(left: readonly string[] | undefined, right: readonly string[] | undefined): boolean {
@@ -93,7 +128,7 @@ export async function loginUser(store: StateStore, email: string, password: stri
     const session = {
       id: randomBytes(16).toString("hex"),
       userId: user.id,
-      tokenHash: hash(sessionToken),
+      tokenHash: hashSessionToken(sessionToken),
       csrfTokenHash: hash(csrfToken),
       createdAt: createdAt.toISOString(),
       expiresAt,
@@ -119,7 +154,7 @@ export async function authenticateRequest(
   const token = parseCookies(request)[SESSION_COOKIE];
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
   const state = await store.readState();
-  const session = sessionForTokenHash(state, hash(token));
+  const session = sessionForTokenHash(state, hashSessionToken(token));
   if (!session || sessionTerminallyExpired(session)) {
     throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   }
@@ -127,6 +162,7 @@ export async function authenticateRequest(
   const user = activeUser(state, session.userId);
   if (!user) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   await assertSessionIsActive(store, session);
+  if (sessionTerminallyExpired(session)) throw new ApiError("SESSION_EXPIRED", "Sessão expirada. Entre novamente.", 401);
   if (user.mustChangePassword && !options.allowPasswordChange) {
     throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
   }
@@ -153,7 +189,7 @@ function rotateCredentials(
   const csrfToken = randomBytes(24).toString("base64url");
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.parse(createdAt) + SESSION_TTL_MS).toISOString();
-  const session = { id: randomBytes(16).toString("hex"), userId: user.id, tokenHash: hash(sessionToken), csrfTokenHash: hash(csrfToken), createdAt, expiresAt, version: 1 };
+  const session = { id: randomBytes(16).toString("hex"), userId: user.id, tokenHash: hashSessionToken(sessionToken), csrfTokenHash: hash(csrfToken), createdAt, expiresAt, version: 1 };
   const revoked = state.sessions.filter((entry) => entry.userId === user.id && !entry.revokedAt).length;
   return {
     state: {
@@ -234,7 +270,7 @@ export function authorizationSnapshotIsCurrent(state: StoreState, actor: User, o
 export async function reauthenticateUser(store: StateStore, request: Request, password: string): Promise<User> {
   const token = parseCookies(request)[SESSION_COOKIE];
   if (!token) throw new ApiError("UNAUTHENTICATED", "Sessão necessária.", 401);
-  const tokenHash = hash(token);
+  const tokenHash = hashSessionToken(token);
   const state = await store.readState();
   const session = sessionForTokenHash(state, tokenHash);
   if (!session || sessionTerminallyExpired(session)) {
@@ -278,20 +314,23 @@ export async function revokeSession(store: StateStore, token: string): Promise<v
   await store.transaction((state) => ({
     state: {
       ...state,
-      sessions: state.sessions.map((session) => session.tokenHash === hash(token) ? { ...session, revokedAt: new Date().toISOString(), version: session.version + 1 } : session)
+      sessions: state.sessions.map((session) => session.tokenHash === hashSessionToken(token) ? { ...session, revokedAt: new Date().toISOString(), version: session.version + 1 } : session)
     },
     result: undefined
   }));
 }
 
 /**
- * Expiry the snapshot alone can decide: revocation and the absolute lifetime.
+ * Expiry the snapshot alone can decide: revocation, absolute lifetime and the
+ * server-secret generation. Rotation invalidates persisted sessions immediately
+ * on each instance using the new secret, including authorization by session id.
  * The idle window is evaluated separately against session activity, because
  * recording liveness in the snapshot would turn every authenticated read into a
  * global write on the single locked JSONB row.
  */
-export function sessionTerminallyExpired(session: { expiresAt: string; revokedAt?: string }): boolean {
-  return Boolean(session.revokedAt) || Date.parse(session.expiresAt) <= Date.now();
+export function sessionTerminallyExpired(session: Pick<Session, "expiresAt" | "revokedAt" | "tokenHash">, environment: SessionEnvironment = process.env): boolean {
+  const expiresAt = Date.parse(session.expiresAt);
+  return Boolean(session.revokedAt) || !Number.isFinite(expiresAt) || expiresAt <= Date.now() || !sessionUsesCurrentKey(session.tokenHash, environment);
 }
 
 /**

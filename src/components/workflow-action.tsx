@@ -31,7 +31,7 @@ export type WorkflowActionItem = Pick<QueueItem, "id" | "status" | "workflowType
 
 export function workflowActionFor(item: Pick<WorkflowActionItem, "status" | "workflowType" | "currentResultId" | "currentSampleId">): WorkflowActionKind | undefined {
   if (item.currentResultId && ["IN_PROGRESS", "AWAITING_REPORT"].includes(item.status)) return "EDIT_RESULT";
-  if (item.status === "REQUESTED" && item.workflowType === "LABORATORY") return "RECEIVE_SAMPLE";
+  if (["REQUESTED", "FAILED"].includes(item.status) && item.workflowType === "LABORATORY") return "RECEIVE_SAMPLE";
   if (item.status === "REQUESTED" && item.workflowType === "RADIOLOGY") return "START_PROCEDURE";
   if (item.status === "REQUESTED" && item.workflowType === "ULTRASOUND") return "SCHEDULE";
   if (item.status === "RECEIVED") return "START_PROCESSING";
@@ -139,7 +139,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   const [notice, setNotice] = useState("");
   const [accessionCode, setAccessionCode] = useState("");
   const [sampleType, setSampleType] = useState("EDTA");
-  const [expectedSample, setExpectedSample] = useState<SampleLabel["sample"] | null>(null);
+  const [sampleLabel, setSampleLabel] = useState<SampleLabel["sample"] | null>(null);
   const [narrative, setNarrative] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
@@ -159,13 +159,16 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
 
   // D8: a pre-assigned sample already carries the code printed on the label.
   const receiving = selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT";
-  const expectedSampleId = receiving ? item.currentSampleId : undefined;
+  const expectedSampleId = receiving || selectedAction === "REQUEST_RECOLLECTION" ? item.currentSampleId : undefined;
+  const expectedSample = receiving && sampleLabel?.id === expectedSampleId && sampleLabel?.status === "EXPECTED" ? sampleLabel : null;
+  const sampleVersion = sampleLabel?.id === expectedSampleId ? sampleLabel?.version : undefined;
   useEffect(() => {
     if (!open || !expectedSampleId) return;
     let active = true;
     void apiFetch<SampleLabel>(`/samples/${expectedSampleId}/label`).then((label) => {
-      if (!active || label.sample.status !== "EXPECTED") return;
-      setExpectedSample(label.sample);
+      if (!active) return;
+      setSampleLabel(label.sample);
+      if (label.sample.status !== "EXPECTED") return;
       // Keep what the user already typed; the catalog type replaces only the untouched default.
       setSampleType((current) => current !== "EDTA" ? current : label.sample.sampleType === "A definir" ? "" : label.sample.sampleType);
     }).catch(() => { /* the expected code is a convenience; the server still validates the receipt */ });
@@ -248,13 +251,14 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
         await apiFetch(`/results/${item.currentResultId}/amend`, { method: "POST", body: JSON.stringify({ narrative: narrative.trim(), content: view.version.content, conclusion: view.version.conclusion, reason: reasons.find((reason) => reason.code === reasonCode)?.label, critical: view.version.critical, expectedVersion: view.result.version }) });
       } else if (selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT") {
         const path = selectedAction === "RECEIVE_SAMPLE" ? `/diagnostic-items/${item.id}/receive-sample` : `/samples/${item.currentSampleId}/receive-replacement`;
-        await apiFetch(path, { method: "POST", body: JSON.stringify({ ...(accessionCode.trim() ? { accessionCode: accessionCode.trim().toUpperCase() } : {}), ...(sampleType.trim() ? { sampleType: sampleType.trim() } : {}), expectedVersion: item.version }) });
+        const replacementVersion = selectedAction === "RECEIVE_REPLACEMENT" ? sampleVersion ?? (await apiFetch<SampleLabel>(`/samples/${item.currentSampleId}/label`)).sample.version : undefined;
+        await apiFetch(path, { method: "POST", body: JSON.stringify({ ...(accessionCode.trim() ? { accessionCode: accessionCode.trim().toUpperCase() } : {}), ...(sampleType.trim() ? { sampleType: sampleType.trim() } : {}), expectedVersion: item.version, ...(replacementVersion !== undefined ? { expectedSampleVersion: replacementVersion } : {}) }) });
       } else if (selectedAction === "SCHEDULE") {
         await apiFetch(`/diagnostic-items/${item.id}/schedule`, { method: "POST", body: JSON.stringify({ startsAt: apiDateTime(startsAt), endsAt: apiDateTime(endsAt), resource: resource.trim(), expectedVersion: item.version }) });
       } else if (selectedAction === "RESCHEDULE" && item.procedureId && item.procedureVersion) {
         await apiFetch(`/procedures/${item.procedureId}/reschedule`, { method: "POST", body: JSON.stringify({ startsAt: apiDateTime(startsAt), endsAt: apiDateTime(endsAt), resource: resource.trim(), reason: rescheduleReason.trim() || undefined, expectedVersion: item.procedureVersion }) });
       } else if (selectedAction === "REQUEST_RECOLLECTION" && item.currentSampleId) {
-        await apiFetch(`/diagnostic-items/${item.id}/request-recollection`, { method: "POST", body: JSON.stringify({ reasonCode, note: reasonNote.trim() || undefined, expectedVersion: item.version }) });
+        await apiFetch(`/diagnostic-items/${item.id}/request-recollection`, { method: "POST", body: JSON.stringify({ reasonCode, note: reasonNote.trim() || undefined, expectedVersion: item.version, ...(sampleVersion !== undefined ? { expectedSampleVersion: sampleVersion } : {}) }) });
       } else if (selectedAction === "CREATE_RESULT") {
         // Voided versions are intentionally unreadable. The versioned create
         // command validates the existing lineage inside its transaction.

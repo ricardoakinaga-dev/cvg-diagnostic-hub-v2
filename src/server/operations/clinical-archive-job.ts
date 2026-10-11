@@ -55,6 +55,16 @@ export function createClinicalArchiveSchedule(intervalMs = clinicalArchiveConfig
   };
 }
 
+/** Frequent durable-queue draining, with a provider outage backoff. */
+export function createArchiveObjectRemovalSchedule(): ClinicalArchiveSchedule & { failed(nowMs: number): void } {
+  let nextRunAtMs = Number.NEGATIVE_INFINITY;
+  return {
+    shouldRun: (nowMs) => nowMs >= nextRunAtMs,
+    record: (nowMs) => { nextRunAtMs = nowMs + 5_000; },
+    failed: (nowMs) => { nextRunAtMs = nowMs + 60_000; }
+  };
+}
+
 /** Log-safe form of a storage key: the object path without the file name. */
 function keyPrefix(key: string): string {
   return key.split("/").slice(0, 2).join("/");
@@ -77,29 +87,92 @@ export async function removeArchivedObjects(fileStore: ObjectRemover | undefined
   return { removed, failures };
 }
 
+export interface ArchiveObjectRemovalOptions {
+  readonly batchSize?: number;
+  /** Budget for starting operations; an operation already in flight uses the storage timeout. */
+  readonly maxDurationMs?: number;
+  readonly now?: () => number;
+  readonly shouldStop?: () => boolean;
+}
+
+/** An intent survives every storage failure and crash before acknowledgement. */
+export async function removePendingArchiveObjects(store: StateStore, fileStore: ObjectRemover | undefined, options: ArchiveObjectRemovalOptions = {}): Promise<{ removed: number; failures: number }> {
+  const batchSize = options.batchSize ?? 25;
+  const maxDurationMs = options.maxDurationMs ?? 10_000;
+  if (!Number.isSafeInteger(maxDurationMs) || maxDurationMs <= 0) throw new Error("ARCHIVE_OBJECT_REMOVAL_BUDGET_INVALID");
+  const now = options.now ?? Date.now;
+  const startedAt = now();
+  const keys = await store.readPendingArchiveObjectDeletions(batchSize);
+  if (keys.length > 0 && !fileStore) throw new Error("ARCHIVE_OBJECT_STORE_REQUIRED");
+  let removed = 0;
+  let failures = 0;
+  for (const key of keys) {
+    if (options.shouldStop?.() || now() - startedAt >= maxDurationMs) break;
+    try {
+      await fileStore!.remove(key);
+      await store.completeArchiveObjectDeletion(key);
+      removed += 1;
+    } catch {
+      failures += 1;
+      console.error(JSON.stringify({ event: "clinical.archive_object_removal_failed", keyPrefix: keyPrefix(key) }));
+      // An unavailable provider must not turn a batch into thousands of timeouts.
+      break;
+    }
+  }
+  return { removed, failures };
+}
+
+/** One tracked maintenance task; delivery never awaits it, shutdown always does. */
+export function createClinicalArchiveMaintenance(onError: (error: unknown) => void | Promise<void>): { start: (work: () => Promise<void>) => void; close: () => Promise<void> } {
+  let pending: Promise<void> | undefined;
+  let closed = false;
+  return {
+    start(work) {
+      if (closed || pending) return;
+      pending = Promise.resolve().then(work).catch(async (error: unknown) => {
+        // A failed logger also cannot create an unhandled background rejection.
+        try { await onError(error); } catch { /* The task still settles and its durable intents remain. */ }
+      }).finally(() => { pending = undefined; });
+    },
+    async close() {
+      closed = true;
+      await pending;
+    }
+  };
+}
+
 /**
  * Archives (and, once the legal period is configured, purges) on its own
  * cadence inside the worker. The attempt is recorded before the run so a
  * failure retries on the next cadence, not on every cycle. Object deletion
- * happens after the database commit and never fails the job.
+ * happens after the database commit. Failures remain in a durable queue and
+ * fail this cycle; subsequent runs also drain previously committed intents.
  */
 export async function runScheduledClinicalArchive(
   store: StateStore,
   schedule: ClinicalArchiveSchedule,
-  options: { readonly fileStore?: ObjectRemover; readonly now?: () => number; readonly config?: ClinicalArchiveConfig } = {}
+  options: { readonly fileStore?: ObjectRemover; readonly now?: () => number; readonly config?: ClinicalArchiveConfig; readonly deferObjectRemoval?: boolean } = {}
 ): Promise<boolean> {
   const config = options.config ?? clinicalArchiveConfig();
-  if (!config.enabled) return false;
   const nowMs = (options.now ?? Date.now)();
   if (!schedule.shouldRun(nowMs)) return false;
   schedule.record(nowMs);
   const now = new Date(nowMs);
+  if (!config.enabled) {
+    if (options.deferObjectRemoval) return false;
+    const objects = await removePendingArchiveObjects(store, options.fileStore);
+    if (objects.failures > 0) throw new Error("ARCHIVE_OBJECT_REMOVAL_PENDING");
+    return objects.removed > 0;
+  }
+  if (config.purgeAfterMonths && !options.fileStore) throw new Error("ARCHIVE_OBJECT_STORE_REQUIRED");
   const archived = await store.archiveClinicalRecords({ now, activeMonths: config.activeMonths, actor: "system:clinical-archive" });
   const purged = config.purgeAfterMonths
     ? await store.purgeClinicalArchive({ now, purgeAfterMonths: config.purgeAfterMonths })
     : undefined;
-  const { removed: objectsRemoved, failures: objectRemovalFailures } = await removeArchivedObjects(options.fileStore, purged?.attachmentKeys ?? []);
-  if (archived.requestsArchived > 0 || (purged?.requestsPurged ?? 0) > 0) {
+  const { removed: objectsRemoved, failures: objectRemovalFailures } = options.deferObjectRemoval
+    ? { removed: 0, failures: 0 }
+    : await removePendingArchiveObjects(store, options.fileStore);
+  if (archived.requestsArchived > 0 || (purged?.requestsPurged ?? 0) > 0 || objectsRemoved > 0 || objectRemovalFailures > 0) {
     console.log(JSON.stringify({
       event: "clinical.archive_applied",
       requestsArchived: archived.requestsArchived,
@@ -111,6 +184,7 @@ export async function runScheduledClinicalArchive(
       objectRemovalFailures
     }));
   }
+  if (objectRemovalFailures > 0) throw new Error("ARCHIVE_OBJECT_REMOVAL_PENDING");
   return true;
 }
 

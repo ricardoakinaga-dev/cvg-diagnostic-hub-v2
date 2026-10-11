@@ -1,0 +1,274 @@
+rule_files:
+- infrastructure-alerts.yml
+evaluation_interval: 30s
+tests:
+- name: all operational faults and watchdog fire independently of clinical activity
+  interval: 30s
+  input_series:
+  - series: up{job="cvg-host"}
+    values: '0x90'
+  - series: cvg_host_collector_timestamp_seconds{job="cvg-host"}
+    values: '0x90'
+  - series: cvg_host_collector_failures{job="cvg-host"}
+    values: 1x90
+  - series: cvg_container_running{job="cvg-host",service="worker"}
+    values: '0x90'
+  - series: cvg_container_healthy{job="cvg-host",service="clamav"}
+    values: '0x90'
+  - series: cvg_worker_heartbeat_ok{job="cvg-host"}
+    values: '0x90'
+  - series: cvg_offsite_success_timestamp_seconds{job="cvg-host"}
+    values: '0x90'
+  - series: cvg_offsite_last_attempt_ok{job="cvg-host"}
+    values: '0x90'
+  - series: cvg_postgres_wal_archive_oldest_pending_seconds{job="cvg-host"}
+    values: 800x90
+  - series: node_filesystem_avail_bytes{job="cvg-host",fstype="ext4",mountpoint="/"}
+    values: 10x90
+  - series: node_filesystem_size_bytes{job="cvg-host",fstype="ext4",mountpoint="/"}
+    values: 100x90
+  - series: probe_success{job="cvg-https"}
+    values: '0x90'
+  - series: probe_ssl_earliest_cert_expiry{job="cvg-https"}
+    values: 3600x90
+  - series: cvg_archive_object_deletions_pending{job="cvg-hub"}
+    values: 3x90
+  - series: cvg_archive_object_deletions_oldest_age_seconds{job="cvg-hub"}
+    values: 5000x90
+  - series: alertmanager_notifications_failed_total{job="cvg-alertmanager"}
+    values: 0+1x90
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: CvgHostDown
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+      exp_annotations:
+        summary: Servidor do Hub ou agente VPN indisponível.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgHostCollectorStale
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+      exp_annotations:
+        summary: Coletor local sem atualização há mais de 2 minutos.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgHostCollectorErrors
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        job: cvg-host
+      exp_annotations:
+        summary: Coletor não conseguiu verificar um componente obrigatório.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgRequiredContainerDown
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+        service: worker
+      exp_annotations:
+        summary: Um serviço obrigatório da produção está parado ou ausente.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgScannerUnhealthy
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+        service: clamav
+      exp_annotations:
+        summary: ClamAV ou adaptador de scanner indisponível, mesmo sem uploads.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgWorkerHeartbeatStale
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+      exp_annotations:
+        summary: Worker parado, sem heartbeat ou com erro persistente, mesmo com outbox
+          vazio.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgOffsiteMissingOrStale
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+      exp_annotations:
+        summary: Cópia externa sem sucesso recente ou último ciclo falhou.
+        runbook: docs/operations/BACKUP_RESTORE.md
+  - eval_time: 20m
+    alertname: CvgWalArchiveBlocked
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+      exp_annotations:
+        summary: WAL aguardando arquivo há mais de 10 minutos ou arquivador falhou.
+        runbook: docs/operations/BACKUP_RESTORE.md
+  - eval_time: 20m
+    alertname: CvgDiskNearFull
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+        fstype: ext4
+        mountpoint: /
+      exp_annotations:
+        summary: Filesystem do servidor com menos de 15% livre (inclui dados e WAL).
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgHttpsUnavailable
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-https
+      exp_annotations:
+        summary: Acesso HTTPS externo ao Hub falhou.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgTlsExpiresSoon
+    exp_alerts:
+    - exp_labels:
+        severity: warning
+        job: cvg-https
+      exp_annotations:
+        summary: Certificado HTTPS expira em menos de 14 dias.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgArchiveObjectDeletionBacklog
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-hub
+      exp_annotations:
+        summary: Expurgo com exclusões de objetos pendentes há mais de 1 hora.
+        runbook: docs/operations/DATA_SUBJECT_REQUESTS.md
+  - eval_time: 20m
+    alertname: CvgAlertDeliveryFailed
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-alertmanager
+      exp_annotations:
+        summary: A entrega de alertas ao Alertmanager ou a um destino falhou.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 20m
+    alertname: CvgMonitoringWatchdog
+    exp_alerts:
+    - exp_labels:
+        severity: info
+      exp_annotations:
+        summary: Heartbeat do monitor externo; ausência deve acionar o plantão no
+          serviço independente.
+        runbook: docs/operations/MONITORING.md
+- name: healthy infrastructure and empty outbox do not page operators
+  interval: 30s
+  input_series:
+  - series: up{job="cvg-host"}
+    values: 1x90
+  - series: cvg_host_collector_timestamp_seconds{job="cvg-host"}
+    values: 0+30x90
+  - series: cvg_host_collector_failures{job="cvg-host"}
+    values: '0x90'
+  - series: cvg_container_running{job="cvg-host",service="worker"}
+    values: 1x90
+  - series: cvg_container_healthy{job="cvg-host",service="clamav"}
+    values: 1x90
+  - series: cvg_worker_heartbeat_ok{job="cvg-host"}
+    values: 1x90
+  - series: cvg_offsite_success_timestamp_seconds{job="cvg-host"}
+    values: 0+30x90
+  - series: cvg_offsite_last_attempt_ok{job="cvg-host"}
+    values: 1x90
+  - series: cvg_postgres_wal_archive_oldest_pending_seconds{job="cvg-host"}
+    values: '0x90'
+  - series: node_filesystem_avail_bytes{job="cvg-host",fstype="ext4",mountpoint="/"}
+    values: 50x90
+  - series: node_filesystem_size_bytes{job="cvg-host",fstype="ext4",mountpoint="/"}
+    values: 100x90
+  - series: probe_success{job="cvg-https"}
+    values: 1x90
+  - series: probe_ssl_earliest_cert_expiry{job="cvg-https"}
+    values: 2000000x90
+  - series: cvg_archive_object_deletions_pending{job="cvg-hub"}
+    values: '0x90'
+  - series: cvg_archive_object_deletions_oldest_age_seconds{job="cvg-hub"}
+    values: '0x90'
+  - series: alertmanager_notifications_failed_total{job="cvg-alertmanager"}
+    values: '0x90'
+  - series: cvg_postgres_wal_archive_check_ok{job="cvg-host"}
+    values: 1x90
+  - series: cvg_worker_heartbeat_timestamp_seconds{job="cvg-host"}
+    values: 0+30x90
+  - series: cvg_backup_dump_timestamp_seconds{job="cvg-host"}
+    values: 0+30x90
+  - series: cvg_backup_base_timestamp_seconds{job="cvg-host"}
+    values: 0+30x90
+  alert_rule_test:
+  - eval_time: 20m
+    alertname: CvgHostDown
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgHostCollectorStale
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgHostCollectorErrors
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgRequiredContainerDown
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgScannerUnhealthy
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgWorkerHeartbeatStale
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgBackupMissingOrStale
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgOffsiteMissingOrStale
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgWalArchiveBlocked
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgDiskNearFull
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgHttpsUnavailable
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgTlsExpiresSoon
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgArchiveObjectDeletionBacklog
+    exp_alerts: []
+  - eval_time: 20m
+    alertname: CvgAlertDeliveryFailed
+    exp_alerts: []
+- name: missing dump or base backup cannot satisfy the recovery gate
+  interval: 30s
+  input_series:
+  - series: cvg_backup_base_timestamp_seconds{job="cvg-host"}
+    values: '0x6000'
+  - series: cvg_backup_dump_timestamp_seconds{job="cvg-host"}
+    values: '0x6000'
+  alert_rule_test:
+  - eval_time: 49h
+    alertname: CvgBackupMissingOrStale
+    exp_alerts:
+    - exp_labels:
+        severity: critical
+        job: cvg-host
+      exp_annotations:
+        summary: Dump ou backup base inexistente ou mais antigo que 48 horas.
+        runbook: docs/operations/BACKUP_RESTORE.md

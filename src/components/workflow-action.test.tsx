@@ -42,7 +42,7 @@ describe("WorkflowAction", () => {
   });
 
   describe("pre-assigned sample (accession label)", () => {
-    const expected = { sample: { id: "sample-9", accessionCode: "A261008-00015", sampleType: "Soro", status: "EXPECTED" } };
+    const expected = { sample: { id: "sample-9", accessionCode: "A261008-00015", sampleType: "Soro", status: "EXPECTED", version: 7 } };
     const withExpected = (receive: (path: string) => Promise<unknown>) => vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/samples/sample-9/label" ? Promise.resolve(expected) : receive(String(path))) as never);
 
     it("shows the expected code, pre-fills the type and submits a blank scan field", async () => {
@@ -61,6 +61,18 @@ describe("WorkflowAction", () => {
       await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
       const body = JSON.parse(apiFetchMock.mock.calls.find(([path]) => path === "/diagnostic-items/item-1/receive-sample")?.[1]?.body as string);
       expect(body).toEqual({ sampleType: "Soro", expectedVersion: 3 });
+    });
+
+    it("receives a replacement using the tube version independently of the examination's version", async () => {
+      const onComplete = vi.fn();
+      const api = withExpected(() => Promise.resolve({}));
+      render(<WorkflowAction item={item({ status: "RECOLLECTION_REQUIRED", currentSampleId: "sample-9", version: 14 })} onComplete={onComplete} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber recoleta" }));
+      await screen.findByText("Amostra esperada:");
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+      await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+      const call = api.mock.calls.find(([path]) => path === "/samples/sample-9/receive-replacement");
+      expect(JSON.parse(call?.[1]?.body as string)).toEqual({ sampleType: "Soro", expectedVersion: 14, expectedSampleVersion: 7 });
     });
 
     it("submits the scanned code when the reader presses Enter", async () => {
@@ -195,6 +207,7 @@ describe("WorkflowAction", () => {
   it("supports recollection and a released imaging draft", async () => {
     const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
       if (path === "/clinical-reasons") return Promise.resolve([{ id: "reason-1", type: "RECOLLECTION", code: "INSUFFICIENT", label: "Volume insuficiente", active: true, version: 1 }]) as never;
+      if (path === "/samples/sample-1/label") return Promise.resolve({ sample: { id: "sample-1", status: "RECEIVED", version: 7 } }) as never;
       if (path.endsWith("/results")) return Promise.resolve({ result: { id: "result-1", version: 2 } }) as never;
       if (path.endsWith("/mark-performed")) return Promise.reject(new Error("dependency failure")) as never;
       return Promise.resolve({}) as never;
@@ -207,6 +220,8 @@ describe("WorkflowAction", () => {
     fireEvent.change(screen.getByLabelText("Observação (opcional)"), { target: { value: "Volume insuficiente" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/diagnostic-items/item-1/request-recollection", expect.objectContaining({ method: "POST" })));
+    const recollectionCall = apiFetchMock.mock.calls.find(([path]) => path === "/diagnostic-items/item-1/request-recollection");
+    expect(JSON.parse(recollectionCall?.[1]?.body as string)).toMatchObject({ expectedVersion: 3, expectedSampleVersion: 7 });
 
     cleanup();
     render(<WorkflowAction item={item({ status: "IN_PROGRESS", workflowType: "RADIOLOGY" })} />);

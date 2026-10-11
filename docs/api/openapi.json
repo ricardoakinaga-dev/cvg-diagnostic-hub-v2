@@ -25838,6 +25838,12 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 999999999999999
+          },
+          "expectedSampleVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 999999999999999,
+            "description": "Versão da amostra física; independente da versão de cada exame. Recomendada para recoleta e obrigatória para receber tubos compartilhados com versões de exames divergentes."
           }
         }
       },
@@ -25868,6 +25874,12 @@
             "type": "integer",
             "minimum": 1,
             "maximum": 999999999999999
+          },
+          "expectedSampleVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 999999999999999,
+            "description": "Versão da amostra física; independente da versão de cada exame. Recomendada para recoleta e obrigatória para receber tubos compartilhados com versões de exames divergentes."
           }
         }
       },
@@ -28604,7 +28616,8 @@
               "id",
               "accessionCode",
               "sampleType",
-              "status"
+              "status",
+              "version"
             ],
             "properties": {
               "id": {
@@ -28631,6 +28644,11 @@
                   "REJECTED",
                   "REPLACED"
                 ]
+              },
+              "version": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 999999999999999
               }
             }
           },

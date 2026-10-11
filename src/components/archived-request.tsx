@@ -96,6 +96,6 @@ export function ArchivedRequest({ requestId }: { requestId: string }) {
       </article>))}
     </section>)}
     {data.samples.length > 0 && <section className="panel" aria-label="Amostras"><div className="panel-heading"><h2>Amostras</h2></div><ul>{data.samples.map((sample) => <li key={sample.id}>{sample.accessionCode} · {sample.sampleType}</li>)}</ul></section>}
-    {data.attachments.length > 0 && <section className="panel" aria-label="Anexos"><div className="panel-heading"><h2>Anexos</h2></div><ul>{data.attachments.map((attachment) => <li key={attachment.id}>{attachment.safeName} · {attachment.detectedMime}</li>)}</ul></section>}
+    {data.attachments.length > 0 && <section className="panel" aria-label="Anexos"><div className="panel-heading"><h2>Anexos</h2></div><ul>{data.attachments.map((attachment) => <li key={attachment.id}><span>{attachment.safeName} · {attachment.detectedMime}</span> <a className="button button-ghost" href={`/api/v1/attachments/${encodeURIComponent(attachment.id)}/download`} aria-label={`Baixar ${attachment.safeName}`}>Baixar</a></li>)}</ul></section>}
   </div>;
 }

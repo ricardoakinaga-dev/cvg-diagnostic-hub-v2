@@ -5,7 +5,7 @@ import { ApiError } from "../../../../server/http/envelope";
 import { canAccessResource } from "../../../../server/security/authorization";
 import { eventVisible } from "../../../../server/application/realtime-visibility";
 import { discardDeadLetterMessage, listDeadLetterMessages, reprocessDeadLetterMessage } from "../../../../server/operations/outbox";
-import { operationalAuditQuery, recordCriticalReadiness, recordWriteQueue, refreshOperationalMetrics, renderPrometheus } from "../../../../server/observability/metrics";
+import { operationalAuditQuery, recordArchiveObjectDeletions, recordCriticalReadiness, recordWriteQueue, refreshOperationalMetrics, renderPrometheus } from "../../../../server/observability/metrics";
 import { criticalReadinessChecks, criticalResultReadiness } from "../../../../server/application/critical-readiness";
 import { createRealtimeResponse } from "../../../../server/observability/realtime-stream";
 import { acknowledgeNotificationSchema } from "../../../../server/http/command-schemas";
@@ -15,13 +15,15 @@ import type { StateStore } from "../../../../server/domain/models";
 /** Shared by the ADMIN session and the Prometheus scrape token (route.ts). */
 export async function metricsResponse(store: StateStore, correlationId: string): Promise<Response> {
   const state = await store.readState();
-  const [history, outbox] = await Promise.all([
+  const [history, outbox, objectDeletions] = await Promise.all([
     store.readAuditMetrics(operationalAuditQuery(state)),
-    store.readOutboxMetrics()
+    store.readOutboxMetrics(),
+    store.readArchiveObjectDeletionMetrics()
   ]);
   refreshOperationalMetrics(state, new Date(), history, outbox);
   recordCriticalReadiness(criticalReadinessChecks(criticalResultReadiness(state)));
   recordWriteQueue(store.writeQueueMetrics?.());
+  recordArchiveObjectDeletions(objectDeletions);
   const body = renderPrometheus();
   return new Response(body, { status: 200, headers: { "content-type": "text/plain; version=0.0.4; charset=utf-8", "cache-control": "no-store", "x-correlation-id": correlationId } });
 }

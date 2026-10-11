@@ -6,10 +6,11 @@
 #       (prod + onprem + secrets + storage-drill overlays); the off-site destination is an rclone crypt remote (D-051);
 #   (c) seeds DRILL_ATTACHMENT_COUNT finalized attachments through the application's own store and file store
 #       (scripts/drill-seed-attachments.ts, run with the worker's environment), then reconciles rows and objects (baseline);
-#   (d) forces a WAL switch and waits until the WAL, the dump and the objects reached the off-site copy;
+#   (d) ships the initial objects, deletes one synthetic attachment locally, then ships the deletion's WAL;
 #   (e) destroys the PostgreSQL, backup, WAL-archive and storage volumes (simulated loss of the server);
 #   (f) fetches the off-site copy through the crypt remote, restores the database to the latest point
-#       (scripts/restore-pitr.sh --latest) and the bucket into a new hardened bucket (storage-restore, app user);
+#       (scripts/restore-pitr.sh --latest). Selects objects against that recovered database, preserving excluded bytes
+#       as evidence, and restores only its selected keys into a new hardened bucket (storage-restore, app user);
 #   (g) reconciles the restored database against the restored bucket (scripts/attachments-reconcile.ts): every finalized
 #       attachment has its object, no orphan object; then proves the reconciliation detects a missing and a stray object;
 #   (h) prints a JSON summary with RPO (last write → off-site) and RTO (fetch + database + bucket + reconciliation).
@@ -37,6 +38,8 @@ KEEP="false"
 [[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*drill[a-z0-9_-]*$ ]] || { echo "DRILL_PROJECT inválido: use um projeto descartável cujo nome contenha 'drill' (recebido: $PROJECT)" >&2; exit 2; }
 [[ "$PORT" =~ ^[0-9]+$ && "$STORAGE_PORT" =~ ^[0-9]+$ && "$ATTACHMENT_COUNT" =~ ^[0-9]+$ && "$ATTACHMENT_KB" =~ ^[0-9]+$ && "$SHIP_INTERVAL" =~ ^[0-9]+$ ]] \
   || { echo "DRILL_PORT, DRILL_STORAGE_PORT, DRILL_ATTACHMENT_COUNT, DRILL_ATTACHMENT_KB e DRILL_SHIP_INTERVAL_SECONDS devem ser inteiros" >&2; exit 2; }
+(( ATTACHMENT_COUNT >= 2 && ATTACHMENT_COUNT <= 10000 && PORT >= 1024 && PORT < 65535 )) \
+  || { echo "DRILL_ATTACHMENT_COUNT deve ser 2-10000 e DRILL_PORT 1024-65534 (o PITR anterior usa porta + 1)" >&2; exit 2; }
 [[ -d "$ROOT_DIR/node_modules/.bin" ]] || { echo "node_modules ausente: rode npm ci antes (a reconciliação roda no host)" >&2; exit 2; }
 
 work_dir="$(mktemp -d)"
@@ -46,11 +49,13 @@ secrets_dir="$work_dir/secrets"
 offsite_dir="$work_dir/offsite"
 DC=(docker compose -p "$PROJECT" -f "$ROOT_DIR/docker-compose.prod.yml" -f "$ROOT_DIR/docker-compose.onprem.yml" -f "$ROOT_DIR/docker-compose.secrets.yml" -f "$ROOT_DIR/docker-compose.storage-drill.yml" --env-file "$env_file")
 restore_name="$PROJECT-restore-latest"
+before_restore_name="$PROJECT-restore-before-delete"
 drill_started="$(date +%s)"
 
 cleanup() {
   status=$?
   docker rm -f "$restore_name" >/dev/null 2>&1 || true
+  docker rm -f "$before_restore_name" >/dev/null 2>&1 || true
   if [[ "$KEEP" != "true" ]]; then
     "${DC[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
     # Restored data directories and the fetched copy belong to container users.
@@ -167,6 +172,17 @@ shipped() {
     && [[ "$(rclone_in_offsite size "offsitecrypt:objects" --json | sed -n 's/.*"count":\([0-9]*\).*/\1/p')" == "$ATTACHMENT_COUNT" ]]
 }
 wait_for "cópia externa de WAL, dump e objetos" $(( SHIP_INTERVAL * 8 + 90 )) shipped
+# Write-once off-site copies retain deleted bytes. Exercise both recovered instants: before deletion needs the bytes;
+# after deletion must not bring them back into the live bucket. Record the database clock, before the deleting commit.
+before_delete_at="$(psql_main -c "SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"')")"
+sleep 1
+delete_json="$(worker_run delete -e DRILL_PROJECT="$PROJECT" -e DRILL_BATCH="$batch" -e DRILL_ATTACHMENT_COUNT="$ATTACHMENT_COUNT" worker node_modules/.bin/tsx scripts/drill-delete-attachment.ts)"
+[[ "$(json_field "$delete_json" event)" == "drill.attachment_deleted" ]] || { echo "exclusão sintética falhou: $delete_json" >&2; show_log delete; exit 1; }
+last_write_at="$(json_field "$delete_json" lastWriteAt)"
+last_write_epoch="$(date -u -d "$last_write_at" +%s)"
+switched="$(psql_main -c "SELECT pg_walfile_name(pg_switch_wal())")"
+wait_for "WAL da exclusão $switched arquivado" 120 archived
+wait_for "cópia externa do WAL da exclusão (objeto histórico preservado)" $(( SHIP_INTERVAL * 8 + 90 )) shipped
 shipped_epoch="$(status_field lastShippedEpoch)"
 docker exec "$offsite_container" sh /opt/backup/check-offsite.sh >&2
 db_bytes="$(psql_main -c "SELECT pg_database_size('$pg_db')")"
@@ -192,13 +208,42 @@ echo "$restore_json" >&2
 db_restore_seconds=$(( $(date +%s) - db_restore_started ))
 restored_attachments="$(docker exec "$restore_name" psql -U "$pg_user" -d "$pg_db" -Atq -c "SELECT count(*) FROM cvg_runtime_entities WHERE collection = 'attachments'" 2>/dev/null || echo "?")"
 step "banco restaurado (--latest) em ${db_restore_seconds}s: $restored_attachments linhas de anexo"
+# The same immutable evidence must also recover the state before deletion. No clinical object may be missing there.
+before_restore_json="$(bash "$ROOT_DIR/scripts/restore-pitr.sh" --base "$base_dir" --wal "$offsite_dir/wal" --target-time "$before_delete_at" --data "$work_dir/data-before-delete" --port "$(( PORT + 1 ))" --user "$pg_user" --name "$before_restore_name")"
+echo "$before_restore_json" >&2
+restore_plan() { # database port, private file suffix
+  ( cd "$ROOT_DIR" && APP_DATA_MODE=postgres \
+      DATABASE_URL="postgresql://${runtime_user}:\${POSTGRES_RUNTIME_PASSWORD}@127.0.0.1:${1}/${pg_db}" \
+      POSTGRES_RUNTIME_PASSWORD_FILE="$secrets_dir/postgres_runtime_password" \
+      node_modules/.bin/tsx scripts/attachments-restore-plan.ts --source "$offsite_dir/objects" \
+      --output "$work_dir/objects-$2.list" --report "$work_dir/objects-$2.json" )
+}
+restore_plan "$(( PORT + 1 ))" before-delete
+[[ "$(wc -l < "$work_dir/objects-before-delete.list")" == "$ATTACHMENT_COUNT" ]] \
+  && grep -Fxq "attachments/drill-$batch/$ATTACHMENT_COUNT.bin" "$work_dir/objects-before-delete.list" \
+  || { echo "FALHA: PITR anterior à exclusão não selecionou todos os objetos" >&2; exit 1; }
+restore_plan "$PORT" latest
+[[ "$(wc -l < "$work_dir/objects-latest.list")" == "$(( ATTACHMENT_COUNT - 1 ))" ]] \
+  && ! grep -Fxq "attachments/drill-$batch/$ATTACHMENT_COUNT.bin" "$work_dir/objects-latest.list" \
+  && [[ -f "$offsite_dir/objects/attachments/drill-$batch/$ATTACHMENT_COUNT.bin" ]] \
+  || { echo "FALHA: objeto excluído não foi segregado com evidência preservada" >&2; exit 1; }
+docker rm -f "$before_restore_name" >/dev/null
 bucket_restore_started="$(date +%s)"
 "${DC[@]}" up -d storage storage-init storage-iam >&2
 wait_for "bucket novo endurecido" 180 exited_ok storage-init
 wait_for "usuários recriados" 120 exited_ok storage-iam
 rclone_as_app() { "${DC[@]}" --profile restore run --rm --no-deps -T storage-restore "$@"; }
 [[ "$(rclone_as_app size "minio:$bucket" --json | sed -n 's/.*"count":\([0-9]*\).*/\1/p')" == "0" ]] || { echo "o bucket novo não está vazio" >&2; exit 1; }
-rclone_as_app copy "offsitecrypt:objects" "minio:$bucket" --ignore-existing --log-level ERROR
+"${DC[@]}" --profile restore run --rm --no-deps -T -v "$work_dir/objects-latest.list:/restore-objects.list:ro" \
+  storage-restore copy "offsitecrypt:objects" "minio:$bucket" --files-from-raw /restore-objects.list --ignore-existing --log-level ERROR
+# Compare actual bytes against the downloaded evidence already verified by SHA-256 against the recovered database.
+# --download is mandatory: the crypt remote cannot supply ordinary hashes for a plain rclone check.
+check_bucket_bytes() {
+  "${DC[@]}" --profile restore run --rm --no-deps -T \
+    -v "$offsite_dir/objects:/verified-evidence:ro" -v "$work_dir/objects-latest.list:/restore-objects.list:ro" \
+    storage-restore check /verified-evidence "minio:$bucket" --files-from-raw /restore-objects.list --one-way --download --log-level ERROR
+}
+check_bucket_bytes
 bucket_restore_seconds=$(( $(date +%s) - bucket_restore_started ))
 step "bucket restaurado a partir da cópia externa em ${bucket_restore_seconds}s"
 
@@ -214,11 +259,26 @@ reconcile() {
 }
 reconcile_json="$(reconcile)"
 [[ "$(json_field "$reconcile_json" event)" == "attachments.reconciled" ]] || { echo "FALHA: banco e bucket restaurados divergem: $reconcile_json" >&2; exit 1; }
-[[ "$(sed -n 's/.*"finalized":\([0-9]*\).*/\1/p' <<<"$reconcile_json")" == "$ATTACHMENT_COUNT" ]] || { echo "FALHA: anexos finalizados restaurados diferentes de $ATTACHMENT_COUNT: $reconcile_json" >&2; exit 1; }
+[[ "$(sed -n 's/.*"finalized":\([0-9]*\).*/\1/p' <<<"$reconcile_json")" == "$(( ATTACHMENT_COUNT - 1 ))" ]] || { echo "FALHA: anexos finalizados restaurados diferentes de $(( ATTACHMENT_COUNT - 1 )): $reconcile_json" >&2; exit 1; }
 reconcile_seconds=$(( $(date +%s) - reconcile_started ))
 rto_seconds=$(( $(date +%s) - restore_started ))
 step "reconciliação ok em ${reconcile_seconds}s: $reconcile_json"
 
+# A same-size corrupt object must fail byte verification even though reference reconciliation would accept its key.
+node - "$offsite_dir/objects/attachments/drill-$batch/1.bin" "$work_dir/corrupt.bin" <<'NODE'
+const fs = require("node:fs");
+const bytes = fs.readFileSync(process.argv[2]);
+if (!bytes.length) throw new Error("The drill's corruption control requires nonempty synthetic bytes");
+bytes[0] ^= 0xff;
+fs.writeFileSync(process.argv[3], bytes, { mode: 0o644 });
+NODE
+"${DC[@]}" --profile restore run --rm --no-deps -T -v "$work_dir/corrupt.bin:/corrupt.bin:ro" \
+  storage-restore copyto /corrupt.bin "minio:$bucket/attachments/drill-$batch/1.bin" --ignore-times --s3-no-check-bucket --log-level ERROR
+if check_bucket_bytes; then echo "FALHA: objeto corrompido de mesmo tamanho não foi detectado" >&2; exit 1; fi
+"${DC[@]}" --profile restore run --rm --no-deps -T \
+  -v "$offsite_dir/objects/attachments/drill-$batch/1.bin:/correct.bin:ro" \
+  storage-restore copyto /correct.bin "minio:$bucket/attachments/drill-$batch/1.bin" --ignore-times --s3-no-check-bucket --log-level ERROR
+check_bucket_bytes
 # The reconciliation must see what a bad restore would leave behind: one object missing, one object nobody owns.
 rclone_as_app deletefile "minio:$bucket/attachments/drill-$batch/1.bin" --log-level ERROR
 missing_json="$(reconcile)"
@@ -230,7 +290,7 @@ stray_json="$(reconcile)"
 step "reconciliação detecta objeto faltante e objeto órfão"
 
 # (h) summary.
-printf '{"event":"restore_drill.completed","date":"%s","project":"%s","attachments":%s,"attachmentKb":%s,"databaseBytes":%s,"walSegmentsRestored":%s,"rpo":{"lastWriteToOffsiteSeconds":%s,"nominalSeconds":%s,"budgetSeconds":900},"rto":{"fetchSeconds":%s,"databaseRestoreSeconds":%s,"bucketRestoreSeconds":%s,"reconcileSeconds":%s,"totalSeconds":%s,"budgetSeconds":14400},"reconciliation":%s,"detectsMissingObject":true,"detectsOrphanObject":true,"encryptedDestination":true,"secretsAsFiles":true,"drillWallClockSeconds":%s}\n' \
+printf '{"event":"restore_drill.completed","date":"%s","project":"%s","attachments":%s,"attachmentKb":%s,"databaseBytes":%s,"walSegmentsRestored":%s,"rpo":{"lastWriteToOffsiteSeconds":%s,"nominalSeconds":%s,"budgetSeconds":900},"rto":{"fetchSeconds":%s,"databaseRestoreSeconds":%s,"bucketRestoreSeconds":%s,"reconcileSeconds":%s,"totalSeconds":%s,"budgetSeconds":14400},"reconciliation":%s,"selectsBeforeDeletion":true,"excludesDeletedObjects":true,"preservedEvidenceObjects":1,"verifiesRestoredBytes":true,"detectsCorruptObject":true,"detectsMissingObject":true,"detectsOrphanObject":true,"encryptedDestination":true,"secretsAsFiles":true,"drillWallClockSeconds":%s}\n' \
   "$(date -u +%Y-%m-%d)" "$PROJECT" "$ATTACHMENT_COUNT" "$ATTACHMENT_KB" "$db_bytes" "$wal_count" \
   "$(( shipped_epoch - last_write_epoch ))" "$(( ${archive_timeout:-300} + SHIP_INTERVAL ))" \
   "$fetch_seconds" "$db_restore_seconds" "$bucket_restore_seconds" "$reconcile_seconds" "$rto_seconds" "$reconcile_json" "$(( $(date +%s) - drill_started ))"

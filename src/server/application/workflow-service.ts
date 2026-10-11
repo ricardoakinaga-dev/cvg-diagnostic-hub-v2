@@ -54,6 +54,7 @@ const {
   validatedSlaHours,
   validateServiceDefinition,
   serviceFor,
+  requireReceivedSample,
   requestFor,
   itemFor,
   resultFor,
@@ -175,8 +176,8 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         items.forEach((item) => requireItemPermission(originalState, currentActor, "sample.receive", item));
         const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemIds, input });
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
-        if (serviceItems.some(({ item, service }) => item.requestId !== request.id || service.workflowType !== "LABORATORY" || item.status !== "REQUESTED")) {
-          throw new ApiError("INVALID_STATE_TRANSITION", "A amostra só pode ser recebida para itens laboratoriais solicitados.", 409);
+        if (serviceItems.some(({ item, service }) => item.requestId !== request.id || service.workflowType !== "LABORATORY" || !["REQUESTED", "FAILED"].includes(item.status))) {
+          throw new ApiError("INVALID_STATE_TRANSITION", "A amostra só pode ser recebida para itens laboratoriais solicitados ou em recuperação de falha.", 409);
         }
         items.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
         const receivedAt = now();
@@ -191,6 +192,10 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const assigned = assignedIds.map((sampleId) => sampleId ? findById(originalState.samples, sampleId) : undefined).filter((entry): entry is Sample => entry !== undefined && !entry.replacesSampleId);
         if (assigned.length > 1 || (assigned.length === 1 && assignedIds.length > 1)) throw new ApiError("INVALID_STATE_TRANSITION", "Os itens selecionados pertencem a amostras diferentes.", 409);
         const tube = assigned.find((entry) => ["EXPECTED", "RECEIVED"].includes(entry.status) && items.every((item) => entry.itemIds.includes(item.id)));
+        if (input.expectedSampleVersion !== undefined) {
+          if (!tube) throw new ApiError("INVALID_STATE_TRANSITION", "A amostra informada não está disponível para recebimento.", 409);
+          ensureExpectedVersion(tube.version, input.expectedSampleVersion);
+        }
         let sample: Sample;
         let updatedItems: DiagnosticItem[];
         let samples: Sample[];
@@ -211,7 +216,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         }
         let nextState = nextRequestState({ ...originalState, samples }, request, updatedItems);
         const correlationId = input.correlationId ?? id("corr");
-        const audits = updatedItems.map((item) => createAudit("SampleReceived", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, "REQUESTED", "RECEIVED", { accessionCode: sample.accessionCode }));
+        const audits = updatedItems.map((item) => createAudit("SampleReceived", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, itemFor(originalState, item.id).status, "RECEIVED", { accessionCode: sample.accessionCode }));
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, ...audits], outbox: [...nextState.outbox, createOutbox("SampleReceived", "Sample", sample.id, correlationId, { accessionCode: sample.accessionCode, itemIds: updatedItems.map((item) => item.id) })] };
         const result = { sample, items: updatedItems, request: requestViewForActor(nextState, currentActor, requestFor(nextState, request.id)) };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { itemIds, input }), result };
@@ -229,27 +234,44 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
       if (!item.currentSampleId) {
         throw new ApiError("INVALID_STATE_TRANSITION", "Este item não possui amostra recebida para recoleta.", 409);
       }
-      return service.requestRecollection(actor, item.currentSampleId, input);
+      return service.requestRecollection(actor, item.currentSampleId, input, itemId);
     },
 
-    async requestRecollection(actor: User, sampleId: string, input: RecollectionInput) {
+    async requestRecollection(actor: User, sampleId: string, input: RecollectionInput, initiatingItemId?: string) {
       const scope = "POST:/request-recollection";
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
         const sample = findOrThrow(findById(originalState.samples, sampleId));
         const request = requestFor(originalState, sample.requestId);
-        const linkedItems = sample.itemIds.map((itemId) => itemFor(originalState, itemId));
-        const service = serviceFor(originalState, linkedItems[0].serviceId);
+        const sampleItems = sample.itemIds.map((itemId) => itemFor(originalState, itemId));
+        // A tube can also contain cancelled or already released examinations.
+        // Recollection affects only examinations still processing this tube.
+        const linkedItems = sampleItems.filter((item) => item.currentSampleId === sample.id && ["RECEIVED", "IN_PROGRESS"].includes(item.status));
+        const initiatingItem = initiatingItemId ? itemFor(originalState, initiatingItemId) : undefined;
+        if (initiatingItem) {
+          requireItemPermission(originalState, currentActor, "sample.recollection.request", initiatingItem);
+        }
         linkedItems.forEach((item) => requireItemPermission(originalState, currentActor, "sample.recollection.request", item));
-        const idempotent = withIdempotency<SampleCommandResult & { replacement: Sample }>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
-        if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
-        linkedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
-        if (sample.status !== "RECEIVED") throw new ApiError("INVALID_STATE_TRANSITION", "A amostra não está disponível para recoleta.", 409);
+        const commandPayload = initiatingItemId ? { itemId: initiatingItemId, input } : { sampleId, input };
+        const idempotent = withIdempotency<SampleCommandResult & { replacement: Sample }>(originalState, currentActor.id, scope, input.idempotencyKey, commandPayload);
+        if (idempotent.found) {
+          idempotent.existing!.items.forEach((item) => requireItemPermission(originalState, currentActor, "sample.recollection.request", itemFor(originalState, item.id)));
+          return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
+        }
+        if (initiatingItem && (initiatingItem.currentSampleId !== sample.id || !sample.itemIds.includes(initiatingItem.id))) {
+          throw new ApiError("STALE_VERSION", "A amostra do exame mudou. Atualize os dados antes de solicitar a recoleta.", 409);
+        }
+        if (!linkedItems.length) throw new ApiError("INVALID_STATE_TRANSITION", "A amostra não possui exames elegíveis para recoleta.", 409);
+        if (initiatingItem) ensureExpectedVersion(initiatingItem.version, input.expectedVersion);
+        else if (input.expectedSampleVersion === undefined) linkedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
+        if (input.expectedSampleVersion !== undefined) ensureExpectedVersion(sample.version, input.expectedSampleVersion);
+        if (initiatingItem && !linkedItems.some((item) => item.id === initiatingItem.id)) throw new ApiError("INVALID_STATE_TRANSITION", "Este exame não está disponível para recoleta.", 409);
+        if (sample.status !== "RECEIVED" && sample.status !== "REJECTED") throw new ApiError("INVALID_STATE_TRANSITION", "A amostra não está disponível para recoleta.", 409);
         const reason = findOrThrow(originalState.reasonCodes.find((entry) => entry.type === "RECOLLECTION" && entry.code === input.reasonCode && entry.active), "VALIDATION_ERROR", "Motivo de recoleta inválido.");
         const rejectionNote = input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : undefined;
         const replacedSample: Sample = { ...sample, status: "REPLACED", rejectionCode: reason.code, rejectionNote, version: sample.version + 1 };
-        const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: generateAccessionCode(originalState, now(), accessionPrefixFromEnv(), accessionTimeZoneFromEnv()), sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: [...sample.itemIds], version: 1 };
+        const replacement: Sample = { id: id("sample"), requestId: request.id, accessionCode: generateAccessionCode(originalState, now(), accessionPrefixFromEnv(), accessionTimeZoneFromEnv()), sampleType: sample.sampleType, status: "EXPECTED", replacesSampleId: sample.id, itemIds: linkedItems.map((item) => item.id), version: 1 };
         const updatedItems = linkedItems.map((item) => ({ ...item, status: transitionItem(item.status, "RECOLLECTION_REQUIRED", item.workflowType), currentSampleId: replacement.id, version: item.version + 1 }));
         let nextState = nextRequestState({ ...originalState, samples: [...originalState.samples.map((entry) => entry.id === sample.id ? replacedSample : entry), replacement] }, request, updatedItems);
         const requester = findOrThrow(findById(originalState.users, request.requesterId));
@@ -257,9 +279,9 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const notification: Omit<Notification, "id" | "createdAt" | "attempts" | "state" | "version"> = { category: "ACTIONABLE", priority: "HIGH", recipientUserId: requester.id, entityType: "SAMPLE", entityId: replacement.id, deepLink: `/requests/${request.id}`, title: "Nova coleta necessária", body: `${requester.displayName}, a amostra ${sample.accessionCode} precisa ser recolhida: ${reason.label}.`, dedupeKey: `recollection:${sample.id}:${replacement.id}` };
         nextState = notificationFor(nextState, notification);
         const notificationId = nextState.notifications.find((entry) => entry.dedupeKey === notification.dedupeKey && entry.recipientUserId === notification.recipientUserId)?.id;
-        nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("SampleRejected", currentActor.id, "Sample", sample.id, correlationId, "RECEIVED", "REPLACED", { reasonCode: reason.code }), createAudit("RecollectionRequested", currentActor.id, "Sample", replacement.id, correlationId, undefined, "EXPECTED", { replacesSampleId: sample.id })], outbox: [...nextState.outbox, createOutbox("RecollectionRequested", "Sample", replacement.id, correlationId, { reasonCode: reason.code, replacesSampleId: sample.id, ...(notificationId ? { notificationId } : {}) })] };
+        nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("SampleRejected", currentActor.id, "Sample", sample.id, correlationId, sample.status, "REPLACED", { reasonCode: reason.code }), createAudit("RecollectionRequested", currentActor.id, "Sample", replacement.id, correlationId, undefined, "EXPECTED", { replacesSampleId: sample.id })], outbox: [...nextState.outbox, createOutbox("RecollectionRequested", "Sample", replacement.id, correlationId, { reasonCode: reason.code, replacesSampleId: sample.id, ...(notificationId ? { notificationId } : {}) })] };
         const result = { sample: replacedSample, replacement, items: updatedItems, request: requestViewForActor(nextState, currentActor, requestFor(nextState, request.id)) };
-        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { sampleId, input }), result };
+        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, commandPayload), result };
       });
     },
 
@@ -269,12 +291,15 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
         const expected = findOrThrow(findById(originalState.samples, sampleId));
-        const guardedItems = expected.itemIds.map((itemId) => itemFor(originalState, itemId));
-        guardedItems.forEach((item) => requireItemPermission(originalState, currentActor, "sample.replacement.receive", item));
+        const sampleItems = expected.itemIds.map((itemId) => itemFor(originalState, itemId));
+        sampleItems.forEach((item) => requireItemPermission(originalState, currentActor, "sample.replacement.receive", item));
+        const guardedItems = sampleItems.filter((item) => item.currentSampleId === expected.id && item.status === "RECOLLECTION_REQUIRED");
         const idempotent = withIdempotency<SampleCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { sampleId, input });
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
-        guardedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
+        if (input.expectedSampleVersion !== undefined) ensureExpectedVersion(expected.version, input.expectedSampleVersion);
+        else guardedItems.forEach((item) => ensureExpectedVersion(item.version, input.expectedVersion));
         if (expected.status !== "EXPECTED" || !expected.replacesSampleId) throw new ApiError("INVALID_STATE_TRANSITION", "A recoleta não está aguardando recebimento.", 409);
+        if (!guardedItems.length) throw new ApiError("INVALID_STATE_TRANSITION", "A recoleta não possui exames aguardando recebimento.", 409);
         const receivedAt = now();
         const placeholder = expected.accessionCode.startsWith(LEGACY_PLACEHOLDER_PREFIX);
         let accessionCode = expected.accessionCode;
@@ -287,7 +312,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         }
         const replacement: Sample = { ...expected, accessionCode, sampleType: resolvedSampleType(input.sampleType, expected), status: "RECEIVED", receivedAt, receivedBy: currentActor.id, version: expected.version + 1 };
         const request = requestFor(originalState, replacement.requestId);
-        const items = replacement.itemIds.map((itemId) => itemFor(originalState, itemId));
+        const items = guardedItems;
         const updatedItems = items.map((item) => ({ ...item, status: transitionItem(item.status, "RECEIVED", item.workflowType), currentSampleId: replacement.id, receivedAt, version: item.version + 1 }));
         let nextState = nextRequestState({ ...originalState, samples: originalState.samples.map((sample) => sample.id === expected.id ? replacement : sample) }, request, updatedItems);
         const correlationId = input.correlationId ?? id("corr");
@@ -312,6 +337,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         const idempotent = withIdempotency<ItemCommandResult>(originalState, currentActor.id, scope, input.idempotencyKey, { itemId, target, input });
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
+        if (target === "IN_PROGRESS") requireReceivedSample(originalState, item);
         const nextItem = { ...item, status: transitionItem(item.status, target, item.workflowType), startedAt: target === "IN_PROGRESS" ? (item.startedAt ?? now()) : item.startedAt, version: item.version + 1 };
         const request = requestFor(originalState, item.requestId);
         let nextState = nextRequestState(originalState, request, [nextItem]);
@@ -506,13 +532,21 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(item.version, input.expectedVersion);
         activeReason(originalState, "REJECT", input.reasonCode);
-        if (!["REQUESTED", "RECEIVED", "IN_PROGRESS"].includes(item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser rejeitado nesta fase.", 409);
+        if (!(item.status === "REQUESTED" || item.status === "RECEIVED" && item.workflowType === "LABORATORY")) throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser rejeitado nesta fase.", 409);
         const updatedItem = { ...item, status: transitionItem(item.status, "REJECTED", item.workflowType), rejectionReason: input.note ? requireText(input.note, "note", MAX_NOTE_LENGTH) : input.reasonCode, version: item.version + 1 };
         const sample = item.currentSampleId ? findById(originalState.samples, item.currentSampleId) : undefined;
-        // A pre-assigned tube still waiting for collection is shared with other
-        // active items: rejecting one exam only detaches it from the tube.
-        const sharedExpectedTube = sample?.status === "EXPECTED" && sample.itemIds.some((otherId) => otherId !== item.id && !["CANCELLED", "REJECTED", "COMPLETED"].includes(itemFor(originalState, otherId).status));
-        const samples = sample ? originalState.samples.map((entry) => entry.id !== sample.id ? entry : sharedExpectedTube ? { ...entry, itemIds: entry.itemIds.filter((otherId) => otherId !== item.id), version: entry.version + 1 } : { ...entry, status: "REJECTED" as const, rejectionCode: input.reasonCode, rejectionNote: input.note, version: entry.version + 1 }) : originalState.samples;
+        // RejectItem rejects an examination, not all material in its tube.
+        // Retain a received tube used by another active or released examination.
+        // Already replaced/rejected tubes remain historical and immutable here.
+        const sharedTube = sample?.itemIds.some((otherId) => {
+          const other = itemFor(originalState, otherId);
+          return otherId !== item.id && other.currentSampleId === sample.id && !["CANCELLED", "REJECTED"].includes(other.status);
+        });
+        const samples = sample ? originalState.samples.map((entry) => {
+          if (entry.id !== sample.id || !["EXPECTED", "RECEIVED"].includes(entry.status)) return entry;
+          if (sharedTube) return entry.status === "EXPECTED" ? { ...entry, itemIds: entry.itemIds.filter((otherId) => otherId !== item.id), version: entry.version + 1 } : entry;
+          return { ...entry, status: "REJECTED" as const, rejectionCode: input.reasonCode, rejectionNote: input.note, version: entry.version + 1 };
+        }) : originalState.samples;
         const correlationId = input.correlationId ?? id("corr");
         let nextState = nextRequestState({ ...originalState, samples }, request, [updatedItem]);
         nextState = { ...nextState, auditEvents: [...nextState.auditEvents, createAudit("DiagnosticItemRejected", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, item.status, "REJECTED", { reasonCode: input.reasonCode })], outbox: [...nextState.outbox, createOutbox("DiagnosticItemRejected", "DiagnosticRequestItem", item.id, correlationId, { reasonCode: input.reasonCode })] };

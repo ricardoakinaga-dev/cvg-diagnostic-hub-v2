@@ -43,7 +43,7 @@ fi
 # Servidores ativos (next/playwright): diretórios em uso são preservados e reportados.
 active_procs="$(pgrep -af 'next|playwright' 2>/dev/null | grep -v -e 'cleanup-builds' -e 'pgrep -af' || true)"
 if [[ -n "$active_procs" ]]; then
-  printf 'cleanup-builds: processo(s) ativo(s) detectado(s), remoção será conservadora:\n%s\n' "$active_procs" >&2
+  printf 'cleanup-builds: processos ativos detectados; remoção será conservadora.\n' >&2
 fi
 
 # Snapshot de caminhos abertos (cwd + descritores) de todos os processos.

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "017_clinical_archive";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "018_archive_object_deletions";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -26,7 +26,8 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "014_outbox_read_authority",
   "015_runtime_entity_rows",
   "016_outbox_whatsapp_route",
-  "017_clinical_archive"
+  "017_clinical_archive",
+  "018_archive_object_deletions"
 ] as const;
 
 /**
@@ -51,7 +52,8 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "014_outbox_read_authority": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031",
   "015_runtime_entity_rows": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f",
   "016_outbox_whatsapp_route": "c63d12c24dd13482eae00d9ed87aac9fba53fbbc7609df23b78e81a3603fa77c",
-  "017_clinical_archive": "43aeca4eaea8b4724fd49edfa824644e4a4ea874b67570b8191d386147dae6cf"
+  "017_clinical_archive": "43aeca4eaea8b4724fd49edfa824644e4a4ea874b67570b8191d386147dae6cf",
+  "018_archive_object_deletions": "8321c107f6532481b0cf375ce6c47d0848a0dcb1582abecd432c1a790ae6c110"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -407,6 +409,7 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
   ) AS transitional_storage_boundary_ready,
   (
     to_regclass(format('%I.%I', current_schema(), 'cvg_runtime_entities')) IS NOT NULL
+    AND to_regclass(format('%I.%I', current_schema(), 'cvg_archive_object_deletions')) IS NOT NULL
     AND to_regclass(format('%I.%I', current_schema(), 'cvg_runtime_entity_removals')) IS NOT NULL
     AND to_regprocedure('cvg_runtime_entity_rows(jsonb,bigint)') IS NOT NULL
     AND to_regprocedure('cvg_runtime_state_header(jsonb)') IS NOT NULL

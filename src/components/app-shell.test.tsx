@@ -455,7 +455,7 @@ describe("AppShell", () => {
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     if (pathname === "/queues") {
-      expect(replace).toHaveBeenCalledWith("/account?password=required");
+      await waitFor(() => expect(replace).toHaveBeenCalledWith("/account?password=required"));
       expect(screen.queryByText("Conteúdo protegido")).not.toBeInTheDocument();
     } else {
       expect(replace).not.toHaveBeenCalled();

@@ -24,7 +24,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { withDisposablePostgresDatabase, type DisposablePostgresDatabase } from "../tests/support/postgres-test-harness";
-import { buildNextHttpTestBundle, NEXT_HTTP_TEST_PROXY_HEADERS, nextHttpEnvironment, startNextHttpTestServer, withApplicationName, type NextHttpTestServer } from "../tests/support/next-http-test-server";
+import { buildNextHttpTestBundle, NEXT_HTTP_TEST_PROXY_HEADERS, NEXT_HTTP_TEST_SESSION_SECRET, nextHttpEnvironment, startNextHttpTestServer, withApplicationName, type NextHttpTestServer } from "../tests/support/next-http-test-server";
+import { hashSessionToken } from "../src/server/security/session";
 import { addClinicalVolume, D2_EXAMS_PER_DAY } from "./perf-clinical-volume";
 import { buildAuditHeavyState } from "./perf-snapshot";
 import { round } from "./perf-report";
@@ -103,7 +104,7 @@ function fixture(config: Settings, journeyCapacity: number) {
   const session = (userId: string, label: string): Client => {
     const token = randomBytes(32).toString("base64url");
     const csrf = randomBytes(32).toString("base64url");
-    state.sessions.push({ id: randomUUID(), userId, tokenHash: hash(token), csrfTokenHash: hash(csrf), createdAt, expiresAt, version: 1 });
+    state.sessions.push({ id: randomUUID(), userId, tokenHash: hashSessionToken(token, { SESSION_SECRET: NEXT_HTTP_TEST_SESSION_SECRET }), csrfTokenHash: hash(csrf), createdAt, expiresAt, version: 1 });
     return { label, cookie: `cvg_session=${token}; cvg_csrf=${csrf}`, csrf };
   };
   const patients: string[] = [];

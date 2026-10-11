@@ -1,4 +1,4 @@
-import { clinicalArchiveConfig, parseArchiveArguments, removeArchivedObjects } from "../src/server/operations/clinical-archive-job";
+import { clinicalArchiveConfig, parseArchiveArguments, removePendingArchiveObjects } from "../src/server/operations/clinical-archive-job";
 import { closeRuntimeStore, getRuntimeFileStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
 
 /**
@@ -19,13 +19,16 @@ async function main(): Promise<void> {
   const purge = options.purge
     ? await store.purgeClinicalArchive({ now, purgeAfterMonths: config.purgeAfterMonths, dryRun: !options.apply })
     : undefined;
-  const objects = purge && options.apply ? await removeArchivedObjects(getRuntimeFileStore(), purge.attachmentKeys) : { removed: 0, failures: 0 };
+  const objects = options.apply ? await removePendingArchiveObjects(store, getRuntimeFileStore()) : { removed: 0, failures: 0 };
+  const pendingObjects = options.apply ? (await store.readArchiveObjectDeletionMetrics()).pending : undefined;
   console.log(JSON.stringify({
     event: "clinical.archive_completed",
     mode: options.apply ? "apply" : "dry-run",
     archive,
+    ...(options.apply ? { objects: { removed: objects.removed, failures: objects.failures, pending: pendingObjects } } : {}),
     ...(purge ? { purge: { requestsPurged: purge.requestsPurged, entitiesPurged: purge.entitiesPurged, attachmentObjects: purge.attachmentKeys.length, objectsRemoved: objects.removed, objectRemovalFailures: objects.failures } } : {})
   }, null, 2));
+  if (objects.failures > 0) throw new Error("ARCHIVE_OBJECT_REMOVAL_PENDING");
 }
 
 void main()

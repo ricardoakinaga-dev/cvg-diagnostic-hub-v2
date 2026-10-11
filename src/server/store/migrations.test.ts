@@ -109,7 +109,7 @@ describe("database migration runner", () => {
     const sql = await readFile(path.resolve(process.cwd(), "db/migrations", filename), "utf8");
 
     expect(migrationVersion(filename)).toBe("007_relational_clinical_core");
-    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("017_clinical_archive");
+    expect(LATEST_RUNTIME_SCHEMA_VERSION).toBe("018_archive_object_deletions");
     expect(migrationChecksum(sql)).toMatch(/^[a-f0-9]{64}$/);
     expect(sql).toMatch(/RELATIONAL_CLINICAL_CORE_EXPAND_V1/);
   });
@@ -171,7 +171,7 @@ describe("database migration runner", () => {
     const result = await applyMigrations(client, { migrationDirectory, logger: { info: vi.fn() } });
 
     expect(result).toEqual({
-      applied: ["017_clinical_archive"],
+      applied: ["018_archive_object_deletions"],
       alreadyApplied: baseline.map(({ version }) => version)
     });
     expect(queries.filter(({ text }) => text === "BEGIN")).toHaveLength(1);

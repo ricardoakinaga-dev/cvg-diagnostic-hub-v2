@@ -1,8 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { createDemoState } from "../store/fixtures";
+import { recordArchiveObjectDeletions } from "./metrics";
 import { incrementGauge, recordAttachmentScan, recordCriticalReadiness, recordHttpRequest, recordLoginDistributedAttemptSignal, recordReadinessFailure, recordRealtimePoll, recordRealtimeResync, recordRealtimeStreamClosure, recordWriteQueue, refreshOperationalMetrics, releaseRealtimeConnection, renderPrometheus, resetMetrics, routeMetricLabel, setGauge, tryAcquireRealtimeConnection } from "./metrics";
 
 describe("bounded metrics", () => {
+  it("reports pending archive deletions and their age without object identifiers", () => {
+    resetMetrics();
+    recordArchiveObjectDeletions({ pending: 3, oldestRequestedAt: "2026-10-11T09:00:00.000Z" }, new Date("2026-10-11T10:00:00.000Z"));
+    const output = renderPrometheus();
+    expect(output).toContain("cvg_archive_object_deletions_pending 3\n");
+    expect(output).toContain("cvg_archive_object_deletions_oldest_age_seconds 3600\n");
+    expect(output).not.toContain("storage_key");
+  });
+
+  it.each([undefined, "invalid", "2026-10-11T11:00:00.000Z"])("clamps archive deletion age for %s", (oldestRequestedAt) => {
+    resetMetrics();
+    recordArchiveObjectDeletions({ pending: 0, oldestRequestedAt }, new Date("2026-10-11T10:00:00.000Z"));
+    expect(renderPrometheus()).toContain("cvg_archive_object_deletions_oldest_age_seconds 0\n");
+  });
+
   it("counts attachment scans by bounded verdict (PROD-308)", () => {
     resetMetrics();
     recordAttachmentScan("CLEAN");

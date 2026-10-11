@@ -25,7 +25,7 @@ O encarregado confere a identidade do tutor e o vínculo com o paciente **fora d
 2. O ADMIN abre **Administração → Privacidade (LGPD) → Exportar dados do titular**, informa o prontuário e confirma a própria senha. A senha é exigida a cada exportação (reautenticação de até 10 minutos).
 3. O navegador baixa `titular-<prontuário>-<data>.json`. O conteúdo não aparece na tela.
 4. O ADMIN entrega o arquivo ao encarregado por canal seguro, e o encarregado o entrega ao tutor.
-5. Cada exportação gera o evento de auditoria `PatientDataExported`, com quem exportou, o paciente e a quantidade de solicitações ativas e arquivadas. Recusas não geram o evento.
+5. Cada exportação gera o evento de auditoria `PatientDataExported`, com quem exportou, o paciente e a quantidade de solicitações ativas e arquivadas. Recusas não geram o evento. Depois de reunir o histórico, o servidor revalida a sessão, o usuário ativo, o perfil ADMIN, a permissão e a reautenticação na transação final: revogar a sessão, desativar a conta, mudar o perfil ou deixar vencer o step-up durante a leitura impede a entrega do arquivo.
 
 **O que o arquivo traz** (formato `cvg-hub.patient-data-export.v1`):
 - o cadastro do paciente;
@@ -52,7 +52,7 @@ A D5 decidiu manter o registro **24 meses ativo, depois em arquivo, e excluir s�
 
 - um pedido de exclusão **antes** do fim do prazo é respondido pelo encarregado com essa base legal, informando quando a exclusão acontecerá;
 - a exclusão acontece pelo **expurgo** do arquivo clínico ([CLINICAL_ARCHIVE](CLINICAL_ARCHIVE.md)), que remove as linhas do registro e os objetos dos anexos. Ele está **desligado** até o jurídico definir o prazo (`ARCHIVE_PURGE_AFTER_MONTHS`);
-- o cadastro do paciente sai com o expurgo dos seus registros arquivados; um cadastro sem nenhum registro é tratado pela TI, a pedido do encarregado.
+- o expurgo automático remove somente os registros do arquivo clínico e seus anexos. **Ele preserva o cadastro do paciente, os atendimentos e as internações**; não há exclusão automática dessas entidades. O encarregado deve encaminhar qualquer pedido de exclusão ou minimização desses dados à TI e ao jurídico para definir, autorizar e registrar o procedimento, considerando vínculos ativos, obrigações de guarda e backups. Um cadastro sem registros também segue esse procedimento.
 
 | Item | Valor |
 | --- | --- |
@@ -72,6 +72,7 @@ O encarregado mantém o registro de cada pedido **fora do Hub**, porque o pedido
 - nome do encarregado de dados e canal do pedido;
 - ADMIN designado para a exportação;
 - prazo legal de guarda, que liga o expurgo;
+- procedimento aprovado para cadastros de pacientes, atendimentos, internações e cópias de backup que o expurgo do arquivo não exclui;
 - aprovação deste procedimento pelo jurídico.
 
 Enquanto faltarem, o PROD-502 fica em `VERIFY`.

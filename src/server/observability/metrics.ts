@@ -31,6 +31,8 @@ const allowedGauges = new Set([
   "outbox_pending",
   "outbox_oldest_age_seconds",
   "outbox_dead_letters",
+  "archive_object_deletions_pending",
+  "archive_object_deletions_oldest_age_seconds",
   "process_resident_memory_bytes",
   "process_heap_used_bytes",
   "process_heap_limit_bytes",
@@ -52,6 +54,8 @@ const gaugeHelp = new Map([
   ["outbox_pending", "Pending outbox messages."],
   ["outbox_oldest_age_seconds", "Age in seconds of the oldest pending outbox message."],
   ["outbox_dead_letters", "Outbox messages that failed delivery and wait for an operator (reprocess or discard)."],
+  ["archive_object_deletions_pending", "Durable archive object deletions awaiting confirmation from storage."],
+  ["archive_object_deletions_oldest_age_seconds", "Seconds since the oldest unconfirmed archive object deletion was requested."],
   ["process_resident_memory_bytes", "Resident set size of the application process."],
   ["process_heap_used_bytes", "V8 heap in use by the application process."],
   ["process_heap_limit_bytes", "V8 heap limit (--max-old-space-size); the runtime aggregate lives in this heap."],
@@ -251,6 +255,12 @@ function refreshCriticalMetrics(state: StoreState): void {
 }
 
 export type CriticalReadinessCheck = "policy" | "redundant_channel" | "on_call";
+
+export function recordArchiveObjectDeletions(metrics: { pending: number; oldestRequestedAt?: string }, now = new Date()): void {
+  setGauge("archive_object_deletions_pending", metrics.pending);
+  const requestedAt = metrics.oldestRequestedAt ? Date.parse(metrics.oldestRequestedAt) : Number.NaN;
+  setGauge("archive_object_deletions_oldest_age_seconds", Number.isFinite(requestedAt) ? Math.max(0, (now.getTime() - requestedAt) / 1_000) : 0);
+}
 
 /** The 0/1 readiness checks are computed by the application layer (critical-readiness.ts) and recorded here on each scrape. */
 export function recordCriticalReadiness(checks: Readonly<Record<CriticalReadinessCheck, 0 | 1>>): void {

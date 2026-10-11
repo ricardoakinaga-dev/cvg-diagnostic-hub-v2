@@ -29,7 +29,7 @@ import { projectDurableNotificationRows } from "./postgres-notification-projecti
 import { readPostgresAuthorizationSnapshot } from "./postgres-authorization-read";
 import { prunePostgresSessionActivity, readPostgresSessionActivity, touchPostgresSessionActivity } from "./postgres-session-activity";
 import { archiveAuditEvent, archiveEntries, assertBoundedArchiveQuery, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
-import { insertClinicalArchive, purgeClinicalArchiveRows, readArchivedRequestRows, readClinicalArchiveRows } from "./postgres-clinical-archive";
+import { insertClinicalArchive, purgeClinicalArchiveRows, readArchivedRequestRows, readArchivedAttachmentRequestRows, readClinicalArchiveRows, readPendingArchiveObjectDeletions, readArchiveObjectDeletionMetrics } from "./postgres-clinical-archive";
 import { compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import {
   RelationalClinicalCoreAdapter,
@@ -307,6 +307,22 @@ export class PostgresStore implements StateStore {
     return this.concurrent(() => readArchivedRequestRows(this.pool, requestId));
   }
 
+  async readArchivedAttachmentRequest(attachmentId: string): Promise<ClinicalArchiveRow[] | undefined> {
+    return this.concurrent(() => readArchivedAttachmentRequestRows(this.pool, attachmentId));
+  }
+
+  async readPendingArchiveObjectDeletions(limit: number): Promise<string[]> {
+    return this.concurrent(() => readPendingArchiveObjectDeletions(this.pool, limit));
+  }
+
+  async completeArchiveObjectDeletion(key: string): Promise<void> {
+    await this.concurrent(async () => { await this.pool.query("DELETE FROM cvg_archive_object_deletions WHERE storage_key = $1", [key]); });
+  }
+
+  async readArchiveObjectDeletionMetrics(): Promise<{ pending: number; oldestRequestedAt?: string }> {
+    return this.concurrent(() => readArchiveObjectDeletionMetrics(this.pool));
+  }
+
   /** Deletes archive rows past the legal period; the caller removes the returned attachment objects. */
   async purgeClinicalArchive(options: ClinicalArchivePurgeOptions = {}): Promise<ClinicalArchivePurgeSummary> {
     if (this.relationalClinicalCore) throw new Error("POSTGRES_RELATIONAL_ARCHIVE_UNSUPPORTED");
@@ -423,7 +439,10 @@ export class PostgresStore implements StateStore {
     operation: (state: StoreState, audit?: AuditTransactionReader) => Promise<{ state: StoreState; result: T }> | { state: StoreState; result: T },
     options: { replaceOutboxProjection?: boolean; outboxScope?: OutboxTransactionQuery } = {}
   ): Promise<T> {
-    return this.runExclusiveTransaction((client, current) => operation(current, postgresAuditTransactionReader(client)), options);
+    return this.runExclusiveTransaction((client, current) => operation(current, {
+      ...postgresAuditTransactionReader(client),
+      readArchivedRequest: (requestId) => readArchivedRequestRows(client, requestId)
+    }), options);
   }
 
   private async runExclusiveTransaction<T>(

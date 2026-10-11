@@ -100,6 +100,8 @@ export type EncounterCloseResult = {
 };
 
 export interface ReceiveSampleInput extends CommandMeta {
+  /** Version of the replacement tube; independent of its examinations' versions. */
+  expectedSampleVersion?: number;
   /** Scanned or typed code; optional when the item has a system-generated sample. */
   accessionCode?: string;
   /** Defaults to the expected sample's type (catalog sampleType). */
@@ -107,6 +109,8 @@ export interface ReceiveSampleInput extends CommandMeta {
 }
 
 export interface RecollectionInput extends CommandMeta {
+  /** Version of the physical tube, in addition to the initiating item's version. */
+  expectedSampleVersion?: number;
   reasonCode: string;
   note?: string;
 }
@@ -486,7 +490,7 @@ export interface ItemView {
 }
 
 export interface SampleLabelView {
-  sample: { id: string; accessionCode: string; sampleType: string; status: Sample["status"] };
+  sample: { id: string; accessionCode: string; sampleType: string; status: Sample["status"]; version: number };
   request: { id: string; requestCode: string; priority: DiagnosticRequest["priority"] };
   patient: { id: string; displayName: string; species: string; externalId: string };
   services: Array<{ code: string; name: string }>;

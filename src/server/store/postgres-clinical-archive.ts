@@ -27,6 +27,8 @@ const DUE_SUMMARY_SQL = `SELECT count(*)::int AS entities,
        COALESCE(array_agg(data->>'storageKey') FILTER (WHERE collection = 'attachments'), ARRAY[]::text[]) AS attachment_keys
   FROM cvg_clinical_archive WHERE request_id = ANY($1::text[])`;
 const DELETE_DUE_SQL = "DELETE FROM cvg_clinical_archive WHERE request_id = ANY($1::text[])";
+const ENQUEUE_DELETIONS_SQL = `INSERT INTO cvg_archive_object_deletions (storage_key)
+  SELECT DISTINCT key FROM unnest($1::text[]) AS key ON CONFLICT (storage_key) DO NOTHING`;
 
 interface ArchiveRowRecord {
   readonly request_id: string;
@@ -83,12 +85,33 @@ export async function readArchivedRequestRows(client: EntityQueryable, requestId
   return rows.some((row) => row.collection === "requests") ? rows : undefined;
 }
 
+export async function readArchivedAttachmentRequestRows(client: EntityQueryable, attachmentId: string): Promise<ClinicalArchiveRow[] | undefined> {
+  const row = (await client.query("SELECT request_id FROM cvg_clinical_archive WHERE collection = 'attachments' AND entity_key = $1", [attachmentId])).rows[0] as { request_id: string } | undefined;
+  return row ? readArchivedRequestRows(client, row.request_id) : undefined;
+}
+
+export function archiveDeletionReadLimit(limit: number): number {
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 5_000) throw new Error("ARCHIVE_OBJECT_DELETION_LIMIT_INVALID");
+  return limit;
+}
+
+export async function readPendingArchiveObjectDeletions(client: EntityQueryable, limit: number): Promise<string[]> {
+  const rows = (await client.query("SELECT storage_key FROM cvg_archive_object_deletions ORDER BY requested_at, storage_key LIMIT $1", [archiveDeletionReadLimit(limit)])).rows as { storage_key: string }[];
+  return rows.map((row) => row.storage_key);
+}
+
+export async function readArchiveObjectDeletionMetrics(client: EntityQueryable): Promise<{ pending: number; oldestRequestedAt?: string }> {
+  const row = (await client.query("SELECT count(*)::int AS pending, min(requested_at) AS oldest_requested_at FROM cvg_archive_object_deletions")).rows[0] as { pending: number; oldest_requested_at: Date | string | null };
+  return { pending: row.pending, ...(row.oldest_requested_at ? { oldestRequestedAt: new Date(row.oldest_requested_at).toISOString() } : {}) };
+}
+
 /** Counts (and optionally deletes) the archived requests archived at or before `cutoff`. */
 export async function purgeClinicalArchiveRows(client: EntityQueryable, cutoff: Date, apply: boolean): Promise<ClinicalArchivePurgeSummary> {
   const due = ((await client.query(DUE_REQUESTS_SQL, [cutoff.toISOString(), PURGE_REQUEST_LIMIT])).rows as { request_id: string }[]).map((row) => row.request_id);
   if (due.length === 0) return { requestsPurged: 0, entitiesPurged: 0, attachmentKeys: [] };
   const found = (await client.query(DUE_SUMMARY_SQL, [due])).rows[0] as { entities: number; attachment_keys: string[] };
   if (apply) {
+    if (found.attachment_keys.length > 0) await client.query(ENQUEUE_DELETIONS_SQL, [found.attachment_keys]);
     const removed = await client.query(DELETE_DUE_SQL, [due]);
     if (removed.rowCount !== found.entities) throw new Error("POSTGRES_CLINICAL_ARCHIVE_DIVERGED:purge");
   }

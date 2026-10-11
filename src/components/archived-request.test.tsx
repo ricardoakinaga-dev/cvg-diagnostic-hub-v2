@@ -55,6 +55,7 @@ describe("ArchivedRequest", () => {
     expect(screen.getByText("Nenhum resultado liberado.")).toBeInTheDocument();
     expect(screen.getByText("ACC-1 · EDTA")).toBeInTheDocument();
     expect(screen.getByText("laudo.pdf · application/pdf")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Baixar laudo.pdf" })).toHaveAttribute("href", "/api/v1/attachments/attachment-1/download");
     expect(screen.getByRole("link", { name: "Voltar ao paciente" })).toHaveAttribute("href", "/patients/patient-thor/diagnostics");
     expect(screen.queryByRole("button")).toBeNull();
   });

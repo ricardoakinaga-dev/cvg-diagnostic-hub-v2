@@ -35,6 +35,7 @@ case "$1" in
   inspect)
     [[ "$args" == *State.Running* ]] && { echo "\${FAKE_RUNNING:-true}"; exit 0; }
     [[ "$args" == *image.revision* ]] && { echo "\${FAKE_RUNNING_REVISION-${COMMIT}}"; exit 0; }
+    [[ "$args" == *worker-container* ]] && { echo "\${FAKE_WORKER_HEALTH:-healthy}"; exit 0; }
     echo "\${FAKE_HEALTH:-healthy}"; exit 0 ;;
 esac
 exit 0
@@ -109,6 +110,7 @@ test("a rolling deploy pulls, checks the commit, backs up, starts and records th
     "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} app-container",
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test ps -q worker",
     "inspect --format {{.State.Running}} worker-container",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} worker-container",
     `inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} app-container`,
     `inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} worker-container`
   ]);
@@ -182,6 +184,69 @@ test("an app that never turns healthy or a stopped worker fails the release with
     assert.equal(events(running.stderr)[0].event, "release.running_revision_mismatch");
     assert.ok(!existsSync(path.join(stale.state, "cvg-hml.current")));
   }
+});
+
+test("a running worker with no healthy heartbeat refuses the release and preserves the previous release", () => {
+  for (const health of ["unhealthy", "starting", "none"]) {
+    const ws = workspace();
+    const previous = deploy(ws);
+    assert.equal(previous.status, 0, previous.stderr);
+    const history = readFileSync(path.join(ws.state, "cvg-hml.history"), "utf8");
+    const result = deploy(ws, ["--health-timeout", "1"], { FAKE_WORKER_HEALTH: health, RELEASE_HEALTH_POLL_SECONDS: "1" });
+    assert.equal(result.status, 1, health);
+    assert.equal(events(result.stderr)[0].event, "release.worker_unhealthy");
+    assert.match(events(result.stderr)[0].reason, new RegExp(`last: ${health}`));
+    assert.deepEqual(events(result.stdout).map((entry) => entry.event), ["release.started"]);
+    assert.equal(readFileSync(path.join(ws.state, "cvg-hml.current"), "utf8"), `${TAG}\n`);
+    assert.equal(readFileSync(path.join(ws.state, "cvg-hml.history"), "utf8"), history);
+  }
+});
+
+const repository = "example/cvg-hub";
+const successfulCI = (overrides = {}) => ({ id: 42, run_number: 10, run_attempt: 1, head_sha: COMMIT,
+  head_branch: "main", event: "push", head_repository: { full_name: repository }, status: "completed", conclusion: "success", ...overrides });
+
+function verifyCI(runs, apiFails = false) {
+  const ws = workspace();
+  const gh = path.join(ws.dir, "gh");
+  writeFileSync(path.join(ws.dir, "runs.json"), typeof runs === "string" ? runs : JSON.stringify({ workflow_runs: runs }));
+  writeFileSync(gh, `#!/usr/bin/env bash\nprintf '%s\\n' "$*" > "$FAKE_GH_LOG"\n${apiFails ? "exit 1" : 'cat "$FAKE_GH_RESPONSE"'}\n`);
+  chmodSync(gh, 0o755);
+  const result = spawnSync("bash", [path.join(root, "deploy/release/verify-ci.sh")], { encoding: "utf8", env: {
+    PATH: process.env.PATH, GH: gh, RELEASE_REPOSITORY: repository, RELEASE_COMMIT: COMMIT,
+    FAKE_GH_LOG: ws.log, FAKE_GH_RESPONSE: path.join(ws.dir, "runs.json")
+  } });
+  return { result, query: readFileSync(ws.log, "utf8") };
+}
+
+test("both release triggers require successful push CI for the exact main commit before building images", () => {
+  const { result, query } = verifyCI([successfulCI(), successfulCI({ run_number: 9, conclusion: "failure" })]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(events(result.stdout)[0].event, "release.ci_verified");
+  assert.match(query, new RegExp(`--method GET repos/${repository}/actions/workflows/ci.yml/runs -f branch=main -f event=push -f head_sha=${COMMIT}`));
+  const workflow = readFileSync(path.join(root, ".github/workflows/release.yml"), "utf8");
+  assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /workflow_run:/);
+  assert.match(workflow, /actions: read\n      contents: read/);
+  assert.match(workflow, /RELEASE_COMMIT: \$\{\{ steps\.release\.outputs\.commit \}\}/);
+  assert.ok(workflow.indexOf("run: bash deploy/release/verify-ci.sh") < workflow.indexOf("name: Build application, operational"));
+  // No event-specific condition may skip this gate for a manual publication.
+  const gate = workflow.slice(workflow.indexOf("- name: Require green CI"), workflow.indexOf("- name: Build application, operational"));
+  assert.doesNotMatch(gate, /\n\s+if:/);
+});
+
+test("release CI verification fails closed for stale success, another SHA, branch, event, repository or unavailable API", () => {
+  for (const runs of [[], [successfulCI({ head_sha: "f".repeat(40) })], [successfulCI({ head_branch: "feature" })],
+    [successfulCI({ event: "pull_request" })], [successfulCI({ head_repository: { full_name: "fork/cvg-hub" } })],
+    [successfulCI({ conclusion: "failure" })], [successfulCI({ conclusion: "cancelled" })],
+    [successfulCI({ status: "in_progress", conclusion: null })],
+    [successfulCI(), successfulCI({ id: 43, run_number: 11, conclusion: "failure" })],
+    [successfulCI(), successfulCI({ id: 42, run_attempt: 2, status: "queued", conclusion: null })], "not json", "{}"] ) {
+    const { result } = verifyCI(runs);
+    assert.equal(result.status, 1, JSON.stringify(runs));
+    assert.match(result.stderr, /release\.ci_refused/);
+  }
+  assert.equal(verifyCI([], true).result.status, 1);
 });
 
 function fakeDeploy(ws, status = 0) {
