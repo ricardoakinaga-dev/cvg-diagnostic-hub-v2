@@ -153,7 +153,7 @@ function alertAdministrators(
       level, departmentCode: request.requestingDepartmentCode, requestCode: request.requestCode, resultVersionId: root.entityId
     })]
   };
-  const administrators = next.users.filter((user) => user.role === "ADMIN" && user.active !== false).sort((left, right) => left.id.localeCompare(right.id));
+  const administrators = next.users.filter((user) => (user.role === "ADMIN" || user.role === "SUPERADMIN") && user.active !== false).sort((left, right) => left.id.localeCompare(right.id));
   for (const administrator of administrators) {
     const dedupeKey = `critical-unreachable:${root.id}:${administrator.id}`;
     const before = next.notifications.length;

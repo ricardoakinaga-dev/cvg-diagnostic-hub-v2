@@ -121,6 +121,19 @@ describe("critical result policy", () => {
     expect(planCriticalEscalation(base, policy({ effectiveFrom: "2026-09-05T11:00:00.000Z" }), new Date("2026-09-05T10:30:00.000Z"))).toBeUndefined();
   });
 
+  it("reaches SUPERADMIN globally as department manager and clinical fallback without expanding ordinary roles", () => {
+    const global: CriticalRecipientCandidate = { userId: "superadmin", role: "SUPERADMIN", departmentCode: "IT", active: true };
+    const inactive: CriticalRecipientCandidate = { ...global, userId: "inactive-superadmin", active: false };
+    const outsideManager: CriticalRecipientCandidate = { userId: "outside-manager", role: "MANAGER", departmentCode: "RADIOLOGY", active: true };
+    const context = { departmentCode: "LABORATORY", candidates: [...candidates, global, inactive, outsideManager] };
+    for (const recipientRules of [["DEPARTMENT_MANAGER", "ADMIN_FALLBACK"], ["ADMIN_FALLBACK"]] as const) {
+      const selected = policy({ recipientRules });
+      expect(resolveCriticalRecipients(context, selected).map((candidate) => candidate.userId)).toEqual(["superadmin"]);
+      expect(nextCriticalRecipients(context, selected, new Set())?.recipients.map((candidate) => candidate.userId)).toEqual(["superadmin"]);
+      expect(nextCriticalRecipients(context, selected, new Set(["superadmin"]))).toBeUndefined();
+    }
+  });
+
   it("has explicit defaults for an unconfigured local policy", () => {
     const defaults = defaultCriticalResultPolicy();
     expect(defaults.escalationAfterMs).toEqual([900_000, 1_800_000, 3_600_000]);

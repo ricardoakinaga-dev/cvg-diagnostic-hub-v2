@@ -40,7 +40,7 @@ export function PatientList() {
   }, [load]);
   useEffect(() => {
     void apiFetch<SessionResponse>("/session/me")
-      .then(({ user }) => setCanCreate(user.role === "VETERINARIAN" || user.role === "INPATIENT_TEAM"))
+      .then(({ user }) => setCanCreate(user.role === "SUPERADMIN" || user.role === "VETERINARIAN" || user.role === "INPATIENT_TEAM"))
       .catch(() => setCanCreate(false));
   }, []);
 

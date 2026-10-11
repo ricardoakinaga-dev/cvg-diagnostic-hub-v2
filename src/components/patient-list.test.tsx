@@ -16,9 +16,9 @@ describe("PatientList", () => {
     vi.restoreAllMocks();
   });
 
-  it("loads scoped patients and opens the creation dialog for an allowed actor", async () => {
+  it.each(["VETERINARIAN", "SUPERADMIN"])("loads scoped patients and opens creation for %s", async (role) => {
     const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "VETERINARIAN" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role } }) as never;
       if (path === "/patients" && init?.method === "POST") return Promise.resolve({ patient, encounter: { id: "encounter-1" } }) as never;
       return Promise.resolve([patient]) as never;
     });
@@ -53,9 +53,9 @@ describe("PatientList", () => {
     expect(screen.queryByRole("dialog", { name: "Cadastrar paciente" })).not.toBeInTheDocument();
   });
 
-  it("keeps an empty state and denies creation when the session is out of scope", async () => {
+  it.each(["VIEWER", "ADMIN"])("keeps an empty state and denies creation for %s", async (role) => {
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "VIEWER" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role } }) as never;
       return Promise.resolve([]) as never;
     });
 

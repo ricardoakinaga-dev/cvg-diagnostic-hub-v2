@@ -10,6 +10,7 @@ import { QueueBoard, queueColumnLabels } from "./queue-board";
 import { QueueBoardRequestDialog } from "./queue-board-request-dialog";
 import { Icon } from "@/components/ui-icons";
 import { ErrorState, LoadingState } from "@/components/feedback-states";
+import { CLINICAL_DEPARTMENTS } from "./work-items/model";
 
 type QueueCursors = Record<string, string>;
 type QueueTotals = Record<string, number>;
@@ -59,7 +60,7 @@ export function QueueView() {
     setPaginationError("");
     try {
       const me = await apiFetch<SessionResponse>("/session/me");
-      const scopedDepartments = me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
+      const scopedDepartments = me.user.role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
       const queueResults = await Promise.allSettled(scopedDepartments.map(async (code) => ({ code, page: await apiFetchWithMeta<QueueItem[]>(queuePath(code, { overdue, status })) })));
       if (loadVersion.current !== version) return;
       const queues = queueResults.filter((result): result is PromiseFulfilledResult<{ code: string; page: ApiFetchResult<QueueItem[]> }> => result.status === "fulfilled");
@@ -162,7 +163,7 @@ export function QueueView() {
          {paginationError && <ErrorState className="queue-pagination-error" title="Não foi possível carregar mais itens" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
         {hasMore && <div className="queue-pagination"><span className="queue-pagination-copy"><strong>Mostrando {items.length} de {totalItems} itens</strong><small>O restante continua no mesmo escopo autorizado.</small></span><ActionButton tone="ghost" state={loadingMore ? "pending" : "idle"} onClick={() => void loadMore()} disabled={loading}>{loadingMore ? "Carregando…" : "Carregar mais itens"}</ActionButton></div>}
       </section>
-      {showRequest && ["MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardRequestDialog departments={role === "MANAGER" ? departments : []} canCreatePatient={["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); void load(); }} />}
+      {showRequest && ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardRequestDialog departments={["MANAGER", "SUPERADMIN"].includes(role) ? departments : []} canCreatePatient={["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); void load(); }} />}
     </div>
   );
 }

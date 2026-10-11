@@ -67,7 +67,7 @@ function departmentLabel(code: string): string {
   return departmentLabels[code] ?? code.replaceAll("_", " ").toLowerCase().replace(/^./, (letter) => letter.toUpperCase());
 }
 
-export function AdminConsole() {
+export function AdminConsole({ section = "all" }: { section?: "all" | "users" | "catalog" } = {}) {
   const [services, setServices] = useState<CatalogService[]>([]);
   const [reasons, setReasons] = useState<ReasonCode[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
@@ -83,7 +83,7 @@ export function AdminConsole() {
     try {
       const session = await apiFetch<SessionResponse>("/session/me");
       if (loadVersion.current !== version) return;
-      if (session.user.role !== "ADMIN" && session.user.role !== "MANAGER") {
+      if (!["SUPERADMIN", "ADMIN", "MANAGER"].includes(session.user.role)) {
         setIdentity(null); setAccessDenied(true); setServices([]); setReasons([]); setUsers([]);
         return;
       }
@@ -118,17 +118,19 @@ export function AdminConsole() {
     ...services.map((service) => service.departmentCode),
     ...(identity ? [identity.departmentCode, ...(identity.managedDepartmentCodes ?? [])] : [])
   ].filter(Boolean))];
+  const heading = section === "users" ? "Acessos" : section === "catalog" ? "Catálogos" : "Administração";
+  const description = section === "users" ? "Colaboradores e permissões." : section === "catalog" ? "Serviços diagnósticos e motivos." : "Colaboradores, exames e motivos.";
 
   if (loading && !identity) return <LoadingState label="Carregando administração" />;
   return <div className="admin-page">
-    <div className="page-heading"><div><h1>Administração</h1><p className="page-lede">Colaboradores, exames e motivos.</p></div><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> Atualizar</ActionButton></div>
+    <div className="page-heading"><div><h1>{heading}</h1><p className="page-lede">{description}</p></div><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> Atualizar</ActionButton></div>
     {accessDenied ? <ErrorState title="Administração fora do seu escopo" message="Seu perfil não pode consultar nem alterar o catálogo institucional." onRetry={load} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : <>
       {error && <ErrorState title="Configuração parcialmente indisponível" message={error} onRetry={load} retrying={loading} />}
-      {identity && <div className="admin-columns">
-        <section className="panel" id="users"><div className="panel-heading"><h2>Colaboradores</h2><span className="timeline-count">{users.length}</span></div><UserCreateForm creator={identity} services={services} onCreated={(user) => setUsers((current) => [...current.filter((entry) => entry.id !== user.id), user])} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="Adicione um colaborador ao seu setor." /> : <div className="admin-list">{users.map((user) => <UserRow key={user.id} user={user} viewerId={identity.id} services={services} departmentCodes={departmentCodes} technical={identity.role === "ADMIN"} onChanged={(updated) => setUsers((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} />)}</div>}</section>
-        <section className="panel" id="catalog"><div className="panel-heading"><h2>Serviços diagnósticos</h2><span className="timeline-count">{services.length}</span></div><CatalogImportPanel onApplied={() => void load()} /><ServiceCreateForm creator={identity} existingCodes={services.map((service) => service.code)} onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={`${service.id}:${service.version}`} service={service} existingCodes={services.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>
-        <section className="panel" id="reasons"><div className="panel-heading"><h2>Motivos</h2><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm existingCodes={reasons.map((reason) => reason.code)} onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Adicione um motivo para seleção nos fluxos clínicos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={`${reason.id}:${reason.version}`} reason={reason} existingCodes={reasons.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>
-        {identity.role === "ADMIN" && <section className="panel" id="privacy"><div className="panel-heading"><h2>Privacidade (LGPD)</h2></div><DataSubjectExportPanel /></section>}
+      {identity && <div className={`admin-columns${section === "all" ? "" : " admin-columns-section"}`}>
+        {section !== "catalog" && <section className="panel" id="users"><div className="panel-heading"><h2>Colaboradores</h2><span className="timeline-count">{users.length}</span></div><UserCreateForm creator={identity} services={services} onCreated={(user) => setUsers((current) => [...current.filter((entry) => entry.id !== user.id), user])} />{users.length === 0 ? <EmptyState title="Nenhum colaborador administrável" message="Adicione um colaborador ao seu setor." /> : <div className="admin-list">{users.map((user) => <UserRow key={user.id} user={user} viewerId={identity.id} services={services} departmentCodes={departmentCodes} technical={["ADMIN", "SUPERADMIN"].includes(identity.role)} superadmin={identity.role === "SUPERADMIN"} onChanged={(updated) => setUsers((current) => current.map((entry) => entry.id === updated.id ? updated : entry))} />)}</div>}</section>}
+        {section !== "users" && <section className="panel" id="catalog"><div className="panel-heading"><h2>Serviços diagnósticos</h2><span className="timeline-count">{services.length}</span></div><CatalogImportPanel onApplied={() => void load()} /><ServiceCreateForm creator={identity} existingCodes={services.map((service) => service.code)} onSaved={() => void load()} />{services.length === 0 ? <EmptyState title="Nenhum serviço no escopo de gestão" message="Adicione o primeiro serviço." /> : <div className="admin-list">{services.map((service) => <ServiceRow key={`${service.id}:${service.version}`} service={service} existingCodes={services.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>}
+        {section !== "users" && <section className="panel" id="reasons"><div className="panel-heading"><h2>Motivos</h2><span className="timeline-count">{reasons.length}</span></div><ReasonCreateForm existingCodes={reasons.map((reason) => reason.code)} onSaved={() => void load()} />{reasons.length === 0 ? <EmptyState title="Nenhum motivo configurado" message="Adicione um motivo para seleção nos fluxos clínicos." /> : <div className="admin-list">{reasons.map((reason) => <ReasonRow key={`${reason.id}:${reason.version}`} reason={reason} existingCodes={reasons.map((entry) => entry.code)} onSaved={() => void load()} />)}</div>}</section>}
+        {section === "all" && ["ADMIN", "SUPERADMIN"].includes(identity.role) && <section className="panel" id="privacy"><div className="panel-heading"><h2>Privacidade (LGPD)</h2></div><DataSubjectExportPanel /></section>}
       </div>}
     </>}
   </div>;

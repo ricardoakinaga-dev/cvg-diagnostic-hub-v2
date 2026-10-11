@@ -1,10 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { ItemState, WorkflowType } from "@cvg/contracts";
-import { apiDateTime, secondaryWorkflowActionFor, workflowActionFor } from "./workflow-action";
+import { apiDateTime, canUseWorkflowAction, secondaryWorkflowActionFor, workflowActionFor, type WorkflowActionKind } from "./workflow-action";
 
 const item = (status: ItemState, workflowType: WorkflowType, currentResultId?: string, currentSampleId?: string) => ({ id: "item-1", version: 1, status, workflowType, currentResultId, currentSampleId });
 
 describe("workflow action mapping", () => {
+  it("lets SUPERADMIN perform the administrative and clinical workflow actions", () => {
+    const actions: WorkflowActionKind[] = ["RECEIVE_SAMPLE", "START_PROCESSING", "RECEIVE_REPLACEMENT", "REQUEST_RECOLLECTION", "REJECT", "SCHEDULE", "RESCHEDULE", "START_PROCEDURE", "MARK_PERFORMED", "CREATE_RESULT", "EDIT_RESULT", "RELEASE_RESULT", "REVIEW_RESULT", "AMEND", "CANCEL", "COMPLETE"];
+    for (const action of actions) expect(canUseWorkflowAction("SUPERADMIN", action, item("IN_PROGRESS", "LABORATORY"))).toBe(true);
+    expect(canUseWorkflowAction("ADMIN", "START_PROCESSING")).toBe(false);
+    expect(canUseWorkflowAction("VETERINARIAN", "CANCEL", item("IN_PROGRESS", "LABORATORY"))).toBe(false);
+  });
   it("maps the next executable action by workflow capability", () => {
     expect(workflowActionFor(item("REQUESTED", "LABORATORY"))).toBe("RECEIVE_SAMPLE");
     expect(workflowActionFor(item("FAILED", "LABORATORY"))).toBe("RECEIVE_SAMPLE");

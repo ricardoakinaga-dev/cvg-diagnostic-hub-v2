@@ -188,6 +188,42 @@ describe("approved admission context command boundary", () => {
     expect(store.getState().users.find((user) => user.id === unscoped.id)?.patientIds).toEqual([]);
   });
 
+  it("lets a global SUPERADMIN transfer across clinical departments while preserving approved policy and command guards", async () => {
+    const { store, service } = setup();
+    const initial = store.getState();
+    const admin = initial.users.find((user) => user.role === "ADMIN")!;
+    const superadmin = { ...admin, id: "admission-superadmin", email: "admission-superadmin@cvg.test", role: "SUPERADMIN" as const, patientIds: [], serviceCodes: [], managedDepartmentCodes: [] };
+    const ultrasoundVet = { ...initial.users.find((user) => user.id === "user-vet-radiology")!, id: "user-vet-ultrasound", email: "vet-ultrasound@cvg.test", departmentCode: "ULTRASOUND" };
+    await store.transaction((state) => ({ state: { ...state, users: [...state.users, superadmin, ultrasoundVet] }, result: undefined }));
+    const input = {
+      action: "TRANSFER" as const, effectiveAt: effectiveAt(), reason: "Destino confirmou capacidade",
+      departmentCode: "RADIOLOGY", ward: "Imagem", bed: "Box 01", responsibleUserId: "user-vet-radiology",
+      expectedVersion: 1, idempotencyKey: "superadmin-transfer"
+    };
+    const before = store.getState();
+    await expect(service.updateAdmissionContext(superadmin, "admission-thor", input)).rejects.toMatchObject({ code: "ADMISSION_CONTEXT_POLICY_UNAVAILABLE", status: 503 });
+    policyReady();
+    await expect(service.updateAdmissionContext(admin, "admission-thor", input)).rejects.toMatchObject({ code: "SCOPE_DENIED" });
+    await expect(service.updateAdmissionContext(superadmin, "admission-thor", { ...input, expectedVersion: 2 })).rejects.toMatchObject({ code: "STALE_VERSION" });
+    await expect(service.updateAdmissionContext(superadmin, "admission-thor", { ...input, reason: "" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(service.updateAdmissionContext(superadmin, "admission-thor", { ...input, departmentCode: "BAD.DEPARTMENT" })).rejects.toMatchObject({ code: "VALIDATION_ERROR" });
+    await expect(service.updateAdmissionContext(superadmin, "admission-thor", { ...input, responsibleUserId: superadmin.id })).rejects.toMatchObject({ code: "ADMISSION_RESPONSIBLE_NOT_ELIGIBLE", status: 422 });
+    expect(store.getState()).toEqual(before);
+
+    const first = await service.updateAdmissionContext(superadmin, "admission-thor", input);
+    expect(first.admission).toMatchObject({ departmentCode: "RADIOLOGY", responsibleUserId: "user-vet-radiology", version: 2 });
+    const second = await service.updateAdmissionContext(superadmin, "admission-thor", {
+      ...input, effectiveAt: new Date(Date.parse(input.effectiveAt) + 1).toISOString(),
+      departmentCode: "ULTRASOUND", responsibleUserId: ultrasoundVet.id, expectedVersion: 2, idempotencyKey: "superadmin-transfer-ultrasound"
+    });
+    expect(second.admission).toMatchObject({ departmentCode: "ULTRASOUND", responsibleUserId: ultrasoundVet.id, version: 3 });
+    expect(store.getState().users.find((user) => user.id === superadmin.id)?.patientIds).toEqual([]);
+    expect(store.getState().auditEvents.filter((event) => event.eventType === "AdmissionTransferred")).toEqual([
+      expect.objectContaining({ actorId: superadmin.id, metadata: expect.objectContaining({ departmentCode: "RADIOLOGY", policyVersion: "D-01-TEST-ONLY-v1" }) }),
+      expect.objectContaining({ actorId: superadmin.id, metadata: expect.objectContaining({ departmentCode: "ULTRASOUND", policyVersion: "D-01-TEST-ONLY-v1" }) })
+    ]);
+  });
+
   it("closes the encounter on discharge without cancelling pending diagnostic work", async () => {
     policyReady();
     const { store, service, actor, manager } = setup();

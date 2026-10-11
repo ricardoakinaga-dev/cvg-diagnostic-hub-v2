@@ -90,7 +90,7 @@ export function workflowActionForTransition(item: WorkflowActionItem, target: It
 }
 
 export function canUseWorkflowAction(role: SessionRole, action: WorkflowActionKind, item?: WorkflowActionItem): boolean {
-  if (role === "MANAGER") return true;
+  if (role === "MANAGER" || role === "SUPERADMIN") return true;
   if (action === "CANCEL" && item && ["RECEIVED", "IN_PROGRESS", "AWAITING_REPORT", "FAILED"].includes(item.status)) return false;
   if (["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)) return action === "CANCEL" || action === "REVIEW_RESULT";
   if (role === "VIEWER" || role === "ADMIN") return action === "REVIEW_RESULT";

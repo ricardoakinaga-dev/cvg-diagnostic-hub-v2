@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { QueueItem, SessionResponse, SessionUser } from "@cvg/contracts";
 import { apiFetch, apiFetchWithMeta, getSafeErrorMessage } from "@/components/api-client";
-import { fromQueueItem, fromRequests, mergeWorkItems, type RequestListEntry, type WorkItem } from "./model";
+import { CLINICAL_DEPARTMENTS, fromQueueItem, fromRequests, mergeWorkItems, type RequestListEntry, type WorkItem } from "./model";
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 10;
@@ -27,6 +27,7 @@ async function loadAllPages<T>(path: string): Promise<{ data: T[]; truncated: bo
 
 /** Departments whose queues this user works, besides what requests expose. */
 export function workedDepartments(user: SessionUser): string[] {
+  if (user.role === "SUPERADMIN") return [...CLINICAL_DEPARTMENTS];
   if (user.role === "MANAGER") return Array.from(new Set([user.departmentCode, ...(user.managedDepartmentCodes ?? [])]));
   if (["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"].includes(user.role)) return [user.departmentCode];
   return [];

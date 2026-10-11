@@ -10,6 +10,7 @@ import { ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
 
 const roleLabels: Record<string, string> = {
+  SUPERADMIN: "Superadmin",
   ADMIN: "Administração técnica",
   MANAGER: "Gestão operacional",
   VETERINARIAN: "Veterinária",
@@ -148,6 +149,6 @@ export function AccountView() {
     </div>
     <PasswordChangePanel />
     <AlertContactPanel user={user} onChange={setUser} />
-    <section className="panel account-shortcuts"><div className="panel-heading"><div><p className="eyebrow">Acesso rápido</p><h2>Continuar no Hub</h2></div></div><div className="account-shortcut-grid">{canAccessClinical && <Link href="/patients"><strong>Meus pacientes</strong><small>Buscar pacientes e acompanhar exames.</small><Icon name="arrow-right" size={15} /></Link>}{canAccessClinical && <Link href="/queues"><strong>Central de exames</strong><small>Acompanhar filas e próximas ações.</small><Icon name="arrow-right" size={15} /></Link>}{canAccessClinical && <Link href="/notifications"><strong>Notificações</strong><small>Revisar ações pendentes no seu escopo.</small><Icon name="arrow-right" size={15} /></Link>}{user.role === "MANAGER" && <Link href="/management"><strong>Gestão operacional</strong><small>Consolidar filas, pendências e indicadores.</small><Icon name="arrow-right" size={15} /></Link>}{user.role === "ADMIN" && <Link href="/admin"><strong>Administração técnica</strong><small>Gerenciar acessos, catálogo e auditoria.</small><Icon name="arrow-right" size={15} /></Link>}</div></section>
+    <section className="panel account-shortcuts"><div className="panel-heading"><div><p className="eyebrow">Acesso rápido</p><h2>Continuar no Hub</h2></div></div><div className="account-shortcut-grid">{canAccessClinical && <Link href="/patients"><strong>Meus pacientes</strong><small>Buscar pacientes e acompanhar exames.</small><Icon name="arrow-right" size={15} /></Link>}{canAccessClinical && <Link href="/queues"><strong>Central de exames</strong><small>Acompanhar filas e próximas ações.</small><Icon name="arrow-right" size={15} /></Link>}{canAccessClinical && <Link href="/notifications"><strong>Notificações</strong><small>Revisar ações pendentes no seu escopo.</small><Icon name="arrow-right" size={15} /></Link>}{["MANAGER", "SUPERADMIN"].includes(user.role) && <Link href="/management"><strong>Gestão operacional</strong><small>Consolidar filas, pendências e indicadores.</small><Icon name="arrow-right" size={15} /></Link>}{["ADMIN", "SUPERADMIN"].includes(user.role) && <Link href="/admin"><strong>Administração técnica</strong><small>Gerenciar acessos, catálogo e auditoria.</small><Icon name="arrow-right" size={15} /></Link>}</div></section>
   </div>;
 }

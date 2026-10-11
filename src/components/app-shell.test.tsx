@@ -283,8 +283,8 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "Solicitações" })).toHaveAttribute("href", "/management?view=requests");
     expect(screen.getByRole("link", { name: "Pendências" })).toHaveAttribute("href", "/management?view=pending");
     expect(screen.getByRole("link", { name: "Estatísticas" })).toHaveAttribute("href", "/management?view=stats");
-    expect(screen.getByRole("link", { name: "Acessos" })).toHaveAttribute("href", "/admin#users");
-    expect(screen.getByRole("link", { name: "Catálogos" })).toHaveAttribute("href", "/admin#catalog");
+    expect(screen.getByRole("link", { name: "Acessos" })).toHaveAttribute("href", "/admin/users");
+    expect(screen.getByRole("link", { name: "Catálogos" })).toHaveAttribute("href", "/admin/catalog");
     expect(screen.queryByRole("link", { name: "Auditoria" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Administração" })).not.toBeInTheDocument();
   });
@@ -341,6 +341,34 @@ describe("AppShell", () => {
     expect(screen.queryByRole("link", { name: "Caixa de entrada" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Abrir notificações" })).not.toBeInTheDocument();
+  });
+
+  it("combines administrative, management and clinical navigation only for SUPERADMIN", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", email: "super@cvg.local", displayName: "Superadmin", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC" } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const nav = await screen.findByRole("navigation", { name: "Navegação principal" });
+    for (const [name, href] of [["Pacientes", "/patients"], ["Todos os exames", "/queues"], ["Painel gerencial", "/management"], ["Indicadores", "/indicators"], ["Administração", "/admin"], ["Acessos", "/admin/users"], ["Catálogos", "/admin/catalog"], ["Sistema", "/system"]]) {
+      expect(within(nav).getByRole("link", { name })).toHaveAttribute("href", href);
+    }
+    for (const name of ["Laboratório", "Radiologia", "Ultrassom"]) expect(within(nav).getByRole("button", { name })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nova solicitação" })).toBeInTheDocument();
+    const mobile = screen.getByRole("navigation", { name: "Navegação rápida" });
+    expect(within(mobile).getAllByRole("link")).toHaveLength(6);
+    expect(within(mobile).getByRole("link", { name: "Acesso rápido: Exames" })).toHaveAttribute("href", "/queues");
+    expect(within(mobile).getByRole("link", { name: "Acesso rápido: Admin" })).toHaveAttribute("href", "/admin");
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(await screen.findByRole("option", { name: /Novo paciente/ })).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: /Novo exame/ })).toBeInTheDocument();
+  });
+
+  it.each([["/admin/users", "Acessos"], ["/admin/catalog", "Catálogo"], ["/system", "Sistema"]])("keeps the SUPERADMIN mobile administrative destination active at %s", async (pathname, label) => {
+    navigationState.pathname = pathname;
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", role: "SUPERADMIN", displayName: "Superadmin", departmentCode: "IT" } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const mobile = await screen.findByRole("navigation", { name: "Navegação rápida" });
+    expect(within(mobile).getByRole("link", { name: `Acesso rápido: ${label}` })).toHaveAttribute("href", pathname);
+    expect(within(mobile).getAllByRole("link").filter((link) => link.getAttribute("aria-current") === "page")).toHaveLength(1);
   });
 
   it.each(["ADMIN", "MANAGER", "VETERINARIAN", "LAB_TECH"])("shows Sistema only to ADMIN (%s)", async (role) => {

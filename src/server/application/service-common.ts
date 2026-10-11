@@ -162,18 +162,16 @@ export function requireText(value: string, field: string, maxLength: number): st
 }
 
 export const operationalManagedRoles: RoleCode[] = ["VETERINARIAN", "INPATIENT_TEAM", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"];
-
 export function canManageUserTarget(actor: User, role: RoleCode, departmentCode: string): boolean {
-  if (actor.role === "ADMIN") return true;
+  if (role === "SUPERADMIN") return actor.role === "SUPERADMIN";
+  if (actor.role === "SUPERADMIN" || actor.role === "ADMIN") return true;
   return actor.role === "MANAGER" && operationalManagedRoles.includes(role) && managerCanAccessDepartment(actor, departmentCode);
 }
-
 export function normalizedEmail(value: string): string {
   const email = requireText(value, "email", 320).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError("VALIDATION_ERROR", "O e-mail informado é inválido.", 400);
   return email;
 }
-
 export function validatedTimezone(value: string): string {
   const timezone = requireText(value, "timezone", 80);
   try {
@@ -624,6 +622,7 @@ export function requestViewForActor(state: StoreState, actor: User, request: Dia
 }
 
 export function canViewRequest(state: StoreState, actor: User, request: DiagnosticRequest): boolean {
+  if (actor.role === "SUPERADMIN") return canAccessResource(actor, "request.view", { patientId: request.patientId, departmentCode: request.requestingDepartmentCode });
   if (actor.role === "MANAGER") return hasManagerRequestContext(state, actor, request) && canAccessResource(actor, "request.view", {});
   return request.itemIds.some((itemId) => canViewItem(state, actor, itemFor(state, itemId)));
 }
@@ -695,6 +694,7 @@ export function auditEventDepartmentCode(state: StoreState, event: AuditEvent): 
 }
 
 export function canViewManagementAudit(state: StoreState, actor: User, event: AuditEvent): boolean {
+  if (actor.role === "SUPERADMIN") return canAccessResource(actor, "audit.view", {});
   if (actor.role !== "MANAGER") return false;
   if (event.entityType === "ReasonCode") return true;
   if (event.entityType === "DiagnosticService") {

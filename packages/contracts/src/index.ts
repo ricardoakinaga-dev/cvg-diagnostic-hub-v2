@@ -149,6 +149,7 @@ export const RESULT_VERSION_STATES = ["DRAFT", "RELEASED", "SUPERSEDED", "VOIDED
 export type ResultVersionState = (typeof RESULT_VERSION_STATES)[number];
 
 export const ROLES = [
+  "SUPERADMIN",
   "ADMIN",
   "MANAGER",
   "VETERINARIAN",

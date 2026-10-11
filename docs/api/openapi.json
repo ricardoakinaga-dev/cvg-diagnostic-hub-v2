@@ -2642,8 +2642,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
+          "only SUPERADMIN may manage SUPERADMIN users",
           "delegated MANAGER only creates operational-role targets in managed departments",
-          "granting ADMIN requires recent reauthentication"
+          "granting ADMIN or SUPERADMIN requires recent reauthentication"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -2954,7 +2955,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "role must be ADMIN"
+          "role must be ADMIN or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -3163,8 +3164,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
+          "only SUPERADMIN may manage SUPERADMIN users",
           "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments",
-          "deactivating ADMIN requires recent reauthentication"
+          "deactivating ADMIN or SUPERADMIN requires recent reauthentication"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -3505,8 +3507,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
+          "only SUPERADMIN may manage SUPERADMIN users",
           "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department",
-          "granting or removing ADMIN requires recent reauthentication"
+          "granting or removing ADMIN or SUPERADMIN requires recent reauthentication"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -3847,6 +3850,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
+          "only SUPERADMIN may manage SUPERADMIN users",
           "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"
         ],
         "x-step-up-required": false,
@@ -4188,8 +4192,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
+          "only SUPERADMIN may manage SUPERADMIN users",
           "actor cannot reset self; target must be active and within managed role and department scope",
-          "regenerating an ADMIN credential requires recent reauthentication"
+          "regenerating an ADMIN or SUPERADMIN credential requires recent reauthentication"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -4530,8 +4535,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
+          "only SUPERADMIN may manage SUPERADMIN users",
           "actor cannot reset self; target must be active and within managed role and department scope",
-          "issuing a reset link for an ADMIN requires recent reauthentication"
+          "issuing a reset link for an ADMIN or SUPERADMIN requires recent reauthentication"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -4872,7 +4878,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "role must be ADMIN"
+          "role must be ADMIN or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -5420,7 +5426,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -5731,7 +5737,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles"
         ],
         "x-step-up-required": false,
@@ -5976,7 +5982,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -6312,7 +6318,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -7738,7 +7744,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -8238,7 +8244,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -8458,7 +8464,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -8692,7 +8698,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -8918,7 +8924,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -9377,7 +9383,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -9595,7 +9601,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "patient must be active and have no open encounter"
         ],
         "x-step-up-required": false,
@@ -9894,7 +9900,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -10114,7 +10120,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "encounter must be OPEN; pending diagnostic items stay with the requester"
         ],
         "x-step-up-required": false,
@@ -10413,7 +10419,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -10633,7 +10639,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "current and destination departments must remain inside manager delegation and responsibility never grants patient scope"
         ],
         "x-step-up-required": false,
@@ -10998,7 +11004,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-query-constraints": {
@@ -11285,7 +11291,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "x-duplicate-override=true additionally requires request.duplicate_override"
         ],
         "x-step-up-required": false,
@@ -11622,7 +11628,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -11842,7 +11848,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -12182,7 +12188,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -12402,7 +12408,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -12743,7 +12749,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -13084,8 +13090,8 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -13426,7 +13432,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -13767,7 +13773,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -14108,7 +14114,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -14449,7 +14455,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -14790,7 +14796,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -15131,7 +15137,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -15472,7 +15478,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles"
         ],
         "x-step-up-required": false,
@@ -15837,7 +15843,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -16057,7 +16063,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -16398,7 +16404,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -16739,7 +16745,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles"
         ],
         "x-step-up-required": false,
@@ -17081,7 +17087,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles"
         ],
         "x-step-up-required": false,
@@ -17394,7 +17400,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles"
         ],
         "x-step-up-required": false,
@@ -17760,9 +17766,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "download is limited to released or superseded results and a finalized CLEAN attachment"
         ],
         "x-step-up-required": false,
@@ -18017,9 +18023,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "the result state selects result.view or result.draft.edit_own"
         ],
         "x-step-up-required": false,
@@ -18239,9 +18245,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -18461,7 +18467,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
           "draft ownerId must equal the actor id"
         ],
@@ -18804,7 +18810,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles"
         ],
         "x-step-up-required": false,
@@ -19170,7 +19176,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
           "executor actors may amend or void only their own released result; managers use department-scoped policy"
         ],
@@ -19513,7 +19519,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
           "executor actors may amend or void only their own released result; managers use department-scoped policy"
         ],
@@ -19857,9 +19863,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -20200,9 +20206,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
-          "patient access is limited to the actor's patient scope or an authorized service/request context"
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
         ],
         "x-step-up-required": false,
         "x-concurrency-guard": {
@@ -20555,9 +20561,9 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
           "serviceCode must be assigned to executor roles",
-          "patient access is limited to the actor's patient scope or an authorized service/request context",
+          "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context",
           "the result state selects result.view or result.draft.edit_own and attachment.view is always required"
         ],
         "x-step-up-required": false,
@@ -20777,7 +20783,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -21570,7 +21576,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -21817,7 +21823,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-query-constraints": {
@@ -22092,7 +22098,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "request access is limited to patient scope, executor department context, or a manager delegated department"
+          "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
         ],
         "x-step-up-required": false,
         "x-query-constraints": {
@@ -22334,7 +22340,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -22543,8 +22549,8 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "departmentCode must match the actor department or a manager delegated department",
-          "role must be MANAGER"
+          "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department",
+          "role must be MANAGER or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -22752,7 +22758,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "role must be ADMIN"
+          "role must be ADMIN or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -22960,7 +22966,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "role must be ADMIN"
+          "role must be ADMIN or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -23200,7 +23206,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "role must be ADMIN"
+          "role must be ADMIN or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -23523,7 +23529,7 @@
         "x-authorization-conditions": [
           "authenticated active session",
           "permission is evaluated against the actor's current role",
-          "role must be ADMIN"
+          "role must be ADMIN or SUPERADMIN"
         ],
         "x-step-up-required": false,
         "parameters": [
@@ -24814,6 +24820,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "SUPERADMIN",
               "ADMIN",
               "MANAGER",
               "VETERINARIAN",
@@ -25013,6 +25020,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "SUPERADMIN",
               "ADMIN",
               "MANAGER",
               "VETERINARIAN",
@@ -26440,6 +26448,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "SUPERADMIN",
               "ADMIN",
               "MANAGER",
               "VETERINARIAN",
@@ -26529,6 +26538,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "SUPERADMIN",
               "ADMIN",
               "MANAGER",
               "VETERINARIAN",
@@ -26746,6 +26756,7 @@
           "role": {
             "type": "string",
             "enum": [
+              "SUPERADMIN",
               "ADMIN",
               "MANAGER",
               "VETERINARIAN",
@@ -26889,6 +26900,7 @@
           "userRole": {
             "type": "string",
             "enum": [
+              "SUPERADMIN",
               "ADMIN",
               "MANAGER",
               "VETERINARIAN",

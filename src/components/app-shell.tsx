@@ -27,6 +27,7 @@ const REALTIME_COALESCE_MS = 150;
 const SIDEBAR_STORAGE_KEY = "cvg.sidebar.collapsed";
 const SECTORS_STORAGE_KEY = "cvg.sidebar.sectors";
 const roleLabels: Record<string, string> = {
+  SUPERADMIN: "Superadmin",
   ADMIN: "Administração técnica",
   MANAGER: "Gestão operacional",
   VETERINARIAN: "Veterinária",
@@ -56,6 +57,7 @@ function ShellLoadingState() {
 
 /** Sectors whose exams the user follows, in the order the sidebar lists them. */
 function sidebarSectors(user: SessionResponse["user"]): string[] {
+  if (user.role === "SUPERADMIN") return [...CLINICAL_DEPARTMENTS];
   if (user.role === "ADMIN") return [];
   if (user.role === "MANAGER") return CLINICAL_DEPARTMENTS.filter((code) => user.managedDepartmentCodes?.includes(code));
   if (CLINICAL_DEPARTMENTS.includes(user.departmentCode as typeof CLINICAL_DEPARTMENTS[number])) return [user.departmentCode];
@@ -68,7 +70,7 @@ function legacyCrumbs(pathname: string, view: string | null, hash: string): Crum
   if (pathname.startsWith("/patients")) return [{ label: "Pacientes", icon: "paw" }];
   if (pathname.startsWith("/notifications")) return [{ label: "Caixa de entrada", icon: "inbox" }];
   if (pathname.startsWith("/account")) return [{ label: "Minha conta", icon: "account" }];
-  if (pathname.startsWith("/admin")) return hash === "#users" ? [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Acessos" }] : hash === "#catalog" ? [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Catálogos" }] : [{ label: "Administração", icon: "settings" }];
+  if (pathname.startsWith("/admin")) return pathname === "/admin/users" || hash === "#users" ? [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Acessos" }] : pathname === "/admin/catalog" || hash === "#catalog" ? [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Catálogos" }] : [{ label: "Administração", icon: "settings" }];
   if (pathname.startsWith("/system")) return [{ label: "Sistema", icon: "settings" }];
   if (pathname.startsWith("/indicators")) return [{ label: "Indicadores", icon: "analytics" }];
   if (pathname.startsWith("/results/")) return [{ label: "Exames", href: "/queues", icon: "layers" }, { label: "Resultado" }];
@@ -106,7 +108,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   const requiresPasswordChange = user?.mustChangePassword === true;
   const sessionLoading = loading || sessionPath !== pathname;
   const canUsePalette = Boolean(user && user.role !== "ADMIN" && !requiresPasswordChange && !sessionLoading);
-  const canCreatePatient = user?.role === "VETERINARIAN" || user?.role === "INPATIENT_TEAM";
+  const canCreatePatient = user?.role === "SUPERADMIN" || user?.role === "VETERINARIAN" || user?.role === "INPATIENT_TEAM";
   const canCreateRequest = canCreatePatient || user?.role === "MANAGER";
   const modalOpen = canUsePalette && (showPalette || showPatient);
 
@@ -121,7 +123,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
     syncHash();
     window.addEventListener("hashchange", syncHash);
     return () => window.removeEventListener("hashchange", syncHash);
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -244,7 +246,9 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   if (sessionLoading) return <ShellLoadingState />;
   if (!user) return null;
   const isTechnicalAdmin = user.role === "ADMIN";
+  const isSuperadmin = user.role === "SUPERADMIN";
   const isManager = user.role === "MANAGER";
+  const canAccessManagement = isManager || isSuperadmin;
   const canAccessClinicalOperations = !isTechnicalAdmin;
   const managementView = searchParams.get("view");
   const dept = searchParams.get("dept");
@@ -284,7 +288,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
       </header>
       <aside className="sidebar" inert={modalOpen} aria-label="Barra lateral">
         <div className="sidebar-head">
-          <span className="sidebar-title">{isTechnicalAdmin ? "Administração" : isManager ? "Operação" : "Diagnósticos"}</span>
+          <span className="sidebar-title">{isSuperadmin ? "Superadmin" : isTechnicalAdmin ? "Administração" : isManager ? "Operação" : "Diagnósticos"}</span>
           <button type="button" className="icon-button desktop-only" onClick={toggleCollapsed} aria-label={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"} title={collapsed ? "Expandir barra lateral" : "Recolher barra lateral"}><Icon name="sidebar" size={16} /></button>
         </div>
         {canCreateRequest && !requiresPasswordChange && <button type="button" className="sidebar-new" onClick={newRequest}><Icon name="add" size={15} /><span>Nova solicitação</span></button>}
@@ -300,22 +304,22 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
             {canAccessClinicalOperations && <div className="nav-group">
               <span className="nav-group-label">Workspace</span>
               <NavLink href="/queues" active={onQueues && !dept && !managementView} icon="layers">Todos os exames</NavLink>
-              {isManager && <NavLink href="/indicators" active={pathname.startsWith("/indicators")} icon="analytics">Indicadores</NavLink>}
+              {canAccessManagement && <NavLink href="/indicators" active={pathname.startsWith("/indicators")} icon="analytics">Indicadores</NavLink>}
             </div>}
-            {isManager && <div className="nav-group">
+            {canAccessManagement && <div className="nav-group">
               <span className="nav-group-label">Gestão</span>
               <NavLink href="/management" active={pathname === "/management" && !managementView} icon="overview">Painel gerencial</NavLink>
               <NavLink href="/management?view=requests" active={pathname === "/management" && managementView === "requests"} icon="requests">Solicitações</NavLink>
               <NavLink href="/management?view=pending" active={pathname === "/management" && managementView === "pending"} icon="attention">Pendências</NavLink>
               <NavLink href="/management?view=stats" active={pathname === "/management" && managementView === "stats"} icon="analytics">Estatísticas</NavLink>
-              <NavLink href="/admin#users" active={pathname.startsWith("/admin") && hash === "#users"} icon="users">Acessos</NavLink>
-              <NavLink href="/admin#catalog" active={pathname.startsWith("/admin") && hash === "#catalog"} icon="catalog">Catálogos</NavLink>
+              {!isSuperadmin && <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>}
+              {!isSuperadmin && <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>}
             </div>}
-            {isTechnicalAdmin && <div className="nav-group">
+            {(isTechnicalAdmin || isSuperadmin) && <div className="nav-group">
               <span className="nav-group-label">Workspace</span>
-              <NavLink href="/admin" active={pathname.startsWith("/admin") && !hash} icon="settings">Administração</NavLink>
-              <NavLink href="/admin#users" active={pathname.startsWith("/admin") && hash === "#users"} icon="users">Acessos</NavLink>
-              <NavLink href="/admin#catalog" active={pathname.startsWith("/admin") && hash === "#catalog"} icon="catalog">Catálogos</NavLink>
+              <NavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings">Administração</NavLink>
+              <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>
+              <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>
               <NavLink href="/system" active={pathname.startsWith("/system")} icon="activity">Sistema</NavLink>
             </div>}
             {sectors.length > 0 && <div className="nav-group">
@@ -351,7 +355,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
           {content}
         </div>
       </main>
-      {requiresPasswordChange ? <nav className={`mobile-nav ${styles.accountNav}`} aria-label="Navegação rápida"><MobileNavLink href="/account?password=required" active={pathname === "/account"} icon="account" label="Conta" /></nav> : <MobileNav inert={modalOpen || peekOpen} isTechnicalAdmin={isTechnicalAdmin} isManager={isManager} pathname={pathname} hash={hash} view={managementView} unread={unread} />}
+      {requiresPasswordChange ? <nav className={`mobile-nav ${styles.accountNav}`} aria-label="Navegação rápida"><MobileNavLink href="/account?password=required" active={pathname === "/account"} icon="account" label="Conta" /></nav> : <MobileNav inert={modalOpen || peekOpen} isTechnicalAdmin={isTechnicalAdmin} isSuperadmin={isSuperadmin} isManager={isManager} pathname={pathname} hash={hash} view={managementView} unread={unread} />}
       {canUsePalette && showPalette && <div inert={showPatient} aria-hidden={showPatient || undefined}><CommandPalette canCreatePatient={canCreatePatient} canCreateRequest={canCreateRequest} onClose={() => setShowPalette(false)} onNewPatient={() => setShowPatient(true)} onNewRequest={newRequest} onNavigate={(href) => { setShowPalette(false); router.push(href); }} /></div>}
       {canUsePalette && showPatient && canCreatePatient && <PatientDialog nested onClose={() => setShowPatient(false)} onCreated={() => { setShowPatient(false); setShowPalette(false); window.dispatchEvent(new Event("cvg:realtime-updated")); router.refresh(); }} />}
     </div>
@@ -395,13 +399,27 @@ function NavLink({ href, active, icon, children, badge, nested = false }: { href
   return <Link href={href} className={`nav-link${active ? " active" : ""}${nested ? " nav-link-nested" : ""}`} aria-label={label} title={label} aria-current={active ? "page" : undefined}><span className="nav-icon" aria-hidden="true"><Icon name={icon} size={nested ? 14 : 16} /></span><span className="nav-label">{children}</span>{badge ? <span className="nav-badge" aria-hidden="true">{badge > 99 ? "99+" : badge}</span> : null}</Link>;
 }
 
-function MobileNav({ inert, isTechnicalAdmin, isManager, pathname, hash, view, unread }: { inert: boolean; isTechnicalAdmin: boolean; isManager: boolean; pathname: string; hash: string; view: string | null; unread: number }) {
+function MobileNav({ inert, isTechnicalAdmin, isSuperadmin, isManager, pathname, hash, view, unread }: { inert: boolean; isTechnicalAdmin: boolean; isSuperadmin: boolean; isManager: boolean; pathname: string; hash: string; view: string | null; unread: number }) {
+  if (isSuperadmin) {
+    const adminFocus = pathname.startsWith("/system") ? { href: "/system", icon: "activity" as const, label: "Sistema" }
+      : pathname === "/admin/users" ? { href: "/admin/users", icon: "users" as const, label: "Acessos" }
+        : pathname === "/admin/catalog" ? { href: "/admin/catalog", icon: "catalog" as const, label: "Catálogo" }
+          : { href: "/admin", icon: "settings" as const, label: "Admin" };
+    return <nav className={`mobile-nav ${styles.adminNav}`} aria-label="Navegação rápida" inert={inert}>
+      <MobileNavLink href="/" active={pathname === "/"} icon="home" label="Início" />
+      <MobileNavLink href="/queues" active={pathname.startsWith("/queues")} icon="layers" label="Exames" />
+      <MobileNavLink href="/patients" active={pathname.startsWith("/patients")} icon="paw" label="Pacientes" />
+      <MobileNavLink href="/management" active={pathname === "/management" || pathname === "/indicators"} icon="analytics" label="Gestão" />
+      <MobileNavLink href={adminFocus.href} active={pathname.startsWith("/admin") || pathname.startsWith("/system")} icon={adminFocus.icon} label={adminFocus.label} />
+      <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
+    </nav>;
+  }
   if (isTechnicalAdmin) {
     return <nav className={`mobile-nav ${styles.adminNav}`} aria-label="Navegação rápida" inert={inert}>
       <MobileNavLink href="/" active={pathname === "/"} icon="home" label="Início" />
       <MobileNavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings" label="Admin" />
-      <MobileNavLink href="/admin#users" active={pathname === "/admin" && hash === "#users"} icon="users" label="Acessos" />
-      <MobileNavLink href="/admin#catalog" active={pathname === "/admin" && hash === "#catalog"} icon="catalog" label="Catálogo" />
+      <MobileNavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users" label="Acessos" />
+      <MobileNavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog" label="Catálogo" />
       <MobileNavLink href="/system" active={pathname.startsWith("/system")} icon="activity" label="Sistema" />
       <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
     </nav>;

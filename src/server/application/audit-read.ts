@@ -38,7 +38,7 @@ export function auditScopeForActor(state: StoreState, actor: User): AuditScope {
     return canViewRequest(state, actor, request) && auditEventItemIds(state, event).every((itemId) => canViewItem(state, actor, itemFor(state, itemId)));
   }).map(({ entity }) => entity);
 
-  if (actor.role === "ADMIN") return { entities, unresolved: { resolvedEntities: resolved.map(({ entity }) => entity) } };
+  if (actor.role === "ADMIN" || actor.role === "SUPERADMIN") return { entities, unresolved: { resolvedEntities: resolved.map(({ entity }) => entity) } };
   if (actor.role === "MANAGER") {
     const managementEntities = [
       ...state.users.map(({ id }) => ({ entityType: "User", entityId: id })),

@@ -60,7 +60,7 @@ function ClinicalHome({ user }: { user: SessionUser }) {
   const attention = useMemo(() => sortItems(active.filter((item) => item.overdue || item.priority !== "ROUTINE" || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.status === "RECOLLECTION_REQUIRED"), "priority").slice(0, 6), [active]);
   const results = useMemo(() => sortItems(items.filter((item) => item.status === "RESULT_AVAILABLE"), "recent").slice(0, 5), [items]);
   const recent = useMemo(() => sortItems(items, "recent").slice(0, 6), [items]);
-  const myScope = useMemo(() => isClinician ? items.filter((item) => item.requesterId === user.id && !isTerminal(item.status)) : active.filter((item) => item.departmentCode === user.departmentCode), [active, isClinician, items, user]);
+  const myScope = useMemo(() => user.role === "SUPERADMIN" ? active : isClinician ? items.filter((item) => item.requesterId === user.id && !isTerminal(item.status)) : active.filter((item) => item.departmentCode === user.departmentCode), [active, isClinician, items, user]);
 
   const quick: QuickCard[] = [
     { label: isClinician ? "Minhas solicitações" : "Na minha fila", value: myScope.length, hint: "ativos agora", href: "/queues?view=mine", icon: "user-check", tone: "accent" },
@@ -74,7 +74,7 @@ function ClinicalHome({ user }: { user: SessionUser }) {
   return <>
     <PageHeader crumbs={[{ label: "Início", icon: "home" }]} heading={false}>
       <Link href="/queues" className="header-button"><Icon name="layers" size={14} />Ver todos os exames</Link>
-      {["VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(user.role) && <Link href="/queues?create=request" className="button-primary-sm home-create"><Icon name="add" size={14} />Nova solicitação</Link>}
+      {["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(user.role) && <Link href="/queues?create=request" className="button-primary-sm home-create"><Icon name="add" size={14} />Nova solicitação</Link>}
     </PageHeader>
     <div className="home">
       <div className="home-greeting">

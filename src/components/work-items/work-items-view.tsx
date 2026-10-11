@@ -15,13 +15,13 @@ import { BoardLayout, CalendarLayout, ListLayout, SpreadsheetLayout } from "./la
 import { PeekOverview } from "./peek-overview";
 import { useWorkItems } from "./use-work-items";
 import {
-  DEFAULT_DISPLAY, DISPLAY_PROPERTY_LABELS, EMPTY_FILTERS, GROUP_BY_LABELS, LAYOUT_LABELS, ORDER_BY_LABELS, PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, activeFilterCount, applyFilters, departmentLabel, groupItems, isTerminal, sortItems,
+  CLINICAL_DEPARTMENTS, DEFAULT_DISPLAY, DISPLAY_PROPERTY_LABELS, EMPTY_FILTERS, GROUP_BY_LABELS, LAYOUT_LABELS, ORDER_BY_LABELS, PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, activeFilterCount, applyFilters, departmentLabel, groupItems, isTerminal, sortItems,
   type DisplayOptions, type Layout, type WorkItem, type WorkItemFilters
 } from "./model";
 
 const DISPLAY_STORAGE_KEY = "cvg.work-items.display.v1";
 const DIRECT_ACTIONS: WorkflowActionKind[] = ["START_PROCESSING", "START_PROCEDURE", "MARK_PERFORMED", "RELEASE_RESULT", "COMPLETE"];
-const CREATOR_ROLES = ["MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"];
+const CREATOR_ROLES = ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"];
 const layoutIcons: Record<Layout, IconName> = { list: "list", board: "board", calendar: "calendar", spreadsheet: "table" };
 
 type Preset = "overdue" | "results" | "done" | null;
@@ -119,7 +119,7 @@ export function WorkItemsView() {
   const scoped = useMemo(() => {
     if (!mine || !user) return items;
     if (["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(user.role)) return items.filter((item) => item.requesterId === user.id);
-    if (user.role === "MANAGER") return items.filter((item) => !isTerminal(item.status) && (item.overdue || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.priority !== "ROUTINE"));
+    if (user.role === "MANAGER" || user.role === "SUPERADMIN") return items.filter((item) => !isTerminal(item.status) && (item.overdue || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.priority !== "ROUTINE"));
     return items.filter((item) => item.departmentCode === user.departmentCode && !isTerminal(item.status));
   }, [items, mine, user]);
   const visible = useMemo(() => sortItems(applyFilters(scoped, filters), display.orderBy), [scoped, filters, display.orderBy]);
@@ -219,7 +219,7 @@ export function WorkItemsView() {
 
   // Inside a sector the sector pill is redundant, as in a Plane project.
   const effectiveDisplay = dept ? { ...display, properties: display.properties.filter((property) => property !== "department") } : display;
-  const layoutProps = { groups: display.layout === "board" ? boardGroups : listGroups, display: effectiveDisplay, role, peekId: peek?.id, busy: Boolean(busyId), canCreate, onPeek, onMove, onAction, onCreate: () => setShowCreate(true), quickAdd: { departments: role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : [], onCreated: () => { void reload(); } } };
+  const layoutProps = { groups: display.layout === "board" ? boardGroups : listGroups, display: effectiveDisplay, role, peekId: peek?.id, busy: Boolean(busyId), canCreate, onPeek, onMove, onAction, onCreate: () => setShowCreate(true), quickAdd: { departments: role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : [], onCreated: () => { void reload(); } } };
 
   return <div className={`work-items${peeked ? " has-peek" : ""}`}>
     <PageHeader crumbs={crumbs} count={loading ? undefined : visible.length}>
@@ -262,7 +262,7 @@ export function WorkItemsView() {
       {toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><Icon name={toast.tone === "success" ? "check" : "attention"} size={15} /><div><strong>{toast.title}</strong>{toast.message && <span>{toast.message}</span>}</div><button type="button" className="icon-button" onClick={() => setToasts((current) => current.filter((entry) => entry.id !== toast.id))} aria-label="Fechar aviso"><Icon name="close" size={12} /></button></div>)}
     </div>
 
-    {showCreate && canCreate && <QueueBoardRequestDialog departments={role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : []} canCreatePatient={["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); notify({ tone: "success", title: "Solicitação criada", message: "Os exames entraram em “Solicitado”." }); void reload(); router.refresh(); }} />}
+    {showCreate && canCreate && <QueueBoardRequestDialog departments={role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : []} canCreatePatient={["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); notify({ tone: "success", title: "Solicitação criada", message: "Os exames entraram em “Solicitado”." }); void reload(); router.refresh(); }} />}
   </div>;
 }
 

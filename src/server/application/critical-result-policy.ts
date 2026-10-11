@@ -185,8 +185,9 @@ export function nextCriticalRecipients(
  * manage, whatever their own department code. The on-call rule prefers the requesting department; when that
  * department has nobody on call at all, any professional on call in the hospital is the fallback (D-056),
  * so a sector without its own roster is never left without a human on the ladder.
- * ADMIN_FALLBACK names the technical role, which never opens a result: in the escalation job it is the
- * operational alert raised when nobody clinical can be reached, not a clinical recipient.
+ * SUPERADMIN manages every department and can receive a clinical fallback globally. The technical
+ * ADMIN remains a department fallback candidate for release-time resolution; the escalation job
+ * filters professionals who cannot open the result and alerts administrators operationally instead.
  */
 function candidatesForRule(rule: CriticalRecipientRule, context: CriticalRecipientContext): CriticalRecipientCandidate[] {
   const departmentCode = normalizedCode(context.departmentCode, "departmentCode");
@@ -199,9 +200,9 @@ function candidatesForRule(rule: CriticalRecipientRule, context: CriticalRecipie
     return departmentOnCall.length > 0 ? departmentOnCall : active.filter((candidate) => candidate.onCall === true);
   }
   if (rule === "DEPARTMENT_MANAGER") {
-    return active.filter((candidate) => candidate.role === "MANAGER" && (candidate.managedDepartmentCodes ?? [candidate.departmentCode]).some((code) => normalizedCode(code, "managedDepartmentCode") === departmentCode));
+    return active.filter((candidate) => candidate.role === "SUPERADMIN" || (candidate.role === "MANAGER" && (candidate.managedDepartmentCodes ?? [candidate.departmentCode]).some((code) => normalizedCode(code, "managedDepartmentCode") === departmentCode)));
   }
-  return inDepartment.filter((candidate) => candidate.role === "ADMIN");
+  return active.filter((candidate) => candidate.role === "SUPERADMIN" || (candidate.role === "ADMIN" && inDepartment.includes(candidate)));
 }
 
 export function planCriticalEscalation(

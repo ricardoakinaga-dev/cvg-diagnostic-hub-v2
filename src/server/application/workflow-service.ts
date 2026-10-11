@@ -101,13 +101,14 @@ const {
 } = helpers;
 
 // Local phase policy from STATE_MACHINES: receipt/start/report/failure require
-// a scoped manager. No technical administrator or executor grant is implied.
+// a scoped manager or global superadmin. Technical admins and executors keep
+// their existing phase restrictions.
 function requireCancellationPermission(state: StoreState, actor: User, item: DiagnosticItem): void {
   requireItemPermission(state, actor, "item.cancel", item);
   if (!["REQUESTED", "RECEIVED", "SCHEDULED", "IN_PROGRESS", "AWAITING_REPORT", "RECOLLECTION_REQUIRED", "FAILED"].includes(item.status)) {
     throw new ApiError("INVALID_STATE_TRANSITION", "Este item não pode ser cancelado nesta fase.", 409);
   }
-  if (["RECEIVED", "IN_PROGRESS", "AWAITING_REPORT", "FAILED"].includes(item.status) && actor.role !== "MANAGER") {
+  if (["RECEIVED", "IN_PROGRESS", "AWAITING_REPORT", "FAILED"].includes(item.status) && actor.role !== "MANAGER" && actor.role !== "SUPERADMIN") {
     throw new ApiError("FORBIDDEN", "O cancelamento nesta fase exige um gestor autorizado no setor executor.", 403);
   }
 }

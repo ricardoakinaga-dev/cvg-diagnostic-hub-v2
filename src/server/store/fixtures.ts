@@ -98,7 +98,8 @@ export function createDemoState(password?: string): StoreState {
       demoUser("user-rx", "rx@cvg.local", "Equipe Radiologia", "RADIOLOGY_TEAM", "RADIOLOGY", resolvedPassword ?? generatedDemoPassword(), [], ["XRAY_THORAX"]),
       demoUser("user-us", "us@cvg.local", "Equipe Ultrassom", "ULTRASOUND_TEAM", "ULTRASOUND", resolvedPassword ?? generatedDemoPassword(), [], ["ULTRASOUND_ABDOMEN"]),
       demoUser("user-manager", "manager@cvg.local", "Gestão Operacional", "MANAGER", "INPATIENT", resolvedPassword ?? generatedDemoPassword()),
-      demoUser("user-admin", "admin@cvg.local", "Administração Técnica", "ADMIN", "IT", resolvedPassword ?? generatedDemoPassword())
+      demoUser("user-admin", "admin@cvg.local", "Administração Técnica", "ADMIN", "IT", resolvedPassword ?? generatedDemoPassword()),
+      ...(process.env.DEMO_SUPERADMIN_ENABLED === "true" ? [demoUser("user-superadmin", "superadmin@cvg.local", "Superadmin", "SUPERADMIN", "IT", resolvedPassword ?? generatedDemoPassword())] : [])
     ],
     sessions: [],
     patients: [

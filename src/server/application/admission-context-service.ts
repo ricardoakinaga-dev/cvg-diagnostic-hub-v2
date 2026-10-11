@@ -168,7 +168,7 @@ export function createAdmissionContextService({ store }: ApplicationServiceConte
 
         if (input.action === "TRANSFER") {
           const departmentCode = normalizedDepartmentCode(input.departmentCode);
-          if (!managerCanAccessDepartment(currentActor, departmentCode)) {
+          if (currentActor.role !== "SUPERADMIN" && !managerCanAccessDepartment(currentActor, departmentCode)) {
             throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
           }
           const ward = requireText(input.ward, "ward", 100);

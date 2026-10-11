@@ -16,6 +16,15 @@ function session(current = user) {
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("work item loading", () => {
+  it("loads all clinical queues for SUPERADMIN independently of its technical department", async () => {
+    session({ ...user, role: "SUPERADMIN", departmentCode: "IT" });
+    vi.mocked(apiFetchWithMeta).mockImplementation(async (path) => ({ data: path.startsWith("/queues") ? [] : [request], meta: {} }) as never);
+    const { result } = renderHook(useWorkItems);
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.items).toHaveLength(1);
+    for (const code of ["LABORATORY", "RADIOLOGY", "ULTRASOUND"]) expect(apiFetchWithMeta).toHaveBeenCalledWith(`/queues/${code}/items?limit=100`);
+    expect(apiFetchWithMeta).not.toHaveBeenCalledWith("/queues/IT/items?limit=100");
+  });
   it("deduplicates a manager's department scope and isolates executor queues", () => {
     expect(workedDepartments({ ...user, role: "MANAGER", departmentCode: "LABORATORY", managedDepartmentCodes: ["LABORATORY", "RADIOLOGY"] })).toEqual(["LABORATORY", "RADIOLOGY"]);
     for (const role of ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"] as const) expect(workedDepartments({ ...user, role, departmentCode: "LABORATORY" })).toEqual(["LABORATORY"]);

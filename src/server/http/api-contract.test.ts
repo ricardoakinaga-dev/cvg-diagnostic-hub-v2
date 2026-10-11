@@ -332,11 +332,12 @@ describe("exact OpenAPI contract", () => {
     }
     for (const operationId of ["createUser", "updateUserRole", "deactivateUser"]) {
       const manifest = API_OPERATIONS.find((operation) => operation.operationId === operationId);
-      expect(manifest?.authorization.stepUpRequired, `${operationId} only requires step-up for ADMIN transitions`).toBe(false);
-      expect(manifest?.authorization.conditions.join(" ")).toMatch(/ADMIN.*reauthentication/);
+      expect(manifest?.authorization.stepUpRequired, `${operationId} requires conditional step-up for administrative transitions`).toBe(false);
+      expect(manifest?.authorization.conditions.join(" ")).toMatch(/ADMIN or SUPERADMIN.*reauthentication/);
+      expect(manifest?.authorization.conditions).toContain("only SUPERADMIN may manage SUPERADMIN users");
     }
     expect(API_OPERATIONS.find(({ operationId }) => operationId === "reauthenticate")?.authorization.stepUpRequired).toBe(false);
-    expect(API_OPERATIONS.find(({ operationId }) => operationId === "getManagementOverview")?.authorization.conditions).toContain("role must be MANAGER");
+    expect(API_OPERATIONS.find(({ operationId }) => operationId === "getManagementOverview")?.authorization.conditions).toContain("role must be MANAGER or SUPERADMIN");
 
     const userScopeConditions = {
       listUsers: "delegated MANAGER only sees operational-role targets in managed departments",

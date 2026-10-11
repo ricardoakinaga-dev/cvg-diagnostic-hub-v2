@@ -90,7 +90,7 @@ export function Dashboard() {
   if (!user && !error) return <DashboardSkeleton />;
   if (error) return <ErrorState page title="Identidade indisponível" message={error} onRetry={() => window.location.reload()} />;
   if (user?.role === "ADMIN") return <TechnicalAdminDashboard displayName={user.displayName} />;
-  if (user?.role === "MANAGER") return <ManagementDashboard />;
+  if (user?.role === "MANAGER" || user?.role === "SUPERADMIN") return <ManagementDashboard />;
   return <ClinicalDashboard displayName={user?.displayName ?? "Equipe"} role={user?.role} />;
 }
 
@@ -193,7 +193,7 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
       : statsResource.data
     : null;
   const services = servicesResource.data ?? [];
-  const canCreateClinicalRequest = role === undefined || role === "VETERINARIAN" || role === "INPATIENT_TEAM";
+  const canCreateClinicalRequest = role === undefined || role === "SUPERADMIN" || role === "VETERINARIAN" || role === "INPATIENT_TEAM";
   const userName = displayName.split(" ")[1] ?? displayName;
   const activeRequests = useMemo(() => (requestsResource.data ?? []).filter((request) => !["COMPLETED", "CANCELLED"].includes(request.aggregateStatus)), [requestsResource.data]);
   const initialLoading = [requestsResource, statsResource, notificationsResource, servicesResource].every((resource) => resource.status === "loading" && resource.data === null);

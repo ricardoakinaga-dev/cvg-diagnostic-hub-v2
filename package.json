@@ -35,6 +35,7 @@
     "db:seed": "tsx scripts/seed.ts",
     "db:demo": "tsx scripts/demo-workload.ts",
     "db:bootstrap": "tsx scripts/bootstrap-admin.ts",
+    "db:bootstrap:superadmin": "tsx scripts/bootstrap-superadmin.ts",
     "db:reset-link": "tsx scripts/password-reset-link.ts",
     "db:smoke": "tsx scripts/db-smoke.ts",
     "db:relational-backfill": "tsx scripts/relational-backfill.ts",

@@ -226,7 +226,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
   }, [load]);
   useEffect(() => {
     void apiFetch<SessionResponse>("/session/me")
-      .then((session) => setCanManageEncounters(["VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session?.user?.role)))
+      .then((session) => setCanManageEncounters(["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session?.user?.role)))
       .catch(() => setCanManageEncounters(false));
   }, []);
   useEffect(() => {

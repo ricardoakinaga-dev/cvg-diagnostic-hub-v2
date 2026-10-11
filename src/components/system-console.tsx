@@ -7,6 +7,7 @@ import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { useConfirm } from "./confirm-dialog";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
+import { ReauthDialog } from "./admin-users";
 
 export function SystemConsole() {
   const [sessions, setSessions] = useState<ManagedSession[]>([]);
@@ -25,7 +26,7 @@ export function SystemConsole() {
     try {
       const identity = await apiFetch<SessionResponse>("/session/me");
       if (version !== generation.current) return;
-      if (identity.user.role !== "ADMIN") { setDenied(true); return; }
+      if (!["ADMIN", "SUPERADMIN"].includes(identity.user.role)) { setDenied(true); return; }
       const results = await Promise.allSettled([
         apiFetch<ManagedSession[]>("/sessions"), apiFetch<DeadLetterMessage[]>("/outbox/dead-letters"), apiFetch<AuditEvent[]>("/audit-events?limit=20"), apiFetch<CriticalReadiness>("/critical-results/readiness")
       ]);
@@ -50,7 +51,7 @@ export function SystemConsole() {
   }, [load]);
   if (loading) return <LoadingState label="Carregando sistema" />;
   return <div className="admin-page"><div className="page-heading"><div><h1>Sistema</h1><p className="page-lede">Sessões, mensagens retidas e auditoria.</p></div><ActionButton tone="ghost" onClick={() => void load()}>Atualizar</ActionButton></div>
-    {denied ? <ErrorState title="Sistema restrito à administração técnica" message="Somente o perfil ADMIN pode acessar esta área." onRetry={load} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : <>
+    {denied ? <ErrorState title="Sistema restrito à administração técnica" message="Somente o perfil ADMIN ou SUPERADMIN pode acessar esta área." onRetry={load} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : <>
       {error && <ErrorState title="Sistema indisponível" message={error} onRetry={load} />}
       {allowed && <>
         <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><h2>Dispositivos e acessos ativos</h2><span>{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="As sessões aparecerão aqui." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={session.id} session={session} onSaved={load} />)}</div>}</section>
@@ -82,17 +83,25 @@ function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSa
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
+  const [authorize, setAuthorize] = useState<(() => Promise<void>) | null>(null);
+  async function performRevoke(propagateFailure = false) {
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(true); setError("");
+    try { await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({}) }); await onSaved(); }
+    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão.")); if (propagateFailure) throw cause; }
+    finally { submitting.current = false; setBusy(false); }
+  }
   async function revoke() {
-    if (submitting.current || session.current || session.status !== "ACTIVE") return;
+    if (submitting.current || authorize || session.current || session.status !== "ACTIVE") return;
     submitting.current = true;
     const confirmed = await confirm({ title: "Revogar sessão", message: `Revogar a sessão de ${session.userEmail}?`, confirmLabel: "Revogar", tone: "danger" });
     if (!confirmed) { submitting.current = false; return; }
-    setBusy(true); setError("");
-    try { await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({}) }); await onSaved(); }
-    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão.")); }
-    finally { submitting.current = false; setBusy(false); }
+    submitting.current = false;
+    if (session.userRole === "SUPERADMIN") setAuthorize(() => () => performRevoke(true));
+    else await performRevoke();
   }
-  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}</>;
+  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}{authorize && <ReauthDialog privilegedRole="SUPERADMIN" onClose={() => setAuthorize(null)} onConfirmed={authorize} />}</>;
 }
 
 function DeadLetterRow({ message, onSaved }: { message: DeadLetterMessage; onSaved: () => Promise<void> }) {

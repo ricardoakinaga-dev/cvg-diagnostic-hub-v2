@@ -46,7 +46,7 @@ const expectedSampleVersion = { ...expectedVersion, description: "Versão da amo
 const accessionCodeSchema = { type: "string", minLength: 3, maxLength: 40, pattern: "^[A-Z0-9][A-Z0-9-]{2,39}$" };
 const passwordPattern = "^(?=.*[A-Za-z])(?=.*[0-9]).+$";
 const supportedAttachmentMediaTypes = ["application/pdf", "image/jpeg", "image/png"];
-const roleCodes = ["ADMIN", "MANAGER", "VETERINARIAN", "INPATIENT_TEAM", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"];
+const roleCodes = ["SUPERADMIN", "ADMIN", "MANAGER", "VETERINARIAN", "INPATIENT_TEAM", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"];
 const itemStates = ["REQUESTED", "RECEIVED", "IN_PROGRESS", "SCHEDULED", "AWAITING_REPORT", "RESULT_AVAILABLE", "REVIEWED", "COMPLETED", "CANCELLED", "REJECTED", "RECOLLECTION_REQUIRED", "FAILED", "RESULT_VOIDED"];
 
 const strictObject = (properties, required = []) => ({

@@ -103,6 +103,23 @@ const {
 
 const EXECUTOR_ROLES: readonly RoleCode[] = ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"];
 
+function isAdministrativeRole(role: RoleCode): boolean {
+  return role === "ADMIN" || role === "SUPERADMIN";
+}
+
+/** Both checks run under the same user-management transaction as the change. */
+function assertAdministrativeAccessRetained(state: StoreState, target: User, nextRole: RoleCode, nextActive: User["active"]): void {
+  if (!target.active) return;
+  if (target.role === "SUPERADMIN" && (nextRole !== "SUPERADMIN" || !nextActive)
+    && !state.users.some((user) => user.id !== target.id && user.active && user.role === "SUPERADMIN")) {
+    throw new ApiError("CONFLICT", "O último superadministrador ativo não pode perder seu acesso.", 409);
+  }
+  if (isAdministrativeRole(target.role) && (!isAdministrativeRole(nextRole) || !nextActive)
+    && !state.users.some((user) => user.id !== target.id && user.active && isAdministrativeRole(user.role))) {
+    throw new ApiError("CONFLICT", "O último administrador ativo não pode perder o acesso administrativo.", 409);
+  }
+}
+
 function activeServiceCodes(state: StoreState, departmentCode: string): string[] {
   return state.services.filter((service) => service.active && service.departmentCode === departmentCode).map((service) => service.code);
 }
@@ -160,7 +177,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       requirePermission(currentActor, "user_role.manage", {});
-      if (currentActor.role !== "ADMIN") throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
+      if (!isAdministrativeRole(currentActor.role)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
       return state.sessions
         .map((session) => ({ session, user: findById(state.users, session.userId) }))
         .filter((entry): entry is { session: typeof state.sessions[number]; user: User } => Boolean(entry.user && canManageUserTarget(currentActor, entry.user.role, entry.user.departmentCode)))
@@ -174,10 +191,11 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
         requirePermission(currentActor, "user_role.manage", {});
-        if (currentActor.role !== "ADMIN") throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
+        if (!isAdministrativeRole(currentActor.role)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
         const targetSession = findOrThrow(findById(originalState.sessions, sessionId));
         const targetUser = findOrThrow(findById(originalState.users, targetSession.userId));
         if (!canManageUserTarget(currentActor, targetUser.role, targetUser.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a esta sessão.", 404);
+        if (targetUser.role === "SUPERADMIN") requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedSession>(originalState, currentActor.id, scope, input.idempotencyKey, { sessionId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (targetSession.id === currentActor.sessionId) throw new ApiError("VALIDATION_ERROR", "A sessão atual deve ser encerrada pelo fluxo de logout.", 400);
@@ -212,7 +230,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         }
         const adminAccessChanged = (target.role === "ADMIN" || input.role === "ADMIN")
           && (target.role !== input.role || target.active !== (input.active ?? target.active));
-        if (adminAccessChanged) requireRecentReauthentication(currentActor);
+        if (adminAccessChanged || target.role === "SUPERADMIN" || input.role === "SUPERADMIN") requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
@@ -221,9 +239,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           : undefined;
         if (input.role !== "MANAGER" && input.managedDepartmentCodes?.length) throw new ApiError("VALIDATION_ERROR", "Somente MANAGER pode ter setores delegados.", 400);
         const nextActive = input.active ?? target.active;
-        if (target.role === "ADMIN" && target.active && (input.role !== "ADMIN" || !nextActive) && originalState.users.filter((user) => user.active && user.role === "ADMIN" && user.id !== target.id).length === 0) {
-          throw new ApiError("CONFLICT", "O último administrador ativo não pode perder o acesso administrativo.", 409);
-        }
+        assertAdministrativeAccessRetained(originalState, target, input.role, nextActive);
         const serviceCodes = assignedServices(originalState, input.role, departmentCode, input.serviceCodes ?? (isExecutorRole({ ...target, role: input.role }) && target.departmentCode === departmentCode ? target.serviceCodes : undefined));
         const pending = withoutPendingReset(target);
         const updated: User = { ...pending.user, role: input.role, departmentCode, managedDepartmentCodes, serviceCodes, active: nextActive, ...(target.onCall && !nextActive ? { onCall: false } : {}), version: target.version + 1 };
@@ -249,6 +265,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para alterar o plantão.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
+        if (target.role === "SUPERADMIN") requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
@@ -276,7 +293,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const departmentCode = requireText(input.departmentCode ?? currentActor.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
         if (!canManageUserTarget(currentActor, input.role, departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não pode provisionar este tipo de colaborador neste setor.", 404);
-        if (input.role === "ADMIN") requireRecentReauthentication(currentActor);
+        if (isAdministrativeRole(input.role)) requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const email = normalizedEmail(input.email);
@@ -324,13 +341,11 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A própria sessão não pode ser desativada.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
-        if (target.role === "ADMIN" && target.active) requireRecentReauthentication(currentActor);
+        if (target.role === "SUPERADMIN" || (target.role === "ADMIN" && target.active)) requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
-        if (target.role === "ADMIN" && target.active && originalState.users.filter((user) => user.active && user.role === "ADMIN" && user.id !== target.id).length === 0) {
-          throw new ApiError("CONFLICT", "O último administrador ativo não pode ser desativado.", 409);
-        }
+        assertAdministrativeAccessRetained(originalState, target, target.role, false);
         // Nobody stays on call (PROD-402) after losing access.
         const pending = withoutPendingReset(target);
         const updated: User = { ...pending.user, active: false, ...(target.onCall ? { onCall: false } : {}), version: target.version + 1 };
@@ -355,8 +370,8 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A recuperação da própria conta deve ser feita por outro administrador.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
-        // Replacing an ADMIN credential grants control of an administrative account.
-        if (target.role === "ADMIN") requireRecentReauthentication(currentActor);
+        // Replacing an administrative credential grants control of that account.
+        if (isAdministrativeRole(target.role)) requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para gerar uma nova senha.", 400);
@@ -392,7 +407,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
         // A reset link takes over the account exactly like a regenerated password does.
-        if (target.role === "ADMIN") requireRecentReauthentication(currentActor);
+        if (isAdministrativeRole(target.role)) requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<{ user: ManagedUser; expiresAt: string }>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para gerar o link de redefinição.", 400);

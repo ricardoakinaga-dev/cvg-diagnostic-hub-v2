@@ -38,6 +38,28 @@ async function answerConfirm(name: string) {
 }
 
 describe("SystemConsole", () => {
+  it("opens technical system controls for SUPERADMIN", async () => {
+    const mock = mockApi("SUPERADMIN"); render(<SystemConsole />);
+    expect(await screen.findByRole("button", { name: "Revogar sessão" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Reprocessar" })).toBeInTheDocument();
+    expect(mock).toHaveBeenCalledWith("/audit-events?limit=20");
+  });
+
+  it("requires step-up before revoking another Superadmin session", async () => {
+    const mock = mockApi("SUPERADMIN", (path) => {
+      if (path === "/sessions") return [{ ...session, userRole: "SUPERADMIN" }];
+      if (path === "/session/reauth") return { user: { role: "SUPERADMIN" } };
+    });
+    render(<SystemConsole />);
+    fireEvent.click(await screen.findByRole("button", { name: "Revogar sessão" }));
+    await answerConfirm("Revogar");
+    const dialog = await screen.findByRole("dialog", { name: "Confirmar alteração de SUPERADMIN" });
+    expect(mock.mock.calls.some(([path]) => path === "/sessions/session-vet/revoke")).toBe(false);
+    fireEvent.change(within(dialog).getByLabelText("Senha para reautenticar"), { target: { value: "SyntheticCurrent123" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar" }));
+    await waitFor(() => expect(mock).toHaveBeenCalledWith("/sessions/session-vet/revoke", { method: "POST", body: "{}" }));
+    expect(mock.mock.calls.filter(([, init]) => init?.method === "POST").map(([path]) => path)).toEqual(["/session/reauth", "/sessions/session-vet/revoke"]);
+  });
   afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
   it.each(["MANAGER", "VETERINARIAN", "VET", "VIEWER"])("denies %s before fetching technical data", async (role) => {

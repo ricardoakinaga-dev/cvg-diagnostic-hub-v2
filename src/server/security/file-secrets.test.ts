@@ -42,6 +42,14 @@ describe("file secrets (PROD-302)", () => {
     expect(env.SESSION_SECRET).toBe("same");
   });
 
+  it("loads the one-time superadmin credential from a private file and rejects conflicting sources", () => {
+    files.set("/run/secrets/superadmin", "private-temporary-secret\n");
+    const env: Record<string, string | undefined> = { BOOTSTRAP_SUPERADMIN_PASSWORD_FILE: "/run/secrets/superadmin" };
+    expect(loadFileSecrets(env, { readFile }).loaded).toEqual(["BOOTSTRAP_SUPERADMIN_PASSWORD"]);
+    expect(env.BOOTSTRAP_SUPERADMIN_PASSWORD).toBe("private-temporary-secret");
+    expect(() => loadFileSecrets({ ...env, BOOTSTRAP_SUPERADMIN_PASSWORD: "different" }, { readFile })).toThrow("SECRET_CONFLICT:BOOTSTRAP_SUPERADMIN_PASSWORD");
+  });
+
   it("refuses a missing or unreadable file instead of starting without the secret", () => {
     const env: Record<string, string | undefined> = { POSTGRES_RUNTIME_PASSWORD_FILE: "/run/secrets/absent" };
     expect(() => loadFileSecrets(env, { readFile })).toThrow(/SECRET_FILE_UNREADABLE:POSTGRES_RUNTIME_PASSWORD/);

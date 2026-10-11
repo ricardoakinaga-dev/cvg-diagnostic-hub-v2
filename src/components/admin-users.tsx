@@ -8,6 +8,7 @@ import { useConfirm } from "./confirm-dialog";
 import { useDialogFocus } from "./use-dialog-focus";
 
 export const roleLabels: Record<RoleCode, string> = {
+  SUPERADMIN: "Superadmin",
   ADMIN: "Administração técnica", MANAGER: "Gestão operacional", VETERINARIAN: "Veterinária",
   INPATIENT_TEAM: "Equipe de internação", LAB_TECH: "Técnica de laboratório",
   RADIOLOGY_TEAM: "Equipe de radiologia", ULTRASOUND_TEAM: "Equipe de ultrassom", VIEWER: "Visualização operacional"
@@ -21,8 +22,8 @@ function managedCodes(value: string): string[] {
   return [...new Set(value.split(",").map((code) => code.trim().toUpperCase()).filter(Boolean))];
 }
 
-function ProfileField({ value, technical, onChange }: { value: RoleCode; technical: boolean; onChange: (role: RoleCode) => void }) {
-  const options = technical ? ROLES : ROLES.filter((role) => role !== "ADMIN" && role !== "MANAGER");
+function ProfileField({ value, technical, superadmin = false, onChange }: { value: RoleCode; technical: boolean; superadmin?: boolean; onChange: (role: RoleCode) => void }) {
+  const options = ROLES.filter((role) => (role !== "SUPERADMIN" || superadmin) && (technical || (role !== "ADMIN" && role !== "MANAGER")));
   return <label>Perfil<select value={value} onChange={(event) => onChange(event.target.value as RoleCode)}>{options.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>;
 }
 
@@ -37,7 +38,7 @@ function ServiceAssignments({ services, departmentCode, selected, onChange }: { 
   return <details className="admin-create"><summary>Exames autorizados{selected.length ? ` (${selected.length})` : " (todos do setor)"}</summary><fieldset className="admin-create-form"><legend>Exames que o colaborador pode executar</legend><p className="field-hint">Sem marcar nada, o colaborador recebe todos os exames ativos do setor. Marque só para restringir.</p>{available.map((service) => <label className="admin-check" key={service.id}><input type="checkbox" checked={selected.includes(service.code)} onChange={(event) => onChange(event.target.checked ? [...new Set([...selected, service.code])] : selected.filter((code) => code !== service.code))} />{service.name}</label>)}{available.length === 0 && <p>Nenhum exame configurado neste setor. Defina o setor na linha do colaborador para atribuir os exames.</p>}</fieldset></details>;
 }
 
-function ReauthDialog({ onClose, onConfirmed, recovering = false }: { onClose: () => void; onConfirmed: () => Promise<void>; recovering?: boolean }) {
+export function ReauthDialog({ onClose, onConfirmed, recovering = false, privilegedRole = "ADMIN" }: { onClose: () => void; onConfirmed: () => Promise<void>; recovering?: boolean; privilegedRole?: "ADMIN" | "SUPERADMIN" }) {
   const id = useId();
   const dialogRef = useRef<HTMLElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -60,7 +61,7 @@ function ReauthDialog({ onClose, onConfirmed, recovering = false }: { onClose: (
     } catch (cause) { setError(getSafeErrorMessage(cause, authenticated ? "Não foi possível salvar a alteração." : "Não foi possível confirmar sua senha.")); }
     finally { submitting.current = false; setBusy(false); }
   }
-  return <div className="dialog-backdrop"><section ref={dialogRef} className="dialog" role="dialog" aria-modal="true" aria-labelledby={id}><h2 id={id}>{recovering ? "Confirmar recuperação de ADMIN" : "Confirmar alteração de ADMIN"}</h2><p>{recovering ? "Confirme sua senha para recuperar o acesso desta conta de administração técnica." : "Confirme sua senha para conceder ou remover acesso de administração técnica."}</p><form onSubmit={(event) => void submit(event)}><label>Senha para reautenticar<input ref={passwordRef} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="dialog-actions"><button type="button" className="button button-ghost" disabled={busy} onClick={close}>Cancelar</button><ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!password}>Confirmar</ActionButton></div></form></section></div>;
+  return <div className="dialog-backdrop"><section ref={dialogRef} className="dialog" role="dialog" aria-modal="true" aria-labelledby={id}><h2 id={id}>{recovering ? `Confirmar recuperação de ${privilegedRole}` : `Confirmar alteração de ${privilegedRole}`}</h2><p>{recovering ? "Confirme sua senha para recuperar o acesso desta conta administrativa." : "Confirme sua senha para alterar este acesso administrativo."}</p><form onSubmit={(event) => void submit(event)}><label>Senha para reautenticar<input ref={passwordRef} type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" maxLength={200} required /></label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="dialog-actions"><button type="button" className="button button-ghost" disabled={busy} onClick={close}>Cancelar</button><ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!password}>Confirmar</ActionButton></div></form></section></div>;
 }
 
 function InitialPasswordDialog({ password, onClose, regenerated = false, returnFocusRef }: { password: string; onClose: () => void; regenerated?: boolean; returnFocusRef?: RefObject<HTMLElement | null> }) {
@@ -105,7 +106,8 @@ export function UserCreateForm({ creator, onCreated, services = [] }: { creator:
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
-  const technical = creator.role === "ADMIN";
+  const superadmin = creator.role === "SUPERADMIN";
+  const technical = creator.role === "ADMIN" || superadmin;
   async function create(payload: object, propagateFailure = false) {
     if (submitting.current) return;
     submitting.current = true; setBusy(true); setError("");
@@ -122,15 +124,15 @@ export function UserCreateForm({ creator, onCreated, services = [] }: { creator:
     event.preventDefault();
     if (busy || authorize || initialPassword) return;
     const payload = { serviceCodes: executor(role) && serviceCodes.length ? serviceCodes : undefined, displayName: displayName.trim(), email: email.trim(), role, departmentCode: creator.departmentCode, managedDepartmentCodes: technical && role === "MANAGER" ? managedCodes(managed) : undefined };
-    if (role === "ADMIN") setAuthorize(() => () => create(payload, true));
+    if (role === "ADMIN" || role === "SUPERADMIN") setAuthorize(() => () => create(payload, true));
     else void create(payload);
   }
-  return <><form className="admin-create-form" aria-label="Adicionar colaborador" onSubmit={save}><label>Nome completo<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={160} required /></label><label>E-mail institucional<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={320} required /></label><ProfileField value={role} technical={technical} onChange={setRole} />{technical && role === "MANAGER" && <ManagedDepartments value={managed} onChange={setManaged} />}{executor(role) && <ServiceAssignments services={services} departmentCode={creator.departmentCode} selected={serviceCodes} onChange={setServiceCodes} />}{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!!initialPassword || !!authorize}>Criar acesso</ActionButton></form>{authorize && <ReauthDialog onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} onClose={() => setInitialPassword(null)} />}</>;
+  return <><form className="admin-create-form" aria-label="Adicionar colaborador" onSubmit={save}><label>Nome completo<input value={displayName} onChange={(event) => setDisplayName(event.target.value)} minLength={2} maxLength={160} required /></label><label>E-mail institucional<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} maxLength={320} required /></label><ProfileField value={role} technical={technical} superadmin={superadmin} onChange={setRole} />{technical && role === "MANAGER" && <ManagedDepartments value={managed} onChange={setManaged} />}{executor(role) && <ServiceAssignments services={services} departmentCode={creator.departmentCode} selected={serviceCodes} onChange={setServiceCodes} />}{error && <p className="form-alert" role="alert">{error}</p>}<ActionButton type="submit" state={busy ? "pending" : "idle"} disabled={!!initialPassword || !!authorize}>Criar acesso</ActionButton></form>{authorize && <ReauthDialog privilegedRole={role === "SUPERADMIN" ? "SUPERADMIN" : "ADMIN"} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} onClose={() => setInitialPassword(null)} />}</>;
 }
 
 interface AccessDraft { role: RoleCode; departmentCode: string; active: boolean; managed: string; serviceCodes: string[] }
 
-export function UserRow({ user, technical, viewerId, onChanged, services = [], departmentCodes = [] }: { user: ManagedUser; technical: boolean; viewerId: string; onChanged: (user: ManagedUser) => void; services?: DiagnosticService[]; departmentCodes?: string[] }) {
+export function UserRow({ user, technical, superadmin = false, viewerId, onChanged, services = [], departmentCodes = [] }: { user: ManagedUser; technical: boolean; superadmin?: boolean; viewerId: string; onChanged: (user: ManagedUser) => void; services?: DiagnosticService[]; departmentCodes?: string[] }) {
   const [draft, setDraft] = useState<AccessDraft | null>(null);
   const fields = draft ?? { role: user.role, departmentCode: user.departmentCode, active: user.active, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [] };
   const departments = [...new Set([...Object.keys(departmentLabels), ...departmentCodes, ...services.map((service) => service.departmentCode), ...(user.managedDepartmentCodes ?? []), user.departmentCode, fields.departmentCode].filter(Boolean))];
@@ -160,12 +162,12 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     finally { submitting.current = false; setBusy(false); }
   }
   /** PROD-402: the ON_CALL escalation rule picks whoever is marked here, within the department. */
-  async function toggleOnCall() {
-    if (submitting.current || busy || authorize || initialPassword) return;
+  async function toggleOnCall(propagateFailure = false) {
+    if (submitting.current || busy || (authorize && !propagateFailure) || initialPassword) return;
     submitting.current = true; setBusy(true); setError("");
     try {
       onChanged(await apiFetch<ManagedUser>(`/users/${user.id}/on-call`, { method: "PUT", body: JSON.stringify({ onCall: !user.onCall, expectedVersion: user.version }) }));
-    } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível alterar o plantão.")); }
+    } catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível alterar o plantão.")); if (propagateFailure) throw cause; }
     finally { submitting.current = false; setBusy(false); }
   }
   async function regenerate(propagateFailure = false) {
@@ -210,7 +212,7 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     } finally { confirming.current = false; }
     if (!confirmed) return;
     setRecovering(true);
-    if (user.role === "ADMIN") setAuthorize(() => () => issueLink(true));
+    if (user.role === "ADMIN" || user.role === "SUPERADMIN") setAuthorize(() => () => issueLink(true));
     else void issueLink();
   }
   async function requestPassword(event: MouseEvent<HTMLButtonElement>) {
@@ -228,15 +230,22 @@ export function UserRow({ user, technical, viewerId, onChanged, services = [], d
     } finally { confirming.current = false; }
     if (!confirmed) return;
     setRecovering(true);
-    if (user.role === "ADMIN") setAuthorize(() => () => regenerate(true));
+    if (user.role === "ADMIN" || user.role === "SUPERADMIN") setAuthorize(() => () => regenerate(true));
     else void regenerate();
   }
   function request(deactivate: boolean, values: AccessDraft) {
     if (busy || locked) return;
     setRecovering(false);
-    const adminChange = deactivate ? user.active && user.role === "ADMIN" : (user.role === "ADMIN") !== (values.role === "ADMIN") || (user.role === "ADMIN" && user.active !== values.active);
+    const adminChange = user.role === "SUPERADMIN" || values.role === "SUPERADMIN" || (deactivate ? user.active && user.role === "ADMIN" : (user.role === "ADMIN") !== (values.role === "ADMIN") || (user.role === "ADMIN" && user.active !== values.active));
     if (adminChange) setAuthorize(() => () => mutate(deactivate, values, true));
     else void mutate(deactivate, values);
   }
-  return <><form className="admin-row" aria-label={`Acesso de ${user.email}`} onSubmit={(event) => { event.preventDefault(); request(false, fields); }}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={user.active ? "text-success" : "text-danger"}>{user.active ? "Ativo" : "Desativado"}</span></div><small>{user.email}</small><div className="admin-row-flags">{user.onCall && <span className="pill">No plantão</span>}<span className={user.alertContactReady ? "pill" : "pill pill-muted"} title="O número só pode ser cadastrado pelo próprio colaborador, em Minha conta.">{user.alertContactReady ? "WhatsApp cadastrado" : "Sem WhatsApp"}</span></div><div className="admin-role-grid"><ProfileField value={fields.role} technical={technical} onChange={(value) => set("role", value)} /><label>Setor<select value={fields.departmentCode} onChange={(event) => set("departmentCode", event.target.value)} required>{departments.map((code) => <option key={code} value={code}>{departmentLabels[code] ?? code}</option>)}</select></label></div>{technical && fields.role === "MANAGER" && <ManagedDepartments value={fields.managed} onChange={(value) => set("managed", value)} />}{executor(fields.role) && <ServiceAssignments services={services} departmentCode={fields.departmentCode} selected={fields.serviceCodes} onChange={(value) => set("serviceCodes", value)} />}<label className="admin-check"><input type="checkbox" checked={fields.active} onChange={(event) => set("active", event.target.checked)} /> Acesso operacional ativo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={locked} aria-label={`Salvar ${user.email}`}>Salvar</ActionButton>{user.active && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={() => request(true, fields)} aria-label="Desativar acesso">Desativar</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={requestPassword}>Gerar nova senha</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={requestLink}>Gerar link de redefinição</ActionButton>}{(user.active || user.onCall) && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} aria-pressed={user.onCall === true} onClick={() => void toggleOnCall()}>{user.onCall ? "Tirar do plantão" : "Colocar no plantão"}</ActionButton>}</div>{undo && !user.active && <p role="status">Acesso desativado. <button type="button" className="button button-ghost" disabled={busy || !!authorize} onClick={() => request(false, { role: user.role, departmentCode: user.departmentCode, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [], active: true })}>Desfazer</button></p>}</form>{authorize && <ReauthDialog recovering={recovering} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} regenerated returnFocusRef={passwordOpenerRef} onClose={() => setInitialPassword(null)} />}{resetLink && <ResetLinkDialog link={resetLink} returnFocusRef={passwordOpenerRef} onClose={() => setResetLink(null)} />}{confirmDialog}</>;
+  function requestOnCall() {
+    if (busy || locked) return;
+    setRecovering(false);
+    if (user.role === "SUPERADMIN") setAuthorize(() => () => toggleOnCall(true));
+    else void toggleOnCall();
+  }
+  if (user.role === "SUPERADMIN" && !superadmin) return <div className="admin-row"><strong>{user.displayName}</strong><small>{user.email} · Superadmin</small><p className="field-hint">Este acesso só pode ser gerenciado por outro Superadmin.</p></div>;
+  return <><form className="admin-row" aria-label={`Acesso de ${user.email}`} onSubmit={(event) => { event.preventDefault(); request(false, fields); }}><div className="admin-row-heading"><strong>{user.displayName}</strong><span className={user.active ? "text-success" : "text-danger"}>{user.active ? "Ativo" : "Desativado"}</span></div><small>{user.email}</small><div className="admin-row-flags">{user.onCall && <span className="pill">No plantão</span>}<span className={user.alertContactReady ? "pill" : "pill pill-muted"} title="O número só pode ser cadastrado pelo próprio colaborador, em Minha conta.">{user.alertContactReady ? "WhatsApp cadastrado" : "Sem WhatsApp"}</span></div><div className="admin-role-grid"><ProfileField value={fields.role} technical={technical} superadmin={superadmin} onChange={(value) => set("role", value)} /><label>Setor<select value={fields.departmentCode} onChange={(event) => set("departmentCode", event.target.value)} required>{departments.map((code) => <option key={code} value={code}>{departmentLabels[code] ?? code}</option>)}</select></label></div>{technical && fields.role === "MANAGER" && <ManagedDepartments value={fields.managed} onChange={(value) => set("managed", value)} />}{executor(fields.role) && <ServiceAssignments services={services} departmentCode={fields.departmentCode} selected={fields.serviceCodes} onChange={(value) => set("serviceCodes", value)} />}<label className="admin-check"><input type="checkbox" checked={fields.active} onChange={(event) => set("active", event.target.checked)} /> Acesso operacional ativo</label>{error && <p className="form-alert" role="alert">{error}</p>}<div className="admin-action-row"><ActionButton tone="ghost" type="submit" state={busy ? "pending" : "idle"} disabled={locked} aria-label={`Salvar ${user.email}`}>Salvar</ActionButton>{user.active && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={() => request(true, fields)} aria-label="Desativar acesso">Desativar</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={requestPassword}>Gerar nova senha</ActionButton>}{user.active && user.id !== viewerId && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} onClick={requestLink}>Gerar link de redefinição</ActionButton>}{(user.active || user.onCall) && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} disabled={locked} aria-pressed={user.onCall === true} onClick={requestOnCall}>{user.onCall ? "Tirar do plantão" : "Colocar no plantão"}</ActionButton>}</div>{undo && !user.active && <p role="status">Acesso desativado. <button type="button" className="button button-ghost" disabled={busy || !!authorize} onClick={() => request(false, { role: user.role, departmentCode: user.departmentCode, managed: user.managedDepartmentCodes?.join(", ") ?? "", serviceCodes: user.serviceCodes ?? [], active: true })}>Desfazer</button></p>}</form>{authorize && <ReauthDialog recovering={recovering} privilegedRole={user.role === "SUPERADMIN" || fields.role === "SUPERADMIN" ? "SUPERADMIN" : "ADMIN"} onClose={() => setAuthorize(null)} onConfirmed={authorize} />}{initialPassword && <InitialPasswordDialog password={initialPassword} regenerated returnFocusRef={passwordOpenerRef} onClose={() => setInitialPassword(null)} />}{resetLink && <ResetLinkDialog link={resetLink} returnFocusRef={passwordOpenerRef} onClose={() => setResetLink(null)} />}{confirmDialog}</>;
 }

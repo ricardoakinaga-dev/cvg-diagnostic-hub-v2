@@ -24,7 +24,7 @@ const commonRead: Permission[] = [
   "realtime.connect"
 ];
 
-export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
+const scopedRolePermissions: Record<Exclude<RoleCode, "SUPERADMIN">, readonly Permission[]> = {
   ADMIN: [
     "service.catalog.view",
     "realtime.connect",
@@ -149,6 +149,13 @@ export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
   VIEWER: commonRead
 };
 
+// This privileged role combines the defined capabilities; it does not grant
+// unknown permissions or remove ownership, session or workflow checks.
+export const rolePermissions: Record<RoleCode, readonly Permission[]> = {
+  ...scopedRolePermissions,
+  SUPERADMIN: [...new Set(Object.values(scopedRolePermissions).flat())]
+};
+
 export function managerDepartmentCodes(actor: Pick<Actor, "departmentCode" | "managedDepartmentCodes">): string[] {
   return Array.from(new Set([actor.departmentCode, ...(actor.managedDepartmentCodes ?? [])].map((code) => code.trim().toUpperCase()))).filter(Boolean);
 }
@@ -187,6 +194,8 @@ export function canAccessResource(
   ) {
     return false;
   }
+
+  if (actor.role === "SUPERADMIN") return true;
 
   const patientScopeApplies = ["VETERINARIAN", "INPATIENT_TEAM", "VIEWER"].includes(actor.role);
   if (patientScopeApplies && resource.patientId && !actor.patientIds?.includes(resource.patientId)) {

@@ -84,6 +84,28 @@ describe("critical result escalation (PROD-402)", () => {
     expect(store.getState().notifications.filter((entry) => entry.recipientUserId === "user-admin")).toHaveLength(1);
   });
 
+  it("reaches a global SUPERADMIN who can open the critical result across departments", async () => {
+    const { store, released, at, notificationsOf, service } = await releasedCritical();
+    const administrator = store.getState().users.find((user) => user.role === "ADMIN")!;
+    const superadmin: User = { ...administrator, id: "global-superadmin", email: "global-super@test.local", role: "SUPERADMIN", departmentCode: "IT" };
+    await store.transaction((state) => ({ state: { ...state, users: [...state.users, superadmin] }, result: undefined }));
+    const fallback: CriticalResultPolicy = { ...policy, recipientRules: ["REQUESTER", "ADMIN_FALLBACK"] };
+    expect(await runCriticalEscalation(store, { policy: fallback, now: at(16) })).toEqual({ due: 1, notified: 1, unreachable: 0 });
+    expect(notificationsOf(superadmin.id)).toHaveLength(1);
+    expect(notificationsOf("user-admin")).toHaveLength(0);
+    expect(store.getState().users.find((user) => user.id === superadmin.id)?.patientIds).toEqual(superadmin.patientIds);
+    expect(await service.getResult(superadmin, released.result.id)).toMatchObject({ result: { id: released.result.id } });
+  });
+
+  it("alerts an active SUPERADMIN operationally when the configured clinical ladder has nobody left", async () => {
+    const { store, root, at } = await releasedCritical();
+    await store.transaction((state) => ({ state: { ...state, users: state.users
+      .filter((user) => user.role !== "MANAGER" && !user.onCall)
+      .map((user) => user.role === "ADMIN" ? { ...user, role: "SUPERADMIN" as const } : user) }, result: undefined }));
+    expect(await runCriticalEscalation(store, { policy: { ...policy, recipientRules: ["REQUESTER", "ON_CALL"] }, now: at(16) })).toEqual({ due: 1, notified: 0, unreachable: 1 });
+    expect(store.getState().notifications.find((entry) => entry.recipientUserId === "user-admin")).toMatchObject({ category: "ADMINISTRATIVE", dedupeKey: `critical-unreachable:${root.id}:user-admin` });
+  });
+
   it("catches up one level per cycle when the first run comes after several thresholds (AUD-01)", async () => {
     const { store, root, at, notificationsOf } = await releasedCritical();
     expect(await runCriticalEscalation(store, { policy, now: at(40) })).toEqual({ due: 1, notified: 1, unreachable: 0 });

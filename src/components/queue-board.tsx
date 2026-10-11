@@ -96,7 +96,7 @@ export function QueueBoard({ items, role, departments, refreshing, onComplete }:
             </article>;
           })}
         </div>
-        {state === "REQUESTED" && ["MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardQuickAdd departments={role === "MANAGER" ? departments : []} refreshing={refreshing} onCreated={onComplete} disabled={refreshing || Boolean(pendingId)} />}
+        {state === "REQUESTED" && ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardQuickAdd departments={["MANAGER", "SUPERADMIN"].includes(role) ? departments : []} refreshing={refreshing} onCreated={onComplete} disabled={refreshing || Boolean(pendingId)} />}
       </section>)}
     </div>
     {selected && <QueuePeek key={`${selected.id}:${peek?.action ?? "context"}`} item={selected} role={role} initialAction={peek?.action} onClose={closePeek} onComplete={() => { closePeek(); onComplete(); }} onDraftCreated={onComplete} />}

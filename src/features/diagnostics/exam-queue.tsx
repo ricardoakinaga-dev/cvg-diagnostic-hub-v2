@@ -12,6 +12,7 @@ import { WorkflowAction } from "@/components/workflow-action";
 import { Icon } from "@/components/ui-icons";
 import { useDialogFocus } from "@/components/use-dialog-focus";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback-states";
+import { CLINICAL_DEPARTMENTS } from "@/components/work-items/model";
 
 type QueueCursors = Record<string, string>;
 type QueueTotals = Record<string, number>;
@@ -89,7 +90,7 @@ export function ExamQueue() {
     setPaginationError("");
     try {
       const me = await apiFetch<SessionResponse>("/session/me");
-      const scopedDepartments = me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
+      const scopedDepartments = me.user.role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
       const queueResults = await Promise.allSettled(scopedDepartments.map(async (code) => ({ code, page: await apiFetchWithMeta<QueueItem[]>(queuePath(code, { overdue, status })) })));
       if (loadVersion.current !== version) return;
       const queues = queueResults.filter((result): result is PromiseFulfilledResult<{ code: string; page: ApiFetchResult<QueueItem[]> }> => result.status === "fulfilled");

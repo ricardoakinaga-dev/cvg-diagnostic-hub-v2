@@ -137,18 +137,18 @@ export type ApiAuthorizationCondition =
   | "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"
   | "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"
   | "only active reasons for clinical actions authorized in the actor department are returned"
-  | "granting ADMIN requires recent reauthentication"
-  | "deactivating ADMIN requires recent reauthentication"
-  | "granting or removing ADMIN requires recent reauthentication"
-  | "regenerating an ADMIN credential requires recent reauthentication"
-  | "issuing a reset link for an ADMIN requires recent reauthentication"
+  | "granting ADMIN or SUPERADMIN requires recent reauthentication"
+  | "deactivating ADMIN or SUPERADMIN requires recent reauthentication"
+  | "granting or removing ADMIN or SUPERADMIN requires recent reauthentication"
+  | "regenerating an ADMIN or SUPERADMIN credential requires recent reauthentication"
+  | "issuing a reset link for an ADMIN or SUPERADMIN requires recent reauthentication"
   | "exporting a data subject's records requires recent reauthentication; every export is audited"
   | "actor cannot reset self; target must be active and within managed role and department scope"
   | "authenticated active session"
   | "permission is evaluated against the actor's current role"
-  | "patient access is limited to the actor's patient scope or an authorized service/request context"
-  | "request access is limited to patient scope, executor department context, or a manager delegated department"
-  | "departmentCode must match the actor department or a manager delegated department"
+  | "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"
+  | "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"
+  | "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"
   | "serviceCode must be assigned to executor roles"
   | "draft ownerId must equal the actor id"
   | "executor actors may amend or void only their own released result; managers use department-scoped policy"
@@ -159,7 +159,7 @@ export type ApiAuthorizationCondition =
   | "the result state selects result.view or result.draft.edit_own and attachment.view is always required"
   | "only notifications whose result or request the actor can still open are listed"
   | "notification must belong to the actor and its result or request stay open to them; a manager may use authorized request context"
-  | "role must be MANAGER"
+  | "role must be MANAGER or SUPERADMIN"
   | "patient must be active and have no open encounter"
   | "encounter must be OPEN; pending diagnostic items stay with the requester"
   | "delegated MANAGER only sees operational-role targets in managed departments"
@@ -167,7 +167,8 @@ export type ApiAuthorizationCondition =
   | "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department"
   | "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments"
   | "delegated MANAGER only revokes sessions for operational-role targets in managed departments"
-  | "role must be ADMIN"
+  | "only SUPERADMIN may manage SUPERADMIN users"
+  | "role must be ADMIN or SUPERADMIN"
   | "download is limited to released or superseded results and a finalized CLEAN attachment"
   | "current and destination departments must remain inside manager delegation and responsibility never grants patient scope";
 
@@ -470,13 +471,13 @@ const operations: ReadonlyArray<ApiOperationDraft> = [
 
 const SESSION = ["authenticated active session"] as const;
 const ROLE = ["authenticated active session", "permission is evaluated against the actor's current role"] as const;
-const PATIENT = [...ROLE, "patient access is limited to the actor's patient scope or an authorized service/request context"] as const;
-const REQUEST = [...ROLE, "request access is limited to patient scope, executor department context, or a manager delegated department"] as const;
-const DEPARTMENT = [...ROLE, "departmentCode must match the actor department or a manager delegated department"] as const;
+const PATIENT = [...ROLE, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"] as const;
+const REQUEST = [...ROLE, "request access is global for SUPERADMIN; otherwise limited to patient scope, executor department context, or a manager delegated department"] as const;
+const DEPARTMENT = [...ROLE, "departmentCode is unrestricted for SUPERADMIN; otherwise must match the actor department or a manager delegated department"] as const;
 const SERVICE = [...DEPARTMENT, "serviceCode must be assigned to executor roles"] as const;
 const OWNER = [...SERVICE, "draft ownerId must equal the actor id"] as const;
 const RESULT_MUTATION = [...SERVICE, "executor actors may amend or void only their own released result; managers use department-scoped policy"] as const;
-const RESULT_SCOPE = [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"] as const;
+const RESULT_SCOPE = [...SERVICE, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"] as const;
 
 const authorization = (
   requiredPermissions: ReadonlyArray<Permission>,
@@ -506,15 +507,15 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   updateOwnAlertContact: authorization([], [...SESSION, "only the signed-in user sets their own alert number; registering it requires consent and it is only returned masked"]),
   listClinicalReasons: authorization([], [...ROLE, "only active reasons for clinical actions authorized in the actor department are returned"]),
   listUsers: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only sees operational-role targets in managed departments"]),
-  listSessions: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
-  createUser: authorization(["user_role.manage"], [...ROLE, "delegated MANAGER only creates operational-role targets in managed departments", "granting ADMIN requires recent reauthentication"]),
-  deactivateUser: authorization(["user_role.manage"], [...ROLE, "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments", "deactivating ADMIN requires recent reauthentication"]),
-  updateUserRole: authorization(["user_role.manage"], [...ROLE, "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department", "granting or removing ADMIN requires recent reauthentication"]),
-  updateUserOnCall: authorization(["user_role.manage"], [...ROLE, "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"]),
-  regenerateUserPassword: authorization(["user_role.manage"], [...ROLE, "actor cannot reset self; target must be active and within managed role and department scope", "regenerating an ADMIN credential requires recent reauthentication"]),
-  issuePasswordResetLink: authorization(["user_role.manage"], [...ROLE, "actor cannot reset self; target must be active and within managed role and department scope", "issuing a reset link for an ADMIN requires recent reauthentication"]),
+  listSessions: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN or SUPERADMIN"]),
+  createUser: authorization(["user_role.manage"], [...ROLE, "only SUPERADMIN may manage SUPERADMIN users", "delegated MANAGER only creates operational-role targets in managed departments", "granting ADMIN or SUPERADMIN requires recent reauthentication"]),
+  deactivateUser: authorization(["user_role.manage"], [...ROLE, "only SUPERADMIN may manage SUPERADMIN users", "actor cannot deactivate self; delegated MANAGER only deactivates operational-role targets in managed departments", "deactivating ADMIN or SUPERADMIN requires recent reauthentication"]),
+  updateUserRole: authorization(["user_role.manage"], [...ROLE, "only SUPERADMIN may manage SUPERADMIN users", "actor cannot update self; delegated MANAGER must manage both current and proposed target role and department", "granting or removing ADMIN or SUPERADMIN requires recent reauthentication"]),
+  updateUserOnCall: authorization(["user_role.manage"], [...ROLE, "only SUPERADMIN may manage SUPERADMIN users", "target must be active to go on call; delegated MANAGER only changes operational-role targets in managed departments"]),
+  regenerateUserPassword: authorization(["user_role.manage"], [...ROLE, "only SUPERADMIN may manage SUPERADMIN users", "actor cannot reset self; target must be active and within managed role and department scope", "regenerating an ADMIN or SUPERADMIN credential requires recent reauthentication"]),
+  issuePasswordResetLink: authorization(["user_role.manage"], [...ROLE, "only SUPERADMIN may manage SUPERADMIN users", "actor cannot reset self; target must be active and within managed role and department scope", "issuing a reset link for an ADMIN or SUPERADMIN requires recent reauthentication"]),
   completePasswordReset: authorization([], []),
-  revokeSession: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN"]),
+  revokeSession: authorization(["user_role.manage"], [...ROLE, "role must be ADMIN or SUPERADMIN"]),
   listDiagnosticServices: authorization([], [...ROLE, "includeInactive=true substitutes service.catalog.manage for service.catalog.view", "MANAGER catalog visibility is limited to delegated departments"], false, [
     { when: "includeInactive is false or omitted", allOf: ["service.catalog.view"] },
     { when: "includeInactive is true", allOf: ["service.catalog.manage"] }
@@ -548,7 +549,7 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   getDiagnosticItem: authorization(["item.view"], REQUEST),
   receiveDiagnosticItemSample: authorization(["sample.receive"], DEPARTMENT),
   startDiagnosticItemProcessing: authorization(["sample.process"], DEPARTMENT),
-  cancelDiagnosticItem: authorization(["item.cancel"], [...DEPARTMENT, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
+  cancelDiagnosticItem: authorization(["item.cancel"], [...DEPARTMENT, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"]),
   rejectDiagnosticItem: authorization(["item.reject"], DEPARTMENT),
   completeDiagnosticItem: authorization(["item.complete"], DEPARTMENT),
   scheduleDiagnosticItem: authorization(["procedure.schedule"], DEPARTMENT),
@@ -562,18 +563,18 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   createAttachmentUploadSession: authorization(["attachment.upload_session"], SERVICE),
   uploadAttachmentContent: authorization(["attachment.finalize"], SERVICE),
   finalizeAttachment: authorization(["attachment.finalize"], SERVICE),
-  downloadAttachment: authorization(["attachment.download", "attachment.view"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context", "download is limited to released or superseded results and a finalized CLEAN attachment"]),
+  downloadAttachment: authorization(["attachment.download", "attachment.view"], [...SERVICE, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context", "download is limited to released or superseded results and a finalized CLEAN attachment"]),
   getResult: authorization([], [...RESULT_SCOPE, "the result state selects result.view or result.draft.edit_own"], false, [
     { when: "current result version status is DRAFT and draft ownerId equals the actor id", allOf: ["result.draft.edit_own"] },
     { when: "current result version status is RELEASED", allOf: ["result.view"] }
   ]),
-  listResultVersions: authorization(["result.history.view"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
+  listResultVersions: authorization(["result.history.view"], [...SERVICE, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"]),
   updateResultDraft: authorization(["result.draft.edit_own"], OWNER),
   releaseResult: authorization(["result.release"], SERVICE),
   amendResult: authorization(["result.amend"], RESULT_MUTATION),
   voidResult: authorization(["result.void"], RESULT_MUTATION),
-  viewResult: authorization(["result.view", "result.view.record"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
-  reviewResult: authorization(["result.review"], [...SERVICE, "patient access is limited to the actor's patient scope or an authorized service/request context"]),
+  viewResult: authorization(["result.view", "result.view.record"], [...SERVICE, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"]),
+  reviewResult: authorization(["result.review"], [...SERVICE, "patient access is global for SUPERADMIN; otherwise limited to patient scope or an authorized service/request context"]),
   getReport: authorization(["attachment.view"], [...RESULT_SCOPE, "the result state selects result.view or result.draft.edit_own and attachment.view is always required"], false, [
     { when: "current result version status is DRAFT and draft ownerId equals the actor id", allOf: ["result.draft.edit_own"] },
     { when: "current result version status is RELEASED", allOf: ["result.view"] }
@@ -585,11 +586,11 @@ const AUTHORIZATION_BY_OPERATION = Object.freeze({
   searchDiagnostics: authorization(["search.execute"], REQUEST),
   getTimeline: authorization(["timeline.view"], REQUEST),
   getDashboard: authorization(["dashboard.view"], DEPARTMENT),
-  getManagementOverview: authorization(["dashboard.view", "user_role.manage"], [...DEPARTMENT, "role must be MANAGER"]),
-  getCriticalReadiness: authorization(["critical_result_policy.manage"], [...ROLE, "role must be ADMIN"]),
-  listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
-  reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
-  discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN"]),
+  getManagementOverview: authorization(["dashboard.view", "user_role.manage"], [...DEPARTMENT, "role must be MANAGER or SUPERADMIN"]),
+  getCriticalReadiness: authorization(["critical_result_policy.manage"], [...ROLE, "role must be ADMIN or SUPERADMIN"]),
+  listDeadLetters: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN or SUPERADMIN"]),
+  reprocessDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN or SUPERADMIN"]),
+  discardDeadLetter: authorization(["outbox.manage"], [...ROLE, "role must be ADMIN or SUPERADMIN"]),
   streamRealtimeEvents: authorization(["realtime.connect"], ROLE),
   verifyWhatsAppWebhook: authorization([], ["available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured"]),
   receiveWhatsAppStatus: authorization([], ["available only while WHATSAPP_ENABLED=true with WHATSAPP_VERIFY_TOKEN and WHATSAPP_APP_SECRET configured", "X-Hub-Signature-256 must be the HMAC-SHA256 of the exact body under WHATSAPP_APP_SECRET"])
