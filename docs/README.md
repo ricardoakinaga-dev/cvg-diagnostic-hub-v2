@@ -33,7 +33,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Auditoria literal corrente do planner — 12/10/2026
+## Correção corrente da política de cobertura — 12/10/2026
+
+O [ajuste das exceções](build/HOSPITAL_PLANNER_COVERAGE_POLICY_FOLLOWUP_2026-10-12.md) remove uma entrada obsoleta após 5.460 testes aprovados na rodada 38207033632, sem alterar pisos ou produto. O [novo manifesto](build/HOSPITAL_PLANNER_COVERAGE_POLICY_SOURCE_MANIFEST_2026-10-12.json) muda apenas esse input normativo. A CI anterior permanece FAIL e a nova validação completa será ligada ao SHA do [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). As provas literais anteriores e os gates hospitalares são preservados.
+
+## Auditoria literal anterior — captura de 12/10/2026
 
 A [revisão literal e suas correções](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_FOLLOWUP_2026-10-12.md), a [matriz de evidências](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_FOLLOWUP_2026-10-12.json) e o [manifesto da fonte](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_SOURCE_MANIFEST_2026-10-12.json) cobrem as 51 entregas, 137 itens e 15 garantias. Foram corrigidos acesso à auditoria, comandos por grants específicos, preview de pendências na desativação de setores e o caminho de aprovação clínica de exames. A captura registra validação focada; nova CI e imagens são acompanhadas no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Aceite hospitalar, homologação HIS e revisão externa permanecem pendentes. O solicitante fará a validação e o aceite do piloto.
 
