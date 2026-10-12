@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-12T10:24:50.489014+00:00",
+  "status": "TEST_VPS_SELECTED_PREPARATION_AND_UAT_PENDING",
+  "selection": {
+    "target": "Esta VPS, ambiente já utilizado para testes pelo solicitante",
+    "confirmedBy": "Solicitante do projeto, usuário desta sessão",
+    "confirmation": "podemos usar esse ambiente mesmo que ja é para testes",
+    "confirmationDate": "2026-10-12",
+    "source": "Confirmação do solicitante transmitida pelo agente coordenador nesta sessão",
+    "meaning": "Escolha do alvo de homologação; não é evidência de instalação nova, ensaio executado, aceite ou go-live"
+  },
+  "owner": {
+    "reference": "Solicitante do projeto, usuário desta sessão",
+    "responsibilities": [
+      "validar os fluxos hospitalares",
+      "registrar o aceite após os ensaios"
+    ],
+    "record": "HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json",
+    "formalIdentityInSignedForm": "PENDING_AT_EXECUTION"
+  },
+  "isolation": {
+    "state": "REQUIRED_BEFORE_NEW_ENVIRONMENT_START",
+    "existingProgramsDatabasesAndEnvironmentFiles": "PRESERVE_UNCHANGED",
+    "composeProject": "Nome próprio, conferido sem colisão com projetos existentes antes de criar recursos",
+    "resources": "Rede, volumes, banco, bucket, contas de teste, arquivos de configuração e diretórios de segredos próprios; sem reutilizar dados ou credenciais dos programas instalados",
+    "testData": "Dados sintéticos nos novos ensaios; qualquer uso assistencial real depende de autorização e escopo específicos",
+    "resourceBudget": "Definir limites de CPU/memória/disco e conferir disponibilidade antes da execução; esta seleção não atesta capacidade",
+    "cleanup": "Somente recursos criados para o ensaio e identificados como próprios; sem prune global, remoção ou parada de programas existentes",
+    "installedServicesChangeAuthorizedByThisSelection": false
+  },
+  "ports": {
+    "availability": "NOT_INSPECTED_OR_RESERVED_BY_THIS_RECORD",
+    "selection": "Usar porta livre conferida no início do ensaio; preferir alocação dinâmica em 127.0.0.1 para o app e acesso restrito por túnel/VPN quando necessário",
+    "fixedPorts": [],
+    "applicationUrl": null,
+    "preserveExistingBindings": true,
+    "databaseAndStoragePublicPorts": "Não publicar portas de PostgreSQL, MinIO, scanner ou Docker para o ensaio"
+  },
+  "pendingInputs": {
+    "peakConcurrentUsers": {
+      "value": null,
+      "status": "UNKNOWN",
+      "requiredFor": "Perfil de carga e metas representativas no alvo"
+    },
+    "HIS": {
+      "system": "cvg-his-v4 instalado nesta VPS, informado pelo solicitante",
+      "endpoint": null,
+      "endpointStatus": "UNKNOWN",
+      "installedRevision": "NOT_ATTESTED_BY_THIS_RECORD",
+      "liveExchangeHomologated": false
+    },
+    "LIS": {
+      "system": null,
+      "status": "UNKNOWN",
+      "activation": "OFF_UNTIL_IDENTIFIED_AND_HOMOLOGATED"
+    },
+    "PACS": {
+      "system": null,
+      "status": "UNKNOWN",
+      "activation": "OFF_UNTIL_IDENTIFIED_AND_HOMOLOGATED"
+    },
+    "candidateImagesSchemaAndScope": "Registrar candidata, digests, schema e jornadas antes da execução conforme pacote de piloto"
+  },
+  "acceptance": {
+    "newEnvironmentProvisionedByThisRecord": false,
+    "UATExecutedByThisRecord": false,
+    "results": [],
+    "signedAcceptanceRecorded": false,
+    "goNoGoRecorded": false,
+    "productionApproved": false,
+    "releaseAppliedByThisRecord": false,
+    "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+    "BLD-HPL-051": "OPEN"
+  },
+  "references": [
+    "HOSPITAL_PLANNER_PILOT.md",
+    "HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json",
+    "DEPLOYMENT.md#131-dois-ambientes-nada-em-comum-prod-301",
+    "HOSPITAL_PLANNER_CUTOVER.md"
+  ],
+  "recordLimits": [
+    "Este trabalho alterou apenas estes dois documentos; não consultou Docker, bancos, ambientes reais ou portas em execução.",
+    "A escolha da VPS não substitui resultados de UAT, homologação de integrações ou aceite nominal.",
+    "Não contém credenciais, contatos pessoais ou dados de pacientes."
+  ]
+}

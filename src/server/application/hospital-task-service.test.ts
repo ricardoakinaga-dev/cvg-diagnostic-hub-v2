@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ROLES, type RoleCode } from "@cvg/contracts";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
@@ -73,17 +73,22 @@ describe("hospital task authority, scope and workflow", () => {
     expect(user("user-vet").patientIds).toEqual(["patient-thor", "patient-mel"]);
   });
   it("keeps shared active work separate from explicit responsible and period filters, sorting before pagination", async () => {
-    const { service, user, create } = setup(); await create("routine");
-    const urgent = await create("urgent", { priority: "URGENT", plannedStartAt: "2026-10-12T10:00:00Z", plannedEndAt: "2026-10-12T11:00:00Z" });
-    const emergency = await create("emergency", { priority: "EMERGENCY", responsibleUserId: undefined });
-    await service.assignHospitalTask(user("vet-b"), emergency.task.id, { responsibleUserId: "vet-b", expectedVersion: 1, idempotencyKey: "emergency-assign" });
-    const page = await service.listHospitalTasks(user("user-vet"), { orderBy: "PRIORITY", direction: "DESC", limit: 1 });
-    expect(page.total).toBe(3); expect(page.items[0].task.id).toBe(emergency.task.id);
-    const second = await service.listHospitalTasks(user("user-vet"), { orderBy: "PRIORITY", direction: "DESC", limit: 1, cursor: page.nextCursor }); expect(second.items[0].task.id).toBe(urgent.task.id);
-    expect((await service.listHospitalTasks(user("user-vet"), { assignedToMe: true })).total).toBe(2);
-    expect((await service.listHospitalTasks(user("vet-b"), { assignedToMe: true })).total).toBe(1);
-    expect((await service.listHospitalTasks(user("user-vet"), { from: "2026-10-12T09:00:00Z", to: "2026-10-12T12:00:00Z" })).items.map((entry) => entry.task.id)).toEqual([urgent.task.id]);
-    await expect(service.listHospitalTasks(user("user-vet"), { orderBy: "UPDATED", cursor: page.nextCursor })).rejects.toMatchObject({ status: 400 });
+    vi.setSystemTime(new Date("2026-10-12T08:00:00Z"));
+    try {
+      const { service, user, create } = setup(); await create("routine");
+      const urgent = await create("urgent", { priority: "URGENT", plannedStartAt: "2026-10-12T10:00:00Z", plannedEndAt: "2026-10-12T11:00:00Z" });
+      const emergency = await create("emergency", { priority: "EMERGENCY", responsibleUserId: undefined });
+      await service.assignHospitalTask(user("vet-b"), emergency.task.id, { responsibleUserId: "vet-b", expectedVersion: 1, idempotencyKey: "emergency-assign" });
+      const page = await service.listHospitalTasks(user("user-vet"), { orderBy: "PRIORITY", direction: "DESC", limit: 1 });
+      expect(page.total).toBe(3); expect(page.items[0].task.id).toBe(emergency.task.id);
+      const second = await service.listHospitalTasks(user("user-vet"), { orderBy: "PRIORITY", direction: "DESC", limit: 1, cursor: page.nextCursor }); expect(second.items[0].task.id).toBe(urgent.task.id);
+      expect((await service.listHospitalTasks(user("user-vet"), { assignedToMe: true })).total).toBe(2);
+      expect((await service.listHospitalTasks(user("vet-b"), { assignedToMe: true })).total).toBe(1);
+      expect((await service.listHospitalTasks(user("user-vet"), { from: "2026-10-12T09:00:00Z", to: "2026-10-12T12:00:00Z" })).items.map((entry) => entry.task.id)).toEqual([urgent.task.id]);
+      await expect(service.listHospitalTasks(user("user-vet"), { orderBy: "UPDATED", cursor: page.nextCursor })).rejects.toMatchObject({ status: 400 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("validates planning dates and audits priority without changing diagnostic state or clocks", async () => {
     const { store, service, user, create } = setup();

@@ -33,7 +33,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Imagens e permissões persistidas — candidata de 12/10/2026
+## Teste de período e ambiente de homologação — candidata de 12/10/2026
+
+A [correção do relógio do teste](build/HOSPITAL_PLANNER_TASK_PERIOD_TEST_FOLLOWUP_2026-10-12.md) conserva os filtros de tarefas e passou nos 18 casos do arquivo. A CI 38233377860 permanece FAIL e a validação completa será ligada à [nova fonte](build/HOSPITAL_PLANNER_TASK_PERIOD_TEST_SOURCE_MANIFEST_2026-10-12.json) no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). O solicitante escolheu [esta VPS para homologação](operations/HOSPITAL_PLANNER_TEST_ENVIRONMENT_2026-10-12.md) e fará o aceite; execução hospitalar, carga aprovada e integrações continuam pendentes.
+
+## Imagens e permissões persistidas — candidata anterior de 12/10/2026
 
 A [nova alteração](build/HOSPITAL_PLANNER_IMAGE_AUTHORITY_FOLLOWUP_2026-10-12.md) fixa a base Alpine das imagens, remove gestores globais de runtime, inclui vulnerabilidades sem correção nos gates e acrescenta 20 cenários de autoridade efetiva em PostgreSQL. O [registro](build/HOSPITAL_PLANNER_IMAGE_AUTHORITY_FOLLOWUP_2026-10-12.json) conserva o smoke de protótipo com 63 checks e os dois ensaios PostgreSQL; essas provas antecedem a adoção. CI e quatro imagens da [nova fonte](build/HOSPITAL_PLANNER_IMAGE_AUTHORITY_SOURCE_MANIFEST_2026-10-12.json) serão vinculadas ao commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Aceite hospitalar, HIS e revisão externa continuam pendentes.
 
