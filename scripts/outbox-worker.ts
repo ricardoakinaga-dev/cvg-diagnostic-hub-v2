@@ -13,6 +13,9 @@ import { runtimePoolTimeouts } from "../src/server/domain/database-timeouts";
 import { whatsAppCloudConfigFromEnv } from "../src/server/operations/whatsapp-cloud-api";
 import { runCriticalEscalation } from "../src/server/application/critical-escalation";
 import { createWhatsAppAlertResolver, createWhatsAppOutboxSink } from "../src/server/operations/whatsapp-outbox-sink";
+import { createHospitalRecurrenceSchedule, runScheduledHospitalRecurrences } from "../src/server/application/hospital-recurrence-job";
+import { createHospitalReportSchedule, runScheduledHospitalReports } from "../src/server/application/hospital-report-job";
+import { createWorkNotificationSchedule, runScheduledWorkNotifications } from "../src/server/application/work-notification-job";
 
 const once = process.argv.includes("--once") || process.env.OUTBOX_ONCE === "true";
 const intervalMs = positiveInteger(process.env.OUTBOX_INTERVAL_MS, 5_000);
@@ -20,6 +23,9 @@ const heartbeatFile = resolveOutboxHeartbeatFile();
 // PROD-103: retention runs on its own cadence inside the worker. It used to be
 // dead code, so the snapshot grew without bound in production.
 const retentionSchedule = createRuntimeRetentionSchedule();
+const hospitalRecurrenceSchedule = createHospitalRecurrenceSchedule();
+const hospitalReportSchedule = createHospitalReportSchedule();
+const workNotificationSchedule = createWorkNotificationSchedule();
 // PROD-501 (D5): archiving after the active window, with its own daily cadence.
 const archiveConfig = clinicalArchiveConfig();
 const archiveSchedule = createClinicalArchiveSchedule(archiveConfig.intervalMs);
@@ -93,6 +99,9 @@ async function runCycle(sink: ConfiguredOutboxSink): Promise<void> {
   try {
     await runRetention();
     await runEscalation();
+    await runScheduledHospitalRecurrences(await getRuntimeStoreAsync(), hospitalRecurrenceSchedule);
+    await runScheduledHospitalReports(await getRuntimeStoreAsync(), hospitalReportSchedule);
+    await runScheduledWorkNotifications(await getRuntimeStoreAsync(), workNotificationSchedule);
     archiveMaintenance.start(runArchive);
     const summary = await runOnce(sink);
     const lastResult: OutboxHeartbeatResult = outboxCycleHeartbeatResult(summary);

@@ -1,6 +1,9 @@
 # Roadmap de melhorias e correções — CVG Diagnostics Hub
 
 **Versão:** IMP-2026-10.1 · **Data:** 04/10/2026
+
+**Evolução de produto em 11/10/2026:** o [roadmap hospitalar](ROADMAP_HOSPITAL_PLANNER_2026-10-11.md) e o [backlog HPL](BACKLOG_HOSPITAL_PLANNER_2026-10-11.md) passam a organizar o planejamento solicitado para cadastros, acesso, tarefas, planos, plantões e recursos (D-063). Este documento conserva o histórico IMP; as interseções e atualizações posteriores estão reconciliadas na seção 7 do backlog HPL. Os gates de go-live continuam com PROD-*.
+
 **Knowledge status:** `DECISION` para a ordem e os critérios de saída; `ASSUMPTION` para os tamanhos (viram prazo só com a equipe definida).
 
 [Backlog](IMPROVEMENT_BACKLOG_2026-10.md) · [Auditoria](../RELATORIO_AUDITORIA_2026-10-04.md) · [Roadmap até produção](PRODUCTION_ROADMAP.md)

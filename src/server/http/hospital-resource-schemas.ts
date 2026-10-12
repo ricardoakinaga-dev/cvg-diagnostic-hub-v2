@@ -1,0 +1,33 @@
+import { z } from "zod";
+import { HOSPITAL_RESOURCE_AVAILABILITY, HOSPITAL_RESOURCE_KINDS } from "@cvg/contracts";
+
+const identifier = z.string().trim().min(1).max(100);
+const text = (max: number) => z.string().trim().min(1).max(max);
+const code = z.string().trim().regex(/^[A-Za-z0-9_-]{1,60}$/);
+const dateTime = z.string().max(100).datetime({ offset: true });
+const revision = z.number().int().positive();
+const window = z.object({ startsAt: dateTime, endsAt: dateTime }).strict().refine((value) => Date.parse(value.startsAt) < Date.parse(value.endsAt), "O fim deve ser posterior ao início.");
+const windows = z.array(window).max(200);
+const resourceIds = z.array(identifier).min(1).max(20).refine((values) => new Set(values).size === values.length, "Recursos não podem se repetir.");
+const species = z.array(text(60)).min(1).max(100).refine((values) => new Set(values.map((value) => value.normalize("NFKC").toLocaleLowerCase("pt-BR"))).size === values.length, "Espécies não podem se repetir.");
+export const hospitalResourceCreateSchema = z.object({ code, name: text(160), kind: z.enum(HOSPITAL_RESOURCE_KINDS), departmentCode: code, userId: identifier.optional(), ward: text(100).optional(), bedLabel: text(100).optional(), allowedSpecies: species.optional(), availability: z.enum(HOSPITAL_RESOURCE_AVAILABILITY).default("AVAILABLE"), availabilityWindows: windows.default([]), active: z.boolean().default(true) }).strict().superRefine((value, context) => {
+  if (value.kind === "PROFESSIONAL" ? !value.userId : value.userId !== undefined) context.addIssue({ code: "custom", path: ["userId"], message: "Somente profissional exige vínculo com um colaborador." });
+  if (value.kind === "BED" ? !value.ward || !value.bedLabel || !value.allowedSpecies?.length : value.ward !== undefined || value.bedLabel !== undefined || value.allowedSpecies !== undefined) context.addIssue({ code: "custom", path: ["bedLabel"], message: "Leito exige ala, identificação e espécies compatíveis; outros recursos não usam essas propriedades." });
+  if (value.kind === "BED" && value.availabilityWindows.length) context.addIssue({ code: "custom", path: ["availabilityWindows"], message: "Leitos usam disponibilidade e ocupação da internação, não calendário horário." });
+});
+export const hospitalResourcePatchSchema = z.object({ name: text(160).optional(), departmentCode: code.optional(), ward: text(100).optional(), bedLabel: text(100).optional(), allowedSpecies: species.optional(), availability: z.enum(HOSPITAL_RESOURCE_AVAILABILITY).optional(), availabilityWindows: windows.optional(), active: z.boolean().optional(), expectedVersion: revision }).strict().refine((value) => Object.keys(value).some((key) => key !== "expectedVersion"), "Informe uma alteração.");
+const reservationFields = { startsAt: dateTime, endsAt: dateTime, resourceIds, expectedVersion: revision };
+const validReservation = (value: { startsAt: string; endsAt: string }) => Date.parse(value.endsAt) > Date.parse(value.startsAt) && Date.parse(value.endsAt) - Date.parse(value.startsAt) <= 86_400_000;
+export const hospitalTaskReserveSchema = z.object(reservationFields).strict().refine(validReservation, "Reserva exige intervalo válido de até 24 horas.");
+export const hospitalScheduleRescheduleSchema = z.object({ ...reservationFields, reason: text(500) }).strict().refine(validReservation, "Reserva exige intervalo válido de até 24 horas.");
+export const hospitalScheduleCancelSchema = z.object({ reason: text(500), expectedVersion: revision }).strict();
+export const hospitalCalendarFiltersSchema = z.object({ departmentCode: code.optional(), resourceId: identifier.optional(), from: dateTime, to: dateTime, kinds: z.array(z.enum(["RESERVATION", "DEADLINE", "EXECUTION"])).max(3).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() }).strict();
+export const hospitalCapacityFiltersSchema = hospitalCalendarFiltersSchema.pick({ departmentCode: true, from: true, to: true });
+export const hospitalResourceFiltersSchema = z.object({ departmentCode: code.optional(), kind: z.enum(HOSPITAL_RESOURCE_KINDS).optional(), query: z.string().trim().max(200).optional(), includeInactive: z.boolean().optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() }).strict();
+export const admissionContextOptionsFiltersSchema = z.object({ departmentCode: code.optional() }).strict();
+type Metadata = { idempotencyKey?: string; correlationId?: string };
+export type HospitalResourceCreateInput = z.input<typeof hospitalResourceCreateSchema> & Metadata;
+export type HospitalResourcePatchInput = z.input<typeof hospitalResourcePatchSchema> & Metadata;
+export type HospitalTaskReserveInput = z.input<typeof hospitalTaskReserveSchema> & Metadata;
+export type HospitalScheduleRescheduleInput = z.input<typeof hospitalScheduleRescheduleSchema> & Metadata;
+export type HospitalScheduleCancelInput = z.input<typeof hospitalScheduleCancelSchema> & Metadata;

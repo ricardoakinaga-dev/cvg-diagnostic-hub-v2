@@ -116,10 +116,13 @@ test("creates in four interactions, changes department in two and enforces the g
   await expect(stepUp).toBeHidden();
   await row.getByRole("combobox", { name: "Perfil", exact: true }).selectOption("LAB_TECH");
   await row.getByText(/^Exames autorizados/).click();
+  await row.getByRole("combobox", { name: "Acesso aos exames", exact: true }).selectOption("SELECTED");
   await row.getByRole("checkbox", { name: "Hemograma", exact: true }).check();
   const assigned = page.waitForResponse((response) => response.url().includes("/roles") && response.request().method() === "POST");
   await row.getByRole("button", { name: `Salvar ${email}`, exact: true }).click();
-  expect((await assigned).status()).toBe(200);
+  const assignedResponse = await assigned;
+  expect(assignedResponse.status()).toBe(200);
+  expect(assignedResponse.request().postDataJSON()).toMatchObject({ serviceAccessPolicy: { mode: "SELECTED", includeFuture: false }, serviceCodes: ["HEMOGRAM"] });
   await page.reload();
   await expect(page.getByRole("dialog", { name: "Senha inicial", exact: true })).toHaveCount(0);
   const audit = await page.request.get("/api/v1/audit-events?limit=100");

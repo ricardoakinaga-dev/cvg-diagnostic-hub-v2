@@ -1,0 +1,889 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-12T00:30:57.913586+00:00",
+  "status": "FOCUSED_HIS_CONTRACT_PASS_FULL_REMOTE_CI_NOT_EXECUTED_AT_CAPTURE",
+  "candidate": {
+    "manifest": "HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-12.json",
+    "fingerprintSha256": "fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5",
+    "fileCount": 1085,
+    "baseCommit": "a94e77f4443f700bbb073108594090d40efa4496",
+    "localBranch": "feat/local-superadmin-20261011",
+    "committedAtCapture": false,
+    "deployed": false
+  },
+  "previousSnapshot": {
+    "sourceManifest": "HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-11.json",
+    "fingerprintSha256": "bf1e6600023933d6e5ef313cc53596fce8332535d7ed202ab4284003ac94445c",
+    "measuredProductFingerprintSha256": "673bc9e9c52f9ee6c90c46d49c67744baa0dc7a91342b123ba9a747a1bf9e84c",
+    "reportsBeforeApplicabilityNotice": [
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_VALIDATION_2026-10-11.json",
+        "sha256": "55d6d31794c9665872682c5269442a0e8fda9e86c3c1916a76d3653f9d1486df",
+        "bytes": 201301
+      },
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_FUNCTIONAL_FOLLOWUP_2026-10-11.json",
+        "sha256": "a78b3eade02b3d3a964f28c08c365addcf0283ebd4c08932761a9e473298ad98",
+        "bytes": 297752
+      },
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_ACCEPTANCE_AUDIT_2026-10-11.json",
+        "sha256": "1652a0dbc6c5fcc97303d3bc861656ce65dc09a93bf0a3f0339f6a80275815fd",
+        "bytes": 1214293
+      }
+    ],
+    "meaning": "Original values, literal audits, fail captures and histories are retained. Notice append changes report bytes only; old raw report digests above describe the pre-notice files."
+  },
+  "sourceDelta": {
+    "changed": [
+      {
+        "path": "docs/api/openapi.json",
+        "beforeSha256": "60f311993c70e347cd2fa999e461f05458f5d2e71c66650c71f4f0e03381b261",
+        "afterSha256": "fe64899adf7562760bec5ff51357e95184d320b16871e2ec8f876afb71e02648"
+      },
+      {
+        "path": "docs/spec/API_USAGE.md",
+        "beforeSha256": "522079c30a1115da0ad96753d9a4f9af5a8f9d486779a4ba1c95adea5b5baab0",
+        "afterSha256": "103d86687ebb2452b14923034db442b42e1c9a7b9a64ea7894413b2848a06acd"
+      },
+      {
+        "path": "packages/contracts/src/identity-permissions.ts",
+        "beforeSha256": "d63637d9c76fbbdb33f0de94a2a7fc310b7817011b2d22df819bfe9ad5353ed2",
+        "afterSha256": "0c3dc024113d840f27140655af76d8fcf63a77a14ad6b54873cd9b60b8b70bf7"
+      },
+      {
+        "path": "scripts/openapi-hospital-external.mjs",
+        "beforeSha256": "09981bf76829c0e3813d01dab0e2ff1ed2028cf25ce2f37021ab04d0ff10cd90",
+        "afterSha256": "04b3750e7d332f3dc7d8a29145d3e0b42c572841cf6cd281838198cff96505c6"
+      },
+      {
+        "path": "src/components/laboratory-result-panels.tsx",
+        "beforeSha256": "038e5b4d5693d442b807035db80b36327480f6f0ae67d12b5e41d68219a20110",
+        "afterSha256": "9a451f818acf8252931c52a4b1aa69aac93cb4465365184b16dd6a90bb06f475"
+      },
+      {
+        "path": "src/server/application/catalog-definition-validation.ts",
+        "beforeSha256": "a7d5bb19b5eeb3c023c02808ddc0c405b6b339e75f9b4dba402505d6d476a5c0",
+        "afterSha256": "71772a3e74d9cad59bb75935c8f33f21f4a63402606878b41357472f44d11121"
+      },
+      {
+        "path": "src/server/http/api-contract.test.ts",
+        "beforeSha256": "f4494f274e81ebeab4fd1869c6a9d7a08dd0a64c23562dcb819a4b44569cf4c0",
+        "afterSha256": "9713717fdaa8afe2e56c20cce39d7573b2cd84a5d66825f23d83ef466e7b6c73"
+      },
+      {
+        "path": "src/server/http/api-operation-builders.ts",
+        "beforeSha256": "23c2d598cc3cec51d2b8f8236ca9d0f906edf28627007fdbcd44210051013759",
+        "afterSha256": "4b48018de673f4f07872d9cf6732520817115d7d9a2ab3b2254285172a888d4a"
+      },
+      {
+        "path": "src/server/http/api-operation-model.ts",
+        "beforeSha256": "feb9568a79f1b0bf10109e0e71fc1acdb9225f0b6f2ac14e381c81e31bf37d78",
+        "afterSha256": "37802eba3b7533a2935af53ffd32cdd410ebb34979d5dc257a4608bad70209b2"
+      },
+      {
+        "path": "src/server/http/hospital-his-v4-route.test.ts",
+        "beforeSha256": "3ba1fa70b334be0fa3a0632451ffc096319b29244dcabcdc9d05fd1f718e41b2",
+        "afterSha256": "46d052ed29d479b7f1af4128152db6cdf7844dd30c5f660bd9d68137565e7ad0"
+      },
+      {
+        "path": "src/server/http/hospital-his-v4-schemas.ts",
+        "beforeSha256": "28d4a93ea4ac5a3a6ae97798a42dfcbf0bfdd0962dd740198389b7fd8e3d7ed2",
+        "afterSha256": "37e29a43bdfa0f9e291bc07be27749caac3b096196d648d7771051de1a297751"
+      }
+    ],
+    "new": [
+      {
+        "path": "src/server/application/hospital-his-v4-producer-metadata.test.ts",
+        "sha256": "531e58c9ea3de00d8b67f0bf5d9e1afee7a4d66ecc8fe65f69c8fba2dd413331"
+      },
+      {
+        "path": "src/test/his-v4-pinned-producer-source.json",
+        "sha256": "b83dc590bb4f9c58e1386de9f03eda958934c08dad01a2536772a61a45275484"
+      },
+      {
+        "path": "src/test/his-v4-pinned-producer.ts",
+        "sha256": "8e82f78c6992fa1f421fe9396c4b41e8b9cfa3d72c7103e6e64d05f772ee026a"
+      }
+    ],
+    "removed": [],
+    "changedCount": 11,
+    "newCount": 3,
+    "unchangedOldSourceCount": 1071,
+    "meaning": "Actual raw-byte difference against bf1e1082. Product repair and generator/spec changes are not called test-only or formatting-only."
+  },
+  "productChange": {
+    "backlogId": "BLD-HPL-042",
+    "metadataRepair": {
+      "schemaVersion": 1,
+      "observedAt": "2026-10-12T00:22:42.072992+00:00",
+      "status": "CORRECTED_TECHNICAL_PROOF",
+      "item": "BLD-HPL-042",
+      "trigger": "Pinned HIS runtime/EventBus publishes canonical data._meta; formerly data.strict rejected the signed real body as HIS_V4_EVENT_NOT_ADOPTED/400",
+      "producer": {
+        "sourceRepository": "/home/rmakinaga/cvg-his-v4",
+        "primaryCommit": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+        "previousCommit": "272581dc60b764a8fee78108110dc7e465f62542",
+        "captureBefore": {
+          "path": "/tmp/cvg-hpl-his-v4-pinned-source-capture-20261012.json",
+          "sha256": "0f1a98207ccb9c2d4e728ea26356bb92f5fb273a618c41918ba5b488b2dffcac",
+          "bytes": 12194
+        },
+        "captureAfter": [
+          {
+            "path": "apps/api/src/runtime.ts",
+            "primarySha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+            "previousSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+            "primaryRawBytes": 78014,
+            "previousRawBytes": 78014,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/modules/event-bus/src/event-bus.service.ts",
+            "primarySha256": "c1b76aae1b824f984acc7c22cfc6db2b2e23a5a9e7c53d63e43ea59ed78636a4",
+            "previousSha256": "c1b76aae1b824f984acc7c22cfc6db2b2e23a5a9e7c53d63e43ea59ed78636a4",
+            "primaryRawBytes": 30986,
+            "previousRawBytes": 30986,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/modules/event-bus/src/event-catalog.ts",
+            "primarySha256": "f1b88f9d532a391a2df9971bee8876828bb2aa3fd37eeb28500569f36dfa81c2",
+            "previousSha256": "f1b88f9d532a391a2df9971bee8876828bb2aa3fd37eeb28500569f36dfa81c2",
+            "primaryRawBytes": 11737,
+            "previousRawBytes": 11737,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/modules/event-bus/src/event-envelope.ts",
+            "primarySha256": "65ffa51ef92610681314388645399de33c151d4b1847d9244f7a0539267f734e",
+            "previousSha256": "65ffa51ef92610681314388645399de33c151d4b1847d9244f7a0539267f734e",
+            "primaryRawBytes": 979,
+            "previousRawBytes": 979,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/modules/event-consumers/src/webhooks.consumer.ts",
+            "primarySha256": "ee3d3955d9510cef34ef61162e49f94b29c57aa331abe24d07913fa38f9dccfa",
+            "previousSha256": "ee3d3955d9510cef34ef61162e49f94b29c57aa331abe24d07913fa38f9dccfa",
+            "primaryRawBytes": 3289,
+            "previousRawBytes": 3289,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/modules/webhooks/src/index.ts",
+            "primarySha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+            "previousSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+            "primaryRawBytes": 26340,
+            "previousRawBytes": 26340,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/shared/types/src/event-envelope.ts",
+            "primarySha256": "8a1edd8a1676108f6ff59214924e18630b2ebeb048295ce42fa432da9bfb69b8",
+            "previousSha256": "8a1edd8a1676108f6ff59214924e18630b2ebeb048295ce42fa432da9bfb69b8",
+            "primaryRawBytes": 7427,
+            "previousRawBytes": 7427,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/shared/utils/src/index.ts",
+            "primarySha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+            "previousSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+            "primaryRawBytes": 2012,
+            "previousRawBytes": 2012,
+            "unchangedFromBeforeCapture": true
+          },
+          {
+            "path": "packages/shared/validation/src/index.ts",
+            "primarySha256": "de745402342b82538f9bd5ba98ffee2de2030812600658eaaa17bfbe2893ac47",
+            "previousSha256": "de745402342b82538f9bd5ba98ffee2de2030812600658eaaa17bfbe2893ac47",
+            "primaryRawBytes": 3201,
+            "previousRawBytes": 3201,
+            "unchangedFromBeforeCapture": true
+          }
+        ],
+        "pinnedRawSourcesUnchangedBeforeAfter": true,
+        "exactSourceFragments": 20,
+        "sourceFiles": 9,
+        "allFragmentsIdenticalAcrossTwoPinnedCommits": true,
+        "fixture": {
+          "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/src/test/his-v4-pinned-producer-source.json",
+          "sha256": "b83dc590bb4f9c58e1386de9f03eda958934c08dad01a2536772a61a45275484",
+          "bytes": 44429
+        },
+        "executedBodies": [
+          "runtime.onEncounterCreated",
+          "runtime.publishEvent",
+          "EventBusService.publish",
+          "buildEventEnvelopeMetadata",
+          "mergeEventEnvelopeMetadata",
+          "WebhooksEventHandlers.handle",
+          "WebhooksService.enqueue",
+          "WebhooksService.#attemptDelivery",
+          "signWebhookPayload"
+        ],
+        "memoryDependencies": [
+          "outbox/delivery repositories with JSON serialization roundtrip",
+          "synthetic tenant/tracing context",
+          "DNS answers and captured HTTP transport",
+          "native Error fallback for the unused invalid-input branch of the provider string validator"
+        ],
+        "actualNativeHeaders": 7,
+        "scope": "Fixed reviewed pure source fragments executed by tests, not importing provider runtime/config/database or querying installed services"
+      },
+      "change": {
+        "productFiles": [
+          "src/server/http/hospital-his-v4-schemas.ts"
+        ],
+        "schemaBeforeSha256": "28d4a93ea4ac5a3a6ae97798a42dfcbf0bfdd0962dd740198389b7fd8e3d7ed2",
+        "artifacts": [
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/src/server/http/hospital-his-v4-schemas.ts",
+            "sha256": "37e29a43bdfa0f9e291bc07be27749caac3b096196d648d7771051de1a297751",
+            "bytes": 3913
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/src/server/http/hospital-his-v4-route.test.ts",
+            "sha256": "46d052ed29d479b7f1af4128152db6cdf7844dd30c5f660bd9d68137565e7ad0",
+            "bytes": 12400
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/src/server/application/hospital-his-v4-producer-metadata.test.ts",
+            "sha256": "531e58c9ea3de00d8b67f0bf5d9e1afee7a4d66ecc8fe65f69c8fba2dd413331",
+            "bytes": 9252
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/src/test/his-v4-pinned-producer.ts",
+            "sha256": "8e82f78c6992fa1f421fe9396c4b41e8b9cfa3d72c7103e6e64d05f772ee026a",
+            "bytes": 8179
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/src/test/his-v4-pinned-producer-source.json",
+            "sha256": "b83dc590bb4f9c58e1386de9f03eda958934c08dad01a2536772a61a45275484",
+            "bytes": 44429
+          }
+        ],
+        "unchangedNativeAuthorityAndCryptographyFiles": [
+          {
+            "path": "src/server/application/hospital-his-v4-service.ts",
+            "sha256": "d027c54911ef9d4460d341b9b9edff0839de2582df91b6db24a6531345732747",
+            "matchesPreexistingStagedContent": true
+          },
+          {
+            "path": "src/server/application/hospital-his-v4-http.ts",
+            "sha256": "21cb9901e63c440d0553b76e11a851906bbb28c964eee564a5bc83fad7ef6d3e",
+            "matchesPreexistingStagedContent": true
+          },
+          {
+            "path": "src/server/application/hospital-his-v4-config.ts",
+            "sha256": "1a270d576beef44c48b4733173efd8446ee0d97935aef9aad2df8a786b67560f",
+            "matchesPreexistingStagedContent": true
+          }
+        ],
+        "metadata": "Optional for legacy; when present canonical envelope required, schemaVersion literal1, encountered source module/service literals, Unicode identifiers up to255 codepoints, bounded dates/traceparent, strict known metadata and strict business fields, account coherence",
+        "identity": "Outbox UUID, webhook whpay ID and delivery whdel ID stay distinct; _meta never selects native actor/patient/encounter/department",
+        "opaqueDigest": "Original complete parsed-event digest still includes metadata; no body hash or HMAC change",
+        "storage": "Mapped intake fields only; no raw technical metadata in intake, audit, outbox, logging or public response"
+      },
+      "reproduction": {
+        "redFailures": 3,
+        "redSkipped": 23,
+        "reason": "Actual producer raw body rejected400 in two provider scenarios and one real route scenario",
+        "initialPostPatchFailures": "One new test incorrectly asserted authorId instead of native submittedBy and a TypeScript parameter self-reference; both test-only issues fixed, initial logs preserved"
+      },
+      "focusedGreen": {
+        "testFiles": 4,
+        "tests": 40,
+        "scope": [
+          "new actual-producer metadata regressions",
+          "existing HIS service authenticity/scope/replay/rotation/atomicity cases",
+          "existing HIS HTTP signature/discovery guards",
+          "route authentication/raw body/native7headers/metadata public leakage"
+        ],
+        "testsInclude": [
+          "real emitted canonical metadata",
+          "optional tenant/tracing absent and Unicode255 boundary",
+          "legacy payload",
+          "raw HMAC tamper",
+          "replay and metadata content collision",
+          "native grants revoked despite privileged metadata actor claim",
+          "null/array/missing/malformed/unknown/oversized metadata",
+          "metadata account/event/module/service mismatch",
+          "unsupported metadata version",
+          "business field remains strict",
+          "total raw body limit and transaction-state unchanged"
+        ]
+      },
+      "checks": {
+        "red": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-red-20261012.log",
+            "sha256": "4051071e2b864b569c71543488f93b8fd4e5750f4b49a625e055e5796d76bc8e",
+            "bytes": 3991
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-red-20261012.exit",
+            "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+            "bytes": 2
+          },
+          "exitCode": 1
+        },
+        "green": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-green-20261012.log",
+            "sha256": "25f25376c980782443e803a659698b27fd7081e3ea1a458ec6afe1dab1407a5d",
+            "bytes": 1274
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-green-20261012.exit",
+            "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+            "bytes": 2
+          },
+          "exitCode": 1
+        },
+        "types": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-types-20261012.log",
+            "sha256": "d21052ff8f80149265693968528d8f38ee830e14342194f73501503883a0da5e",
+            "bytes": 133
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-types-20261012.exit",
+            "sha256": "53c234e5e8472b6ac51c1ae1cab3fe06fad053beb8ebfd8977b010655bfdd3c3",
+            "bytes": 2
+          },
+          "exitCode": 2
+        },
+        "lint": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-lint-20261012.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-lint-20261012.exit",
+            "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+            "bytes": 2
+          },
+          "exitCode": 0
+        },
+        "green-final": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-green-final-20261012.log",
+            "sha256": "7d6e8c6ec51a990aa28afb1f5491e41937dcde8dc6b91b73719a18b43c401bfd",
+            "bytes": 227
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-green-final-20261012.exit",
+            "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+            "bytes": 2
+          },
+          "exitCode": 0
+        },
+        "types-final": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-types-final-20261012.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-types-final-20261012.exit",
+            "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+            "bytes": 2
+          },
+          "exitCode": 0
+        },
+        "lint-final": {
+          "log": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-lint-final-20261012.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "exit": {
+            "path": "/tmp/cvg-hpl-his-v4-metadata-lint-final-20261012.exit",
+            "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+            "bytes": 2
+          },
+          "exitCode": 0
+        }
+      },
+      "typesScope": {
+        "command": "./node_modules/.bin/tsc --noEmit --project /tmp/cvg-hpl-his-v4-metadata-tsconfig-20261012.json",
+        "configuration": {
+          "path": "/tmp/cvg-hpl-his-v4-metadata-tsconfig-20261012.json",
+          "sha256": "e2c515c86a9b39f6c95798733d35730de7aaab8d4e5d7c0f7f825660a76a8a61",
+          "bytes": 785
+        },
+        "meaning": "Focused include list plus imported dependencies, not a claim of full-project typecheck"
+      },
+      "lintScope": {
+        "command": "./node_modules/.bin/eslint src/server/http/hospital-his-v4-schemas.ts src/server/http/hospital-his-v4-route.test.ts src/server/application/hospital-his-v4-producer-metadata.test.ts src/test/his-v4-pinned-producer.ts"
+      },
+      "limits": [
+        "Synthetic offline producer/repository/HTTP-route test proof; no live HIS/provider discovery/transmission/DB/container filesystem/env read",
+        "No whole G4/build/browser rerun or image recertification performed here; previous global evidence remains scoped to its original source fingerprints",
+        "OpenAPI generation and remote CI integration remain parent-owned",
+        "No Git staging/commit/push or permanent documentation updates performed",
+        "Installed source/image provenance and external hospital acceptance remain UNKNOWN/PARTIAL and pilot051 OPEN"
+      ]
+    },
+    "evidenceArtifact": {
+      "path": "/tmp/cvg-hpl-his-v4-metadata-evidence-20261012.json",
+      "sha256": "2fd6604dd279cfd75676f65f18bf605472d3fcab7ff9d0e037f2883357df4089",
+      "bytes": 13781
+    },
+    "unicodeContractCorrection": {
+      "generator": "scripts/openapi-hospital-external.mjs",
+      "regression": "src/server/http/api-contract.test.ts",
+      "red": {
+        "status": "FAIL",
+        "exitCode": 1,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-his-contract12-openapi-unicode-red-20261011.log",
+          "sha256": "1c658f4457888c186bb06a820f414c42557a5e03b3996814510e8cceecd6997f",
+          "bytes": 1435
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-his-contract12-openapi-unicode-red-20261011.exit",
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865",
+          "bytes": 2
+        }
+      },
+      "green": {
+        "status": "PASS",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-his-contract12-openapi-unicode-green-20261011.log",
+          "sha256": "32a1caa875236400fe90a93e04edc3298c1e415cd48a6aeceaa9807583c97924",
+          "bytes": 225
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-his-contract12-openapi-unicode-green-20261011.exit",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      },
+      "testsPassed": 19,
+      "meaning": "Exporter uses JSON Schema minLength/maxLength255 plus a nonblank pattern instead of losing the runtime Unicode regex flag; the application schema is unchanged by this documentation correction.",
+      "primarySpecification": "https://json-schema.org/draft/2020-12/json-schema-validation#section-6.3.1"
+    }
+  },
+  "nativeCatalogProof": {
+    "evidence": {
+      "schemaVersion": 1,
+      "evidenceType": "HIS_PINNED_SOURCE_NATIVE_API_CATALOG_HTTPS_SANDBOX",
+      "observedAt": "2026-10-12T00:20:53.839Z",
+      "classification": "SOURCE_COMPATIBILITY_ONLY_NOT_INSTALLED_RUNTIME_OR_HOMOLOGATION",
+      "hisSourceCommit": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+      "mountedRuntime": "native createApiServer request pipeline in disposable HTTPS server; environment test; native memory repositories and real ApiKeysService; production entrypoint not executed",
+      "data": "synthetic account, actors and ephemeral native API keys only",
+      "transport": "unmodified Hub discoverHospitalHisV4Http; loopback dynamic TLS port; explicit allowlisted IP/host; ephemeral CA supplied as config.ca; native timeout 10000ms; no DNS/request injections",
+      "observations": [
+        {
+          "method": "GET",
+          "path": "/integrations/catalog",
+          "status": 200
+        },
+        {
+          "method": "GET",
+          "path": "/integrations/catalog",
+          "status": 401
+        },
+        {
+          "method": "GET",
+          "path": "/integrations/catalog",
+          "status": 403
+        },
+        {
+          "method": "GET",
+          "path": "/integrations/catalog",
+          "status": 401
+        }
+      ],
+      "assertions": {
+        "actualNativeCatalogAcceptedByHubSchema": true,
+        "accountMatchesSyntheticConfig": true,
+        "keyRestrictedToIntegrationsRead": true,
+        "noRawKeyOrKeyHashInCatalog": true,
+        "unrecognizedKeyRejected401": true,
+        "unrelatedScopeRejected403": true,
+        "deactivatedKeyRejected401": true,
+        "allRequestsCatalogGetOnly": true
+      },
+      "catalogAdvertisementFamilies": [
+        "eventBus",
+        "webhooks",
+        "payments",
+        "email",
+        "sms",
+        "googleCalendar",
+        "laboratoryEquipmentBridge"
+      ],
+      "cleanup": {
+        "tlsServerClosed": true,
+        "tlsPrivateKeyDeleted": true,
+        "ephemeralCaDeleted": true,
+        "apiNeverBoundProductionOrFixedPort": true,
+        "pemFilesExistAfterProcessExit": false
+      },
+      "limits": [
+        "No deployed HIS Env, credentials, DB, container filesystem, clinical APIs or configuration accessed",
+        "No full production bootstrap, durable DB, worker, webhook delivery, mapping, clinical event or hospital UAT proved",
+        "Installed sourceHeadMatch remains UNKNOWN and deploymentVerified false",
+        "BLD-HPL-042 remains PARTIAL and BLD-HPL-051 remains OPEN"
+      ],
+      "runtimeVersions": {
+        "node": "v22.23.3",
+        "tsx": "4.21.0",
+        "typescript": "5.9.3",
+        "zod": "4.6.5"
+      },
+      "sourceProvenance": {
+        "hisCommit": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+        "manifestPath": "/tmp/cvg-his-catalog-source-20261012-gmq47ce0/source-manifest.json",
+        "manifestSha256": "f8347c83a6fa64878ca8f022817284e02fd446a4de47124d09c9739d44e141ee",
+        "workspaceSourceLoaderGuard": "Refuses file imports from either original workspace except installed node_modules; all loaded copied sources verified against manifest",
+        "loadedPinnedOrSnapshotSourceFiles": 498,
+        "loadedFileIndexPath": "/tmp/cvg-his-catalog-source-20261012-gmq47ce0/loaded-files.jsonl",
+        "loadedFileIndexSha256": "171ea2778e884fe568e25871e4ee6e91a2781c3c7621ceb9655e91c6711fc696",
+        "sourceHashMismatches": 0,
+        "authorities": [
+          {
+            "path": "his/apps/api/src/helpers/auth-helpers.ts",
+            "sha256": "21b10c94380e2d1169c8fa399a91ecbb6a0decfcda512ef4c89d6298ba224f4b"
+          },
+          {
+            "path": "his/apps/api/src/routes/api-keys-routes.ts",
+            "sha256": "b56389e72c8d0f2b411e308d142e190d147c9320334494420593cd30d3fe5908"
+          },
+          {
+            "path": "his/apps/api/src/runtime-repositories.ts",
+            "sha256": "4fc67dc0299681a3d92bcc828e18aa843e7001e852edd21fc22f7ad08cd93d31"
+          },
+          {
+            "path": "his/apps/api/src/server.ts",
+            "sha256": "8d87d0c427aff8a55d47ac53b16f3f519f8b8414d141ef3b216382392ada681b"
+          },
+          {
+            "path": "his/packages/modules/api-keys/src/api-keys.service.ts",
+            "sha256": "e890299306ba5a6151faf478663d91a02bf4520015f4c1c03d545a593513c39c"
+          },
+          {
+            "path": "hub/src/server/application/hospital-his-v4-config.ts",
+            "sha256": "1a270d576beef44c48b4733173efd8446ee0d97935aef9aad2df8a786b67560f"
+          },
+          {
+            "path": "hub/src/server/application/hospital-his-v4-http.ts",
+            "sha256": "21cb9901e63c440d0553b76e11a851906bbb28c964eee564a5bc83fad7ef6d3e"
+          },
+          {
+            "path": "hub/src/server/http/hospital-his-v4-schemas.ts",
+            "sha256": "28d4a93ea4ac5a3a6ae97798a42dfcbf0bfdd0962dd740198389b7fd8e3d7ed2"
+          }
+        ]
+      },
+      "execution": {
+        "exitCode": 0,
+        "elapsedSeconds": 1.781,
+        "nodeHeapLimitMiB": 384,
+        "maxRssKiB": 232196,
+        "processTimeoutSeconds": 45,
+        "environmentKeyAllowlist": [
+          "PATH",
+          "NODE_ENV",
+          "TZ",
+          "TSX_TSCONFIG_PATH"
+        ],
+        "inheritedEnvironmentValues": false,
+        "generatedConfigPassedInFunction": true,
+        "containerCreated": false,
+        "databaseConfiguredOrAccessed": false,
+        "productionEntrypointExecuted": false
+      },
+      "logInspection": {
+        "credentialOrPrivateKeyMarkers": 0,
+        "clinicalDataSourcesAccessed": 0,
+        "stdoutSha256": "a3e789c0d0fd89d0af00cdb974d00599f13c6705fce0011bf1ccf525e5dc1a10",
+        "stderrSha256": "9187d86fae264b435e581441361baedd485ac5345dfb502ec7ea1a08770402ef",
+        "expectedNegativeRequestErrors": 3,
+        "paths": [
+          "/tmp/cvg-his-catalog-source-20261012-gmq47ce0/verified-stdout.log",
+          "/tmp/cvg-his-catalog-source-20261012-gmq47ce0/verified-stderr.log"
+        ]
+      },
+      "methodLimit": "Native API pipeline mounted in synthetic TLS server with in-memory repositories. Full Docker/API index bootstrap and production readiness were not executed. Libraries use already-installed dependency versions; HIS source is pinned independently of those dependencies."
+    },
+    "artifact": {
+      "path": "/tmp/cvg-his-catalog-source-20261012-gmq47ce0/evidence.json",
+      "sha256": "de6750aa51fa31163860955fd3956c5744c4c49712acf7e3f18dcd1306f237a8",
+      "bytes": 5719
+    },
+    "currentInputQualification": {
+      "measuredSchemaSha256": "28d4a93ea4ac5a3a6ae97798a42dfcbf0bfdd0962dd740198389b7fd8e3d7ed2",
+      "currentSchemaSha256": "37e29a43bdfa0f9e291bc07be27749caac3b096196d648d7771051de1a297751",
+      "remoteCatalogDeclarationAndSharedConstantsByteIdentical": true,
+      "unchangedCatalogParserBlockSha256": "ca4286e9e7eaca62fae8c7d1262f1273700240ba340efb8b49e7fb8df9276c25",
+      "clientAndConfigurationByteIdentical": true,
+      "meaning": "The native GET actually used the previous whole schema module snapshot. Only its unchanged catalog/config/client inputs qualify this proof for current catalog behavior; it is not a rerun or current full-module identity claim."
+    }
+  },
+  "formatting": {
+    "evidence": {
+      "capturedAt": "2026-10-12T00:09:33.653598+00:00",
+      "scope": "Prepublication formatting only, not the separate HIS compatibility fix. Original sources preserved in this temporary directory. CSV bytes preserved; exact path attributes retain standard whitespace checks and recognizeCRLF.",
+      "entries": [
+        {
+          "path": "packages/contracts/src/identity-permissions.ts",
+          "beforeSha256": "d63637d9c76fbbdb33f0de94a2a7fc310b7817011b2d22df819bfe9ad5353ed2",
+          "afterSha256": "0c3dc024113d840f27140655af76d8fcf63a77a14ad6b54873cd9b60b8b70bf7",
+          "removedBytes": 1,
+          "operation": "Remove only final LF byte; all preceding bytes unchanged.",
+          "emittedJavaScriptIdentical": true,
+          "emittedJavaScriptSha256": "2ddff8613c5bd492278d13effe8cf78586e2c724d4e37c6e340a2b7cf9e4fbae",
+          "transpileDiagnostics": 0
+        },
+        {
+          "path": "src/components/laboratory-result-panels.tsx",
+          "beforeSha256": "038e5b4d5693d442b807035db80b36327480f6f0ae67d12b5e41d68219a20110",
+          "afterSha256": "9a451f818acf8252931c52a4b1aa69aac93cb4465365184b16dd6a90bb06f475",
+          "removedBytes": 1,
+          "operation": "Remove only final LF byte; all preceding bytes unchanged.",
+          "emittedJavaScriptIdentical": true,
+          "emittedJavaScriptSha256": "5246c5f42141083b7943b2f710c1a43fce07d41faa6a7857304ba17046a33d09",
+          "transpileDiagnostics": 0
+        },
+        {
+          "path": "src/server/application/catalog-definition-validation.ts",
+          "beforeSha256": "a7d5bb19b5eeb3c023c02808ddc0c405b6b339e75f9b4dba402505d6d476a5c0",
+          "afterSha256": "71772a3e74d9cad59bb75935c8f33f21f4a63402606878b41357472f44d11121",
+          "removedBytes": 1,
+          "operation": "Remove only final LF byte; all preceding bytes unchanged.",
+          "emittedJavaScriptIdentical": true,
+          "emittedJavaScriptSha256": "db8cb6d3d192b889ed11d2ae53391dc7f9f38cc3edd17e0e2e295bb33abbfb37",
+          "transpileDiagnostics": 0
+        },
+        {
+          "path": "src/server/http/api-operation-builders.ts",
+          "beforeSha256": "23c2d598cc3cec51d2b8f8236ca9d0f906edf28627007fdbcd44210051013759",
+          "afterSha256": "4b48018de673f4f07872d9cf6732520817115d7d9a2ab3b2254285172a888d4a",
+          "removedBytes": 1,
+          "operation": "Remove only final LF byte; all preceding bytes unchanged.",
+          "emittedJavaScriptIdentical": true,
+          "emittedJavaScriptSha256": "8a21023d5b26716df029d4835d176c092b8fd29d5890804b05b2fdc9ba2b15ab",
+          "transpileDiagnostics": 0
+        },
+        {
+          "path": "src/server/http/api-operation-model.ts",
+          "beforeSha256": "feb9568a79f1b0bf10109e0e71fc1acdb9225f0b6f2ac14e381c81e31bf37d78",
+          "afterSha256": "37802eba3b7533a2935af53ffd32cdd410ebb34979d5dc257a4608bad70209b2",
+          "removedBytes": 1,
+          "operation": "Remove only final LF byte; all preceding bytes unchanged.",
+          "emittedJavaScriptIdentical": true,
+          "emittedJavaScriptSha256": "1294b7851e1826808007a7f581fa6b4eb4c2024a49c64ae8f649cc8eec48a653",
+          "transpileDiagnostics": 0
+        }
+      ],
+      "staticEmissionComparison": {
+        "compiler": "5.9.3",
+        "options": "ES2022/ESNext/ReactJSX, no source map",
+        "meaning": "Identical emitted JavaScript proves formatting-only code effect; not a whole-project typecheck or a new runtime suite."
+      }
+    },
+    "artifact": {
+      "path": "/tmp/cvg-hpl-prepublication-formatting-20261012/evidence.json",
+      "sha256": "1f9edbe59e0a08aaa69be0b902f9d2b3be78cf2f8f1d8a52e52720d6dda9a74d",
+      "bytes": 3239
+    },
+    "csvRawBytesChanged": false,
+    "gitAttributes": {
+      "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/.gitattributes",
+      "sha256": "f0222278d50120fbb6a6e1bc9d2d100746232c2d94036639bb4a8f0b3b93e28c",
+      "bytes": 505
+    },
+    "originalCachedDiffFailure": {
+      "path": "/tmp/cvg-hpl-prepublication-cached-diff-check-original-20261012.log",
+      "sha256": "f258342f508d5a5db551ec385cf2b08472a4eb8cfb874333e18f9bc532225622",
+      "bytes": 131455
+    },
+    "originalCachedDiffExitCode": 2,
+    "meaning": "Five final LF bytes removed, with identical emitted JavaScript. Three exact CSV paths retain the default whitespace checks plus CRLF recognition; no baseline or assertion relaxed."
+  },
+  "checks": {
+    "types": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-global-types-20261011.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-global-types-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "lint": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-global-lint-20261011.log",
+        "sha256": "74fe0026686129279d897921f5d00272ef3352a26675ba1947714a44e84f466c",
+        "bytes": 46
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-global-lint-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "openapi": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-openapi-20261011.log",
+        "sha256": "cca8c3e086b980465599015e67767bba92e384f4c328655b97e2eddf7fb20a07",
+        "bytes": 1023
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-openapi-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    }
+  },
+  "finalReportChecks": {
+    "status": "PASS",
+    "recordedAt": "2026-10-12T00:37:48.415917+00:00",
+    "scope": "Final source types/lint after Unicode export repair; documentation and safe tracked/untracked text privacy review after report write; raw source index and worktree match the 1085-file manifest. Record metadata appended afterward without product changes.",
+    "types": {
+      "status": "PASS",
+      "command": "env NODE_OPTIONS=--max-old-space-size=2048 npx tsc --noEmit --incremental false",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-final-types-20261011.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-final-types-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "lint": {
+      "status": "PASS",
+      "command": "env NODE_OPTIONS=--max-old-space-size=1024 npm run lint",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-final-lint-20261011.log",
+        "sha256": "74fe0026686129279d897921f5d00272ef3352a26675ba1947714a44e84f466c",
+        "bytes": 46
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-final-lint-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "documentation": {
+      "status": "PASS",
+      "command": "npm run validate:docs",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-docs-20261011.log",
+        "sha256": "37e5555270a622f2d0c1449d9d5be5aa70c0fec911b74b12a7c7fd8638e31102",
+        "bytes": 207
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-docs-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "secrets": {
+      "status": "PASS",
+      "command": "npm run security:scan",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-secrets-20261011.log",
+        "sha256": "01e4220a4ae212c4d17d708b7bfb6dc55d13bde287e0e1ad7f9f61ff769afb9d",
+        "bytes": 205
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-secrets-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "privacy": {
+      "status": "PASS",
+      "command": "node /tmp/cvg-hpl-prepublication-privacy-final-20261012.mjs",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-final-privacy-20261011.log",
+        "sha256": "802f15a1423b859d7f472545eb39e740a41d9c18ef70f03bac1da8e51074bce7",
+        "bytes": 40
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-his-contract12-final-privacy-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      },
+      "scanned": 1244,
+      "findings": 0,
+      "report": {
+        "path": "/tmp/cvg-hpl-prepublication-privacy-final-20261012.json",
+        "sha256": "32f99cfed48eb9e0464e966c120c141697685dcbb60bc2475cae55911364a009",
+        "bytes": 192845
+      }
+    },
+    "cachedWhitespace": {
+      "status": "PASS",
+      "command": "git diff --cached --check",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-prepublication-cached-diff-check-final-20261012.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-prepublication-cached-diff-check-final-20261012.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "sourceManifestIndexCheck": {
+      "status": "PASS",
+      "checkedFiles": 1085,
+      "fingerprintSha256": "fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5",
+      "method": "SHA256 of every indexed Git blob and worktree raw file equals the current manifest; publication metadata is outside the source fingerprint selector."
+    }
+  },
+  "historicalEvidenceApplicability": "5283 complete G4 tests, measured product images and195 composed browser passes retain their original673/bf1e input scope. They are not automatically reused or relabeled as current full-candidate proofs after this product change.",
+  "fullCandidateGates": {
+    "localG4AfterProductRepair": "NOT_RERUN",
+    "localImagesAfterProductRepair": "NOT_REBUILT",
+    "localCanonicalBrowserAfterProductRepair": "NOT_RERUN",
+    "remoteCIAtCapture": "NOT_EXECUTED_PENDING_BRANCH_PUBLICATION",
+    "remoteCIAuthority": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions?query=branch%3Afeat%2Fhospital-planner-20261012",
+    "meaning": "This is the sealed local pre-publication record. Commit identity and fresh full required checks must be read from the branch/PR and Actions, not inferred from local focused tests."
+  },
+  "publicationPlan": {
+    "branch": "feat/hospital-planner-20261012",
+    "base": "main",
+    "pullRequestMode": "DRAFT",
+    "mergeOrDeploymentPerformed": false
+  },
+  "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+  "BLD-HPL-051": "OPEN",
+  "done": false,
+  "release": "NOT_APPLIED",
+  "limits": [
+    "Source compatibility with pinned HIS revisions and a disposable native test/memory HTTPS catalog is not installed-image provenance, adopted sandbox delivery or hospital UAT.",
+    "Installed sourceHeadMatch remainsUNKNOWN/deploymentVerifiedfalse; LIS/PACS and nominal pilot acceptance remain unknown/open.",
+    "No installed hospital services, ports, configuration, credentials, clinical APIs or database were changed.",
+    "Actual HTTPS webhook receiver, approved mappings, institutional content, target workload, scanner/restore/alerts and nominal go/no-go remain external gates."
+  ]
+}

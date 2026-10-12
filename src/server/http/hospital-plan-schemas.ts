@@ -1,0 +1,10 @@
+import { z } from "zod";
+const id = z.string().min(1).max(100); const expectedVersion = z.number().int().positive();
+const title = z.string().trim().min(1).max(200); const objective = z.string().trim().min(1).max(4000); const date = z.iso.datetime({ offset: true });
+const departments = z.array(z.string().trim().min(1).max(60)).min(1).max(50).refine((values) => new Set(values).size === values.length);
+const steps = z.array(z.object({ id, title, sortOrder: z.number().int().min(0).max(1_000_000) }).strict()).max(100).refine((values) => new Set(values.map((entry) => entry.id)).size === values.length);
+export const hospitalPlanCreateSchema = z.object({ title, objective, patientId: id, encounterId: id, departmentCodes: departments, responsibleUserId: id.optional(), plannedStartAt: date.optional(), plannedEndAt: date.optional(), steps: steps.optional(), documentIds: z.array(id).max(20).refine((values) => new Set(values).size === values.length).optional() }).strict();
+export const hospitalPlanPatchSchema = z.object({ title: title.optional(), objective: objective.optional(), departmentCodes: departments.optional(), responsibleUserId: id.nullable().optional(), plannedStartAt: date.nullable().optional(), plannedEndAt: date.nullable().optional(), steps: steps.optional(), documentIds: z.array(id).max(20).refine((values) => new Set(values).size === values.length).optional(), expectedVersion }).strict();
+export const hospitalPlanLinkSchema = z.object({ stepId: id, targetType: z.enum(["HOSPITAL_TASK", "DIAGNOSTIC_ITEM"]), targetId: id, active: z.boolean(), expectedVersion }).strict();
+export const hospitalPlanCommandSchema = z.object({ command: z.enum(["CLOSE", "ARCHIVE"]), reason: z.string().trim().min(1).max(500).optional(), expectedVersion }).strict();
+export const hospitalPlanFiltersSchema = z.object({ patientId: id.optional(), encounterId: id.optional(), departmentCode: z.string().min(1).max(60).optional(), state: z.enum(["ACTIVE", "CLOSED", "ARCHIVED"]).optional(), query: z.string().trim().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() }).strict();

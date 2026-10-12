@@ -1,7 +1,9 @@
+import { initialHospitalTaskTypes } from "../domain/hospital-task-types";
 import { createHash, randomBytes } from "node:crypto";
 import type { LaboratoryPanelTemplate } from "@cvg/contracts";
 import type { StoreState, User } from "../domain/models";
 import { hashPassword } from "../security/password";
+import { initialSystemAccessGroups, systemGroupId } from "../security/access-group-policy";
 
 export { hashPassword } from "../security/password";
 
@@ -55,6 +57,7 @@ function demoUser(
     email,
     displayName,
     role,
+    accessGroupId: systemGroupId(role),
     departmentCode,
     passwordHash: hashPassword(password, `fixture-${id}`),
     timezone: "America/Sao_Paulo",
@@ -91,7 +94,23 @@ function generatedDemoPassword(): string {
 
 export function createDemoState(password?: string): StoreState {
   const resolvedPassword = resolveDemoPassword(password);
-  return {
+  const state: StoreState = {
+    accessGroups: initialSystemAccessGroups(now),
+    patientGrants: [],
+    examDefinitions: [],
+    hospitalServices: [],
+    hospitalHisV4Deliveries: [], hospitalIntegrationCredentials: [], hospitalIntegrationMessages: [], hospitalAiSuggestions: [], hospitalDocuments: [], hospitalTaskComments: [], hospitalTaskAttachments: [], workNotifications: [], workNotificationPreferences: [], workActivityPreferences: [], hospitalReports: [], hospitalReportJobs: [], hospitalInstitutionSettings: [], hospitalUserInvitations: [],
+    hospitalResources: [],
+    hospitalPlans: [], hospitalShifts: [], hospitalHandoffs: [], hospitalChecklistTemplates: [], hospitalRecurrences: [],
+    hospitalTaskTypes: initialHospitalTaskTypes(now),
+    hospitalTasks: [], hospitalTaskDependencies: [], hospitalIntakes: [], savedPlannerViews: [],
+    departments: [
+      { code: "INPATIENT", name: "Internação", type: "CLINICAL" as const, memberUserIds: ["user-vet", "user-manager"] },
+      { code: "LABORATORY", name: "Laboratório", type: "DIAGNOSTIC" as const, memberUserIds: ["user-lab"] },
+      { code: "RADIOLOGY", name: "Radiologia", type: "DIAGNOSTIC" as const, memberUserIds: ["user-rx"] },
+      { code: "ULTRASOUND", name: "Ultrassom", type: "DIAGNOSTIC" as const, memberUserIds: ["user-us"] },
+      { code: "IT", name: "Administração técnica", type: "ADMINISTRATIVE" as const, memberUserIds: ["user-admin", ...(process.env.DEMO_SUPERADMIN_ENABLED === "true" ? ["user-superadmin"] : [])] }
+    ].map((entry) => ({ ...entry, id: `department-${entry.code}`, active: true, version: 1, createdAt: now, updatedAt: now })),
     users: [
       demoUser("user-vet", "vet@cvg.local", "Dra. Marina Costa", "VETERINARIAN", "INPATIENT", resolvedPassword ?? generatedDemoPassword(), ["patient-thor", "patient-mel"]),
       demoUser("user-lab", "lab@cvg.local", "Técnica Joana Lima", "LAB_TECH", "LABORATORY", resolvedPassword ?? generatedDemoPassword(), [], ["HEMOGRAM", "CRP"]),
@@ -141,6 +160,8 @@ export function createDemoState(password?: string): StoreState {
     attachments: [],
     protocolSequence: 1
   };
+  state.patientGrants = state.users.flatMap((user) => (user.patientIds ?? []).map((patientId) => ({ id: `patient-grant-${user.id}-${patientId}`, userId: user.id, patientId, source: "LEGACY" as const, active: true, version: 1, createdAt: now, updatedAt: now })));
+  return state;
 }
 
 /**

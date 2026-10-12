@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { QueueItem } from "@cvg/contracts";
+import type { Permission, QueueItem } from "@cvg/contracts";
 import { QueueView } from "./queue-view";
 import * as apiClient from "./api-client";
 
@@ -11,7 +11,8 @@ const item = (id = "item-1", name = "Hemograma", version = 3): QueueItem => ({
 });
 
 const page = (items: QueueItem[], nextCursor?: string, total = items.length) => ({ data: items, meta: { requestId: "request", correlationId: "correlation", total, ...(nextCursor ? { nextCursor } : {}) } });
-const session = (role = "LAB_TECH", managedDepartmentCodes?: string[]) => ({ user: { role, departmentCode: "LABORATORY", managedDepartmentCodes } });
+const grants = (role: string): Permission[] => role === "LAB_TECH" ? ["sample.process"] : ["MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) ? ["request.create", "patient.create", ...(role === "MANAGER" ? ["sample.process" as const] : [])] : [];
+const session = (role = "LAB_TECH", managedDepartmentCodes?: string[]) => ({ user: { id: `user-${role}`, role, departmentCode: "LABORATORY", managedDepartmentCodes, permissions: grants(role) } });
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -21,7 +22,37 @@ function deferred<T>() {
 }
 
 describe("QueueView board integration", () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); window.history.replaceState(null, "", "/queues"); });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); window.localStorage.clear(); window.history.replaceState(null, "", "/queues"); });
+
+  it("does not offer processing or request creation when effective grants are absent", async () => {
+    vi.spyOn(apiClient, "apiFetch").mockResolvedValue({ user: { ...session("MANAGER").user, permissions: [] } } as never);
+    vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue(page([item()]) as never);
+    render(<QueueView />);
+    await screen.findByRole("button", { name: "Abrir contexto de Hemograma — Thor" });
+    expect(screen.queryByRole("button", { name: "Iniciar processamento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("form", { name: "Adicionar exame à fila" })).not.toBeInTheDocument();
+    act(() => window.dispatchEvent(new Event("cvg:create-request")));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("clears confirmed queue pages when authorization is refused during continuation", async () => {
+    vi.spyOn(apiClient, "apiFetch").mockResolvedValue(session() as never);
+    vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValueOnce(page([item()], "next", 2) as never).mockRejectedValueOnce(new apiClient.ApiClientError(403, { error: { code: "SCOPE_DENIED" } }));
+    render(<QueueView />);
+    fireEvent.click(await screen.findByRole("button", { name: "Carregar mais itens" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByRole("button", { name: "Abrir contexto de Hemograma — Thor" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Iniciar processamento" })).not.toBeInTheDocument();
+  });
+
+  it("discovers SUPERADMIN queue sectors from authorized catalog metadata", async () => {
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/session/me" ? { user: { ...session("SUPERADMIN").user, permissions: ["queue.view"] } } : [{ departmentCode: "PATHOLOGY" }, { departmentCode: "LABORATORY" }, { departmentCode: "PATHOLOGY" }]) as never);
+    const queues = vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue(page([]) as never);
+    render(<QueueView />);
+    await waitFor(() => expect(queues).toHaveBeenCalledTimes(2));
+    expect(queues).toHaveBeenCalledWith("/queues/PATHOLOGY/items"); expect(queues).toHaveBeenCalledWith("/queues/LABORATORY/items");
+    expect(queues).not.toHaveBeenCalledWith("/queues/RADIOLOGY/items");
+  });
 
   it("keeps manager department scope, pagination cursors and item deduplication", async () => {
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/session/me" ? session("MANAGER", ["LABORATORY", "RADIOLOGY"]) : []) as never);
@@ -104,7 +135,7 @@ describe("QueueView board integration", () => {
 
   it.each(["VETERINARIAN", "VET", "INPATIENT_TEAM"])("uses all authorized catalog services for %s while retaining the INPATIENT queue scope", async (role) => {
     const services = [{ id: "service-lab", name: "Hemograma", code: "HEMOGRAM", departmentCode: "LABORATORY", active: true, workflowType: "LABORATORY", category: "LABORATORY", requiresSample: true, requiresSchedule: false }];
-    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/session/me" ? { user: { role, departmentCode: "INPATIENT" } } : path === "/diagnostic-services" ? services : []) as never);
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/session/me" ? { user: { id: `user-${role}`, role, departmentCode: "INPATIENT", permissions: grants(role) } } : path === "/diagnostic-services" ? services : []) as never);
     const queues = vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue(page([]) as never);
     render(<QueueView />);
     expect(await screen.findByRole("option", { name: "Hemograma" })).toBeInTheDocument();

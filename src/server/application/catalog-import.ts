@@ -312,7 +312,7 @@ function analyteDefinition(row: CatalogAnalyteRow, position: number): Laboratory
     required: row.required,
     displayOrder: row.displayOrder ?? position,
     referenceRange: hasRange
-      ? { kind: "NUMERIC", unitCode: row.unitCode, ...(row.low === undefined ? {} : { low: row.low }), ...(row.high === undefined ? {} : { high: row.high }), source: "HUMAN_APPROVED", ...(row.note ? { note: row.note } : {}) }
+      ? { kind: "NUMERIC", unitCode: row.unitCode, ...(row.low === undefined ? {} : { low: row.low }), ...(row.high === undefined ? {} : { high: row.high }), source: "PENDING_HUMAN_POLICY", ...(row.note ? { note: row.note } : {}) }
       : { kind: "PENDING_POLICY", unitCode: row.unitCode, source: "PENDING_HUMAN_POLICY", note }
   };
 }
@@ -320,7 +320,8 @@ function analyteDefinition(row: CatalogAnalyteRow, position: number): Laboratory
 function buildTemplate(service: CatalogServiceRow, analytes: CatalogAnalyteRow[], existing: LaboratoryPanelTemplate | undefined): { template: LaboratoryPanelTemplate; changed: boolean } {
   const definitions = analytes.map((row, index) => analyteDefinition(row, index + 1)).sort((a, b) => a.displayOrder - b.displayOrder);
   const base = { kind: "LABORATORY_PANEL" as const, code: service.code, name: service.name, schemaVersion: existing?.schemaVersion ?? "1.0", status: "ACTIVE" as const, analytes: definitions };
-  const unchanged = existing && existing.status === "ACTIVE" && canonical({ ...base, version: 0 }) === canonical({ ...existing, version: 0 });
+  const comparable = (template: LaboratoryPanelTemplate) => ({ ...template, approval: undefined, version: 0, analytes: template.analytes.map((entry) => ({ ...entry, ...(entry.referenceRange ? { referenceRange: { ...entry.referenceRange, source: "PENDING_HUMAN_POLICY" } } : {}) })) });
+  const unchanged = existing && existing.status === "ACTIVE" && canonical(comparable({ ...base, version: 0 })) === canonical(comparable(existing));
   return unchanged ? { template: existing, changed: false } : { template: { ...base, version: (existing?.version ?? 0) + 1 }, changed: true };
 }
 
@@ -408,6 +409,7 @@ export function planCatalogImport(state: StoreState, sheet: ParsedSheet<CatalogS
     handled.add(wanted.code);
     const errors: string[] = [];
     const existing = existingByCode.get(wanted.code);
+    if (state.hospitalServices.some((service) => service.code === wanted.code)) errors.push("Este código já pertence ao catálogo de serviços hospitalares gerais.");
     for (const department of new Set([wanted.departmentCode, existing?.departmentCode])) {
       if (department && !canManage(department)) errors.push(`Você não tem permissão para gerenciar o catálogo do setor ${department}.`);
     }

@@ -3,6 +3,7 @@ import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
 import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import { diagnosticReservationWindow, validateDiagnosticReservationStart } from "./diagnostic-reservation-policy";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
@@ -364,9 +365,8 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
           throw new ApiError("VALIDATION_ERROR", "Este item não aceita agendamento nesta etapa.", 400);
         }
         if (item.status !== "REQUESTED") throw new ApiError("INVALID_STATE_TRANSITION", "O item já possui uma execução iniciada ou agendada.", 409);
-        const window = scheduleWindow(input);
-        if (hasScheduleConflict(originalState, window)) throw new ApiError("SCHEDULE_CONFLICT", "O recurso já está reservado neste intervalo.", 409);
         const createdAt = now();
+        const window = diagnosticReservationWindow(originalState, item, input, createdAt);
         const procedure: Procedure = { id: id("procedure"), itemId, workflowType: item.workflowType as "RADIOLOGY" | "ULTRASOUND", status: "SCHEDULED", scheduleIds: [], version: 1 };
         const schedule: ProcedureSchedule = { id: id("schedule"), procedureId: procedure.id, ...window, status: "SCHEDULED", actorId: currentActor.id, createdAt, version: 1 };
         const nextProcedure = { ...procedure, scheduleIds: [schedule.id] };
@@ -392,9 +392,8 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
         if (idempotent.found) return { state: originalState, result: reprojectCommandRequest(originalState, currentActor, idempotent.existing!) };
         ensureExpectedVersion(procedure.version, input.expectedVersion);
         if (procedure.status !== "SCHEDULED" || item.status !== "SCHEDULED") throw new ApiError("INVALID_STATE_TRANSITION", "Somente um procedimento agendado pode ser remarcado.", 409);
-        const window = scheduleWindow(input);
-        if (hasScheduleConflict(originalState, window, procedure.id)) throw new ApiError("SCHEDULE_CONFLICT", "O recurso já está reservado neste intervalo.", 409);
         const currentSchedule = findOrThrow(originalState.schedules.filter((schedule) => schedule.procedureId === procedure.id && schedule.status === "SCHEDULED").sort((left, right) => right.createdAt.localeCompare(left.createdAt))[0]);
+        const window = diagnosticReservationWindow(originalState, item, input, now(), currentSchedule.id);
         const reason = input.reason ? requireText(input.reason, "reason", 500) : undefined;
         const cancelledSchedule = advanceSchedule(currentSchedule, { status: "CANCELLED", reason });
         const schedule: ProcedureSchedule = { id: id("schedule"), procedureId: procedure.id, ...window, status: "SCHEDULED", actorId: currentActor.id, createdAt: now(), version: 1 };
@@ -429,6 +428,7 @@ export function createWorkflowService({ store, storage }: ApplicationServiceCont
           procedure = { id: id("procedure"), itemId, workflowType: "RADIOLOGY", status: "EXPECTED", scheduleIds: [], version: 1 };
         }
         if (!procedure || !["EXPECTED", "SCHEDULED"].includes(procedure.status)) throw new ApiError("INVALID_STATE_TRANSITION", "O procedimento não está pronto para iniciar.", 409);
+        validateDiagnosticReservationStart(originalState, item, procedure.id, now());
         const updatedProcedure = { ...procedure, status: "IN_PROGRESS" as const, version: procedure.version + 1 };
         const updatedItem = { ...item, status: transitionItem(item.status, "IN_PROGRESS", item.workflowType), startedAt: item.startedAt ?? now(), procedureId: procedure.id, version: item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");

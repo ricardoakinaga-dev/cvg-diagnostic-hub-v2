@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import type { ItemState, OperationalContext, QueueItem, SessionResponse } from "@cvg/contracts";
+import type { DiagnosticService, ItemState, OperationalContext, QueueItem, SessionResponse, SessionUser } from "@cvg/contracts";
 import { buildQueueFilterQuery } from "@cvg/shared-state";
 import { ActionButton } from "@cvg/ui";
 import { apiFetch, apiFetchWithMeta, formatRelativeTime, getSafeErrorMessage } from "@/components/api-client";
@@ -12,7 +12,6 @@ import { WorkflowAction } from "@/components/workflow-action";
 import { Icon } from "@/components/ui-icons";
 import { useDialogFocus } from "@/components/use-dialog-focus";
 import { EmptyState, ErrorState, LoadingState } from "@/components/feedback-states";
-import { CLINICAL_DEPARTMENTS } from "@/components/work-items/model";
 
 type QueueCursors = Record<string, string>;
 type QueueTotals = Record<string, number>;
@@ -61,6 +60,7 @@ function mergeQueueItems(current: QueueItem[], additions: QueueItem[]): QueueIte
 
 export function ExamQueue() {
   const isMobileQueue = useSyncExternalStore(subscribeToMobileQueue, getMobileQueueSnapshot, getServerMobileQueueSnapshot);
+  const [user, setUser] = useState<SessionUser>();
   const [items, setItems] = useState<QueueItem[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,7 +90,8 @@ export function ExamQueue() {
     setPaginationError("");
     try {
       const me = await apiFetch<SessionResponse>("/session/me");
-      const scopedDepartments = me.user.role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
+      const services = me.user.role === "SUPERADMIN" ? await apiFetch<DiagnosticService[]>("/diagnostic-services?includeInactive=true") : [];
+      const scopedDepartments = me.user.role === "SUPERADMIN" ? [...new Set(services.map((service) => service.departmentCode))] : me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
       const queueResults = await Promise.allSettled(scopedDepartments.map(async (code) => ({ code, page: await apiFetchWithMeta<QueueItem[]>(queuePath(code, { overdue, status })) })));
       if (loadVersion.current !== version) return;
       const queues = queueResults.filter((result): result is PromiseFulfilledResult<{ code: string; page: ApiFetchResult<QueueItem[]> }> => result.status === "fulfilled");
@@ -101,6 +102,7 @@ export function ExamQueue() {
         return cursor ? [[code, cursor]] : [];
       })) as QueueCursors;
       const loadedTotals = Object.fromEntries(queues.map(({ value: { code, page } }) => [code, totalFromMeta(page.meta, page.data.length)])) as QueueTotals;
+      setUser(me.user);
       setDepartments(scopedDepartments);
       setItems(mergeQueueItems([], queues.flatMap((result) => result.value.page.data)));
       setNextCursors(loadedCursors);
@@ -176,28 +178,28 @@ export function ExamQueue() {
        <section className="panel queue-panel" aria-busy={loading}>
          <div className="queue-summary"><span><strong>{visibleItems.length}</strong>{hasMore ? ` de ${totalItems} itens na fila` : " itens na fila"}</span><span className="queue-note">Ordenação: prioridade · prazo · espera</span></div>
          {loading ? <LoadingState className="queue-loading" label="Carregando fila" /> : visibleItems.length === 0 ? <EmptyState title="Nenhum item nesta fila" message="Altere os filtros ou aguarde uma solicitação no escopo do setor." /> : isMobileQueue ? <div className="queue-mobile-list" role="list" aria-label="Itens da fila em cartões">
-           {visibleItems.map((item) => <QueueCard key={item.id} item={item} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}
+           {visibleItems.map((item) => <QueueCard key={item.id} item={item} user={user} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}
         </div> : <div className="queue-table-wrap queue-desktop-table">
           <table className="queue-table">
             <caption className="sr-only">Fila de exames</caption>
             <thead><tr><th>Paciente</th><th>Exame</th><th>Prioridade</th><th>Status</th><th>Prazo</th><th>Próxima ação</th><th>Ação</th><th /></tr></thead>
-             <tbody>{visibleItems.map((item) => <QueueRow key={item.id} item={item} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}</tbody>
+             <tbody>{visibleItems.map((item) => <QueueRow key={item.id} item={item} user={user} onOpen={(opener) => openDrawer(item, opener)} onComplete={() => void load()} />)}</tbody>
           </table>
         </div>}
          {paginationError && <ErrorState className="queue-pagination-error" title="Não foi possível carregar mais itens" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
         {hasMore && <div className="queue-pagination"><span className="queue-pagination-copy"><strong>Mostrando {items.length} de {totalItems} itens</strong><small>O restante continua no mesmo escopo autorizado.</small></span><ActionButton tone="ghost" state={loadingMore ? "pending" : "idle"} onClick={() => void loadMore()} disabled={loading}>{loadingMore ? "Carregando…" : "Carregar mais itens"}</ActionButton></div>}
       </section>
-      {selected && <QueueDrawer item={selected} onClose={closeDrawer} onComplete={() => { closeDrawer(); void load(); }} />}
+      {selected && <QueueDrawer item={selected} user={user} onClose={closeDrawer} onComplete={() => { closeDrawer(); void load(); }} />}
     </div>
   );
 }
 
-function QueueRow({ item, onOpen, onComplete }: { item: QueueItem; onOpen: (opener: HTMLElement) => void; onComplete: () => void }) {
+function QueueRow({ item, user, onOpen, onComplete }: { item: QueueItem; user?: SessionUser; onOpen: (opener: HTMLElement) => void; onComplete: () => void }) {
   const owner = item.operationalContext?.currentOwner?.label ?? "A definir";
-  return <tr className={item.overdue ? "row-overdue" : ""}><td><button type="button" className="queue-cell-button table-patient" onClick={(event) => onOpen(event.currentTarget)}><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId}</small></button></td><td><button type="button" className="queue-cell-button table-service" onClick={(event) => onOpen(event.currentTarget)}><strong>{item.service.name}</strong><small>{item.requestCode}</small></button></td><td><PriorityBadge priority={item.priority} /></td><td><StatusBadge status={item.status} /></td><td><span className={item.overdue ? "text-danger" : ""}>{item.overdue ? "Atrasado" : formatRelativeTime(item.dueAt)}</span></td><td><span className="next-action">{item.nextAction}</span><small className="queue-owner"><span>Responsável</span><span>{owner}</span></small></td><td><WorkflowAction item={item} onComplete={onComplete} /></td><td><button type="button" className="row-arrow row-context-button" onClick={(event) => onOpen(event.currentTarget)} aria-label={`Abrir contexto de ${item.service.name}`}><Icon name="arrow-right" size={16} /></button></td></tr>;
+  return <tr className={item.overdue ? "row-overdue" : ""}><td><button type="button" className="queue-cell-button table-patient" onClick={(event) => onOpen(event.currentTarget)}><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId}</small></button></td><td><button type="button" className="queue-cell-button table-service" onClick={(event) => onOpen(event.currentTarget)}><strong>{item.service.name}</strong><small>{item.requestCode}</small></button></td><td><PriorityBadge priority={item.priority} /></td><td><StatusBadge status={item.status} /></td><td><span className={item.overdue ? "text-danger" : ""}>{item.overdue ? "Atrasado" : formatRelativeTime(item.dueAt)}</span></td><td><span className="next-action">{item.nextAction}</span><small className="queue-owner"><span>Responsável</span><span>{owner}</span></small></td><td><WorkflowAction item={item} role={user?.role ?? "VIEWER"} permissions={user?.permissions ?? []} onComplete={onComplete} /></td><td><button type="button" className="row-arrow row-context-button" onClick={(event) => onOpen(event.currentTarget)} aria-label={`Abrir contexto de ${item.service.name}`}><Icon name="arrow-right" size={16} /></button></td></tr>;
 }
 
-function QueueCard({ item, onOpen, onComplete }: { item: QueueItem; onOpen: (opener: HTMLElement) => void; onComplete: () => void }) {
+function QueueCard({ item, user, onOpen, onComplete }: { item: QueueItem; user?: SessionUser; onOpen: (opener: HTMLElement) => void; onComplete: () => void }) {
   const owner = item.operationalContext?.currentOwner?.label ?? "A definir";
   return <article className={`queue-card${item.overdue ? " queue-card-overdue" : ""}`} role="listitem">
     <div className="queue-card-heading">
@@ -223,16 +225,16 @@ function QueueCard({ item, onOpen, onComplete }: { item: QueueItem; onOpen: (ope
       <strong>{item.nextAction}</strong>
       <small className="queue-card-owner"><span>Responsável atual</span><span>{owner}</span></small>
     </div>
-    <div className="queue-card-actions"><WorkflowAction item={item} onComplete={onComplete} /><span className="queue-card-action-hint">Confirmação pelo servidor</span></div>
+    <div className="queue-card-actions"><WorkflowAction item={item} role={user?.role ?? "VIEWER"} permissions={user?.permissions ?? []} onComplete={onComplete} /><span className="queue-card-action-hint">Confirmação pelo servidor</span></div>
   </article>;
 }
 
-function QueueDrawer({ item, onClose, onComplete }: { item: QueueItem; onClose: () => void; onComplete: () => void }) {
+function QueueDrawer({ item, user, onClose, onComplete }: { item: QueueItem; user?: SessionUser; onClose: () => void; onComplete: () => void }) {
   const closeRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
   const operation = item.operationalContext;
   useDialogFocus(drawerRef, onClose, closeRef);
-  return <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><aside ref={drawerRef} className="context-drawer" role="dialog" aria-modal="true" aria-labelledby="queue-drawer-title"><div className="drawer-heading"><div><p className="eyebrow">Contexto do exame</p><h2 id="queue-drawer-title">{item.service.name}</h2><p>{item.requestCode} · {item.patient.displayName}</p></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar contexto"><Icon name="close" size={18} /></button></div><div className="drawer-patient-card"><span className="patient-avatar">{item.patient.displayName.slice(0, 1)}</span><span><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId}</small></span><PriorityBadge priority={item.priority} /></div><dl className="operation-context-list"><div><dt>Responsável atual</dt><dd>{operation?.currentOwner.label ?? "A definir"}</dd></div><div><dt>Próxima ação</dt><dd>{operation?.nextAction.label ?? item.nextAction}</dd></div><div><dt>Bloqueado por</dt><dd>{operation?.blockedBy?.label ?? "Sem bloqueio registrado"}</dd></div><div><dt>Aguardando desde</dt><dd>{formatOptionalDate(operation?.waitingSince)}</dd></div><div><dt>Prazo esperado</dt><dd className={item.overdue ? "text-danger" : ""}>{formatOptionalDate(operation?.expectedBy ?? item.dueAt)}</dd></div><div><dt>Escalonamento operacional</dt><dd><span className={`escalation-badge escalation-${(operation?.escalationLevel ?? "NONE").toLowerCase()}`}>{escalationLabels[operation?.escalationLevel ?? "NONE"]}</span></dd></div></dl><div className="drawer-actions"><WorkflowAction item={item} onComplete={onComplete} /><Link href={`/requests/${item.requestId}#${item.id}`} className="button button-ghost">Abrir workspace completo <Icon name="arrow-right" size={15} /></Link></div><p className="drawer-note">As transições são confirmadas pelo servidor e permanecem na timeline auditável.</p></aside></div>;
+  return <div className="drawer-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}><aside ref={drawerRef} className="context-drawer" role="dialog" aria-modal="true" aria-labelledby="queue-drawer-title"><div className="drawer-heading"><div><p className="eyebrow">Contexto do exame</p><h2 id="queue-drawer-title">{item.service.name}</h2><p>{item.requestCode} · {item.patient.displayName}</p></div><button ref={closeRef} type="button" className="icon-button" onClick={onClose} aria-label="Fechar contexto"><Icon name="close" size={18} /></button></div><div className="drawer-patient-card"><span className="patient-avatar">{item.patient.displayName.slice(0, 1)}</span><span><strong>{item.patient.displayName}</strong><small>{item.patient.species} · {item.patient.externalId}</small></span><PriorityBadge priority={item.priority} /></div><dl className="operation-context-list"><div><dt>Responsável atual</dt><dd>{operation?.currentOwner.label ?? "A definir"}</dd></div><div><dt>Próxima ação</dt><dd>{operation?.nextAction.label ?? item.nextAction}</dd></div><div><dt>Bloqueado por</dt><dd>{operation?.blockedBy?.label ?? "Sem bloqueio registrado"}</dd></div><div><dt>Aguardando desde</dt><dd>{formatOptionalDate(operation?.waitingSince)}</dd></div><div><dt>Prazo esperado</dt><dd className={item.overdue ? "text-danger" : ""}>{formatOptionalDate(operation?.expectedBy ?? item.dueAt)}</dd></div><div><dt>Escalonamento operacional</dt><dd><span className={`escalation-badge escalation-${(operation?.escalationLevel ?? "NONE").toLowerCase()}`}>{escalationLabels[operation?.escalationLevel ?? "NONE"]}</span></dd></div></dl><div className="drawer-actions"><WorkflowAction item={item} role={user?.role ?? "VIEWER"} permissions={user?.permissions ?? []} onComplete={onComplete} /><Link href={`/requests/${item.requestId}#${item.id}`} className="button button-ghost">Abrir workspace completo <Icon name="arrow-right" size={15} /></Link></div><p className="drawer-note">As transições são confirmadas pelo servidor e permanecem na timeline auditável.</p></aside></div>;
 }
 
 function formatOptionalDate(value: string | null | undefined): string {

@@ -214,8 +214,13 @@ test.describe("clinical result lifecycle", () => {
     await expect(page.getByRole("heading", { name: /Laudo confirmado/ })).toBeVisible({ timeout: 15000 });
     await page.getByRole("button", { name: "Invalidar" }).click();
     await page.getByLabel("Motivo").fill("Invalidação controlada para correção clínica.");
+    const invalidationResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${xrayResultId}/void`) && response.request().method() === "POST");
     await page.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Resultado invalidado" })).toBeVisible({ timeout: 15000 });
+    const invalidation = await invalidationResponse;
+    expect(invalidation.status()).toBe(200);
+    expect((await invalidation.json()).data.version.status).toBe("VOIDED");
+    await expect(page.getByRole("heading", { name: "Versão invalidada", exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("status").filter({ hasText: "Consulta histórica · somente leitura" })).toBeVisible();
     await page.goto("/queues");
     const replacementRow = await queueRow(page, requestId, "RX de tórax");
     await expect(replacementRow.getByRole("button", { name: "Registrar resultado" })).toBeVisible({ timeout: 15000 });

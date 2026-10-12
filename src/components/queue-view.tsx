@@ -1,19 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ITEM_STATES, type ItemState, type QueueItem, type SessionResponse, type SessionRole } from "@cvg/contracts";
+import { ITEM_STATES, type DiagnosticService, type ItemState, type Permission, type QueueItem, type SessionResponse, type SessionRole } from "@cvg/contracts";
 import { buildQueueFilterQuery } from "@cvg/shared-state";
 import { ActionButton } from "@cvg/ui";
-import { apiFetch, apiFetchWithMeta, getSafeErrorMessage } from "@/components/api-client";
+import { ApiClientError, apiFetch, apiFetchWithMeta, getSafeErrorMessage } from "@/components/api-client";
 import type { ApiFetchResult } from "@/components/api-client";
 import { QueueBoard, queueColumnLabels } from "./queue-board";
 import { QueueBoardRequestDialog } from "./queue-board-request-dialog";
 import { Icon } from "@/components/ui-icons";
 import { ErrorState, LoadingState } from "@/components/feedback-states";
-import { CLINICAL_DEPARTMENTS } from "./work-items/model";
+import { useQueuePreferences } from "./use-queue-preferences";
 
 type QueueCursors = Record<string, string>;
 type QueueTotals = Record<string, number>;
+const DEFAULT_FILTERS = { overdue: false, status: "ALL" as "ALL" | ItemState, search: "" };
+function normalizeQueueFilters(value: unknown): typeof DEFAULT_FILTERS {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return DEFAULT_FILTERS;
+  const saved = value as Record<string, unknown>;
+  return { overdue: saved.overdue === true, status: typeof saved.status === "string" && ITEM_STATES.includes(saved.status as ItemState) ? saved.status as ItemState : "ALL", search: typeof saved.search === "string" ? saved.search.slice(0, 200) : "" };
+}
 
 function queuePath(departmentCode: string, filters: { overdue: boolean; status: "ALL" | ItemState }, cursor?: string): string {
   const params = new URLSearchParams(buildQueueFilterQuery(filters));
@@ -38,6 +44,7 @@ function mergeQueueItems(current: QueueItem[], additions: QueueItem[]): QueueIte
 
 export function QueueView() {
   const [role, setRole] = useState<SessionRole>("VIEWER");
+  const [permissions, setPermissions] = useState<readonly Permission[]>([]);
   const [items, setItems] = useState<QueueItem[]>([]);
   const [departments, setDepartments] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -46,11 +53,11 @@ export function QueueView() {
   const [paginationError, setPaginationError] = useState("");
   const [nextCursors, setNextCursors] = useState<QueueCursors>({});
   const [totals, setTotals] = useState<QueueTotals>({});
-  const [overdue, setOverdue] = useState(false);
-  const [status, setStatus] = useState<"ALL" | ItemState>("ALL");
-  const [search, setSearch] = useState("");
+  const [userId, setUserId] = useState<string>();
+  const [{ overdue, status, search }, setFilters] = useQueuePreferences(userId, "/queues:legacy", DEFAULT_FILTERS, normalizeQueueFilters);
   const [showRequest, setShowRequest] = useState(false);
   const loadVersion = useRef(0);
+  const identity = useRef<string | undefined>(undefined);
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
@@ -60,9 +67,18 @@ export function QueueView() {
     setPaginationError("");
     try {
       const me = await apiFetch<SessionResponse>("/session/me");
-      const scopedDepartments = me.user.role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
+      if (loadVersion.current !== version) return;
+      if (identity.current && identity.current !== me.user.id) { setItems([]); setDepartments([]); setNextCursors({}); setTotals({}); setShowRequest(false); }
+      identity.current = me.user.id;
+      setRole(me.user.role); setPermissions(me.user.permissions ?? []); setUserId(me.user.id);
+      if (!me.user.permissions?.includes("request.create")) setShowRequest(false);
+      const catalog = me.user.role === "SUPERADMIN" ? await apiFetch<DiagnosticService[]>("/diagnostic-services?includeInactive=true") : [];
+      if (!Array.isArray(catalog)) throw new Error("Invalid service directory");
+      const scopedDepartments = me.user.role === "SUPERADMIN" ? [...new Set(catalog.map((service) => service.departmentCode))] : me.user.role === "MANAGER" ? Array.from(new Set([me.user.departmentCode, ...(me.user.managedDepartmentCodes ?? [])])) : [me.user.departmentCode];
       const queueResults = await Promise.allSettled(scopedDepartments.map(async (code) => ({ code, page: await apiFetchWithMeta<QueueItem[]>(queuePath(code, { overdue, status })) })));
       if (loadVersion.current !== version) return;
+      const denied = queueResults.find((result) => result.status === "rejected" && result.reason instanceof ApiClientError && [401, 403, 404].includes(result.reason.status));
+      if (denied?.status === "rejected") throw denied.reason;
       const queues = queueResults.filter((result): result is PromiseFulfilledResult<{ code: string; page: ApiFetchResult<QueueItem[]> }> => result.status === "fulfilled");
       const failures = queueResults.filter((result) => result.status === "rejected");
       if (queues.length === 0 && failures[0]?.status === "rejected") throw failures[0].reason;
@@ -72,13 +88,18 @@ export function QueueView() {
       })) as QueueCursors;
       const loadedTotals = Object.fromEntries(queues.map(({ value: { code, page } }) => [code, totalFromMeta(page.meta, page.data.length)])) as QueueTotals;
       setRole(me.user.role);
+      setPermissions(me.user.permissions ?? []);
+      setUserId(me.user.id);
       setDepartments(scopedDepartments);
       setItems(mergeQueueItems([], queues.flatMap((result) => result.value.page.data)));
       setNextCursors(loadedCursors);
       setTotals(loadedTotals);
       if (failures.length > 0) setError("Parte das filas está indisponível; os itens visíveis podem estar desatualizados.");
     } catch (cause) {
-      if (loadVersion.current === version) setError(getSafeErrorMessage(cause, "Não foi possível carregar a fila."));
+      if (loadVersion.current === version) {
+        if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) { identity.current = undefined; setRole("VIEWER"); setPermissions([]); setUserId(undefined); setItems([]); setDepartments([]); setNextCursors({}); setTotals({}); setShowRequest(false); }
+        setError(getSafeErrorMessage(cause, "Não foi possível carregar a fila."));
+      }
     } finally {
       if (loadVersion.current === version) setLoading(false);
     }
@@ -95,6 +116,8 @@ export function QueueView() {
     if (loadVersion.current !== version) return;
     const pages = pageResults.filter((result): result is PromiseFulfilledResult<{ code: string; page: ApiFetchResult<QueueItem[]> }> => result.status === "fulfilled");
     const failures = pageResults.filter((result) => result.status === "rejected");
+    const denied = failures.find((result) => result.reason instanceof ApiClientError && [401, 403, 404].includes(result.reason.status));
+    if (denied) { identity.current = undefined; setRole("VIEWER"); setPermissions([]); setUserId(undefined); setItems([]); setDepartments([]); setNextCursors({}); setTotals({}); setShowRequest(false); setError(getSafeErrorMessage(denied.reason, "A fila não está mais disponível.")); setLoadingMore(false); return; }
     if (pages.length > 0) {
       setItems((current) => mergeQueueItems(current, pages.flatMap((result) => result.value.page.data)));
       setNextCursors((current) => {
@@ -149,21 +172,21 @@ export function QueueView() {
     <div className="queue-page">
       <div className="page-heading">
         <div><p className="eyebrow">Operação · {departments.join(" · ") || "escopo autorizado"}</p><h1>Central de <em>exames.</em></h1><p className="page-lede">Uma fila, contexto clínico preservado e a próxima ação explícita.</p></div>
-        <div className="queue-actions"><label className="toggle"><input type="checkbox" checked={overdue} onChange={(event) => setOverdue(event.target.checked)} /><span />Somente atrasados</label><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> {loading ? "Atualizando…" : "Atualizar"}</ActionButton></div>
+        <div className="queue-actions"><label className="toggle"><input type="checkbox" checked={overdue} onChange={(event) => setFilters((current) => ({ ...current, overdue: event.target.checked }))} /><span />Somente atrasados</label><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> {loading ? "Atualizando…" : "Atualizar"}</ActionButton></div>
       </div>
       <section className="queue-filter-bar" aria-label="Filtros da fila">
-        <label>Buscar na fila<input aria-label="Buscar paciente ou exame" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Paciente, protocolo ou exame…" /></label>
-        <label>Status<select aria-label="Filtrar por status" value={status} onChange={(event) => setStatus(event.target.value as "ALL" | ItemState)}><option value="ALL">Todos os status</option>{ITEM_STATES.map((state) => <option key={state} value={state}>{queueColumnLabels[state]}</option>)}</select></label>
+        <label>Buscar na fila<input aria-label="Buscar paciente ou exame" value={search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} placeholder="Paciente, protocolo ou exame…" /></label>
+        <label>Status<select aria-label="Filtrar por status" value={status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value as "ALL" | ItemState }))}><option value="ALL">Todos os status</option>{ITEM_STATES.map((state) => <option key={state} value={state}>{queueColumnLabels[state]}</option>)}</select></label>
         <span className="queue-filter-count" aria-live="polite">{visibleItems.length} {visibleItems.length === 1 ? "item" : "itens"}</span>
       </section>
        {error && <ErrorState title="Fila parcialmente indisponível" message={error} onRetry={load} retrying={loading} />}
        <section className="panel queue-panel" aria-busy={loading}>
          <div className="queue-summary"><span><strong>{visibleItems.length}</strong>{hasMore ? ` de ${totalItems} itens na fila` : " itens na fila"}</span><span className="queue-note">Ordenação: prioridade · prazo · espera</span></div>
-         {loading && items.length === 0 ? <LoadingState className="queue-loading" label="Carregando fila" /> : <QueueBoard items={visibleItems} role={role} departments={departments} refreshing={loading} onComplete={() => void load()} />}
+         {loading && items.length === 0 ? <LoadingState className="queue-loading" label="Carregando fila" /> : <QueueBoard items={visibleItems} role={role} permissions={permissions} departments={departments} refreshing={loading} onComplete={() => void load()} />}
          {paginationError && <ErrorState className="queue-pagination-error" title="Não foi possível carregar mais itens" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
         {hasMore && <div className="queue-pagination"><span className="queue-pagination-copy"><strong>Mostrando {items.length} de {totalItems} itens</strong><small>O restante continua no mesmo escopo autorizado.</small></span><ActionButton tone="ghost" state={loadingMore ? "pending" : "idle"} onClick={() => void loadMore()} disabled={loading}>{loadingMore ? "Carregando…" : "Carregar mais itens"}</ActionButton></div>}
       </section>
-      {showRequest && ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardRequestDialog departments={["MANAGER", "SUPERADMIN"].includes(role) ? departments : []} canCreatePatient={["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); void load(); }} />}
+      {showRequest && permissions.includes("request.create") && ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardRequestDialog departments={["MANAGER", "SUPERADMIN"].includes(role) ? departments : []} canCreatePatient={permissions.includes("patient.create") && ["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); void load(); }} />}
     </div>
   );
 }

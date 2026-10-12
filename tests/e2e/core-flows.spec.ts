@@ -161,15 +161,20 @@ test.describe("operational hub journeys", () => {
     await requestDialog.getByRole("combobox", { name: "Paciente", exact: true }).selectOption(scenario.patient);
     await requestDialog.getByLabel("Atendimento").selectOption(scenario.patient === "patient-thor" ? "encounter-thor" : "encounter-mel");
     for (const service of scenario.services) await requestDialog.getByText(service, { exact: true }).click();
+    const creationResponse = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/v1/diagnostic-requests" && response.request().method() === "POST" && response.status() === 201);
     await requestDialog.getByRole("button", { name: /Confirmar solicitação/ }).click();
     await confirmDuplicateIfNeeded(page);
+    const created = (await (await creationResponse).json()).data as { id: string; requestCode: string; items: unknown[] };
+    expect(created.items).toHaveLength(scenario.services.length);
     await expect(page.getByRole("dialog")).toBeHidden();
-    await expect(page.getByText("Solicitação criada", { exact: true })).toBeVisible();
+    const notice = page.getByRole("status").filter({ has: page.getByRole("link", { name: "Abrir solicitação", exact: true }) });
+    await expect(notice).toContainText(`Solicitação ${created.requestCode} criada.`);
+    await expect(notice.getByRole("link", { name: "Abrir solicitação", exact: true })).toHaveAttribute("href", `/requests/${created.id}`);
     await expect(page.getByRole("heading", { name: "Todos os exames" })).toBeVisible();
   });
 
   test("keeps request actions inside the items panel", async ({ page }) => {
-    await signIn(page);
+    await signInAs(page, "lab@cvg.local", GREETING);
     await page.setViewportSize({ width: 1260, height: 720 });
     await page.route("**/api/v1/diagnostic-requests/request-layout", async (route) => {
       await route.fulfill({
@@ -182,8 +187,8 @@ test.describe("operational hub journeys", () => {
             createdAt: "2026-08-20T12:00:00.000Z",
             patient: { displayName: "Thor", species: "Canino", sex: "Macho", externalId: "HIS-THOR-001", ownerLabel: "A. Oliveira" },
             items: [
-              { id: "item-layout-lab", status: "REQUESTED", workflowType: "LABORATORY", priority: "URGENT", dueAt: "2026-08-20T13:00:00.000Z", version: 1, service: { name: "Hemograma", workflowType: "LABORATORY" } },
-              { id: "item-layout-us", status: "REQUESTED", workflowType: "ULTRASOUND", priority: "URGENT", dueAt: "2026-08-20T13:00:00.000Z", version: 1, service: { name: "Ultrassom abdominal", workflowType: "ULTRASOUND" } }
+              { id: "item-layout-lab", status: "REQUESTED", workflowType: "LABORATORY", departmentCode: "LABORATORY", priority: "URGENT", dueAt: "2026-08-20T13:00:00.000Z", version: 1, service: { name: "Hemograma", workflowType: "LABORATORY" } },
+              { id: "item-layout-us", status: "REQUESTED", workflowType: "ULTRASOUND", departmentCode: "ULTRASOUND", priority: "URGENT", dueAt: "2026-08-20T13:00:00.000Z", version: 1, service: { name: "Ultrassom abdominal", workflowType: "ULTRASOUND" } }
             ]
           },
           meta: { correlationId: "e2e-layout", requestId: "e2e-layout" }

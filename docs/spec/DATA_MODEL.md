@@ -188,3 +188,81 @@ erDiagram
 ## 12. Migrations and retention
 
 Schema changes use migrations and expand/contract for destructive changes. Retention durations are `OPEN QUESTION` OQ-013; until approved, production must not configure deletion jobs. Archive/cancel/void preserve audit history and are preferred to silent delete.
+
+## Evolução HPL: cadastro persistente de setores
+
+`Department` entra em `StoreState.departments` e nas linhas `cvg_runtime_entities`, com chave `id` e índice único de `code` por coleção. A migration 019 amplia o contrato de coleções e cabeçalho, materializa os setores referenciados, mantém todos os dados clínicos e registra a migração em auditoria. Nova aplicação requer o novo schema; atualização é coordenada, com app/worker parados, backup e restauração como recuperação. O código anterior não deve operar contra o schema novo. Nunca editar migrations anteriores já entregues.
+
+O cadastro de setor usa controle otimista `version`, idempotência por ator/operação e serialização da transação existente. Desativação é lógica; nenhuma FK histórica é apagada. Responsável/equipe são metadados de organização, sem alterar grants.
+
+## Evolução HPL: definição diagnóstica congelada
+
+BLD-HPL-021 adiciona `StoreState.examDefinitions`: revisões imutáveis com `id`, `serviceId`, `serviceVersion`, `status`, `recordedAt`, `recordedBy`, `provenance` (`CATALOG_WRITE` ou `CATALOG_OBSERVATION`) e `definition`. A definição contém código/nome, categoria/setor/fluxo, exigência/tipo de amostra, agenda, anexos, schema/template integral e SLA configurado. A chave de revisão combina serviço e versão; regravar a mesma identidade com conteúdo diferente é recusado. `DiagnosticItem.definitionSnapshot` e `ResultVersion.definitionSnapshot` são opcionais apenas para compatibilidade com legado: `schemaVersion: 1`, `capturedAt`, `provenance`, `definitionId`, `serviceId`, `serviceVersion`, `definition` e `patientContext` (espécie, sexo e nascimento quando conhecido). Valores inexistentes não são inventados. As capturas não podem ser substituídas por uma edição do catálogo. A migração inicializa a coleção de histórico, preservando todos os payloads clínicos existentes e sem fabricar snapshots anteriores.
+
+## Extensão HPL: grupos e escopos assistenciais
+
+O agregado inclui `accessGroups` e `patientGrants`, persistidos pelo mesmo codec/entidades e transação do restante do estado. `AccessGroup` tem ID, código único, descrição, estado, revisão, permissões e timestamps; `systemRole` identifica os nove grupos iniciais. `User.accessGroupId` é a única autoridade do vínculo atual. Não há segunda coleção de associações que possa divergir. `permissions` em Actor/SessionUser é projeção efêmera do resolvedor e não substitui grupos ou o perfil persistido.
+
+A migração 020 materializa um grupo inicial por perfil, mantendo o teto anterior e vinculando usuários sem ampliar seus grants. Cada `patientId` legado gera `PatientGrant` com fonte `LEGACY`, sem inventar uma autoria histórica. Fonte `ADMIN` registra o ator e a última concessão/retirada; `PATIENT_CREATION` registra o vínculo assistencial do criador. Grants retêm revisões e estado inativo, enquanto os eventos de auditoria conservam o histórico. `patientIds` continua materializado para compatibilidade com consultas limitadas e autorização; mutações explícitas atualizam grant e lista atomicamente.
+
+A prévia efetiva tem `userVersion` e `groupVersion`. O comando de vínculo exige `expectedVersion` do usuário e aceita `expectedGroupVersion` da prévia; o editor envia ambas para evitar salvar uma decisão diferente após edição concorrente. Versão de grupo, identidade, vínculo e concessão nunca vem de uma permissão declarada pelo cliente.
+
+### Serviços hospitalares (BLD-HPL-020)
+
+Coleção `hospitalServices` contém `HospitalService`: `id`, `code`, `name`, `description?`, `kind` (`CARE|PROCEDURE|OPERATIONAL`), `departmentCode`, `teamUserIds`, `resourceIds`, `active`, `version`, `createdAt`, `updatedAt`. Códigos não colidem com `services` diagnósticos. As referências de equipe não são grants; os recursos são resolvidos na autoridade de inventário quando disponível e referências não resolvidas são rejeitadas.
+
+`HospitalServiceCatalogEntry` é uma união de projeções com `source` (`HOSPITAL_SERVICE|DIAGNOSTIC_SERVICE`); apenas o primeiro tipo persiste nesta coleção. `HospitalServiceSnapshot` congela `source`, `serviceId`, `serviceVersion`, `code`, `name`, `kind` (inclui `DIAGNOSTIC`), `departmentCode`, `teamUserIds`, `resourceIds` e `capturedAt` na criação de uma atividade. A captura não cria equipe, recurso ou acesso ao paciente e não é substituída na leitura pelo catálogo atual.
+
+### Configurações de visão (BLD-HPL-026)
+
+`savedPlannerViews` guarda `id`, `name`, `ownerId`, `sharedDepartmentCode?`, `filters`, `display`, `active`, `version`, `createdAt` e `updatedAt`. `filters` admite setor, responsável, tipo, prioridade, fase, período e plano; `display` admite layout, ordem, direção, agrupamento e colunas selecionadas. `expectedVersion` pertence ao comando e não é persistido. A migração 023 cria a coleção vazia; nenhuma preferência de navegador sem proprietário conhecido é promovida a visão compartilhada.
+
+## Persistência inicial do planner (BLD-HPL-023–028)
+
+As coleções `hospitalTaskTypes`, `hospitalTasks`, `hospitalTaskDependencies` e `hospitalIntakes` têm identidades próprias e versionamento. Os tipos iniciais ROUTINE/CARE não criam tarefas sintéticas em produção. HospitalTask conserva `typeSnapshot` e, quando aplicável, `serviceSnapshot`; reedição do catálogo não reinterpreta essas atividades. Fase/status têm autoridade somente nos comandos de tarefa.
+
+HospitalTask registra authorId, responsibleUserId opcional, executorTeamUserIds e participantUserIds separadamente, além de prioridade, datas planejadas e executor/horário reais. parentTaskId/sortOrder compõem tarefas sem copiar exames. HospitalTaskDependency registra origem, tipo/ID da autoridade de destino, comando bloqueado, active e versão. HospitalIntake conserva origem manual/solicitação real, estado de triagem, avaliador, motivo e destino; os comandos acrescentam auditoria e evento durável na mesma transação.
+
+Listas e busca contam apenas objetos autorizados. Ordenação de tarefas e busca por atualização, prioridade ou início planejado é global antes da página; cursor inclui a ordem/direção e não pode ser reutilizado em ordenação incompatível. Filtro de período de tarefa usa início planejado e, quando não há planejamento, criação; responsável é uma restrição explícita, separada de todo o trabalho ativo autorizado.
+
+## Inventário e evidências de execução (BLD-HPL-032–036)
+
+hospitalResources guarda HospitalResource com id/code/name/kind/departmentCode, userId para PROFESSIONAL, ward/bedLabel/allowedSpecies para BED, availability AVAILABLE/BLOCKED/MAINTENANCE, availabilityWindows, active/version e timestamps. Referências de serviço resolvem IDs ativos do mesmo setor. Cadastro de inventário não altera grupos, escopo de paciente ou concessões de execução.
+
+schedules é a autoridade compartilhada HospitalSchedule: procedureId ou hospitalTaskId, startsAt/endsAt UTC, texto de exibição legado, resourceIds/resourceSnapshots opcionais apenas no legado, status e revisão. Novas reservas validam exatamente um vínculo existente e conflitos de todos os IDs no estado persistente serializado. Cancelamento/remarcação acrescenta trilha e conserva linhas históricas. Admission continua a única ocupação e ganha bedResourceId opcional para legado; transferência/mudança vincula destino e verifica exclusividade na mesma transação. A migração não aproxima rótulos ou cria inventário/ocupação sintéticos.
+
+HospitalTask.careExecution contém HospitalCareExecution: ID, performedAt/performedBy gerados pelo servidor, modalidade, templateId/templateVersion e aprovação congelada, referência clínica declarada, referências de sistema/política e resourceSnapshots reais quando reservados. recordEvidence=EXECUTOR_REFERENCE distingue essa declaração de comprovante de integração externa. Conclusão da Task, reservas e auditoria são atômicas e idempotentes; snapshots e laudos diagnósticos permanecem independentes.
+
+### Autoridades persistentes de planejamento
+
+`hospitalPlans`, `hospitalShifts`, `hospitalHandoffs`, `hospitalChecklistTemplates` e `hospitalRecurrences` são coleções obrigatórias do estado e da persistência, inicialmente vazias em instalação e migração. Nenhum dado sintético materializa aprovação, plantão, passagem ou ocorrência em produção. `HospitalPlan.links` conserva referências às autoridades originais, não cópias de tarefas/exames. Tarefas e `DiagnosticPlanning` usam `shiftId` opcional; a associação nunca reinicia seus relógios.
+
+O snapshot de checklist na tarefa contém identidade/versão do modelo, aprovação e etapas congeladas; suas execuções possuem autoria e invalidações preservadas. `recurrenceId` e `occurrenceAt` identificam uma ocorrência junto à tarefa; cursor, tarefa e audit/outbox são gravados atomicamente. `lastError` contém código técnico, sem texto do paciente. Uma falha repetida com o mesmo código não acrescenta auditoria idêntica a cada rodada. Reservas de tarefa usam a autoridade única `schedules`, com `hospitalTaskId` e ausência de `procedureId`; conclusão/cancelamento fecha reservas vigentes atomicamente, conservando versões e histórico.
+### Biblioteca operacional — BLD-HPL-039/048
+
+`hospitalDocuments` persiste `HospitalDocument` com código único, setor imutável, responsável, bloqueio, arquivo, versão do agregado e revisões embutidas. `currentPublishedRevisionId` mantém a última publicação inclusive após retirada; `draftRevisionId` identifica o único rascunho atual. A revisão contém número monotônico, título, JSON estruturado, versão própria, autoria e instantes do servidor, estado `DRAFT|APPROVED|RETIRED` e, após aprovação, referência institucional e aprovador. A publicação, retirada e atualização dos ponteiros pertencem à mesma transação.
+
+`HospitalDocumentSnapshot` em tarefa/plano contém identidade, setor, número e ID da revisão, conteúdo, aprovação, referência institucional e instante da captura. Conteúdo publicado não recebe atualização em lugar: novas revisões não alteram essas capturas. Duplicação conserva `sourceDocumentId/sourceRevisionId` e cria novo documento e rascunho. Não há backfill que invente documentos ou aprovações.
+
+Favoritos usam a preferência privada por usuário e entidade `HOSPITAL_DOCUMENT` em `workActivityPreferences`; a resposta de documentos inclui apenas o favorito do ator atual. Preferência não concede acesso ao documento nem muda a vigência de sua revisão.
+### Capacidades externas opcionais — BLD-HPL-042/050
+
+`hospitalHisV4Deliveries` é a coleção de recibos do perfil real HIS v4, incluída pela migração 027. Persiste exclusivamente IDs de entrega/webhook/conta/evento/payload/atendimento externo, credencial e versão, ator, hashes de payload/mapeamento, demanda nativa, instante e correlação. Não persiste envelope clínico, chave, segredo ou sequência inexistente no fornecedor. `(webhookId,deliveryId)` e `(accountId,providerPayloadId)` são únicos. A demanda `RECEIVED` e o recibo são atômicos; rotação/revogação/expiração e permissões atuais são verificadas mesmo ao retornar recibo anterior. `HospitalIntegrationCredential.profile` opcional distingue HIS_V4 de CVG_OPERATIONAL_V1; valores legados omitidos mantêm CVG.
+
+`hospitalIntegrationCredentials` guarda identidade, sistema/finalidade, ator vinculado, escopo restritivo, expiração, hash do token e histórico de rotação/revogação por versão. Tokens não entram no cache de idempotência, auditoria ou DTO de listagem. `hospitalIntegrationMessages` possui unicidade institucional `(system,direction,messageId)` e conserva sequência, hash, ator, credencial de ingresso, referência à autoridade original, versão da origem quando aplicável, tentativas, códigos seguros e recibo. Conteúdo clínico não é duplicado nesse rastreamento.
+
+`hospitalAiSuggestions` guarda a sugestão estruturada, identidade e versões do documento/rascunho de origem, hash da entrada, autor da solicitação, fornecedor/modelo, recibo remoto e estado `PENDING_REVIEW|APPLIED|REJECTED`. Revisão humana grava ator/instante, motivo e versão aplicada, sem alterar aprovação clínica. Não há sugestão demo automática nem aprovação ou fornecedor sem proveniência.
+
+### Persistência de colaboração e preferências — migração 025
+
+As coleções obrigatórias `hospitalTaskComments`, `hospitalTaskAttachments`, `workNotifications`, `workNotificationPreferences` e `workActivityPreferences` começam vazias. Comentários contêm autoria, versão, revisões e marcador de remoção; anexos contêm vínculo real à tarefa, estado de upload/varredura, checksum, chave privada, validade e lease. DTOs de anexos omitem chave e tokens de claim.
+
+`workNotifications` tem unicidade `(sourceKey,userId)` e somente referência de alvo/tipo de evento, recibo de leitura, arquivo pessoal e versão. `workNotificationPreferences` tem uma linha por usuário. `workActivityPreferences` tem unicidade `(userId,targetType,targetId)`, favorito/grupo, acompanhamento, nota privada e instante de abertura; referências não duplicam PHI nem autorizam o alvo. Todas as coleções são persistidas pelas mesmas transações/codec das autoridades existentes, sem cache como fonte paralela.
+
+Campos opcionais de Task incluem arquivo, estado privado de rascunho/descarte, descrição estruturada, estimativa, labels, referências HTTPS e reações únicas `(userId,code)`. Comentários podem conter reações com a mesma identidade. Legado sem os campos conserva o comportamento publicado e não recebe histórico ou execução inventada. Reações alteram versão otimista da própria tarefa/comentário. Recibos de lote gravam primeiro a vinculação durável IN_PROGRESS; cada item mantém seu próprio recibo antes do fechamento do resultado por item.
+
+### Relatórios, instituição e convites — BLD-HPL-040/041/043
+
+`hospitalReports` persiste definição versionada, proprietário, compartilhamento opcional por setor, indicador/versão técnica, filtros e CSV/JSONL. `hospitalReportJobs` congela a definição e guarda status, tentativas, versão, instantes, quantidade e código seguro de falha; linhas geradas ficam privadas no estado. Cada linha pode conservar `sourceRequestId` para consulta ao arquivo clínico nativo e `sourceHandoffId` para a passagem exata utilizada na geração. DTOs de acompanhamento omitem as linhas e essas referências. Worker serializa geração e estado durável na transação; retry é comando explícito sobre FAILED. Download resolve os IDs capturados com autorização atual, conserva fatos históricos e atualiza apenas nomes/links autorizados. Mudança de fase não apaga o fato exportado; purga ou perda de contexto/acesso omite a linha. Leitura final do arquivo usa a conexão e a trava da transação, sem abrir uma transação aninhada.
+
+`hospitalInstitutionSettings` contém um único agregado por instalação: nome, fuso IANA, capabilidades por código de setor, versão e autoria. Seus controles restringem criação de trabalho e onboarding de setor arquivado, sem ampliar grants nem esconder pendências. `hospitalUserInvitations` contém identidade do destinatário, perfil operacional, setor, grupo/versão e escopo de serviços, emissor, expiração, estado, versão e hash de token. O token em texto e a senha não pertencem ao registro, audit/outbox ou idempotência. Aceite usa os comandos nativos de usuário/grupo dentro da mesma transação que consome o convite; não há acesso automático a pacientes.

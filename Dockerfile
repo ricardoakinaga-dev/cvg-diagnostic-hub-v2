@@ -21,10 +21,16 @@ RUN npm ci
 FROM dependencies AS builder
 
 WORKDIR /app
-ENV NODE_ENV=production
+# Public Next.js values are frozen by `next build`; derive them from the same
+# institutional timezone that Compose supplies to app and worker at runtime.
+ARG APP_TIMEZONE=America/Sao_Paulo
+ENV NODE_ENV=production \
+    APP_TIMEZONE=$APP_TIMEZONE \
+    NEXT_PUBLIC_HOSPITAL_TIMEZONE=$APP_TIMEZONE
 
 COPY . .
-RUN npm run build
+RUN node -e "new Intl.DateTimeFormat('en', {timeZone: process.env.APP_TIMEZONE}).format(0)" \
+    && npm run build
 
 FROM base AS production-dependencies
 
@@ -69,6 +75,12 @@ COPY --chown=node:node packages ./packages
 COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node src ./src
 
+ARG APP_TIMEZONE=America/Sao_Paulo
+ENV APP_TIMEZONE=$APP_TIMEZONE \
+    NEXT_PUBLIC_HOSPITAL_TIMEZONE=$APP_TIMEZONE
+LABEL org.cvg.hospital.timezone=$APP_TIMEZONE
+RUN node -e "new Intl.DateTimeFormat('en', {timeZone: process.env.APP_TIMEZONE}).format(0)"
+
 # Provenance: the commit this image was built from, as an OCI label for `docker inspect` and in the process
 # environment for the startup log and the cvg_build_info metric. The release pipeline and
 # `SOURCE_REVISION=$(git rev-parse HEAD) docker compose build` set it; an unstamped build says "unknown".
@@ -84,11 +96,15 @@ CMD ["node_modules/.bin/tsx", "scripts/outbox-worker.ts"]
 FROM base AS runner
 
 WORKDIR /app
+ARG APP_TIMEZONE=America/Sao_Paulo
+LABEL org.cvg.hospital.timezone=$APP_TIMEZONE
 
 # This project uses the standard Next.js production server rather than
 # output: standalone, so the runtime keeps only production dependencies and
 # the completed .next bundle.
 ENV NODE_ENV=production \
+    APP_TIMEZONE=$APP_TIMEZONE \
+    NEXT_PUBLIC_HOSPITAL_TIMEZONE=$APP_TIMEZONE \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0

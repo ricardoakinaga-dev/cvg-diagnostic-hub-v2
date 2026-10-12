@@ -1,3 +1,4 @@
+import { systemGroupId } from "../security/access-group-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApplicationService } from "./service";
 import { createDemoState } from "../store/fixtures";
@@ -192,7 +193,7 @@ describe("approved admission context command boundary", () => {
     const { store, service } = setup();
     const initial = store.getState();
     const admin = initial.users.find((user) => user.role === "ADMIN")!;
-    const superadmin = { ...admin, id: "admission-superadmin", email: "admission-superadmin@cvg.test", role: "SUPERADMIN" as const, patientIds: [], serviceCodes: [], managedDepartmentCodes: [] };
+    const superadmin = { ...admin, id: "admission-superadmin", email: "admission-superadmin@cvg.test", role: "SUPERADMIN" as const, accessGroupId: systemGroupId("SUPERADMIN"), patientIds: [], serviceCodes: [], managedDepartmentCodes: [] };
     const ultrasoundVet = { ...initial.users.find((user) => user.id === "user-vet-radiology")!, id: "user-vet-ultrasound", email: "vet-ultrasound@cvg.test", departmentCode: "ULTRASOUND" };
     await store.transaction((state) => ({ state: { ...state, users: [...state.users, superadmin, ultrasoundVet] }, result: undefined }));
     const input = {

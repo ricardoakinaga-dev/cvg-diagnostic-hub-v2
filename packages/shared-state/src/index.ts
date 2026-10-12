@@ -1,4 +1,5 @@
 import type { ItemState } from "@cvg/contracts";
+export { diagnosticPlannerPhase, matchesDiagnosticPlannerFilters, type DiagnosticPlannerFilterItem } from "@cvg/domain";
 
 export interface QueueFilterState {
   overdue: boolean;

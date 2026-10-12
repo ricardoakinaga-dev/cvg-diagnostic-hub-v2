@@ -1,6 +1,9 @@
 # Backlog de melhorias e correções — CVG Diagnostics Hub
 
 **Versão:** IMP-2026-10.1 · **Data:** 04/10/2026
+
+**Evolução de produto em 11/10/2026:** consultar o [backlog hospitalar](BACKLOG_HOSPITAL_PLANNER_2026-10-11.md) e seu [roadmap](ROADMAP_HOSPITAL_PLANNER_2026-10-11.md) para o novo planejamento HPL (D-063). A seção 7 reconcilia UX/COR/PROD com as entregas hospitalares e distingue status históricos de requisitos novos; os registros abaixo conservam suas evidências e datas.
+
 **Fonte:** [auditoria de 04/10/2026](../RELATORIO_AUDITORIA_2026-10-04.md) + pedido do dono de um sistema mais dinâmico e com menos burocracia (referência de uso: Plane).
 **Complementa** o [backlog até produção](PRODUCTION_BACKLOG.md) (PROD-*), que segue dono do caminho de go-live e das decisões D1–D12. Aqui ficam o que o PROD não cobre: correções da auditoria, UX e redução de processo.
 

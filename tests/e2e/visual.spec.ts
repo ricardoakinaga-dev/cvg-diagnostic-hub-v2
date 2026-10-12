@@ -12,6 +12,7 @@ test.describe("visual baseline", () => {
       if (url.pathname === "/api/v1/diagnostic-requests") return respond([]);
       if (url.pathname === "/api/v1/notifications") return respond([]);
       if (url.pathname === "/api/v1/diagnostic-services") return respond([]);
+      if (url.pathname === "/api/v1/planner-views") return respond([]);
       if (url.pathname === "/api/v1/dashboard") {
         const timestamp = "2026-10-01T13:00:00.000Z";
         return respond({

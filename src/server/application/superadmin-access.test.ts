@@ -1,3 +1,4 @@
+import { systemGroupId } from "../security/access-group-policy";
 import { describe, expect, it } from "vitest";
 import type { User } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
@@ -9,7 +10,7 @@ import { createApplicationService } from "./service";
 function setup(archive = false) {
   let state = createDemoState("superadmin-synthetic-test-password");
   const admin = state.users.find((user) => user.role === "ADMIN")!;
-  const superadmin: User = { ...admin, id: "user-superadmin-global-test", email: "superadmin@cvg.test", role: "SUPERADMIN", patientIds: [], serviceCodes: [], managedDepartmentCodes: [] };
+  const superadmin: User = { ...admin, id: "user-superadmin-global-test", email: "superadmin@cvg.test", role: "SUPERADMIN", accessGroupId: systemGroupId("SUPERADMIN"), patientIds: [], serviceCodes: [], managedDepartmentCodes: [] };
   state.users.push(superadmin);
   if (archive) {
     state = withCompletedRequest(state, "superadmin-old");

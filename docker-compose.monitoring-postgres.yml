@@ -1,0 +1,53 @@
+# Overlay for docker-compose.monitoring-agent.yml, on the Hub host only.
+# Join the existing Hub network without publishing PostgreSQL or changing its service.
+services:
+  validate:
+    environment:
+      MONITOR_POSTGRES_ENABLED: "true"
+
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.0@sha256:215b8299a47328078dabb751d2ffc1fd9a0aad3aa8c7daed36c567d2bd83a8a1
+    user: "${MONITOR_UID:?}:${MONITOR_GID:?}"
+    restart: unless-stopped
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    environment:
+      DATA_SOURCE_URI_FILE: /run/secrets/postgres_uri
+      DATA_SOURCE_USER_FILE: /run/secrets/postgres_user
+      DATA_SOURCE_PASS_FILE: /run/secrets/postgres_password
+    command:
+      - --config.file=
+      - --web.config.file=/etc/cvg-monitor/postgres-exporter-web.yml
+      - --collection-timeout=5s
+      - --disable-default-metrics
+      - --no-auto-discover-databases
+      - --collector.stat_database
+      - --collector.stat_bgwriter
+      - --collector.stat_archiver
+      - --no-collector.database
+      - --no-collector.locks
+      - --no-collector.replication
+      - --no-collector.replication_slots
+      - --no-collector.roles
+      - --no-collector.settings
+      - --no-collector.stat_activity
+      - --no-collector.stat_progress_vacuum
+      - --no-collector.stat_replication
+      - --no-collector.stat_statements
+      - --no-collector.stat_user_tables
+      - --no-collector.statio_user_tables
+      - --no-collector.wal
+    ports: ["${MONITOR_AGENT_BIND_IP:?}:9187:9187"]
+    volumes:
+      - ${MONITOR_CONFIG_DIR:?}:/etc/cvg-monitor:ro
+      - ${MONITOR_SECRETS_DIR:?}:/run/secrets:ro
+    networks: [hub-postgres]
+    depends_on:
+      validate: { condition: service_completed_successfully }
+
+networks:
+  hub-postgres:
+    external: true
+    name: ${MONITOR_POSTGRES_NETWORK:?Set the existing Hub Docker network}

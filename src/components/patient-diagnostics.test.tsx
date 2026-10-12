@@ -38,6 +38,19 @@ const workspace = {
 };
 
 describe("PatientDiagnostics workspace", () => {
+  it("continues the audited history beyond the preview and preserves events on a failed next page", async () => {
+    vi.spyOn(apiClient, "apiFetch").mockResolvedValue({ ...workspace, timelineNextCursor: "older+/=", timelineTotal: 3 } as never);
+    const page = vi.spyOn(apiClient, "apiFetchWithMeta").mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ data: [{ id: "older", eventType: "PatientCreated", occurredAt: "2026-08-18T12:00:00.000Z" }], meta: { total: 3 } } as never);
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    await screen.findByTestId("patient-workspace");
+    fireEvent.click(screen.getByRole("button", { name: "Carregar mais eventos" }));
+    await screen.findByRole("alert");
+    expect(screen.getByText("Resultado consultado")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect(await screen.findByText("Paciente cadastrado")).toBeInTheDocument();
+    expect(page).toHaveBeenLastCalledWith("/patients/patient-thor/timeline?limit=50&cursor=older%2B%2F%3D");
+    expect(screen.queryByRole("button", { name: "Carregar mais eventos" })).not.toBeInTheDocument();
+  });
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -100,7 +113,7 @@ describe("PatientDiagnostics workspace", () => {
     expect(api).toHaveBeenLastCalledWith("/patients/patient-thor/diagnostics?limit=50&cursor=cursor-2");
   });
 
-  it("keeps the complete server action set visible and discloses a timeline preview", async () => {
+  it("keeps the complete server action set and loaded history visible", async () => {
     const nextActions = Array.from({ length: 5 }, (_, index) => ({
       ...workspace.nextActions[0],
       id: `item-${index}`,
@@ -117,7 +130,8 @@ describe("PatientDiagnostics workspace", () => {
 
     expect(await screen.findByRole("heading", { name: "5 ações autorizadas" })).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: /Revisar resultado/ })).toHaveLength(5);
-    expect(screen.getByText("últimos 20 de 21")).toBeInTheDocument();
+    expect(screen.getByText("21 eventos")).toBeInTheDocument();
+    expect(screen.getAllByText("Resultado liberado", { exact: true })).toHaveLength(21);
   });
 
   it("does not expose unknown department codes in operator-facing copy", async () => {
@@ -290,7 +304,9 @@ describe("PatientDiagnostics encounter actions", () => {
 
   function mockApi(data: unknown, role = "VETERINARIAN", commandResult: unknown = {}) {
     return vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { id: "patient-encounter-test-user", role, permissions: role === "VIEWER" ? ["patient.view", "admission.view"] : ["encounter.manage", "patient.view", "admission.view"] } }) as never;
+      if (path === "/bed-census") return Promise.resolve({ beds: [{ state: "AVAILABLE", resource: { id: "bed-test-02", name: "Leito sintético", departmentCode: "INPATIENT", ward: "UTI 1", bedLabel: "Box 02", active: true, availability: "AVAILABLE", allowedSpecies: ["Canino"] } }] }) as never;
+      if (path === "/patients/patient-thor") return Promise.resolve(workspace.patient) as never;
       if (init?.method === "POST") return (commandResult instanceof Error ? Promise.reject(commandResult) : Promise.resolve(commandResult)) as never;
       return Promise.resolve(data) as never;
     });
@@ -337,11 +353,10 @@ describe("PatientDiagnostics encounter actions", () => {
     expect(await screen.findByRole("dialog", { name: "Novo atendimento" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Ala ou unidade")).not.toBeInTheDocument();
     fireEvent.change(screen.getByLabelText("Tipo de atendimento"), { target: { value: "INPATIENT" } });
-    fireEvent.change(screen.getByLabelText("Ala ou unidade"), { target: { value: " UTI 1 " } });
-    fireEvent.change(screen.getByLabelText("Leito"), { target: { value: "Box 02" } });
+    fireEvent.change(await screen.findByLabelText("Leito cadastrado"), { target: { value: "bed-test-02" } });
     fireEvent.click(screen.getByRole("button", { name: "Abrir atendimento" }));
 
-    await waitFor(() => expect(api).toHaveBeenCalledWith("/patients/patient-thor/encounters", expect.objectContaining({ method: "POST", body: JSON.stringify({ encounterType: "INPATIENT", ward: "UTI 1", bed: "Box 02" }) })));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/patients/patient-thor/encounters", expect.objectContaining({ method: "POST", body: JSON.stringify({ encounterType: "INPATIENT", bedResourceId: "bed-test-02" }) })));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
   });
 

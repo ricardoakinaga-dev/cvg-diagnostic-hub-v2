@@ -116,6 +116,16 @@ async function rejectionFrom(operation: () => Promise<unknown>): Promise<unknown
 }
 
 describe("clinical result access security", () => {
+  it("does not expose history when the group grants history but denies the clinical result view", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const released = await context.service.releaseResult(context.lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "history-only-release" });
+    await context.store.transaction((state) => ({ state: { ...state, accessGroups: state.accessGroups.map((group) => group.id === context.vet.accessGroupId ? { ...group, version: group.version + 1, permissions: group.permissions.filter((permission) => permission !== "result.view") } : group) }, result: undefined }));
+    const before = context.store.getState();
+    await expect(context.service.listResultVersions(context.vet, released.result.id)).rejects.toMatchObject({ status: 404 });
+    await expect(context.service.getResult(context.vet, released.result.id, { versionId: released.version.id })).rejects.toMatchObject({ status: 404 });
+    expect(context.store.getState()).toEqual(before);
+  });
   it("does not expose a current DRAFT through result, report, or history reads", async () => {
     const context = setup();
     const { draft } = await createHemogramDraft(context);
@@ -130,7 +140,7 @@ describe("clinical result access security", () => {
     }
   });
 
-  it("does not expose a VOIDED result or its invalidated version to a clinical reader", async () => {
+  it("keeps VOIDED results out of current clinical reads and permits explicit read-only history", async () => {
     const context = setup();
     const { draft } = await createHemogramDraft(context);
     const released = await context.service.releaseResult(context.lab, draft.result.id, {
@@ -143,14 +153,14 @@ describe("clinical result access security", () => {
       idempotencyKey: "security-void"
     });
 
-    const errors = await Promise.all([
-      rejectionFrom(() => context.service.getResult(context.vet, released.result.id)),
-      rejectionFrom(() => context.service.getReport(context.vet, released.result.id)),
-      rejectionFrom(() => context.service.listResultVersions(context.vet, released.result.id))
-    ]);
-    for (const error of errors) {
-      expect.soft(error).toMatchObject({ code: "NOT_FOUND", status: 404 });
-    }
+    await expect(context.service.getResult(context.vet, released.result.id)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    await expect(context.service.getReport(context.vet, released.result.id)).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
+    const versions = await context.service.listResultVersions(context.vet, released.result.id);
+    expect(versions).toEqual([expect.objectContaining({ id: released.version.id, status: "VOIDED" })]);
+    const selected = await context.service.getResult(context.vet, released.result.id, { versionId: released.version.id });
+    expect(selected.version.status).toBe("VOIDED");
+    expect(selected.permissions).toEqual([]);
+    expect(context.store.getState().auditEvents).not.toContainEqual(expect.objectContaining({ eventType: "ResultViewed", entityId: released.version.id }));
   });
 
   it("keeps a previously released version visible in history while hiding an amended DRAFT", async () => {
@@ -178,6 +188,43 @@ describe("clinical result access security", () => {
     expect.soft(versions).toEqual([
       expect.objectContaining({ id: released.version.id, status: "SUPERSEDED" })
     ]);
+  });
+
+  it("opens a superseded version by id without exposing a newer draft or changing clinical state", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const released = await context.service.releaseResult(context.lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "history-release" });
+    const amended = await context.service.amendResult(context.lab, released.result.id, {
+      reason: "Corrigir texto", narrative: "Texto novo ainda em revisão.", content: syntheticHemogramContent("novo"),
+      expectedVersion: released.result.version, idempotencyKey: "history-amend"
+    });
+    const before = context.store.getState();
+    const historical = await context.service.getResult(context.vet, released.result.id, { versionId: released.version.id });
+    expect(historical.version).toMatchObject({ id: released.version.id, narrative: released.version.narrative, status: "SUPERSEDED" });
+    expect(historical.permissions).toEqual([]);
+    await expect(context.service.getResult(context.vet, released.result.id, { versionId: amended.version.id })).rejects.toMatchObject({ status: 404 });
+    await expect(context.service.getResult(context.vet, released.result.id, { versionId: "unrelated-version" })).rejects.toMatchObject({ status: 404 });
+    const after = context.store.getState();
+    expect(after.results).toEqual(before.results);
+    expect(after.resultVersions).toEqual(before.resultVersions);
+    expect(after.items).toEqual(before.items);
+    expect(after.notifications).toEqual(before.notifications);
+    expect(after.auditEvents).toContainEqual(expect.objectContaining({ eventType: "ResultHistoryRead", entityId: released.version.id }));
+    expect(after.auditEvents).not.toContainEqual(expect.objectContaining({ eventType: "ResultViewed" }));
+    await context.store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === context.vet.id ? { ...user, patientIds: [] } : user) }, result: undefined }));
+    await expect(context.service.getResult(context.vet, released.result.id, { versionId: released.version.id })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("rechecks history authorization after its audit write", async () => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const released = await context.service.releaseResult(context.lab, draft.result.id, { expectedVersion: draft.result.version, idempotencyKey: "history-revoke-release" });
+    const append = context.store.appendReadAudit.bind(context.store);
+    context.store.appendReadAudit = async (event) => {
+      await append(event);
+      await context.store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === context.vet.id ? { ...user, patientIds: [] } : user) }, result: undefined }));
+    };
+    await expect(context.service.getResult(context.vet, released.result.id, { versionId: released.version.id })).rejects.toMatchObject({ status: 404 });
   });
 
   it("audits permitted GET reads without creating the deliberate ResultViewed event", async () => {

@@ -11,7 +11,10 @@ import { CommandPalette } from "./command-palette";
 import { PatientDialog } from "./patient-dialog";
 import { PageHeader, type Crumb } from "./page-header";
 import { Avatar, DepartmentIcon } from "./work-items/icons";
-import { CLINICAL_DEPARTMENTS, departmentLabel } from "./work-items/model";
+import { departmentOptions, useDepartments } from "./use-departments";
+import { DepartmentLabelsProvider } from "./department-labels";
+import { WorkflowPermissionsProvider } from "./workflow-permissions";
+import type { Department, DiagnosticService } from "@cvg/contracts";
 import styles from "./app-shell.module.css";
 
 type LiveStatus = "connecting" | "connected" | "degraded";
@@ -56,12 +59,9 @@ function ShellLoadingState() {
 }
 
 /** Sectors whose exams the user follows, in the order the sidebar lists them. */
-function sidebarSectors(user: SessionResponse["user"]): string[] {
-  if (user.role === "SUPERADMIN") return [...CLINICAL_DEPARTMENTS];
+function sidebarSectors(user: SessionResponse["user"], departments: Department[], services: DiagnosticService[]): string[] {
   if (user.role === "ADMIN") return [];
-  if (user.role === "MANAGER") return CLINICAL_DEPARTMENTS.filter((code) => user.managedDepartmentCodes?.includes(code));
-  if (CLINICAL_DEPARTMENTS.includes(user.departmentCode as typeof CLINICAL_DEPARTMENTS[number])) return [user.departmentCode];
-  return [...CLINICAL_DEPARTMENTS];
+  return departmentOptions(departments.filter((department) => department.type === "DIAGNOSTIC"), services.map((service) => service.departmentCode)).map((department) => department.code);
 }
 
 /** Breadcrumbs for pages that do not draw their own Plane header. */
@@ -70,12 +70,20 @@ function legacyCrumbs(pathname: string, view: string | null, hash: string): Crum
   if (pathname.startsWith("/patients")) return [{ label: "Pacientes", icon: "paw" }];
   if (pathname.startsWith("/notifications")) return [{ label: "Caixa de entrada", icon: "inbox" }];
   if (pathname.startsWith("/account")) return [{ label: "Minha conta", icon: "account" }];
+  if (pathname === "/admin/integrations") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Integrações" }];
+  if (pathname === "/admin/institution") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Instituição" }];
+  if (pathname === "/admin/invitations") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Convites" }];
+  if (pathname === "/admin/departments") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Setores" }];
+  if (pathname === "/admin/access-groups") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Grupos de acesso" }];
+  if (pathname === "/admin/resources") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Recursos e leitos" }];
+  if (pathname === "/admin/hospital-services") return [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Serviços hospitalares" }];
   if (pathname.startsWith("/admin")) return pathname === "/admin/users" || hash === "#users" ? [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Acessos" }] : pathname === "/admin/catalog" || hash === "#catalog" ? [{ label: "Administração", href: "/admin", icon: "settings" }, { label: "Catálogos" }] : [{ label: "Administração", icon: "settings" }];
   if (pathname.startsWith("/system")) return [{ label: "Sistema", icon: "settings" }];
   if (pathname.startsWith("/indicators")) return [{ label: "Indicadores", icon: "analytics" }];
   if (pathname.startsWith("/results/")) return [{ label: "Exames", href: "/queues", icon: "layers" }, { label: "Resultado" }];
   if (pathname.startsWith("/archive/")) return [{ label: "Pacientes", href: "/patients", icon: "paw" }, { label: "Arquivo clínico" }];
   if (pathname.startsWith("/requests/")) return [{ label: "Exames", href: "/queues", icon: "layers" }, { label: "Solicitação" }];
+  if (pathname.startsWith("/planner")) return [{ label: "Planner hospitalar", href: "/planner", icon: "board" }, ...(pathname.startsWith("/planner/documents") ? [{ label: "Protocolos e documentos" }] : pathname === "/planner/inbox" ? [{ label: "Caixa de trabalho" }] : pathname === "/planner/following" ? [{ label: "Meu acompanhamento" }] : pathname === "/planner/metrics" ? [{ label: "Indicadores hospitalares" }] : pathname === "/planner/reports" ? [{ label: "Relatórios hospitalares" }] : pathname === "/planner/timeline" ? [{ label: "Cronograma hospitalar" }] : pathname.startsWith("/planner/tasks/") ? [{ label: "Atividade" }] : pathname === "/planner/intake" ? [{ label: "Triagem" }] : pathname === "/planner/search" ? [{ label: "Busca" }] : pathname === "/planner/types" ? [{ label: "Tipos de atividade" }] : pathname.startsWith("/planner/plans") ? [{ label: "Planos assistenciais" }] : pathname.startsWith("/planner/shifts") ? [{ label: "Plantões" }] : pathname === "/planner/handoffs" ? [{ label: "Passagem de plantão" }] : pathname === "/planner/agenda" ? [{ label: "Agenda de recursos" }] : pathname === "/planner/beds" ? [{ label: "Leitos e censo" }] : pathname === "/planner/checklists" ? [{ label: "Modelos de checklist" }] : pathname === "/planner/recurrences" ? [{ label: "Rotinas recorrentes" }] : pathname === "/planner/capacity" ? [{ label: "Capacidade" }] : [])];
   if (pathname.startsWith("/management") || pathname === "/") {
     const labels: Record<string, string> = { requests: "Solicitações", pending: "Pendências", stats: "Estatísticas" };
     return view && labels[view] ? [{ label: "Gestão", href: "/management", icon: "analytics" }, { label: labels[view] }] : [{ label: "Gestão", icon: "analytics" }];
@@ -106,6 +114,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   const [unread, setUnread] = useState(0);
   const [peekOpen, setPeekOpen] = useState(false);
   const requiresPasswordChange = user?.mustChangePassword === true;
+  const departmentDirectory = useDepartments(requiresPasswordChange ? undefined : user?.id, { catalog: user?.role !== "ADMIN" });
   const sessionLoading = loading || sessionPath !== pathname;
   const canUsePalette = Boolean(user && user.role !== "ADMIN" && !requiresPasswordChange && !sessionLoading);
   const canCreatePatient = user?.role === "SUPERADMIN" || user?.role === "VETERINARIAN" || user?.role === "INPATIENT_TEAM";
@@ -254,7 +263,8 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   const dept = searchParams.get("dept");
   const preset = searchParams.get("preset");
   const onQueues = pathname.startsWith("/queues");
-  const sectors = sidebarSectors(user);
+  const sectors = sidebarSectors(user, departmentDirectory.departments, departmentDirectory.services);
+  const sectorNames = new Map(departmentOptions(departmentDirectory.departments, sectors).map((department) => [department.code, department.name]));
   const expandedSectors = openSectors ?? (dept ? [dept] : sectors.slice(0, 1));
   const toggleSector = (code: string) => {
     const next = expandedSectors.includes(code) ? expandedSectors.filter((value) => value !== code) : [...expandedSectors, code];
@@ -304,6 +314,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
             {canAccessClinicalOperations && <div className="nav-group">
               <span className="nav-group-label">Workspace</span>
               <NavLink href="/queues" active={onQueues && !dept && !managementView} icon="layers">Todos os exames</NavLink>
+              {user.permissions?.includes("hospital_task.view") && <NavLink href="/planner" active={pathname === "/planner" || pathname.startsWith("/planner/tasks/")} icon="board">Planner hospitalar</NavLink>}
               {canAccessManagement && <NavLink href="/indicators" active={pathname.startsWith("/indicators")} icon="analytics">Indicadores</NavLink>}
             </div>}
             {canAccessManagement && <div className="nav-group">
@@ -314,22 +325,49 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
               <NavLink href="/management?view=stats" active={pathname === "/management" && managementView === "stats"} icon="analytics">Estatísticas</NavLink>
               {!isSuperadmin && <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>}
               {!isSuperadmin && <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>}
+              {!isSuperadmin && user.permissions?.includes("service.catalog.view") && <NavLink href="/admin/hospital-services" active={pathname === "/admin/hospital-services"} icon="catalog">Serviços hospitalares</NavLink>}
+              {!isSuperadmin && user.permissions?.includes("department.view") && <NavLink href="/admin/departments" active={pathname === "/admin/departments"} icon="building">Setores</NavLink>}
+              {!isSuperadmin && user.permissions?.includes("access_group.view") && <NavLink href="/admin/access-groups" active={pathname === "/admin/access-groups"} icon="users">Grupos de acesso</NavLink>}
             </div>}
             {(isTechnicalAdmin || isSuperadmin) && <div className="nav-group">
               <span className="nav-group-label">Workspace</span>
               <NavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings">Administração</NavLink>
               <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>
               <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>
+              {user.permissions?.includes("service.catalog.view") && <NavLink href="/admin/hospital-services" active={pathname === "/admin/hospital-services"} icon="catalog">Serviços hospitalares</NavLink>}
+              {user.permissions?.includes("department.view") && <NavLink href="/admin/departments" active={pathname === "/admin/departments"} icon="building">Setores</NavLink>}
+              {user.permissions?.includes("access_group.view") && <NavLink href="/admin/access-groups" active={pathname === "/admin/access-groups"} icon="users">Grupos de acesso</NavLink>}
               <NavLink href="/system" active={pathname.startsWith("/system")} icon="activity">Sistema</NavLink>
+            </div>}
+            {user.permissions?.some((permission) => ["plan.view", "shift.view", "handoff.offer", "handoff.accept", "hospital_resource.view", "hospital_calendar.view", "hospital_capacity.view", "admission.view", "checklist_template.view", "recurrence.view", "hospital_document.view", "work_notification.view", "work_activity.preference.manage", "hospital_metric.view", "hospital_report.view", "institution.manage", "user_invite.manage", "hospital_task.view", "integration.manage", "integration.exchange"].includes(permission)) && <div className="nav-group">
+              <span className="nav-group-label">Hospital</span>
+              {user.permissions?.some((permission) => ["integration.manage", "integration.exchange"].includes(permission)) && <NavLink href="/admin/integrations" active={pathname === "/admin/integrations"} icon="settings">Integrações hospitalares</NavLink>}
+              {user.permissions?.includes("work_notification.view") && <NavLink href="/planner/inbox" active={pathname === "/planner/inbox"} icon="inbox">Caixa de trabalho</NavLink>}
+              {user.permissions?.includes("work_activity.preference.manage") && <NavLink href="/planner/following" active={pathname === "/planner/following"} icon="user-check">Meu acompanhamento</NavLink>}
+              {user.permissions?.includes("hospital_document.view") && <NavLink href="/planner/documents" active={pathname.startsWith("/planner/documents")} icon="catalog">Protocolos e documentos</NavLink>}
+              {user.permissions?.includes("hospital_task.view") && <NavLink href="/planner/timeline" active={pathname === "/planner/timeline"} icon="calendar">Cronograma hospitalar</NavLink>}
+              {user.permissions?.includes("hospital_metric.view") && <NavLink href="/planner/metrics" active={pathname === "/planner/metrics"} icon="analytics">Indicadores hospitalares</NavLink>}
+              {user.permissions?.includes("hospital_report.view") && <NavLink href="/planner/reports" active={pathname === "/planner/reports"} icon="analytics">Relatórios hospitalares</NavLink>}
+              {user.permissions?.includes("institution.manage") && <NavLink href="/admin/institution" active={pathname === "/admin/institution"} icon="settings">Instituição</NavLink>}
+              {user.permissions?.includes("user_invite.manage") && <NavLink href="/admin/invitations" active={pathname === "/admin/invitations"} icon="users">Convites operacionais</NavLink>}
+              {user.permissions?.includes("plan.view") && <NavLink href="/planner/plans" active={pathname.startsWith("/planner/plans")} icon="layers">Planos assistenciais</NavLink>}
+              {user.permissions?.includes("shift.view") && <NavLink href="/planner/shifts" active={pathname.startsWith("/planner/shifts")} icon="users">Plantões e cobertura</NavLink>}
+              {user.permissions?.includes("shift.view") && <NavLink href="/planner/handoffs" active={pathname === "/planner/handoffs"} icon="user-check">Passagem de plantão</NavLink>}
+              {user.permissions?.includes("hospital_calendar.view") && <NavLink href="/planner/agenda" active={pathname === "/planner/agenda"} icon="calendar">Agenda de recursos</NavLink>}
+              {user.permissions?.includes("admission.view") && <NavLink href="/planner/beds" active={pathname === "/planner/beds"} icon="building">Leitos e censo</NavLink>}
+              {user.permissions?.includes("hospital_capacity.view") && <NavLink href="/planner/capacity" active={pathname === "/planner/capacity"} icon="analytics">Capacidade</NavLink>}
+              {user.permissions?.includes("hospital_resource.view") && <NavLink href="/admin/resources" active={pathname === "/admin/resources"} icon="settings">Recursos e leitos</NavLink>}
+              {user.permissions?.includes("checklist_template.view") && <NavLink href="/planner/checklists" active={pathname === "/planner/checklists"} icon="requests">Modelos de checklist</NavLink>}
+              {user.permissions?.includes("recurrence.view") && <NavLink href="/planner/recurrences" active={pathname === "/planner/recurrences"} icon="calendar">Rotinas recorrentes</NavLink>}
             </div>}
             {sectors.length > 0 && <div className="nav-group">
               <span className="nav-group-label">Setores</span>
               {sectors.map((code) => {
                 const open = expandedSectors.includes(code);
-                const base = `/queues?dept=${code}`;
+                const base = `/queues?dept=${encodeURIComponent(code)}`;
                 return <div key={code} className="nav-sector">
                   <button type="button" className={`nav-sector-toggle${onQueues && dept === code ? " active" : ""}`} aria-expanded={open} onClick={() => toggleSector(code)}>
-                    <DepartmentIcon code={code} size={14} /><span className="nav-label">{departmentLabel(code)}</span><Icon name="chevron-down" size={13} className="nav-sector-chevron" />
+                    <DepartmentIcon code={code} size={14} /><span className="nav-label">{sectorNames.get(code) ?? code}</span><Icon name="chevron-down" size={13} className="nav-sector-chevron" />
                   </button>
                   {open && <div className="nav-sector-items">
                     <NavLink href={base} active={onQueues && dept === code && !preset} icon="layers" nested>Exames</NavLink>
@@ -352,7 +390,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
       <main className="main-content" inert={modalOpen}>
         <div className="main-panel">
           {!requiresPasswordChange && live === "degraded" && <RealtimeStatusBanner status={live} onReconcile={reconcile} />}
-          {content}
+          <WorkflowPermissionsProvider permissions={user.permissions}><DepartmentLabelsProvider names={Object.fromEntries(sectorNames)}>{content}</DepartmentLabelsProvider></WorkflowPermissionsProvider>
         </div>
       </main>
       {requiresPasswordChange ? <nav className={`mobile-nav ${styles.accountNav}`} aria-label="Navegação rápida"><MobileNavLink href="/account?password=required" active={pathname === "/account"} icon="account" label="Conta" /></nav> : <MobileNav inert={modalOpen || peekOpen} isTechnicalAdmin={isTechnicalAdmin} isSuperadmin={isSuperadmin} isManager={isManager} pathname={pathname} hash={hash} view={managementView} unread={unread} />}

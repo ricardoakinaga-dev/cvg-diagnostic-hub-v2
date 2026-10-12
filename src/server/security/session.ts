@@ -1,3 +1,4 @@
+import { hydrateUserPermissions, resolveUserPermissions } from "./access-group-policy";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Session, StateStore, StoreState, User } from "../domain/models";
 import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivity } from "../domain/session-activity";
@@ -136,7 +137,7 @@ export async function loginUser(store: StateStore, email: string, password: stri
     };
     return {
       state: { ...currentState, sessions: [...currentState.sessions, session] },
-      result: { user: currentUser, sessionToken, csrfToken, expiresAt }
+      result: { user: hydrateUserPermissions(currentState, currentUser), sessionToken, csrfToken, expiresAt }
     };
   });
 }
@@ -166,7 +167,7 @@ export async function authenticateRequest(
   if (user.mustChangePassword && !options.allowPasswordChange) {
     throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
   }
-  return { ...user, sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
+  return { ...hydrateUserPermissions(state, user), sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
 }
 
 const PASSWORD_CHANGE_ATTEMPTS = 5;
@@ -201,7 +202,7 @@ function rotateCredentials(
         previousState: audit.previousState, newState: "ACTIVE", correlationId: audit.correlationId, metadata: { sessionsRotated: true, sessionsRevoked: revoked, ...(pending.revoked ? { resetLinkRevoked: true } : {}) }, occurredAt: createdAt
       }]
     },
-    result: { user, sessionToken, csrfToken, expiresAt }
+    result: { user: hydrateUserPermissions(state, user), sessionToken, csrfToken, expiresAt }
   };
 }
 
@@ -258,6 +259,8 @@ export function authorizationSnapshotIsCurrent(state: StoreState, actor: User, o
     && current.version === actor.version
     && current.role === actor.role
     && current.departmentCode === actor.departmentCode
+    && current.accessGroupId === actor.accessGroupId
+    && (actor.permissions === undefined || sameScope(resolveUserPermissions(state, current), actor.permissions))
     && sameScope(current.patientIds, actor.patientIds)
     && sameScope(current.serviceCodes, actor.serviceCodes)
     && sameScope(current.managedDepartmentCodes, actor.managedDepartmentCodes)
@@ -305,7 +308,7 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
     const updatedSession = { ...currentSession, reauthenticatedAt, version: currentSession.version + 1 };
     return {
       state: { ...currentState, sessions: currentState.sessions.map((entry) => entry.id === currentSession.id ? updatedSession : entry) },
-      result: { ...currentUser, sessionId: currentSession.id, reauthenticatedAt }
+      result: { ...hydrateUserPermissions(currentState, currentUser), sessionId: currentSession.id, reauthenticatedAt }
     };
   });
 }

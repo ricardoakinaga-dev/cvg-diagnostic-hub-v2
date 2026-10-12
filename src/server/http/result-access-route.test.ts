@@ -75,7 +75,7 @@ describe.sequential("clinical result route visibility", () => {
     resetRateLimits();
   });
 
-  it("returns indistinguishable 404 responses for DRAFT and VOIDED clinical reads", async () => {
+  it("hides drafts and current voided results while allowing explicit read-only invalidated history", async () => {
     const context = await routeFixture();
     const draftResponses = await clinicalReads(context.draft.result.id, context.cookie);
     expect.soft(draftResponses.map((response) => response.status)).toEqual([404, 404, 404]);
@@ -93,9 +93,14 @@ describe.sequential("clinical result route visibility", () => {
       idempotencyKey: "route-security-void"
     });
     const voidedResponses = await clinicalReads(released.result.id, context.cookie);
-    expect.soft(voidedResponses.map((response) => response.status)).toEqual([404, 404, 404]);
-    for (const response of voidedResponses) {
+    expect.soft(voidedResponses.map((response) => response.status)).toEqual([404, 404, 200]);
+    for (const response of voidedResponses.slice(0, 2)) {
       expect.soft((await response.json()).error).toMatchObject({ code: "NOT_FOUND" });
     }
+    const selected = await GET(new Request(`http://localhost/api/v1/results/${released.result.id}?versionId=${released.version.id}`, { headers: { cookie: context.cookie } }), params(["results", released.result.id]));
+    expect(selected.status).toBe(200);
+    expect((await selected.json()).data).toMatchObject({ version: { id: released.version.id, status: "VOIDED" }, permissions: [] });
+    const invalid = await GET(new Request(`http://localhost/api/v1/results/${released.result.id}?versionId=`, { headers: { cookie: context.cookie } }), params(["results", released.result.id]));
+    expect(invalid.status).toBe(400);
   });
 });

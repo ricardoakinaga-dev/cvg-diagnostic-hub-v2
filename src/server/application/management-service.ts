@@ -11,7 +11,11 @@ import { assertPasswordPolicy } from "../security/password-policy";
 import { createPasswordResetGrant, passwordResetUrl, withoutPendingReset } from "../security/password-reset";
 import type { ApplicationServiceContext } from "./service-context";
 import * as helpers from "./service-common";
+import { assignedServiceAccess, reconcileCatalogServiceAccess } from "./executor-service-access";
 import { findById } from "../domain/state-index";
+import { activeSystemGroupId, assertAdministrativeAccessRetained, requireAnyPermission } from "../security/access-group-policy";
+import { requireActiveDepartment, reconcileDepartmentMembership } from "./department-registry";
+import { recordExamDefinition } from "./exam-definition";
 const {
   MAX_NOTE_LENGTH,
   MAX_RESULT_NARRATIVE_LENGTH,
@@ -101,63 +105,21 @@ const {
   transitionItem,
 } = helpers;
 
-const EXECUTOR_ROLES: readonly RoleCode[] = ["LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"];
-
 function isAdministrativeRole(role: RoleCode): boolean {
   return role === "ADMIN" || role === "SUPERADMIN";
 }
 
-/** Both checks run under the same user-management transaction as the change. */
-function assertAdministrativeAccessRetained(state: StoreState, target: User, nextRole: RoleCode, nextActive: User["active"]): void {
-  if (!target.active) return;
-  if (target.role === "SUPERADMIN" && (nextRole !== "SUPERADMIN" || !nextActive)
-    && !state.users.some((user) => user.id !== target.id && user.active && user.role === "SUPERADMIN")) {
-    throw new ApiError("CONFLICT", "O último superadministrador ativo não pode perder seu acesso.", 409);
-  }
-  if (isAdministrativeRole(target.role) && (!isAdministrativeRole(nextRole) || !nextActive)
-    && !state.users.some((user) => user.id !== target.id && user.active && isAdministrativeRole(user.role))) {
-    throw new ApiError("CONFLICT", "O último administrador ativo não pode perder o acesso administrativo.", 409);
-  }
-}
-
-function activeServiceCodes(state: StoreState, departmentCode: string): string[] {
-  return state.services.filter((service) => service.active && service.departmentCode === departmentCode).map((service) => service.code);
-}
-
-/**
- * Exams an executor may work on. Left unspecified, an executor starts with every active exam of the
- * department: a technician created in four interactions must not land on an empty queue because a
- * collapsed checkbox list was never opened. An explicit list (even an empty one) is kept as given.
- */
-function assignedServices(state: StoreState, role: RoleCode, departmentCode: string, codes?: ReadonlyArray<string>): string[] | undefined {
-  if (!EXECUTOR_ROLES.includes(role)) {
-    if (codes?.length) throw new ApiError("VALIDATION_ERROR", "Somente equipes executoras podem receber exames autorizados.", 400);
-    return undefined;
-  }
-  if (codes === undefined) return activeServiceCodes(state, departmentCode);
-  if (codes.length > 200) throw new ApiError("VALIDATION_ERROR", "Limite de exames autorizados excedido.", 400);
-  const normalized = [...new Set(codes.map((code) => requireText(code, "serviceCodes", 60).toUpperCase()))];
-  if (normalized.some((code) => !state.services.some((service) => service.code === code && service.departmentCode === departmentCode))) {
-    throw new ApiError("SCOPE_DENIED", "O exame autorizado deve pertencer ao setor do colaborador.", 404);
-  }
-  return normalized;
-}
-
-/**
- * A new exam reaches the executors who already had every exam of the department. Someone who was
- * deliberately restricted to a subset keeps the subset; the administrator grants the new exam to them.
- */
-function authorizeNewServiceForExecutors(state: StoreState, service: DiagnosticService): { users: User[]; granted: number } {
-  const before = activeServiceCodes(state, service.departmentCode);
-  let granted = 0;
-  const users = state.users.map((user) => {
-    if (!user.active || !EXECUTOR_ROLES.includes(user.role) || user.departmentCode !== service.departmentCode) return user;
-    const held = new Set(user.serviceCodes ?? []);
-    if (!before.every((code) => held.has(code)) || held.has(service.code)) return user;
-    granted += 1;
-    return { ...user, serviceCodes: [...held, service.code], version: user.version + 1 };
-  });
-  return { users, granted };
+function catalogServiceAccess(state: StoreState, previous: DiagnosticService | undefined, service: DiagnosticService, actorId: string, correlationId: string) {
+  const { users, changes } = reconcileCatalogServiceAccess(state, previous, service);
+  const affectedIds = new Set(changes.map((change) => change.after.id));
+  const timestamp = now();
+  const sessions = state.sessions.map((session) => affectedIds.has(session.userId) && !session.revokedAt ? { ...session, revokedAt: timestamp, version: session.version + 1 } : session);
+  const auditEvents = changes.map(({ before, after, added, removed }) => createAudit("UserServiceAccessUpdated", actorId, "User", after.id, correlationId, before.serviceCodes?.join(",") ?? "", after.serviceCodes?.join(",") ?? "", {
+    action: "CATALOG_SERVICE_ACCESS", serviceId: service.id, serviceCode: service.code, departmentCode: after.departmentCode,
+    policyMode: after.serviceAccessPolicy?.mode ?? "SELECTED", includeFuture: after.serviceAccessPolicy?.includeFuture ?? false,
+    addedServiceCodes: added.join(","), removedServiceCodes: removed.join(","), reason: removed.length ? "SERVICE_DEPARTMENT_TRANSFER" : "EXPLICIT_FUTURE_POLICY"
+  }));
+  return { users, sessions, auditEvents, granted: changes.filter((change) => change.added.length).length, affectedUserIds: JSON.stringify([...affectedIds]) };
 }
 
 export function createManagementService({ store, storage }: ApplicationServiceContext) {
@@ -165,7 +127,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
     async listManagedUsers(actor: User): Promise<ManagedUser[]> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      requirePermission(currentActor, "user_role.manage", {});
+      requireAnyPermission(currentActor, ["user_role.manage", "user.view"]);
       return state.users
         .filter((user) => canManageUserTarget(currentActor, user.role, user.departmentCode))
         .slice()
@@ -176,7 +138,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
     async listManagedSessions(actor: User): Promise<ManagedSession[]> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      requirePermission(currentActor, "user_role.manage", {});
+      requireAnyPermission(currentActor, ["user_role.manage", "user.view"]);
       if (!isAdministrativeRole(currentActor.role)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
       return state.sessions
         .map((session) => ({ session, user: findById(state.users, session.userId) }))
@@ -190,7 +152,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.update"]);
         if (!isAdministrativeRole(currentActor.role)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso às sessões do sistema.", 404);
         const targetSession = findOrThrow(findById(originalState.sessions, sessionId));
         const targetUser = findOrThrow(findById(originalState.users, targetSession.userId));
@@ -218,7 +180,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.update"]);
         if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para alterar uma role.", 400);
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A própria sessão não pode alterar seu role.", 400);
         if (!ROLES.includes(input.role)) throw new ApiError("VALIDATION_ERROR", "O role informado é inválido.", 400);
@@ -234,22 +196,33 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
+        const email = input.email === undefined ? target.email : normalizedEmail(input.email);
+        const displayName = input.displayName === undefined ? target.displayName : requireText(input.displayName, "displayName", 160);
+        if (originalState.users.some((user) => user.id !== target.id && user.email.toLowerCase() === email)) throw new ApiError("CONFLICT", "Já existe um colaborador com este e-mail.", 409);
         const managedDepartmentCodes = input.role === "MANAGER"
           ? input.managedDepartmentCodes === undefined ? target.managedDepartmentCodes : normalizedManagedDepartments(input.managedDepartmentCodes)
           : undefined;
         if (input.role !== "MANAGER" && input.managedDepartmentCodes?.length) throw new ApiError("VALIDATION_ERROR", "Somente MANAGER pode ter setores delegados.", 400);
         const nextActive = input.active ?? target.active;
-        assertAdministrativeAccessRetained(originalState, target, input.role, nextActive);
-        const serviceCodes = assignedServices(originalState, input.role, departmentCode, input.serviceCodes ?? (isExecutorRole({ ...target, role: input.role }) && target.departmentCode === departmentCode ? target.serviceCodes : undefined));
+        if (!nextActive && target.active) requireAnyPermission(currentActor, ["user_role.manage", "user.deactivate"]);
+        if (departmentCode !== target.departmentCode || (!target.active && nextActive)) requireActiveDepartment(originalState, departmentCode);
+        for (const code of managedDepartmentCodes ?? []) if (!target.managedDepartmentCodes?.includes(code)) requireActiveDepartment(originalState, code);
+        const oldGroup = originalState.accessGroups.find((group) => group.id === target.accessGroupId);
+        const accessGroupId = input.role !== target.role && (!target.accessGroupId || oldGroup?.systemRole === target.role) ? activeSystemGroupId(originalState, input.role) : target.accessGroupId;
+        const access = assignedServiceAccess(originalState, input.role, departmentCode, input.serviceCodes, input.serviceAccessPolicy, target);
         const pending = withoutPendingReset(target);
-        const updated: User = { ...pending.user, role: input.role, departmentCode, managedDepartmentCodes, serviceCodes, active: nextActive, ...(target.onCall && !nextActive ? { onCall: false } : {}), version: target.version + 1 };
+        const updated: User = { ...pending.user, email, displayName, role: input.role, accessGroupId, departmentCode, managedDepartmentCodes, ...access, active: nextActive, ...(target.onCall && !nextActive ? { onCall: false } : {}), version: target.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
+        const departments = reconcileDepartmentMembership(originalState, updated, now());
+        const affectedDepartmentIds = departments.filter((department, index) => department !== originalState.departments[index]).map((department) => department.id);
         const nextState = {
           ...originalState,
+          departments,
           users: originalState.users.map((user) => user.id === target.id ? updated : user),
           sessions: revokeUserSessions(originalState, target.id),
-          auditEvents: [...originalState.auditEvents, createAudit("UserRoleUpdated", currentActor.id, "User", target.id, correlationId, `${target.role}:${target.departmentCode}:${target.active}`, `${updated.role}:${updated.departmentCode}:${updated.active}`, { action: "UPDATE_USER_ACCESS", departmentCode: updated.departmentCode, previousManagedDepartmentCodes: target.managedDepartmentCodes?.join(",") ?? "", managedDepartmentCodes: managedDepartmentCodes?.join(",") ?? "", previousServiceCodes: target.serviceCodes?.join(",") ?? "", serviceCodes: serviceCodes?.join(",") ?? "", ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
+          auditEvents: [...originalState.auditEvents, createAudit("UserRoleUpdated", currentActor.id, "User", target.id, correlationId, `${target.role}:${target.departmentCode}:${target.active}`, `${updated.role}:${updated.departmentCode}:${updated.active}`, { action: "UPDATE_USER_ACCESS", affectedDepartmentIds: JSON.stringify(affectedDepartmentIds), identityChanged: email !== target.email || displayName !== target.displayName, accessGroupId: updated.accessGroupId ?? "", previousAccessGroupId: target.accessGroupId ?? "", departmentCode: updated.departmentCode, previousManagedDepartmentCodes: target.managedDepartmentCodes?.join(",") ?? "", managedDepartmentCodes: managedDepartmentCodes?.join(",") ?? "", previousServiceCodes: target.serviceCodes?.join(",") ?? "", serviceCodes: access.serviceCodes?.join(",") ?? "", previousServiceAccessPolicy: JSON.stringify(target.serviceAccessPolicy ?? null), serviceAccessPolicy: JSON.stringify(access.serviceAccessPolicy ?? null), ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
         };
+        assertAdministrativeAccessRetained(originalState, nextState);
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result };
       });
@@ -261,7 +234,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.update"]);
         if (input.expectedVersion === undefined) throw new ApiError("VALIDATION_ERROR", "expectedVersion é obrigatório para alterar o plantão.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
@@ -288,7 +261,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.create"]);
         if (!ROLES.includes(input.role)) throw new ApiError("VALIDATION_ERROR", "O role informado é inválido.", 400);
         const departmentCode = requireText(input.departmentCode ?? currentActor.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
@@ -296,6 +269,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         if (isAdministrativeRole(input.role)) requireRecentReauthentication(currentActor);
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        requireActiveDepartment(originalState, departmentCode);
         const email = normalizedEmail(input.email);
         if (originalState.users.some((user) => user.email.toLowerCase() === email)) throw new ApiError("CONFLICT", "Já existe um colaborador com este e-mail.", 409);
         const displayName = requireText(input.displayName, "displayName", 160);
@@ -306,26 +280,31 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const timezone = validatedTimezone(input.timezone ?? process.env.APP_TIMEZONE ?? "America/Sao_Paulo");
         const managedDepartmentCodes = input.role === "MANAGER" ? normalizedManagedDepartments(input.managedDepartmentCodes) : undefined;
         if (input.role !== "MANAGER" && input.managedDepartmentCodes?.length) throw new ApiError("VALIDATION_ERROR", "Somente MANAGER pode ter setores delegados.", 400);
+        for (const code of managedDepartmentCodes ?? []) requireActiveDepartment(originalState, code);
         const user: User = {
           id: id("user"),
           email,
           displayName,
           role: input.role,
+          accessGroupId: activeSystemGroupId(originalState, input.role),
           departmentCode,
           passwordHash: hashPassword(password),
           mustChangePassword: true,
           timezone,
           managedDepartmentCodes,
-          serviceCodes: assignedServices(originalState, input.role, departmentCode, input.serviceCodes),
+          ...assignedServiceAccess(originalState, input.role, departmentCode, input.serviceCodes, input.serviceAccessPolicy),
           createdAt: now(),
           version: 1,
           active: true
         };
         const correlationId = input.correlationId ?? id("corr");
+        const departments = reconcileDepartmentMembership(originalState, user, now());
+        const affectedDepartmentIds = departments.filter((department, index) => department !== originalState.departments[index]).map((department) => department.id);
         const nextState = {
           ...originalState,
+          departments,
           users: [...originalState.users, user],
-          auditEvents: [...originalState.auditEvents, createAudit("UserCreated", currentActor.id, "User", user.id, correlationId, undefined, "ACTIVE", { action: "CREATE_USER", role: user.role, departmentCode: user.departmentCode, serviceCodes: user.serviceCodes?.join(",") ?? "" })]
+          auditEvents: [...originalState.auditEvents, createAudit("UserCreated", currentActor.id, "User", user.id, correlationId, undefined, "ACTIVE", { action: "CREATE_USER", accessGroupId: user.accessGroupId ?? "", affectedDepartmentIds: JSON.stringify(affectedDepartmentIds), role: user.role, departmentCode: user.departmentCode, serviceCodes: user.serviceCodes?.join(",") ?? "", serviceAccessPolicy: JSON.stringify(user.serviceAccessPolicy ?? null) })]
         };
         const result = managedUser(user);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { input }), result: { ...result, initialPassword: password } };
@@ -337,7 +316,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.deactivate"]);
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A própria sessão não pode ser desativada.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
@@ -345,17 +324,20 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const idempotent = withIdempotency<ManagedUser>(originalState, currentActor.id, scope, input.idempotencyKey, { userId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         ensureExpectedVersion(target.version, input.expectedVersion);
-        assertAdministrativeAccessRetained(originalState, target, target.role, false);
         // Nobody stays on call (PROD-402) after losing access.
         const pending = withoutPendingReset(target);
         const updated: User = { ...pending.user, active: false, ...(target.onCall ? { onCall: false } : {}), version: target.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
+        const departments = reconcileDepartmentMembership(originalState, updated, now());
+        const affectedDepartmentIds = departments.filter((department, index) => department !== originalState.departments[index]).map((department) => department.id);
         const nextState = {
           ...originalState,
+          departments,
           users: originalState.users.map((user) => user.id === target.id ? updated : user),
           sessions: revokeUserSessions(originalState, target.id),
-          auditEvents: [...originalState.auditEvents, createAudit("UserDeactivated", currentActor.id, "User", target.id, correlationId, target.active ? "ACTIVE" : "INACTIVE", "INACTIVE", { action: "DEACTIVATE_USER", role: target.role, departmentCode: target.departmentCode, ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
+          auditEvents: [...originalState.auditEvents, createAudit("UserDeactivated", currentActor.id, "User", target.id, correlationId, target.active ? "ACTIVE" : "INACTIVE", "INACTIVE", { action: "DEACTIVATE_USER", affectedDepartmentIds: JSON.stringify(affectedDepartmentIds), role: target.role, departmentCode: target.departmentCode, ...(pending.revoked ? { resetLinkRevoked: true } : {}) })]
         };
+        assertAdministrativeAccessRetained(originalState, nextState);
         const result = managedUser(updated);
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { userId, input }), result };
       });
@@ -366,7 +348,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.update"]);
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A recuperação da própria conta deve ser feita por outro administrador.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
@@ -402,7 +384,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         requireIdempotencyKey(input.idempotencyKey);
-        requirePermission(currentActor, "user_role.manage", {});
+        requireAnyPermission(currentActor, ["user_role.manage", "user.update"]);
         if (currentActor.id === userId) throw new ApiError("VALIDATION_ERROR", "A redefinição da própria conta deve ser feita por outro administrador.", 400);
         const target = findOrThrow(findById(originalState.users, userId));
         if (!canManageUserTarget(currentActor, target.role, target.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este colaborador.", 404);
@@ -430,7 +412,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const includeInactive = options.includeInactive === true;
-      if (includeInactive) requirePermission(currentActor, "service.catalog.manage", {});
+      if (includeInactive) requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"]);
       else requirePermission(currentActor, "service.catalog.view", {});
       return state.services
         .filter((service) => currentActor.role !== "MANAGER" || managerCanAccessDepartment(currentActor, service.departmentCode))
@@ -469,15 +451,16 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const currentActor = requireActiveUser(originalState, actor);
         const departmentCode = requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
-        requirePermission(currentActor, "service.catalog.manage", { departmentCode });
+        requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.create"], { departmentCode });
         const idempotent = withIdempotency<DiagnosticService>(originalState, currentActor.id, scope, input.idempotencyKey, { input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        requireActiveDepartment(originalState, departmentCode);
         const code = requireText(input.code, "code", 60).toUpperCase();
         if (!/^[A-Z][A-Z0-9_]{1,59}$/.test(code)) throw new ApiError("VALIDATION_ERROR", "Código de serviço inválido.", 400);
-        if (originalState.services.some((service) => service.code === code)) throw new ApiError("CONFLICT", "Código de serviço já utilizado.", 409);
+        if (originalState.services.some((service) => service.code === code) || originalState.hospitalServices.some((service) => service.code === code)) throw new ApiError("CONFLICT", "Código de serviço já utilizado.", 409);
         validateServiceDefinition(input.category, input.workflowType);
         const source = input.duplicateOfServiceId ? findOrThrow(findById(originalState.services, input.duplicateOfServiceId)) : undefined;
-        if (source) requirePermission(currentActor, "service.catalog.manage", { departmentCode: source.departmentCode });
+        if (source) requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.create"], { departmentCode: source.departmentCode });
         const resultTemplate = input.resultSchema === "NUMERIC_PANEL" ? source?.resultTemplate : undefined;
         validateServiceResultSchema(input.category, input.workflowType, input.resultSchema, resultTemplate);
         const service: DiagnosticService = {
@@ -498,9 +481,9 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           version: 1
         };
         const correlationId = input.correlationId ?? id("corr");
-        const authorized = authorizeNewServiceForExecutors(originalState, service);
-        const nextState = { ...originalState, users: authorized.users, services: [...originalState.services, service], auditEvents: [...originalState.auditEvents, createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", service.id, correlationId, undefined, "ACTIVE", { code: service.code, workflowType: service.workflowType, autoAuthorizedExecutors: String(authorized.granted) })] };
-        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, service, { input }), result: service };
+        const authorized = catalogServiceAccess(originalState, undefined, service, currentActor.id, correlationId);
+        const nextState = { ...originalState, users: authorized.users, sessions: authorized.sessions, services: [...originalState.services, service], auditEvents: [...originalState.auditEvents, ...authorized.auditEvents, createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", service.id, correlationId, undefined, "ACTIVE", { code: service.code, workflowType: service.workflowType, autoAuthorizedExecutors: String(authorized.granted), affectedUserIds: authorized.affectedUserIds })] };
+        return { state: saveIdempotency(recordExamDefinition(nextState, undefined, service, currentActor.id, now(), correlationId), currentActor.id, scope, input.idempotencyKey, service, { input }), result: service };
       });
     },
 
@@ -509,20 +492,24 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
         const service = findOrThrow(findById(originalState.services, serviceId));
-        requirePermission(currentActor, "service.catalog.manage", { departmentCode: service.departmentCode });
-        ensureExpectedVersion(service.version, input.expectedVersion);
+        const metadataChange = Object.keys(input).some((key) => !["active", "expectedVersion", "idempotencyKey", "correlationId"].includes(key));
+        const action: Permission = input.active === false && !metadataChange ? "service.catalog.deactivate" : "service.catalog.update";
+        requireAnyPermission(currentActor, ["service.catalog.manage", action], { departmentCode: service.departmentCode });
+        if (input.active === false && metadataChange) requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.deactivate"], { departmentCode: service.departmentCode });
         const departmentCode = input.departmentCode === undefined ? service.departmentCode : requireText(input.departmentCode, "departmentCode", 60).toUpperCase();
         if (!/^[A-Z0-9_-]{1,60}$/.test(departmentCode)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
-        requirePermission(currentActor, "service.catalog.manage", { departmentCode });
+        requireAnyPermission(currentActor, ["service.catalog.manage", action], { departmentCode });
         const idempotent = withIdempotency<DiagnosticService>(originalState, currentActor.id, scope, input.idempotencyKey, { serviceId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
+        ensureExpectedVersion(service.version, input.expectedVersion);
+        if (departmentCode !== service.departmentCode || (!service.active && input.active === true)) requireActiveDepartment(originalState, departmentCode);
         const category = input.category ?? service.category;
         const workflowType = input.workflowType ?? service.workflowType;
         const requiresSample = input.requiresSample ?? service.requiresSample;
         const requiresSchedule = input.requiresSchedule ?? service.requiresSchedule;
         const resultSchema = input.resultSchema ?? service.resultSchema;
         validateServiceDefinition(category, workflowType);
-        validateServiceResultSchema(category, workflowType, resultSchema, service.resultTemplate);
+        validateServiceResultSchema(category, workflowType, resultSchema, service.resultTemplate, { allowUnpublished: resultSchema === service.resultSchema && Boolean(service.resultTemplate) });
         const structuralChanged = category !== service.category || departmentCode !== service.departmentCode || workflowType !== service.workflowType || requiresSample !== service.requiresSample || requiresSchedule !== service.requiresSchedule || resultSchema !== service.resultSchema;
         if (structuralChanged && originalState.items.some((item) => item.serviceId === service.id)) {
           throw new ApiError("CATALOG_IN_USE", "A estrutura deste serviço já está referenciada por solicitações e não pode ser alterada.", 409);
@@ -545,8 +532,9 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
           version: service.version + 1
         };
         const correlationId = input.correlationId ?? id("corr");
-        const nextState = { ...originalState, services: originalState.services.map((entry) => entry.id === service.id ? updated : entry), auditEvents: [...originalState.auditEvents, createAudit("DiagnosticServiceUpdated", currentActor.id, "DiagnosticService", service.id, correlationId, String(service.version), String(updated.version), { active: updated.active, departmentCode: updated.departmentCode, workflowType: updated.workflowType, allowsAttachment: updated.allowsAttachment })] };
-        return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, updated, { serviceId, input }), result: updated };
+        const authorized = catalogServiceAccess(originalState, service, updated, currentActor.id, correlationId);
+        const nextState = { ...originalState, users: authorized.users, sessions: authorized.sessions, services: originalState.services.map((entry) => entry.id === service.id ? updated : entry), auditEvents: [...originalState.auditEvents, ...authorized.auditEvents, createAudit("DiagnosticServiceUpdated", currentActor.id, "DiagnosticService", service.id, correlationId, String(service.version), String(updated.version), { active: updated.active, departmentCode: updated.departmentCode, workflowType: updated.workflowType, allowsAttachment: updated.allowsAttachment, autoAuthorizedExecutors: String(authorized.granted), affectedUserIds: authorized.affectedUserIds })] };
+        return { state: saveIdempotency(recordExamDefinition(nextState, service, updated, currentActor.id, now(), correlationId), currentActor.id, scope, input.idempotencyKey, updated, { serviceId, input }), result: updated };
       });
     },
 
@@ -558,10 +546,22 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       requireIdempotencyKey(input.idempotencyKey);
       const scope = "POST:/diagnostic-services/import";
       const planFor = (state: StoreState, currentActor: User) => {
-        requirePermission(currentActor, "service.catalog.manage", {});
-        return planCatalogImport(state, parseCatalogSheet(input.services), input.analytes === undefined ? undefined : parseAnalyteSheet(input.analytes), {
-          canManageDepartment: (departmentCode) => canAccessResource(currentActor, "service.catalog.manage", { departmentCode })
+        requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"]);
+        const plan = planCatalogImport(state, parseCatalogSheet(input.services), input.analytes === undefined ? undefined : parseAnalyteSheet(input.analytes), {
+          canManageDepartment: (departmentCode) => ["service.catalog.manage", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"].some((permission) => canAccessResource(currentActor, permission as Permission, { departmentCode }))
         });
+        for (const write of plan.writes) {
+          const previous = write.existingId ? findById(state.services, write.existingId) : undefined;
+          const action: Permission = !previous ? "service.catalog.create" : previous.active && !write.next.active ? "service.catalog.deactivate" : "service.catalog.update";
+          requireAnyPermission(currentActor, ["service.catalog.manage", action], { departmentCode: write.next.departmentCode });
+          if (previous) requireAnyPermission(currentActor, ["service.catalog.manage", action], { departmentCode: previous.departmentCode });
+          if (previous && action === "service.catalog.deactivate" && Object.entries(write.next).some(([key, value]) => key !== "active" && stableSerialize(value) !== stableSerialize((previous as unknown as Record<string, unknown>)[key]))) {
+            requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.update"], { departmentCode: previous.departmentCode });
+            requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.update"], { departmentCode: write.next.departmentCode });
+          }
+          if (!previous || previous.departmentCode !== write.next.departmentCode || (!previous.active && write.next.active)) requireActiveDepartment(state, write.next.departmentCode);
+        }
+        return plan;
       };
       if (input.dryRun) {
         const state = await store.readState();
@@ -570,7 +570,7 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
       }
       return store.transaction(async (originalState) => {
         const currentActor = requireActiveUser(originalState, actor);
-        requirePermission(currentActor, "service.catalog.manage", {});
+        requireAnyPermission(currentActor, ["service.catalog.manage", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"]);
         const idempotent = withIdempotency<CatalogImportResult>(originalState, currentActor.id, scope, input.idempotencyKey, { services: input.services, analytes: input.analytes });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
         const { writes, ...report } = planFor(originalState, currentActor);
@@ -580,25 +580,30 @@ export function createManagementService({ store, storage }: ApplicationServiceCo
         const result: CatalogImportResult = { applied: true, dryRun: false, ...report };
         if (writes.length === 0) return { state: originalState, result };
         const correlationId = input.correlationId ?? id("corr");
+        let definitionState = originalState;
         let services = originalState.services;
         let users = originalState.users;
+        let sessions = originalState.sessions;
         const audits: AuditEvent[] = [];
         for (const write of writes) {
           const previous = write.existingId ? services.find((entry) => entry.id === write.existingId) : undefined;
           const { sampleType: _previousSampleType, resultTemplate: _previousTemplate, ...base } = previous ?? { sampleType: undefined, resultTemplate: undefined };
           const saved: DiagnosticService = { ...base, ...write.next, id: previous?.id ?? id("service"), version: (previous?.version ?? 0) + 1 };
+          definitionState = recordExamDefinition(definitionState, previous, saved, currentActor.id, now(), correlationId);
+          const authorized = catalogServiceAccess({ ...originalState, users, services, sessions }, previous, saved, currentActor.id, correlationId);
+          users = authorized.users;
+          sessions = authorized.sessions;
+          audits.push(...authorized.auditEvents);
           if (previous) {
             services = services.map((entry) => entry.id === previous.id ? saved : entry);
-            audits.push(createAudit("DiagnosticServiceUpdated", currentActor.id, "DiagnosticService", saved.id, correlationId, String(previous.version), String(saved.version), { active: saved.active, departmentCode: saved.departmentCode, workflowType: saved.workflowType, allowsAttachment: saved.allowsAttachment, source: "CATALOG_IMPORT" }));
+            audits.push(createAudit("DiagnosticServiceUpdated", currentActor.id, "DiagnosticService", saved.id, correlationId, String(previous.version), String(saved.version), { active: saved.active, departmentCode: saved.departmentCode, workflowType: saved.workflowType, allowsAttachment: saved.allowsAttachment, autoAuthorizedExecutors: String(authorized.granted), affectedUserIds: authorized.affectedUserIds, source: "CATALOG_IMPORT" }));
           } else {
-            const authorized = saved.active ? authorizeNewServiceForExecutors({ ...originalState, users, services }, saved) : { users, granted: 0 };
-            users = authorized.users;
             services = [...services, saved];
-            audits.push(createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", saved.id, correlationId, undefined, saved.active ? "ACTIVE" : "INACTIVE", { code: saved.code, workflowType: saved.workflowType, autoAuthorizedExecutors: String(authorized.granted), source: "CATALOG_IMPORT" }));
+            audits.push(createAudit("DiagnosticServiceCreated", currentActor.id, "DiagnosticService", saved.id, correlationId, undefined, saved.active ? "ACTIVE" : "INACTIVE", { code: saved.code, workflowType: saved.workflowType, autoAuthorizedExecutors: String(authorized.granted), affectedUserIds: authorized.affectedUserIds, source: "CATALOG_IMPORT" }));
           }
         }
         audits.push(createAudit("CatalogImported", currentActor.id, "DiagnosticServiceCatalog", "catalog", correlationId, undefined, undefined, { created: report.summary.create, updated: report.summary.update, unchanged: report.summary.unchanged, rows: report.rows.length }));
-        const nextState = { ...originalState, users, services, auditEvents: [...originalState.auditEvents, ...audits] };
+        const nextState = { ...originalState, examDefinitions: definitionState.examDefinitions, users, sessions, services, auditEvents: [...definitionState.auditEvents, ...audits] };
         return { state: saveIdempotency(nextState, currentActor.id, scope, input.idempotencyKey, result, { services: input.services, analytes: input.analytes }), result };
       });
     },

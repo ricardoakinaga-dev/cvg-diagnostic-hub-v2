@@ -8,6 +8,7 @@ import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { useConfirm } from "./confirm-dialog";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { ReauthDialog } from "./admin-users";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 
 export function SystemConsole() {
   const [sessions, setSessions] = useState<ManagedSession[]>([]);
@@ -57,7 +58,7 @@ export function SystemConsole() {
         <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><h2>Dispositivos e acessos ativos</h2><span>{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="As sessões aparecerão aqui." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={session.id} session={session} onSaved={load} />)}</div>}</section>
         <CriticalReadinessPanel readiness={readiness} />
         <section className="panel admin-audit-panel" id="dead-letters"><div className="panel-heading"><h2>Dead-letter do outbox</h2><span>{deadLetters.length}</span></div>{deadLetters.length === 0 ? <EmptyState title="Nenhuma mensagem retida" message="Mensagens com falha de entrega aparecerão aqui." /> : <div className="admin-list">{deadLetters.map((message) => <DeadLetterRow key={message.id} message={message} onSaved={load} />)}</div>}</section>
-        <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><h2>Auditoria recente</h2><span>{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento recente" message="As alterações aparecerão aqui." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="admin-audit-state">{event.newState ?? "registrado"}</span></li>)}</ul>}</section>
+        <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><h2>Auditoria recente</h2><span>{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento recente" message="As alterações aparecerão aqui." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType} · {event.entityId} · {formatHospitalDateTime(event.occurredAt)}</small></span><span className="admin-audit-state">{event.newState ?? "registrado"}</span></li>)}</ul>}</section>
       </>}
     </>}
   </div>;
@@ -101,7 +102,7 @@ function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSa
     if (session.userRole === "SUPERADMIN") setAuthorize(() => () => performRevoke(true));
     else await performRevoke();
   }
-  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}{authorize && <ReauthDialog privilegedRole="SUPERADMIN" onClose={() => setAuthorize(null)} onConfirmed={authorize} />}</>;
+  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {formatHospitalDateTime(session.createdAt)}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}{authorize && <ReauthDialog privilegedRole="SUPERADMIN" onClose={() => setAuthorize(null)} onConfirmed={authorize} />}</>;
 }
 
 function DeadLetterRow({ message, onSaved }: { message: DeadLetterMessage; onSaved: () => Promise<void> }) {

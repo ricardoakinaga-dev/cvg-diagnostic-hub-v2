@@ -36,16 +36,18 @@ export const admissionContextSchema = z.discriminatedUnion("action", [
     ...admissionContextBase,
     action: z.literal("TRANSFER"),
     departmentCode: z.string().trim().regex(/^[A-Za-z0-9_-]{1,60}$/),
-    ward: boundedText(100),
-    bed: boundedText(100),
+    ward: boundedText(100).optional(),
+    bed: boundedText(100).optional(),
+    bedResourceId: boundedText(100).optional(),
     responsibleUserId: boundedText(100)
-  }).strict(),
+  }).strict().refine((value) => Boolean(value.bedResourceId || value.ward && value.bed), "Informe o leito cadastrado ou a localização legada completa."),
   z.object({
     ...admissionContextBase,
     action: z.literal("BED_CHANGE"),
-    ward: boundedText(100),
-    bed: boundedText(100)
-  }).strict(),
+    ward: boundedText(100).optional(),
+    bed: boundedText(100).optional(),
+    bedResourceId: boundedText(100).optional()
+  }).strict().refine((value) => Boolean(value.bedResourceId || value.ward && value.bed), "Informe o leito cadastrado ou a localização legada completa."),
   z.object({
     ...admissionContextBase,
     action: z.literal("DISCHARGE")
@@ -61,6 +63,7 @@ export const encounterOpenSchema = z.object({
   encounterType: z.enum(["INPATIENT", "EMERGENCY", "OUTPATIENT"]),
   ward: boundedText(100).optional(),
   bed: boundedText(100).optional(),
+  bedResourceId: boundedText(100).optional(),
   reason: boundedText(500).optional()
 }).strict();
 
@@ -102,10 +105,12 @@ export const recollectionSchema = z.object({
 export const scheduleSchema = z.object({
   startsAt: boundedDateTime,
   endsAt: boundedDateTime,
-  resource: boundedText(100),
+  resource: boundedText(100).optional(),
+  resourceIds: z.array(boundedText(100)).min(1).max(20).refine((values) => new Set(values).size === values.length).optional(),
   reason: boundedText(500).optional(),
   expectedVersion
 }).strict().superRefine((value, context) => {
+  if (!value.resource && !value.resourceIds?.length) context.addIssue({ code: z.ZodIssueCode.custom, path: ["resourceIds"], message: "Selecione os recursos cadastrados ou informe o recurso legado." });
   const startsAt = Date.parse(value.startsAt);
   const endsAt = Date.parse(value.endsAt);
   if (endsAt <= startsAt) {

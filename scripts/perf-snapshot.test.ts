@@ -46,6 +46,12 @@ function reportFixture(baseline: PerfBaseline = baselineFixture()): SnapshotScal
 
 test("builds a reproducible audit-heavy state without changing the domain shape", () => {
   const state = buildAuditHeavyState(12);
+  const fixture = createDemoState("snapshot-scale-password");
+  assert.deepEqual(Object.keys(state), Object.keys(fixture));
+  assert.deepEqual(state.accessGroups, fixture.accessGroups);
+  assert.deepEqual(state.departments, fixture.departments);
+  assert.deepEqual(state.patientGrants, fixture.patientGrants);
+  assert.deepEqual(state.hospitalTaskTypes, fixture.hospitalTaskTypes);
   assert.equal(state.auditEvents.length, 12);
   assert.ok(state.users.length > 0);
   assert.equal(state.auditEvents[0]?.eventType, "ScaleProbe");
@@ -102,12 +108,20 @@ test("ships a complete versioned baseline with zero byte-growth tolerance", () =
   assert.equal(baseline.benchmark, SNAPSHOT_BENCHMARK_VERSION);
   assert.equal(baseline.regressionToleranceRatio, 0);
   assert.deepEqual(baseline.samples.map((sample) => sample.auditEvents), [1_000, 10_000, 100_000]);
+  assert.deepEqual(baseline.samples.map((sample) => sample.max.bytes), [700_000, 6_000_000, 60_000_000]);
+  assert.equal(baseline.revision?.previousBenchmark, "prod-2026-10-snapshot-v2");
+  assert.equal(baseline.revision?.fixedOverheadBytes, 24_342);
+  assert.equal(baseline.revision?.byteAttribution.reduce((sum, entry) => sum + entry.addedBytes, 0), 24_342);
 });
 
 test("passes the real complete benchmark at the committed byte baselines", () => {
   const baseline = readPerfBaseline();
   const report = runSnapshotScaleBenchmark();
   assert.deepEqual(report.samples.map((sample) => sample.bytes), baseline.samples.map((sample) => sample.recorded.bytes));
+  const previousSamples = baseline.revision!.previousByteSamples;
+  assert.deepEqual(report.samples.map((sample, index) => sample.bytes - previousSamples[index]!.bytes), [24_342, 24_342, 24_342]);
+  assert.deepEqual(report.samples.slice(1).map((sample, index) => sample.bytes - report.samples[index]!.bytes),
+    previousSamples.slice(1).map((sample, index) => sample.bytes - previousSamples[index]!.bytes));
   const gate = evaluatePerfBaseline(report, baseline);
   assert.deepEqual(gate.regressions, []);
   assert.equal(gate.pass, true);

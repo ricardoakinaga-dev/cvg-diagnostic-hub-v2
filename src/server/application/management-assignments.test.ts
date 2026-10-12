@@ -50,8 +50,9 @@ describe("explicit executor assignments and catalog duplication", () => {
     const saved = await service.updateUserRole(admin, technician.id, { role: "LAB_TECH", departmentCode: "LABORATORY", expectedVersion: technician.version, idempotencyKey: "preserve-grants" });
     expect(saved.serviceCodes).toEqual(technician.serviceCodes);
     const moved = await service.updateUserRole(admin, technician.id, { role: "RADIOLOGY_TEAM", departmentCode: "RADIOLOGY", expectedVersion: saved.version, idempotencyKey: "move-grants" });
-    // Moving without an explicit list starts from every active exam of the new department, not from the old grants.
-    expect(moved.serviceCodes).toEqual(store.getState().services.filter((item) => item.active && item.departmentCode === "RADIOLOGY").map((item) => item.code));
+    // Moving without an explicit policy grants nothing in the new department.
+    expect(moved.serviceCodes).toEqual([]);
+    expect(moved.serviceAccessPolicy).toEqual({ mode: "NONE", includeFuture: false });
     const viewer = await service.updateUserRole(admin, technician.id, { role: "VIEWER", departmentCode: "RADIOLOGY", expectedVersion: moved.version, idempotencyKey: "clear-grants" });
     expect(viewer.serviceCodes).toBeUndefined();
   });
@@ -86,10 +87,10 @@ describe("explicit executor assignments and catalog duplication", () => {
     expect(store.getState().users.find((user) => user.id === none.id)?.serviceCodes).toEqual([]);
   });
 
-  it("authorizes a newly created exam for executors who held every exam of the department, and only for them", async () => {
+  it("authorizes a newly created exam only for executors with explicit consent to future exams", async () => {
     const { store, admin, service } = setup();
     const laboratory = store.getState().services.filter((item) => item.active && item.departmentCode === "LABORATORY").map((item) => item.code);
-    const all = await service.createManagedUser(admin, { email: "all-lab@cvg.local", displayName: "All Lab", role: "LAB_TECH", departmentCode: "LABORATORY", idempotencyKey: "all-lab" });
+    const all = await service.createManagedUser(admin, { email: "all-lab@cvg.local", displayName: "All Lab", role: "LAB_TECH", departmentCode: "LABORATORY", serviceAccessPolicy: { mode: "ALL_CURRENT", includeFuture: true }, idempotencyKey: "all-lab" });
     const subset = await service.createManagedUser(admin, { email: "subset-lab@cvg.local", displayName: "Subset Lab", role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: [laboratory[0]!], idempotencyKey: "subset-lab" });
     const created = await service.createDiagnosticService(admin, { code: "LAB_NEW_EXAM", name: "Novo exame", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, resultSchema: "NARRATIVE", slaHours: { ROUTINE: 24, URGENT: 4, EMERGENCY: 1 }, idempotencyKey: "new-exam" });
     const users = store.getState().users;

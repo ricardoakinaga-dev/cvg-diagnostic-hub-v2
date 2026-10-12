@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 
-export const LATEST_RUNTIME_SCHEMA_VERSION = "018_archive_object_deletions";
+export const LATEST_RUNTIME_SCHEMA_VERSION = "027_hospital_his_v4_deliveries";
 
 /**
  * The runtime schema is intentionally advanced by one ordered migration at a
@@ -27,7 +27,16 @@ export const RUNTIME_MIGRATION_VERSIONS = [
   "015_runtime_entity_rows",
   "016_outbox_whatsapp_route",
   "017_clinical_archive",
-  "018_archive_object_deletions"
+  "018_archive_object_deletions",
+  "019_hospital_departments",
+  "020_hospital_access_groups",
+  "021_exam_definitions",
+  "022_hospital_services",
+  "023_hospital_tasks",
+  "024_hospital_planning_resources",
+  "025_hospital_collaboration",
+  "026_hospital_external_capabilities",
+  "027_hospital_his_v4_deliveries"
 ] as const;
 
 /**
@@ -53,7 +62,16 @@ export const RUNTIME_MIGRATION_CHECKSUMS: Readonly<Record<(typeof RUNTIME_MIGRAT
   "015_runtime_entity_rows": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f",
   "016_outbox_whatsapp_route": "c63d12c24dd13482eae00d9ed87aac9fba53fbbc7609df23b78e81a3603fa77c",
   "017_clinical_archive": "43aeca4eaea8b4724fd49edfa824644e4a4ea874b67570b8191d386147dae6cf",
-  "018_archive_object_deletions": "8321c107f6532481b0cf375ce6c47d0848a0dcb1582abecd432c1a790ae6c110"
+  "018_archive_object_deletions": "8321c107f6532481b0cf375ce6c47d0848a0dcb1582abecd432c1a790ae6c110",
+  "019_hospital_departments": "c8ccc5d9a36adbb44a60146ef0b298c8b46aa4cd67df599b3a482bb94be9c025",
+  "020_hospital_access_groups": "102da18b06517303b97cf3f8be75cb974e32568568afd0b9b9c99373a62cec01",
+  "021_exam_definitions": "b5127624cafc1206983eecc4987284abff479cae307c7f23555bbfe572250126",
+  "022_hospital_services": "7960fe66144ec8ce305ecbc3a4d82f798b821c9d5188678d9805feb542045b92",
+  "023_hospital_tasks": "7679b66fe2ffc9dd82787b8f3c5154513b907856cf08439ab61117cce0dc9730",
+  "024_hospital_planning_resources": "58a59399bdea97a86766bbc9a10ab8b5da890fd8d2b48c6d10591ec897218f5e",
+  "025_hospital_collaboration": "526c991610df5c0224904dfb005c8b9508fc5356b81c1689b4ab4965a2a374f4",
+  "026_hospital_external_capabilities": "e1cc299c0a17873bcc7541b4ef766d1180ac62706f4d9c536336119db2b941d7",
+  "027_hospital_his_v4_deliveries": "41a4d8bbcb790588254fc2937694a1a9f19807290975c6f8bb18556b7d0c3054"
 };
 
 const MIGRATION_LOCK_NAME = "cvg_schema_migrations";
@@ -142,6 +160,16 @@ const RUNTIME_SCHEMA_READINESS_SQL = `SELECT
     SELECT jsonb_typeof(state) = 'object'
        AND jsonb_typeof(state->'auditEvents') = 'array'
        AND jsonb_typeof(state->'outbox') = 'array'
+       AND jsonb_typeof(state->'examDefinitions') = 'array'
+       AND jsonb_typeof(state->'hospitalServices') = 'array'
+       AND jsonb_typeof(state->'hospitalTaskTypes') = 'array'
+       AND jsonb_typeof(state->'hospitalTasks') = 'array'
+       AND jsonb_typeof(state->'hospitalTaskDependencies') = 'array'
+       AND jsonb_typeof(state->'hospitalIntakes') = 'array'
+       AND jsonb_typeof(state->'savedPlannerViews') = 'array'
+       AND jsonb_typeof(state->'departments') = 'array'
+       AND jsonb_typeof(state->'accessGroups') = 'array'
+       AND jsonb_typeof(state->'patientGrants') = 'array'
        AND jsonb_typeof(state->'users') = 'array'
        AND jsonb_typeof(state->'sessions') = 'array'
        AND jsonb_typeof(state->'protocolSequence') = 'number'

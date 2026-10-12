@@ -4,6 +4,7 @@ import type { ApplicationServiceContext } from "./service-context";
 import type { CommandMeta, CreatePatientInput, EncounterCloseInput, EncounterCloseResult, EncounterOpenInput, EncounterOpenResult, PatientCreateResult } from "./service-types";
 import { createAudit, createOutbox, findOrThrow, findOrThrowScoped, id, now, requireActiveUser, requireIdempotencyKey, requirePatientPermission, requirePermission, requireText, saveIdempotency, withIdempotency } from "./service-common";
 import { encountersForPatient, findById, itemsForRequest, requestsForPatient } from "../domain/state-index";
+import { placementDepartment, resolveAdmissionBed, type HospitalBedPlacement } from "./hospital-bed-policy";
 
 const TERMINAL_ITEM_STATES = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const ENCOUNTER_TYPES = ["INPATIENT", "EMERGENCY", "OUTPATIENT"];
@@ -35,13 +36,11 @@ function normalizedEncounterExternalId(encounterId: string): string {
   return `ATD-${encounterId.slice(-8).toUpperCase()}`;
 }
 
-function createAdmission(encounter: Encounter, actor: User, ward: string, bed: string, openedAt: string): Admission {
+function createAdmission(encounter: Encounter, placement: HospitalBedPlacement, openedAt: string): Admission {
   return {
     id: id("admission"),
     encounterId: encounter.id,
-    departmentCode: actor.departmentCode,
-    ward,
-    bed,
+    ...placement,
     admittedAt: openedAt,
     version: 1
   };
@@ -49,19 +48,19 @@ function createAdmission(encounter: Encounter, actor: User, ward: string, bed: s
 
 // Shared by createPatient and openEncounter: validates the encounter type and
 // the ward/bed rules (INPATIENT requires both, other types reject them).
-function validatedPlacement(input: { encounterType: string; ward?: string; bed?: string }): { ward?: string; bed?: string } {
+function validatedPlacement(state: StoreState, actor: User, input: { encounterType: string; ward?: string; bed?: string; bedResourceId?: string }, patient: Pick<Patient, "species">): HospitalBedPlacement | undefined {
   if (!ENCOUNTER_TYPES.includes(input.encounterType)) {
     throw new ApiError("VALIDATION_ERROR", "O tipo de atendimento informado é inválido.", 400);
   }
   const ward = input.ward ? requireText(input.ward, "ward", 100) : undefined;
   const bed = input.bed ? requireText(input.bed, "bed", 100) : undefined;
-  if (input.encounterType === "INPATIENT" && (!ward || !bed)) {
+  if (input.encounterType === "INPATIENT" && (!ward || !bed) && !input.bedResourceId) {
     throw new ApiError("VALIDATION_ERROR", "Internação exige ala e leito.", 400);
   }
-  if (input.encounterType !== "INPATIENT" && (ward || bed)) {
+  if (input.encounterType !== "INPATIENT" && (ward || bed || input.bedResourceId)) {
     throw new ApiError("VALIDATION_ERROR", "Ala e leito só podem ser informados para internação.", 400);
   }
-  return { ward, bed };
+  return input.encounterType === "INPATIENT" ? resolveAdmissionBed(state, actor, patient, { departmentCode: placementDepartment(state, actor, input.bedResourceId), ward, bed, bedResourceId: input.bedResourceId }) : undefined;
 }
 
 export function createRegistryService({ store }: ApplicationServiceContext) {
@@ -82,7 +81,7 @@ export function createRegistryService({ store }: ApplicationServiceContext) {
         const sex = requireText(input.sex, "sex", 40);
         const ownerLabel = requireText(input.ownerLabel, "ownerLabel", 160);
         const birthDate = validBirthDate(input.birthDate);
-        const { ward, bed } = validatedPlacement(input);
+        const placement = validatedPlacement(originalState, currentActor, input, { species });
 
         const patientId = id("patient");
         const externalId = normalizedExternalId(input.externalId, patientId);
@@ -112,23 +111,25 @@ export function createRegistryService({ store }: ApplicationServiceContext) {
           openedAt
         };
 
-        const admission = ward && bed ? createAdmission(encounter, currentActor, ward, bed, openedAt) : undefined;
+        const admission = placement ? createAdmission(encounter, placement, openedAt) : undefined;
         const persistedUser = findOrThrow(originalState.users.find((user) => user.id === currentActor.id));
-        const patientIds = Array.from(new Set([...(persistedUser.patientIds ?? []), patient.id]));
+        const hasIndividualScope = ["VETERINARIAN", "INPATIENT_TEAM", "VIEWER"].includes(currentActor.role);
+        const patientIds = hasIndividualScope ? Array.from(new Set([...(persistedUser.patientIds ?? []), patient.id])) : persistedUser.patientIds;
         // Patient scope is part of the authorization snapshot. Bump the user
         // version so every long-lived session must reread the new scope before
         // it can access the newly registered patient.
-        const updatedUser = { ...persistedUser, patientIds, version: persistedUser.version + 1 };
+        const updatedUser = { ...persistedUser, patientIds, version: persistedUser.version + (hasIndividualScope ? 1 : 0) };
         const correlationId = meta.correlationId ?? id("corr");
         const audits = [
           createAudit("PatientCreated", currentActor.id, "Patient", patient.id, correlationId, undefined, "ACTIVE", { externalId: patient.externalId, encounterType: encounter.type }),
           createAudit("EncounterCreated", currentActor.id, "Encounter", encounter.id, correlationId, undefined, "OPEN", { patientId: patient.id, encounterType: encounter.type }),
-          ...(admission ? [createAudit("AdmissionCreated", currentActor.id, "Admission", admission.id, correlationId, undefined, "OPEN", { encounterId: encounter.id, departmentCode: admission.departmentCode })] : [])
+          ...(admission ? [createAudit("AdmissionCreated", currentActor.id, "Admission", admission.id, correlationId, undefined, "OPEN", { encounterId: encounter.id, departmentCode: admission.departmentCode, ward: admission.ward, bed: admission.bed, bedResourceId: admission.bedResourceId ?? null })] : [])
         ];
         const result: PatientCreateResult = { patient, encounter, ...(admission ? { admission } : {}) };
         const nextState: StoreState = {
           ...originalState,
           users: originalState.users.map((user) => user.id === updatedUser.id ? updatedUser : user),
+          patientGrants: hasIndividualScope ? [...originalState.patientGrants, { id: id("patient-grant"), userId: updatedUser.id, patientId: patient.id, source: "PATIENT_CREATION", grantedBy: currentActor.id, active: true, version: 1, createdAt: openedAt, updatedAt: openedAt }] : originalState.patientGrants,
           patients: [...originalState.patients, patient],
           encounters: [...originalState.encounters, encounter],
           ...(admission ? { admissions: [...originalState.admissions, admission] } : {}),
@@ -150,7 +151,7 @@ export function createRegistryService({ store }: ApplicationServiceContext) {
         const idempotent = withIdempotency<EncounterOpenResult>(originalState, currentActor.id, scope, meta.idempotencyKey, { patientId, input });
         if (idempotent.found) return { state: originalState, result: idempotent.existing! };
 
-        const { ward, bed } = validatedPlacement(input);
+        const placement = validatedPlacement(originalState, currentActor, input, patient);
         const reason = input.reason === undefined ? undefined : requireText(input.reason, "reason", 500);
         if (patient.active === false) {
           throw new ApiError("INVALID_STATE_TRANSITION", "O paciente está inativo e não pode receber um novo atendimento.", 409);
@@ -169,11 +170,11 @@ export function createRegistryService({ store }: ApplicationServiceContext) {
           status: "OPEN",
           openedAt
         };
-        const admission = ward && bed ? createAdmission(encounter, currentActor, ward, bed, openedAt) : undefined;
+        const admission = placement ? createAdmission(encounter, placement, openedAt) : undefined;
         const correlationId = meta.correlationId ?? id("corr");
         const audits = [
           createAudit("EncounterCreated", currentActor.id, "Encounter", encounter.id, correlationId, undefined, "OPEN", { patientId: patient.id, encounterType: encounter.type, ...(reason ? { reason } : {}) }),
-          ...(admission ? [createAudit("AdmissionCreated", currentActor.id, "Admission", admission.id, correlationId, undefined, "OPEN", { encounterId: encounter.id, departmentCode: admission.departmentCode })] : [])
+          ...(admission ? [createAudit("AdmissionCreated", currentActor.id, "Admission", admission.id, correlationId, undefined, "OPEN", { encounterId: encounter.id, departmentCode: admission.departmentCode, ward: admission.ward, bed: admission.bed, bedResourceId: admission.bedResourceId ?? null })] : [])
         ];
         const result: EncounterOpenResult = { encounter, ...(admission ? { admission } : {}) };
         const nextState: StoreState = {

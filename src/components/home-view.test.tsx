@@ -32,22 +32,23 @@ function mockSession(role: string, options: { dashboardFails?: boolean } = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string) => {
     if (path === "/session/me") return { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina Costa", role, departmentCode: "INPATIENT", timezone: "UTC" } } as never;
     if (path === "/dashboard") { if (options.dashboardFails) throw new Error("down"); return dashboard as never; }
+    if (path === "/departments") return dashboard.departments.filter((department) => department.departmentCode !== "INPATIENT").map((department) => ({ id: department.departmentCode, code: department.departmentCode, name: department.label, type: "DIAGNOSTIC", active: true })) as never;
     return [] as never;
   });
   vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? [request] : [], meta: {} }) as never);
 }
 
 describe("Home", () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllEnvs(); });
 
   it("greets the clinician and summarises work like Plane's home", async () => {
     mockSession("VETERINARIAN");
     render(<Home />);
     expect(await screen.findByRole("heading", { level: 1, name: /, Marina$/ })).toBeInTheDocument();
     const shortcuts = screen.getByRole("navigation", { name: "Atalhos" });
-    expect(await within(shortcuts).findByRole("link", { name: /Atrasados\s*2/ })).toHaveAttribute("href", "/queues?preset=overdue");
+    expect(await within(shortcuts).findByRole("link", { name: /Atrasados\s*0/ })).toHaveAttribute("href", "/queues?preset=overdue");
     expect(within(shortcuts).getByRole("link", { name: /Na minha fila\s*2/ })).toHaveAttribute("href", "/queues?view=mine");
-    expect(within(shortcuts).getByRole("link", { name: /Resultados novos\s*3/ })).toBeInTheDocument();
+    expect(within(shortcuts).getByRole("link", { name: /Resultados novos\s*1/ })).toBeInTheDocument();
     const [attention] = await screen.findAllByRole("link", { name: /LAB-0003\s*Bob — Hemograma/ });
     expect(attention).toHaveAttribute("href", "/queues?dept=LABORATORY&item=item-1");
     expect(screen.getAllByRole("link", { name: /RX-0003\s*Bob — RX de tórax/ }).length).toBeGreaterThan(0);
@@ -78,7 +79,7 @@ describe("Home", () => {
   it("reconciles indicators when the realtime stream requests a resync", async () => {
     mockSession("VETERINARIAN");
     render(<Home />);
-    await screen.findByRole("link", { name: /Atrasados\s*2/ });
+    await screen.findByRole("link", { name: /Atrasados\s*0/ });
     vi.mocked(apiFetch).mockClear();
     act(() => { window.dispatchEvent(new Event("cvg:realtime-resync")); });
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/dashboard"));
@@ -98,7 +99,7 @@ describe("Home", () => {
   });
 
   it.each([[8, "Bom dia"], [14, "Boa tarde"], [21, "Boa noite"]])("greets a clinician at hour %s", async (hour, greeting) => {
-    vi.spyOn(Date.prototype, "getHours").mockReturnValue(Number(hour));
+    vi.stubEnv("NEXT_PUBLIC_HOSPITAL_TIMEZONE", "America/Sao_Paulo"); vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(`2026-10-11T${String(hour).padStart(2, "0")}:00:00-03:00`));
     mockSession("VET"); render(<Home />);
     expect(await screen.findByRole("heading", { level: 1, name: `${greeting}, Marina` })).toBeInTheDocument();
     await screen.findByRole("link", { name: /Na minha fila\s*2/ });
@@ -175,9 +176,9 @@ describe("Home", () => {
       return { data: path.startsWith("/diagnostic-requests") && !path.includes("cursor=") ? [request] : [], meta: kind === "truncated" && path.startsWith("/diagnostic-requests") ? { nextCursor: "next" } : {} } as never;
     });
     render(<Home />);
-    const message = kind === "partial" ? "Parte das filas do setor não respondeu" : "Lista limitada a 1.000 solicitações";
+    const message = kind === "partial" ? "Parte das filas do setor não respondeu" : "Há mais exames disponíveis";
     expect(await screen.findByText(new RegExp(message))).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Resultados novos\s*3/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Resultados novos\s*1/ })).toBeInTheDocument();
   });
 
   it("preserves work with a stale warning after refresh fails and recovers both feeds", async () => {

@@ -31,7 +31,7 @@ function idempotency(key: string, index: number): IdempotencyRecord {
 
 function populated(): StoreState {
   const base = createDemoState(PASSWORD);
-  return { ...base, idempotency: AWKWARD_KEYS.map(idempotency) };
+  return { ...base, departments: [], accessGroups: [], patientGrants: [], examDefinitions: [], hospitalServices: [], hospitalTaskTypes: [], hospitalTasks: [], hospitalTaskDependencies: [], hospitalIntakes: [], savedPlannerViews: [], hospitalResources: [], hospitalPlans: [], hospitalShifts: [], hospitalHandoffs: [], hospitalChecklistTemplates: [], hospitalRecurrences: [], idempotency: AWKWARD_KEYS.map(idempotency) };
 }
 
 async function with014Probe(database: DisposablePostgresDatabase, operation: (probe: MigrationProbe) => Promise<void>): Promise<void> {

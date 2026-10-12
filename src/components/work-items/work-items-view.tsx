@@ -4,41 +4,49 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ItemState } from "@cvg/contracts";
 import { getSafeErrorMessage } from "@/components/api-client";
+import { useQueuePreferences } from "@/components/use-queue-preferences";
+import { departmentOptions, useDepartments } from "@/components/use-departments";
+import { DepartmentLabelsProvider } from "@/components/department-labels";
+import { WorkflowPermissionsProvider } from "@/components/workflow-permissions";
 import { ErrorState, StaleNotice } from "@/components/feedback-states";
 import { PageHeader, type Crumb } from "@/components/page-header";
 import { QueueBoardRequestDialog } from "@/components/queue-board-request-dialog";
+import { RequestCreatedNotice, type CreatedRequest } from "@/components/request-created-notice";
 import { Icon, type IconName } from "@/components/ui-icons";
-import { actionLabel, canUseWorkflowAction, executeSimpleWorkflowAction, WorkflowInputError, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
+import { actionLabel, canUseGrantedWorkflowAction, executeSimpleWorkflowAction, WorkflowInputError, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
 import { DisplayDropdown, FiltersDropdown } from "./dropdowns";
 import { DepartmentIcon, PriorityIcon, StateIcon } from "./icons";
 import { BoardLayout, CalendarLayout, ListLayout, SpreadsheetLayout } from "./layouts";
 import { PeekOverview } from "./peek-overview";
 import { useWorkItems } from "./use-work-items";
+import { normalizePlannerFilters, PLANNER_EMPTY_FILTERS } from "@/components/planner-model";
+import { PlannerViewPicker } from "@/components/planner-view-picker";
+import { usePlannerDiagnosticFilters } from "@/components/planner-diagnostic-filters";
 import {
-  CLINICAL_DEPARTMENTS, DEFAULT_DISPLAY, DISPLAY_PROPERTY_LABELS, EMPTY_FILTERS, GROUP_BY_LABELS, LAYOUT_LABELS, ORDER_BY_LABELS, PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, activeFilterCount, activeWorkItems, applyFilters, departmentLabel, groupItems, sortItems,
+  DEFAULT_DISPLAY, DISPLAY_PROPERTY_LABELS, EMPTY_FILTERS, GROUP_BY_LABELS, LAYOUT_LABELS, ORDER_BY_LABELS, PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, activeFilterCount, activeWorkItems, applyFilters, fromRequests, groupItems, sortItems,
   type DisplayOptions, type Layout, type WorkItem, type WorkItemFilters
 } from "./model";
 
-const DISPLAY_STORAGE_KEY = "cvg.work-items.display.v1";
+const LEGACY_DISPLAY_KEYS = ["cvg.work-items.display.v1"];
 const DIRECT_ACTIONS: WorkflowActionKind[] = ["START_PROCESSING", "START_PROCEDURE", "MARK_PERFORMED", "RELEASE_RESULT", "COMPLETE"];
 const CREATOR_ROLES = ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"];
 const layoutIcons: Record<Layout, IconName> = { list: "list", board: "board", calendar: "calendar", spreadsheet: "table" };
 
-type Preset = "overdue" | "results" | "done" | null;
+type Preset = "overdue" | "results" | "recollections" | "done" | null;
 
 function presetFilters(preset: Preset, dept: string | null): WorkItemFilters {
   const base: WorkItemFilters = { ...EMPTY_FILTERS, departments: dept ? [dept] : [] };
   if (preset === "overdue") return { ...base, overdueOnly: true };
-  if (preset === "results") return { ...base, states: ["RESULT_AVAILABLE", "REVIEWED"] };
+  if (preset === "results") return { ...base, states: ["RESULT_AVAILABLE"] };
+  if (preset === "recollections") return { ...base, states: ["RECOLLECTION_REQUIRED"] };
   if (preset === "done") return { ...base, states: ["COMPLETED", "CANCELLED", "REJECTED"] };
   return base;
 }
 
-const presetLabels: Record<Exclude<Preset, null>, string> = { overdue: "Em atraso", results: "Resultados", done: "Concluídos" };
+const presetLabels: Record<Exclude<Preset, null>, string> = { overdue: "Em atraso", results: "Resultados", recollections: "Recoletas", done: "Concluídos" };
 
-function readDisplay(): DisplayOptions {
+function normalizeDisplay(parsed: unknown): DisplayOptions {
   try {
-    const parsed: unknown = JSON.parse(window.localStorage.getItem(DISPLAY_STORAGE_KEY) ?? "null");
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return DEFAULT_DISPLAY;
     const saved = parsed as Record<string, unknown>;
     const layout = typeof saved.layout === "string" && Object.hasOwn(LAYOUT_LABELS, saved.layout) ? saved.layout as DisplayOptions["layout"] : DEFAULT_DISPLAY.layout;
@@ -53,34 +61,51 @@ function readDisplay(): DisplayOptions {
   } catch { return DEFAULT_DISPLAY; }
 }
 
+function normalizeFilters(value: unknown): WorkItemFilters {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return EMPTY_FILTERS;
+  const saved = value as Record<string, unknown>;
+  const codes = (input: unknown) => Array.isArray(input) ? [...new Set(input.filter((code): code is string => typeof code === "string" && /^[A-Za-z0-9_-]{1,100}$/.test(code)))].slice(0, 100) : [];
+  return {
+    search: typeof saved.search === "string" ? saved.search.slice(0, 200) : "",
+    states: codes(saved.states).filter((state): state is ItemState => Object.hasOwn(STATE_LABELS, state)),
+    priorities: codes(saved.priorities).filter((priority): priority is WorkItemFilters["priorities"][number] => Object.hasOwn(PRIORITY_LABELS, priority)),
+    departments: codes(saved.departments), services: codes(saved.services), overdueOnly: saved.overdueOnly === true, hideClosed: saved.hideClosed === true
+  };
+}
+
 interface Toast { id: number; tone: "success" | "error"; title: string; message?: string }
 
 export function WorkItemsView() {
   const router = useRouter();
   const params = useSearchParams();
   const dept = params.get("dept");
-  const preset = (["overdue", "results", "done"].includes(params.get("preset") ?? "") ? params.get("preset") : null) as Preset;
+  const preset = (["overdue", "results", "recollections", "done"].includes(params.get("preset") ?? "") ? params.get("preset") : null) as Preset;
   const mine = params.get("view") === "mine";
-  const { user, items, loading, refreshing, error, partial, truncated, reload, patch } = useWorkItems();
-  const [filters, setFilters] = useState<WorkItemFilters>(() => presetFilters(preset, dept));
-  const [display, setDisplay] = useState<DisplayOptions>(DEFAULT_DISPLAY);
-  const [peek, setPeek] = useState<{ id: string; action?: WorkflowActionKind }>();
+  const { user, items, loading, refreshing, error, partial, truncated, loadingMore, loadMore, paginationError, reload, patch } = useWorkItems();
+  const directory = useDepartments(user?.id, { includeInactive: true, catalog: true });
+  const viewKey = `/queues?dept=${dept ?? ""}&preset=${preset ?? ""}&view=${mine ? "mine" : "all"}`;
+  const defaultFilters = useMemo(() => presetFilters(preset, dept), [preset, dept]);
+  const [filters, setFilters] = useQueuePreferences(user?.id, `${viewKey}:filters`, defaultFilters, normalizeFilters);
+  const [plannerFilters, setPlannerFilters] = useQueuePreferences(user?.id, `${viewKey}:planner-filters`, PLANNER_EMPTY_FILTERS, normalizePlannerFilters);
+  const plannerScope = usePlannerDiagnosticFilters(user, plannerFilters);
+  const [display, setDisplay] = useQueuePreferences(user?.id, `${viewKey}:display`, DEFAULT_DISPLAY, normalizeDisplay, LEGACY_DISPLAY_KEYS);
+  const peekScope = `${user?.id ?? ""}:${viewKey}`;
+  const [storedPeek, setPeek] = useState<{ id: string; action?: WorkflowActionKind; scope: string }>();
+  const peek = storedPeek?.scope === peekScope ? storedPeek : undefined;
   const [busyId, setBusyId] = useState<string>();
   const [showCreate, setShowCreate] = useState(false);
+  const [createdRequest, setCreatedRequest] = useState<CreatedRequest>();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const toastId = useRef(0);
   const searchRef = useRef<HTMLInputElement>(null);
   const role = user?.role ?? "VIEWER";
-  const canCreate = CREATOR_ROLES.includes(role);
-
-  useEffect(() => { const timer = window.setTimeout(() => setDisplay(readDisplay()), 0); return () => window.clearTimeout(timer); }, []);
-  useEffect(() => { const timer = window.setTimeout(() => { setFilters(presetFilters(preset, dept)); setPeek(undefined); }, 0); return () => window.clearTimeout(timer); }, [preset, dept, mine]);
+  const permissions = useMemo(() => user?.permissions ?? [], [user?.permissions]);
+  const canCreate = CREATOR_ROLES.includes(role) && permissions.includes("request.create");
 
   const updateDisplay = useCallback((next: DisplayOptions) => {
     const normalized = next.layout === "board" && next.groupBy === "none" ? { ...next, groupBy: "status" as const } : next;
     setDisplay(normalized);
-    try { window.localStorage.setItem(DISPLAY_STORAGE_KEY, JSON.stringify(normalized)); } catch { /* per-viewer convenience */ }
-  }, []);
+  }, [setDisplay]);
 
   const notify = useCallback((toast: Omit<Toast, "id">) => {
     const id = ++toastId.current;
@@ -116,11 +141,15 @@ export function WorkItemsView() {
     return () => window.removeEventListener("keydown", onKey);
   }, [canCreate]);
 
-  const scoped = useMemo(() => mine ? activeWorkItems(items) : items, [items, mine]);
+  const scoped = useMemo(() => (mine ? activeWorkItems(items) : items).filter(plannerScope.matches), [items, mine, plannerScope.matches]);
   const visible = useMemo(() => sortItems(applyFilters(scoped, filters), display.orderBy), [scoped, filters, display.orderBy]);
-  const departments = useMemo(() => Array.from(new Set(scoped.map((item) => item.departmentCode))).sort(), [scoped]);
+  const options = useMemo(() => departmentOptions(directory.departments, [...directory.services.map((service) => service.departmentCode), ...scoped.map((item) => item.departmentCode)]), [directory.departments, directory.services, scoped]);
+  const departments = useMemo(() => options.map((department) => department.code), [options]);
+  const departmentNames = useMemo(() => Object.fromEntries(options.map((department) => [department.code, department.name])), [options]);
+  const departmentLabel = useCallback((code: string) => departmentNames[code] ?? code, [departmentNames]);
+  const creationDepartments = directory.services.filter((service) => service.active).map((service) => service.departmentCode);
   const services = useMemo(() => Array.from(new Map(scoped.map((item) => [item.service.code, { code: item.service.code, name: item.service.name }])).values()).sort((a, b) => a.name.localeCompare(b.name, "pt-BR")), [scoped]);
-  const groups = useMemo(() => groupItems(visible, display.layout === "board" && display.groupBy === "none" ? "status" : display.groupBy, display.showEmptyGroups || (display.layout === "board" && display.groupBy === "status" && visible.length === 0), { departments: departments.length ? departments : dept ? [dept] : [] }), [visible, display, departments, dept]);
+  const groups = useMemo(() => groupItems(visible, display.layout === "board" && display.groupBy === "none" ? "status" : display.groupBy, display.showEmptyGroups || (display.layout === "board" && display.groupBy === "status" && visible.length === 0), { departments: departments.length ? departments : dept ? [dept] : [] }).map((group) => group.kind === "department" ? { ...group, label: departmentLabel(group.value) } : group), [visible, display, departments, dept, departmentLabel]);
   const boardGroups = useMemo(() => {
     // The board always shows the workflow spine so cards have somewhere to go.
     if (display.layout !== "board" || display.groupBy !== "status" || display.showEmptyGroups) return groups;
@@ -128,13 +157,13 @@ export function WorkItemsView() {
     for (const item of visible) {
       for (const state of STATE_ORDER) {
         const action = workflowActionForTransition(item, state);
-        if (action && canUseWorkflowAction(role, action, item)) spine.add(state);
+        if (action && canUseGrantedWorkflowAction(role, action, item, permissions)) spine.add(state);
       }
     }
     const present = new Set(groups.map((group) => group.value));
     const extra = [...spine].filter((state) => !present.has(state)).map((state) => ({ id: state, label: STATE_LABELS[state], kind: "state" as const, value: state, items: [] }));
     return [...groups, ...extra].sort((a, b) => STATE_ORDER.indexOf(a.value as ItemState) - STATE_ORDER.indexOf(b.value as ItemState));
-  }, [display.groupBy, display.layout, display.showEmptyGroups, groups, role, visible]);
+  }, [display.groupBy, display.layout, display.showEmptyGroups, groups, permissions, role, visible]);
   // Like Plane's always-present "New work item" row, creators always see the
   // Solicitado group in the list so the inline quick add is reachable.
   const listGroups = useMemo(() => {
@@ -149,9 +178,9 @@ export function WorkItemsView() {
   // Deep link (?item=) from Home, Inbox or a copied link opens the side peek once.
   useEffect(() => {
     if (!linkedItem || linkedItem === consumedLink || loading || !items.some((item) => item.id === linkedItem)) return;
-    const timer = window.setTimeout(() => { setPeek({ id: linkedItem }); setConsumedLink(linkedItem); }, 0);
+    const timer = window.setTimeout(() => { setPeek({ id: linkedItem, scope: peekScope }); setConsumedLink(linkedItem); }, 0);
     return () => window.clearTimeout(timer);
-  }, [consumedLink, items, linkedItem, loading]);
+  }, [consumedLink, items, linkedItem, loading, peekScope]);
 
   // Only an in-flight command blocks the list. Background refreshes run on
   // every realtime event; disabling actions during them silently dropped
@@ -159,8 +188,8 @@ export function WorkItemsView() {
   const move = useCallback(async (item: WorkItem, target: ItemState) => {
     if (busyId) return;
     const action = workflowActionForTransition(item, target);
-    if (!action || !canUseWorkflowAction(role, action, item)) { notify({ tone: "error", title: "Mudança não permitida", message: "Use a próxima ação disponível no fluxo deste exame." }); return; }
-    if (!DIRECT_ACTIONS.includes(action)) { setPeek({ id: item.id, action }); return; }
+    if (!action || !canUseGrantedWorkflowAction(role, action, item, permissions)) { notify({ tone: "error", title: "Mudança não permitida", message: "Use a próxima ação disponível no fluxo deste exame." }); return; }
+    if (!DIRECT_ACTIONS.includes(action)) { setPeek({ id: item.id, action, scope: peekScope }); return; }
     setBusyId(item.id);
     const previous = item.status;
     patch(item.id, { status: target }, item.version);
@@ -174,13 +203,13 @@ export function WorkItemsView() {
     } finally {
       setBusyId(undefined);
     }
-  }, [busyId, notify, patch, reload, role]);
+  }, [busyId, notify, patch, reload, role, permissions, peekScope]);
 
   const onMove = useCallback((item: WorkItem, target: ItemState) => { void move(item, target); }, [move]);
 
   const runAction = useCallback(async (item: WorkItem, action: WorkflowActionKind) => {
-    if (busyId) return;
-    if (!DIRECT_ACTIONS.includes(action)) { setPeek({ id: item.id, action }); return; }
+    if (busyId || !canUseGrantedWorkflowAction(role, action, item, permissions)) return;
+    if (!DIRECT_ACTIONS.includes(action)) { setPeek({ id: item.id, action, scope: peekScope }); return; }
     setBusyId(item.id);
     try {
       await executeSimpleWorkflowAction(item, action);
@@ -188,13 +217,13 @@ export function WorkItemsView() {
       await reload();
     } catch (cause) {
       notify({ tone: "error", title: `Não foi possível ${actionLabel[action].toLocaleLowerCase("pt-BR")}`, message: cause instanceof WorkflowInputError ? cause.message : getSafeErrorMessage(cause, "Atualize a lista e tente novamente.") });
-      if (cause instanceof WorkflowInputError) setPeek({ id: item.id });
+      if (cause instanceof WorkflowInputError) setPeek({ id: item.id, scope: peekScope });
     } finally {
       setBusyId(undefined);
     }
-  }, [busyId, notify, reload]);
+  }, [busyId, notify, reload, role, permissions, peekScope]);
   const onAction = useCallback((item: WorkItem, action: WorkflowActionKind) => { void runAction(item, action); }, [runAction]);
-  const onPeek = useCallback((item: WorkItem) => setPeek((current) => current?.id === item.id && !current.action ? undefined : { id: item.id }), []);
+  const onPeek = useCallback((item: WorkItem) => setPeek((current) => current?.scope === peekScope && current.id === item.id && !current.action ? undefined : { id: item.id, scope: peekScope }), [peekScope]);
 
   const crumbs: Crumb[] = mine
     ? [{ label: "Meu trabalho", icon: "user-check" }]
@@ -214,9 +243,11 @@ export function WorkItemsView() {
 
   // Inside a sector the sector pill is redundant, as in a Plane project.
   const effectiveDisplay = dept ? { ...display, properties: display.properties.filter((property) => property !== "department") } : display;
-  const layoutProps = { groups: display.layout === "board" ? boardGroups : listGroups, display: effectiveDisplay, role, peekId: peek?.id, busy: Boolean(busyId), canCreate, onPeek, onMove, onAction, onCreate: () => setShowCreate(true), quickAdd: { departments: role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : [], onCreated: () => { void reload(); } } };
+  const onCreated = (request: CreatedRequest) => { setCreatedRequest(request); setShowCreate(false); void reload(); router.refresh(); };
+  const createdHidden = Boolean(createdRequest?.items?.length && applyFilters(fromRequests([createdRequest]).filter(plannerScope.matches), filters).length === 0);
+  const layoutProps = { groups: display.layout === "board" ? boardGroups : listGroups, display: effectiveDisplay, role, peekId: peek?.id, busy: Boolean(busyId), canCreate, onPeek, onMove, onAction, onCreate: () => setShowCreate(true), quickAdd: { departments: creationDepartments, onCreated } };
 
-  return <div className={`work-items${peeked ? " has-peek" : ""}`}>
+  return <WorkflowPermissionsProvider permissions={permissions}><DepartmentLabelsProvider names={departmentNames}><div className={`work-items${peeked ? " has-peek" : ""}`}>
     <PageHeader crumbs={crumbs} count={loading ? undefined : visible.length}>
       <div className="header-search">
         <Icon name="search" size={13} />
@@ -226,19 +257,25 @@ export function WorkItemsView() {
       <div className="layout-switcher" role="radiogroup" aria-label="Layout">
         {(Object.keys(LAYOUT_LABELS) as Layout[]).map((layout) => <button key={layout} type="button" role="radio" aria-checked={display.layout === layout} className={display.layout === layout ? "is-active" : ""} onClick={() => updateDisplay({ ...display, layout })} title={LAYOUT_LABELS[layout]} aria-label={LAYOUT_LABELS[layout]}><Icon name={layoutIcons[layout]} size={15} /></button>)}
       </div>
-      <FiltersDropdown filters={filters} onChange={setFilters} departments={departments} services={services} lockedDepartment={dept ?? undefined} />
+      <FiltersDropdown filters={filters} onChange={setFilters} departments={departments} departmentNames={departmentNames} services={services} lockedDepartment={dept ?? undefined} />
       <DisplayDropdown display={display} onChange={updateDisplay} />
       <button type="button" className="icon-button header-refresh" onClick={() => void reload()} aria-label="Atualizar" title="Atualizar"><Icon name="refresh" size={14} className={refreshing ? "spin" : undefined} /></button>
       {canCreate && <button type="button" className="button-primary-sm" onClick={() => setShowCreate(true)} aria-keyshortcuts="c"><Icon name="add" size={14} /><span>Nova solicitação</span></button>}
     </PageHeader>
+
+    {user && <PlannerViewPicker user={user} filters={plannerFilters} onApply={setPlannerFilters} diagnosticOnly />}
+    {plannerScope.error && <p role="alert">{plannerScope.error} <button type="button" onClick={() => void plannerScope.reload()}>Revalidar plano da visão</button></p>}
 
     {(chips.length > 0 || filterCount > 0) && <div className="applied-filters" aria-label="Filtros aplicados">
       {chips.map((chip) => <span key={chip.key} className="filter-chip">{chip.icon}<span>{chip.label}</span><button type="button" onClick={chip.remove} aria-label={`Remover filtro ${chip.label}`}><Icon name="close" size={11} /></button></span>)}
       <button type="button" className="link-button" onClick={() => setFilters(presetFilters(null, dept))}>Limpar filtros</button>
     </div>}
 
+    {createdRequest && <RequestCreatedNotice request={createdRequest} hiddenByFilters={createdHidden} filterLabels={[...(dept ? [departmentLabel(dept)] : []), ...chips.map((chip) => chip.label), ...(filters.search ? [`Busca: ${filters.search}`] : []), ...(Object.keys(plannerFilters).length ? ["Critérios da visão salva"] : [])]} onClear={() => { setFilters({ ...EMPTY_FILTERS }); setPlannerFilters({}); router.replace(mine ? "/queues?view=mine" : "/queues"); }} />}
     {error && items.length > 0 && <StaleNotice onRetry={reload} retrying={refreshing} />}
-    {(partial || truncated) && <div className="inline-notice" role="status"><Icon name="attention" size={14} />{partial || "Lista limitada a 1.000 solicitações e 1.000 itens por fila; os filtros se aplicam apenas aos exames carregados."}</div>}
+    {(partial || truncated) && <div className="inline-notice" role="status"><Icon name="attention" size={14} />{partial || "Há mais exames no seu escopo. Os filtros se aplicam aos exames carregados; carregue as próximas páginas para continuar."}</div>}
+    {paginationError && <ErrorState title="Exames parcialmente carregados" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
+    {truncated && <div className="workspace-pagination"><span>{items.length} exames carregados</span><button type="button" className="button button-ghost" disabled={loading || refreshing || loadingMore} onClick={() => void loadMore()}>{loadingMore ? "Carregando…" : "Carregar mais exames"}</button></div>}
 
     <div className="work-items-body">
       <div className="work-items-canvas" aria-busy={loading || refreshing}>
@@ -250,15 +287,15 @@ export function WorkItemsView() {
                   : display.layout === "calendar" ? <CalendarLayout items={visible} role={role} peekId={peek?.id} onPeek={onPeek} onMove={onMove} busy={Boolean(busyId)} />
                     : <SpreadsheetLayout items={visible} role={role} peekId={peek?.id} onPeek={onPeek} onMove={onMove} busy={Boolean(busyId)} />}
       </div>
-      {peeked && user && <PeekOverview key={peeked.id} item={peeked} role={role} initialAction={peek?.action} onClose={() => setPeek(undefined)} onChanged={() => { setPeek((current) => current ? { id: current.id } : current); void reload(); }} onRefresh={() => { void reload(); }} onMove={onMove} />}
+      {peeked && user && <PeekOverview key={peeked.id} item={peeked} role={role} user={user ?? undefined} initialAction={peek?.action} onClose={() => setPeek(undefined)} onChanged={() => { setPeek((current) => current ? { id: current.id, scope: current.scope } : current); void reload(); }} onRefresh={() => { void reload(); }} onMove={onMove} />}
     </div>
 
     <div className="toast-stack" aria-live="polite">
       {toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><Icon name={toast.tone === "success" ? "check" : "attention"} size={15} /><div><strong>{toast.title}</strong>{toast.message && <span>{toast.message}</span>}</div><button type="button" className="icon-button" onClick={() => setToasts((current) => current.filter((entry) => entry.id !== toast.id))} aria-label="Fechar aviso"><Icon name="close" size={12} /></button></div>)}
     </div>
 
-    {showCreate && canCreate && <QueueBoardRequestDialog departments={role === "SUPERADMIN" ? [...CLINICAL_DEPARTMENTS] : role === "MANAGER" ? (user?.managedDepartmentCodes ?? []) : []} canCreatePatient={["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); notify({ tone: "success", title: "Solicitação criada", message: "Os exames entraram em “Solicitado”." }); void reload(); router.refresh(); }} />}
-  </div>;
+    {showCreate && canCreate && <QueueBoardRequestDialog departments={creationDepartments} canCreatePatient={["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowCreate(false)} onCreated={onCreated} />}
+  </div></DepartmentLabelsProvider></WorkflowPermissionsProvider>;
 }
 
 function WorkItemsSkeleton({ layout }: { layout: Layout }) {

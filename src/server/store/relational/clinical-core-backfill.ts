@@ -147,7 +147,7 @@ export function stateForRelationalClinicalRequest(state: StoreState, requestId: 
   const sampleIds = new Set(samples.map((sample) => sample.id));
   const procedures = state.procedures.filter((procedure) => itemIds.has(procedure.itemId));
   const procedureIds = new Set(procedures.map((procedure) => procedure.id));
-  const schedules = state.schedules.filter((schedule) => procedureIds.has(schedule.procedureId));
+  const schedules = state.schedules.filter((schedule) => schedule.procedureId !== undefined && procedureIds.has(schedule.procedureId));
   const results = state.results.filter((result) => itemIds.has(result.itemId));
   const resultIds = new Set(results.map((result) => result.id));
   const resultVersions = state.resultVersions.filter((version) => resultIds.has(version.resultId));

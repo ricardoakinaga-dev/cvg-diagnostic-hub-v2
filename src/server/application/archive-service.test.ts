@@ -5,6 +5,7 @@ import { MemoryStore } from "../store/memory-store";
 import { ARCHIVE_NOW, withCompletedRequest } from "../../test/archive-fixtures";
 import { createApplicationService } from "./service";
 import { ARCHIVE_SCAN_PAGE } from "./archive-service";
+import { captureExamDefinition } from "./exam-definition";
 
 function userByEmail(state: StoreState, email: string): User {
   const user = state.users.find((entry) => entry.email === email);
@@ -25,6 +26,114 @@ async function archivedStore(mutate: (state: StoreState) => StoreState = (state)
 }
 
 describe("archive reads", () => {
+  it("retains the captured definition in archived versions and does not backfill earlier legacy content", async () => {
+    const { service, actor } = await archivedStore((state) => {
+      const diagnostic = state.services.find((entry) => entry.id === "service-hemogram")!;
+      const patient = state.patients.find((entry) => entry.id === "patient-thor")!;
+      const capture = captureExamDefinition(state, diagnostic, patient, "synthetic", "2024-06-01T12:00:00Z", "archive-snapshot", "REQUEST_CAPTURE");
+      return { ...capture.state,
+        services: state.services.map((entry) => entry.id === diagnostic.id ? { ...entry, name: "Nome futuro", version: entry.version + 1 } : entry),
+        items: state.items.map((item) => item.id === "item-lab-old" ? { ...item, definitionSnapshot: capture.snapshot } : item),
+        resultVersions: state.resultVersions.map((version) => version.id === "version-old-2" ? { ...version, definitionSnapshot: capture.snapshot } : version.id === "version-old-1" ? { ...version, createdAt: "2020-01-01T00:00:00Z" } : version)
+      };
+    });
+    const view = await service.getArchivedRequest(actor("vet@cvg.local"), "request-old");
+    const item = view.items.find((entry) => entry.service.code === "HEMOGRAM")!;
+    expect(item.service.name).toBe("Hemograma");
+    expect(item.results[0].versions[0].definitionSnapshot).toBeUndefined();
+    expect(item.results[0].versions[1].definitionSnapshot?.definition.name).toBe("Hemograma");
+    expect(item.results[0].versions[1].definitionSnapshot?.definition.resultTemplate?.code).toBe("SYNTHETIC_HEMOGRAM");
+  });
+  it("does not let archive-only context bypass an access group's denied patient history permission", async () => {
+    const { store, service, actor } = await archivedStore((state) => ({
+      ...state,
+      users: state.users.map((user) => user.role === "LAB_TECH" ? { ...user, accessGroupId: "archive-lab-group" } : user),
+      accessGroups: [...(state.accessGroups ?? []), { id: "archive-lab-group", code: "ARCHIVE_LAB", description: "Archive regression", active: true, version: 1, createdAt: ARCHIVE_NOW.toISOString(), updatedAt: ARCHIVE_NOW.toISOString(), permissions: ["patient.view", "item.view", "request.view"] }]
+    }));
+    const read = vi.spyOn(store, "readClinicalArchive");
+    await expect(service.listPatientArchive(actor("lab@cvg.local"), "patient-thor")).rejects.toMatchObject({ status: 404 });
+    await expect(service.listPatientArchivePage(actor("lab@cvg.local"), "patient-thor")).rejects.toMatchObject({ status: 404 });
+    expect(read).not.toHaveBeenCalled();
+  });
+  it("continues across equal timestamps without loss when a newer archived request is added", async () => {
+    const { store, service, actor } = await archivedStore((state) => {
+      let next = state;
+      for (let index = 0; index < 7; index++) next = withCompletedRequest(next, `page-${index}`);
+      return next;
+    });
+    const vet = actor("vet@cvg.local");
+    const first = await service.listPatientArchivePage(vet, "patient-thor", { limit: 2 });
+    expect(first.total).toBe(8);
+    expect(first.nextCursor).toBeDefined();
+    await store.transaction((state) => ({ state: withCompletedRequest(state, "newer", { at: "2024-08-01T12:00:00.000Z" }), result: undefined }));
+    await store.archiveClinicalRecords({ now: ARCHIVE_NOW });
+    const ids = first.items.map((entry) => entry.requestId);
+    let cursor = first.nextCursor;
+    while (cursor) {
+      const page = await service.listPatientArchivePage(vet, "patient-thor", { limit: 2, cursor });
+      expect(page.total).toBe(9);
+      ids.push(...page.items.map((entry) => entry.requestId));
+      cursor = page.nextCursor;
+    }
+    expect(ids).toHaveLength(8);
+    expect(new Set(ids).size).toBe(8);
+    expect(ids).not.toContain("request-newer");
+    expect((await service.listPatientArchivePage(vet, "patient-thor")).items[0].requestId).toBe("request-newer");
+  });
+
+  it("binds archive cursors to a patient, scopes totals before paging and rejects invalid cursors", async () => {
+    const { service, actor } = await archivedStore((state) => withCompletedRequest(state, "another"));
+    const page = await service.listPatientArchivePage(actor("lab@cvg.local"), "patient-thor", { limit: 1 });
+    expect(page.total).toBe(2);
+    expect(page.items[0].services).toEqual([expect.objectContaining({ code: "HEMOGRAM" })]);
+    await expect(service.listPatientArchivePage(actor("vet@cvg.local"), "patient-mel", { cursor: page.nextCursor })).rejects.toMatchObject({ status: 400 });
+    await expect(service.listPatientArchivePage(actor("vet@cvg.local"), "patient-thor", { cursor: "invalid" })).rejects.toMatchObject({ status: 400 });
+  });
+
+  it("does not publish an earlier page after access changes during archive I/O", async () => {
+    const { store, service, actor } = await archivedStore();
+    const vet = actor("vet@cvg.local");
+    const original = store.readClinicalArchive.bind(store);
+    vi.spyOn(store, "readClinicalArchive").mockImplementationOnce(async (query) => {
+      const page = await original(query);
+      await store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === vet.id ? { ...user, patientIds: [], version: user.version + 1 } : user) }, result: undefined }));
+      return page;
+    });
+    await expect(service.listPatientArchivePage(vet, "patient-thor")).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("rejects a version change during scanning even when the patient's grants remain unchanged", async () => {
+    const { store, service, actor } = await archivedStore(); const vet = actor("vet@cvg.local"); const native = store.readClinicalArchive.bind(store);
+    vi.spyOn(store, "readClinicalArchive").mockImplementationOnce(async (query) => {
+      const page = await native(query);
+      await store.transaction((state) => ({ state: { ...state, users: state.users.map((entry) => entry.id === vet.id ? { ...entry, displayName: "Nome atualizado", version: entry.version + 1 } : entry) }, result: undefined }));
+      return page;
+    });
+    await expect(service.listPatientArchivePage(vet, "patient-thor")).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+    expect(store.getState().users.find((entry) => entry.id === vet.id)!.patientIds).toEqual(vet.patientIds);
+  });
+
+  it("revalidates visible candidates after the final scan without publishing earlier counts", async () => {
+    const { store, service, actor } = await archivedStore(); const lab = actor("lab@cvg.local"); const native = store.readState.bind(store); let reads = 0;
+    const page = await store.readClinicalArchive({ patientId: "patient-thor", limit: ARCHIVE_SCAN_PAGE });
+    vi.spyOn(store, "readClinicalArchive").mockResolvedValue(page);
+    vi.spyOn(store, "readState").mockImplementation(async () => {
+      if (++reads === 3) await store.transaction((state) => ({ state: { ...state, accessGroups: state.accessGroups.map((group) => group.id === lab.accessGroupId ? { ...group, permissions: group.permissions.filter((permission) => permission !== "item.view") } : group) }, result: undefined }));
+      return native();
+    });
+    await expect(service.listPatientArchivePage(lab, "patient-thor")).rejects.toMatchObject({ code: "SCOPE_DENIED", status: 404 });
+    expect(reads).toBe(3);
+  });
+
+  it("fails a nonadvancing archive reader after two bounded pages instead of looping or returning duplicate history", async () => {
+    const { store, service, actor } = await archivedStore((state) => {
+      let next = state; for (let index = 0; index < ARCHIVE_SCAN_PAGE; index++) next = withCompletedRequest(next, `stalled-${index}`); return next;
+    });
+    const native = store.readClinicalArchive.bind(store); const read = vi.spyOn(store, "readClinicalArchive").mockImplementation((query) => native({ ...query, cursor: undefined }));
+    await expect(service.listPatientArchivePage(actor("vet@cvg.local"), "patient-thor")).rejects.toThrow("ARCHIVE_READ_CURSOR_NOT_ADVANCING");
+    expect(read).toHaveBeenCalledTimes(2); expect(read.mock.calls.every(([query]) => query.limit === ARCHIVE_SCAN_PAGE)).toBe(true);
+  });
+
   it("lists a patient's archived requests for an authorized clinician", async () => {
     const { service, actor } = await archivedStore();
     const entries = await service.listPatientArchive(actor("vet@cvg.local"), "patient-thor");

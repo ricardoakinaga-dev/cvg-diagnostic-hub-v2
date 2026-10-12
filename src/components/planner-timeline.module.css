@@ -1,0 +1,6 @@
+.timeline { display: grid; gap: 1rem; }
+.axis, .row { display: grid; grid-template-columns: minmax(15rem, 1fr) minmax(15rem, 2fr); gap: 1rem; }
+.row { border: 1px solid var(--border-color, #d9dee8); padding: 1rem; border-radius: .5rem; }
+.track { position: relative; min-height: 2.5rem; background: repeating-linear-gradient(to right, transparent 0, transparent calc(14.285% - 1px), #d9dee8 14.285%); }
+.bar { position: absolute; height: 1.5rem; top: .5rem; border-radius: .25rem; background: var(--accent, #2563eb); max-width: 100%; }
+@media (max-width: 700px) { .axis, .row { grid-template-columns: 1fr; } }

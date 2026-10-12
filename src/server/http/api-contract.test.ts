@@ -19,11 +19,11 @@ const EXPECTED_PERMISSION_ANCHORS = Object.freeze({
   getLiveness: [],
   getReadiness: [],
   getMetrics: ["health.readiness"],
-  createUser: ["user_role.manage"],
-  updateUserRole: ["user_role.manage"],
-  deactivateUser: ["user_role.manage"],
-  regenerateUserPassword: ["user_role.manage"],
-  updateUserOnCall: ["user_role.manage"],
+  createUser: [],
+  updateUserRole: [],
+  deactivateUser: [],
+  regenerateUserPassword: [],
+  updateUserOnCall: [],
   reauthenticate: [],
   getPatientDiagnostics: ["patient.view", "diagnostic.timeline.view"],
   updateAdmissionContext: ["admission.context.manage"],
@@ -42,6 +42,11 @@ function object(value: unknown): JsonObject {
   expect(typeof value).toBe("object");
   expect(Array.isArray(value)).toBe(false);
   return value as JsonObject;
+}
+function isStrictRequestObject(schema: JsonObject): boolean {
+  if (schema.type === "object") return schema.additionalProperties === false;
+  const variants = schema.oneOf ?? schema.anyOf;
+  return Array.isArray(variants) && variants.length > 0 && variants.every((variant) => isStrictRequestObject(object(variant)));
 }
 
 function operations(): Array<{ key: string; path: string; method: string; operation: JsonObject }> {
@@ -164,8 +169,8 @@ describe("exact OpenAPI contract", () => {
 
   it("matches every concrete runtime method and path without a wildcard action", () => {
     expect(operations().map(({ key }) => key).sort()).toEqual(expectedOperations);
-    expect(API_OPERATIONS).toHaveLength(88);
-    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 81);
+    expect(API_OPERATIONS).toHaveLength(248);
+    expect(new Set(API_OPERATIONS.map(({ path }) => path))).toHaveProperty("size", 209);
     expect(expectedOperations.some((key) => key.includes("{action}"))).toBe(false);
   });
 
@@ -181,7 +186,9 @@ describe("exact OpenAPI contract", () => {
       expect(operationIds.has(String(operation.operationId)), `${key} duplicate operationId`).toBe(false);
       operationIds.add(String(operation.operationId));
 
-      if (expected.authentication === "public") {
+      if (expected.integrationTokenScheme) {
+        expect(operation.security, `${key} requires the dedicated scoped integration credential`).toEqual([{ [expected.integrationTokenScheme]: [] }]);
+      } else if (expected.authentication === "public") {
         expect(operation.security, `${key} must be public`).toEqual([]);
       } else if (expected.csrf) {
         expect(operation.security, `${key} must require the session and CSRF cookie together`).toEqual([{ session: [], csrfCookie: [] }]);
@@ -193,6 +200,7 @@ describe("exact OpenAPI contract", () => {
       }
 
       expect(operation["x-required-permissions"], `${key} permissions`).toEqual(expected.authorization.requiredPermissions);
+      expect(operation["x-any-of-permissions"], `${key} alternative permissions`).toEqual(expected.authorization.anyOfPermissions);
       expect(operation["x-conditional-permission-rules"], `${key} conditional permissions`).toEqual(expected.authorization.conditionalPermissionRules);
       expect(operation["x-authorization-conditions"], `${key} authorization conditions`).toEqual(expected.authorization.conditions);
       expect(operation["x-step-up-required"], `${key} step-up`).toBe(expected.authorization.stepUpRequired);
@@ -220,7 +228,7 @@ describe("exact OpenAPI contract", () => {
         expect(schemaReference(media.schema), `${key} request schema`).toBe(expected.requestBody.schema);
         if (expected.requestBody.mediaType === "application/json") {
           const schemas = object(object(document.components).schemas);
-          expect(object(schemas[expected.requestBody.schema]).additionalProperties, `${key} strict request object`).toBe(false);
+          expect(isStrictRequestObject(object(schemas[expected.requestBody.schema])), `${key} every request object variant must reject unknown fields`).toBe(true);
         }
       } else {
         expect(operation.requestBody, `${key} must not accept a body`).toBeUndefined();
@@ -351,13 +359,56 @@ describe("exact OpenAPI contract", () => {
     }
   });
 
+  it("documents independent command grants and human exam approval", () => {
+    const alternatives = {
+      listDelegablePermissions: ["user_role.manage", "access_group.view"],
+      listUsers: ["user_role.manage", "user.view"],
+      createUser: ["user_role.manage", "user.create"],
+      updateUserRole: ["user_role.manage", "user.update"],
+      deactivateUser: ["user_role.manage", "user.deactivate"],
+      createDiagnosticService: ["service.catalog.manage", "service.catalog.create"],
+      prepareExamTemplate: ["service.catalog.manage", "service.catalog.update"]
+    };
+    for (const [operationId, permissions] of Object.entries(alternatives)) {
+      const manifest = API_OPERATIONS.find((entry) => entry.operationId === operationId)!;
+      expect(manifest.authorization.requiredPermissions).toEqual([]);
+      expect(manifest.authorization.anyOfPermissions).toEqual(permissions);
+    }
+    expect(API_OPERATIONS.find((entry) => entry.operationId === "publishExamTemplate")?.authorization.requiredPermissions).toEqual(["exam_definition.approve"]);
+    expect(API_OPERATIONS.find((entry) => entry.operationId === "listResultVersions")?.authorization.requiredPermissions).toEqual(["result.history.view", "result.view"]);
+    const schemas = object(object(document.components).schemas);
+    expect(object(object(schemas.PublishExamTemplate).properties)).toHaveProperty("population");
+    expect(object(object(schemas.UserGroupAssignment).properties)).toHaveProperty("expectedGroupVersion");
+    expect(object(object(schemas.EffectiveAccessPreview).properties)).toHaveProperty("userVersion");
+    expect(object(object(schemas.ResultVersion).properties)).toHaveProperty("definitionSnapshot");
+  });
+
+  it("documents Unicode technical identifiers without rejecting valid HIS astral characters", () => {
+    const schemas = object(object(document.components).schemas);
+    const data = object(object(object(schemas.HospitalHisV4Webhook).properties).data);
+    const metadata = object(object(data.properties)._meta);
+    const fields = object(metadata.properties);
+    const nullable = object(fields.causationId).anyOf as unknown[];
+    const identifiers = [fields.accountId, fields.correlationId, fields.tenantId, object(object(fields.actor).properties).id, nullable.find(value => object(value).type === "string")];
+    const nativeIdentifier = "🐾".repeat(255);
+    expect(Array.from(nativeIdentifier)).toHaveLength(255);
+    for (const value of identifiers) {
+      const schema = object(value);
+      expect(schema).toMatchObject({ minLength: 1, maxLength: 255 });
+      expect(new RegExp(String(schema.pattern)).test(nativeIdentifier)).toBe(true);
+      expect(new RegExp(String(schema.pattern)).test(" \n\t")).toBe(false);
+    }
+    expect(object(fields.schemaVersion).const).toBe(1);
+    expect(metadata.additionalProperties).toBe(false);
+  });
+
   it("separates unconditional permissions from state and input dependent permission rules", () => {
     const expected = {
       listDiagnosticServices: {
         required: [],
         conditional: [
           { when: "includeInactive is false or omitted", allOf: ["service.catalog.view"] },
-          { when: "includeInactive is true", allOf: ["service.catalog.manage"] }
+          { when: "includeInactive is true", allOf: [], anyOf: ["service.catalog.manage", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"] }
         ]
       },
       createDiagnosticRequest: {
@@ -369,8 +420,9 @@ describe("exact OpenAPI contract", () => {
       getResult: {
         required: [],
         conditional: [
-          { when: "current result version status is DRAFT and draft ownerId equals the actor id", allOf: ["result.draft.edit_own"] },
-          { when: "current result version status is RELEASED", allOf: ["result.view"] }
+          { when: "versionId is omitted and current result version status is DRAFT and draft ownerId equals the actor id", allOf: ["result.draft.edit_own"] },
+          { when: "versionId is omitted and current result version status is RELEASED", allOf: ["result.view"] },
+          { when: "versionId selects a RELEASED, SUPERSEDED or VOIDED historical version of this result; response is read-only", allOf: ["result.history.view", "result.view"] }
         ]
       },
       getReport: {
@@ -403,7 +455,7 @@ describe("exact OpenAPI contract", () => {
     const schedule = object(schemas.ScheduleCommand);
     expect(object(object(schedule.properties).startsAt)).toMatchObject({ type: "string", format: "date-time", maxLength: 100, pattern: expect.any(String) });
     expect(object(object(schedule.properties).endsAt)).toMatchObject({ type: "string", format: "date-time", maxLength: 100, pattern: expect.any(String) });
-    expect(schedule["x-cross-field-constraints"]).toEqual(["endsAt must be after startsAt", "endsAt - startsAt must be at most 24 hours"]);
+    expect(schedule["x-cross-field-constraints"]).toEqual(["endsAt must be after startsAt", "endsAt - startsAt must be at most 24 hours", "resourceIds are required in production or configured inventory; text-only reservation is limited to legacy demo policy"]);
 
     const procedureSchedule = object(schemas.ProcedureSchedule);
     expect(procedureSchedule.required).toContain("version");

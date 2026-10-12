@@ -1,11 +1,13 @@
 "use client";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import type { ItemState, Priority } from "@cvg/contracts";
+import type { ExamDefinitionSnapshot, ItemState, Priority, StructuredLaboratoryResultContent } from "@cvg/contracts";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { ErrorState, LoadingState } from "./feedback-states";
 import { PriorityBadge, StatusBadge, statusLabel } from "./status-badge";
+import { LaboratoryResultPanel, RecordedLaboratoryResultPanel } from "./laboratory-result-panels";
 
 interface ArchivedVersion {
   id: string;
@@ -17,6 +19,7 @@ interface ArchivedVersion {
   releasedAt?: string;
   critical: boolean;
   amendmentReason?: string;
+  definitionSnapshot?: ExamDefinitionSnapshot;
 }
 
 export interface ArchivedRequestData {
@@ -43,7 +46,7 @@ const aggregateLabels: Record<string, string> = { COMPLETED: "Concluído", CANCE
 const versionLabels: Record<ArchivedVersion["status"], string> = { RELEASED: "Liberada", SUPERSEDED: "Substituída por emenda", VOIDED: "Invalidada" };
 
 function formatDateTime(value: string | undefined): string {
-  return value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "Não informado";
+  return formatHospitalDateTime(value);
 }
 
 /** Read-only page for a request moved to the clinical archive (PROD-501). */
@@ -92,7 +95,8 @@ export function ArchivedRequest({ requestId }: { requestId: string }) {
         <small>{version.releasedAt ? `Liberada em ${formatDateTime(version.releasedAt)}` : "Sem data de liberação"}{version.amendmentReason ? ` · Emenda: ${version.amendmentReason}` : ""}</small>
         <p>{version.narrative}</p>
         {version.conclusion && <p><strong>Conclusão:</strong> {version.conclusion}</p>}
-        {Object.keys(version.content).length > 0 && <dl className="result-fields">{Object.entries(version.content).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl>}
+        {version.definitionSnapshot ? <p>Definição conservada: {version.definitionSnapshot.definition.name} · revisão {version.definitionSnapshot.serviceVersion}. {version.definitionSnapshot.provenance === "COMMAND_CAPTURE_LEGACY_REQUEST" && "A definição original da solicitação legada é desconhecida."}</p> : <p>Definição histórica desconhecida; mostramos o conteúdo registrado.</p>}
+        {version.content.kind === "LABORATORY_STRUCTURED" && Array.isArray(version.content.observations) ? version.definitionSnapshot?.definition.resultTemplate ? <LaboratoryResultPanel template={version.definitionSnapshot.definition.resultTemplate} content={version.content as unknown as StructuredLaboratoryResultContent} /> : <RecordedLaboratoryResultPanel content={version.content as unknown as StructuredLaboratoryResultContent} /> : Object.keys(version.content).length > 0 && <dl className="result-fields">{Object.entries(version.content).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd></div>)}</dl>}
       </article>))}
     </section>)}
     {data.samples.length > 0 && <section className="panel" aria-label="Amostras"><div className="panel-heading"><h2>Amostras</h2></div><ul>{data.samples.map((sample) => <li key={sample.id}>{sample.accessionCode} · {sample.sampleType}</li>)}</ul></section>}

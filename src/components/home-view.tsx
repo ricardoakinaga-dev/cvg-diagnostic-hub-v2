@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { hospitalTimezone } from "@/lib/hospital-time";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { DashboardView, SessionResponse, SessionUser } from "@cvg/contracts";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
@@ -8,12 +9,17 @@ import { Dashboard } from "./dashboard";
 import { ErrorState, StaleNotice } from "./feedback-states";
 import { PageHeader } from "./page-header";
 import { Icon, type IconName } from "./ui-icons";
+import { departmentOptions, useDepartments } from "./use-departments";
 import { DepartmentIcon, PriorityIcon, StateIcon } from "./work-items/icons";
 import { useWorkItems } from "./work-items/use-work-items";
-import { CLINICAL_DEPARTMENTS, STATE_GROUP, STATE_LABELS, activeWorkItems, departmentLabel, formatDue, sortItems, workItemKey, type WorkItem } from "./work-items/model";
+import { STATE_GROUP, STATE_LABELS, activeWorkItems, formatDue, sortItems, workItemKey, type WorkItem } from "./work-items/model";
+import { useQueuePreferences } from "./use-queue-preferences";
+import { normalizePlannerFilters, PLANNER_EMPTY_FILTERS } from "./planner-model";
+import { PlannerViewPicker } from "./planner-view-picker";
+import { usePlannerDiagnosticFilters } from "./planner-diagnostic-filters";
 
 function greeting(date: Date): string {
-  const hour = date.getHours();
+  const hour = Number(new Intl.DateTimeFormat("en", { hour: "2-digit", hourCycle: "h23", timeZone: hospitalTimezone() }).format(date));
   return hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
 }
 
@@ -39,7 +45,12 @@ interface QuickCard { label: string; value: number; hint: string; href: string; 
 function ClinicalHome({ user }: { user: SessionUser }) {
   const [dashboard, setDashboard] = useState<DashboardView | null>(null);
   const [dashboardError, setDashboardError] = useState("");
-  const { items, loading, refreshing, error: itemsError, partial, truncated, reload } = useWorkItems();
+  const { items, loading, refreshing, error: itemsError, partial, truncated, loadingMore, loadMore, paginationError, reload } = useWorkItems();
+  const [plannerFilters, setPlannerFilters] = useQueuePreferences(user.id, "/home:planner-filters", PLANNER_EMPTY_FILTERS, normalizePlannerFilters);
+  const plannerScope = usePlannerDiagnosticFilters(user, plannerFilters);
+  const scopedItems = useMemo(() => items.filter(plannerScope.matches), [items, plannerScope.matches]);
+  const filteredView = Object.values(plannerFilters).some(value => value !== undefined && value !== "");
+  const directory = useDepartments(user.id, { catalog: true });
   const now = new Date();
   const firstName = user.displayName.replace(/^(Dra?\.|Técnica|Equipe)\s+/i, "").split(" ")[0];
 
@@ -55,19 +66,21 @@ function ClinicalHome({ user }: { user: SessionUser }) {
     return () => { window.clearTimeout(timer); window.removeEventListener("cvg:realtime-updated", refresh); window.removeEventListener("cvg:realtime-resync", refresh); };
   }, [loadDashboard]);
 
-  const active = useMemo(() => activeWorkItems(items), [items]);
+  const active = useMemo(() => activeWorkItems(scopedItems), [scopedItems]);
   const attention = useMemo(() => sortItems(active.filter((item) => item.overdue || item.priority !== "ROUTINE" || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.status === "RECOLLECTION_REQUIRED"), "priority").slice(0, 6), [active]);
-  const results = useMemo(() => sortItems(items.filter((item) => item.status === "RESULT_AVAILABLE"), "recent").slice(0, 5), [items]);
-  const recent = useMemo(() => sortItems(items, "recent").slice(0, 6), [items]);
+  const availableResults = useMemo(() => scopedItems.filter((item) => item.status === "RESULT_AVAILABLE"), [scopedItems]);
+  const results = useMemo(() => sortItems(availableResults, "recent").slice(0, 5), [availableResults]);
+  const recent = sortItems(scopedItems, "recent").slice(0, 6);
 
   const quick: QuickCard[] = [
     { label: "Na minha fila", value: active.length, hint: "ativos agora", href: "/queues?view=mine", icon: "user-check", tone: "accent" },
-    { label: "Atrasados", value: dashboard?.overdue ?? active.filter((item) => item.overdue).length, hint: "precisam de intervenção", href: "/queues?preset=overdue", icon: "clock", tone: "danger" },
-    { label: "Resultados novos", value: dashboard?.newResults ?? results.length, hint: "aguardando revisão", href: "/queues?preset=results", icon: "check", tone: "review" },
-    { label: "Recoletas", value: dashboard?.recollections ?? active.filter((item) => item.status === "RECOLLECTION_REQUIRED").length, hint: "aguardando nova amostra", href: "/queues", icon: "refresh", tone: "warning" }
+    { label: "Atrasados", value: active.filter((item) => item.overdue).length, hint: "precisam de intervenção", href: "/queues?preset=overdue", icon: "clock", tone: "danger" },
+    { label: "Resultados novos", value: availableResults.length, hint: "aguardando revisão", href: "/queues?preset=results", icon: "check", tone: "review" },
+    { label: "Recoletas", value: active.filter((item) => item.status === "RECOLLECTION_REQUIRED").length, hint: "aguardando nova amostra", href: "/queues?preset=recollections", icon: "refresh", tone: "warning" }
   ];
 
-  const sectors = (dashboard?.departments ?? []).filter((department) => CLINICAL_DEPARTMENTS.includes(department.departmentCode as typeof CLINICAL_DEPARTMENTS[number]));
+  const options = departmentOptions(directory.departments.filter((department) => department.type === "DIAGNOSTIC"), [...directory.services.map((service) => service.departmentCode), ...active.map((item) => item.departmentCode)]);
+  const sectors = options.map((department) => ({ departmentCode: department.code, name: department.name, state: dashboard?.departments.find((entry) => entry.departmentCode === department.code)?.state ?? "CLEAR", attention: dashboard?.departments.find((entry) => entry.departmentCode === department.code)?.attention ?? 0 }));
 
   return <>
     <PageHeader crumbs={[{ label: "Início", icon: "home" }]} heading={false}>
@@ -77,12 +90,18 @@ function ClinicalHome({ user }: { user: SessionUser }) {
     <div className="home">
       <div className="home-greeting">
         <h1>{greeting(now)}, {firstName}</h1>
-        <p><Icon name="calendar" size={14} />{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long" }).format(now)}</p>
+        <p><Icon name="calendar" size={14} />{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: hospitalTimezone() }).format(now)}</p>
       </div>
 
-      {itemsError && items.length === 0 ? <ErrorState title="Não foi possível carregar os exames" message={itemsError} onRetry={reload} retrying={refreshing || loading} /> : <>
+      <PlannerViewPicker user={user} filters={plannerFilters} onApply={setPlannerFilters} diagnosticOnly />
+      {plannerScope.error && <p role="alert">{plannerScope.error} <button type="button" onClick={() => void plannerScope.reload()}>Revalidar plano da visão</button></p>}
+      {filteredView && !plannerScope.unavailable && <p role="status">{scopedItems.length} exames carregados correspondem à visão aplicada. Os resumos abaixo usam estes mesmos exames.</p>}
+
+      {plannerScope.unavailable ? <p role="status">{plannerScope.loading ? "Revalidando o plano da visão aplicada…" : "Os resumos estão indisponíveis até revalidar o plano ou limpar a visão aplicada."}</p> : itemsError && items.length === 0 ? <ErrorState title="Não foi possível carregar os exames" message={itemsError} onRetry={reload} retrying={refreshing || loading} /> : <>
       {itemsError && <StaleNotice onRetry={reload} retrying={refreshing} />}
-      {(partial || truncated) && <p className="inline-notice" role="status"><Icon name="attention" size={14} />{partial || "Lista limitada a 1.000 solicitações e 1.000 itens por fila; os resumos de exames podem estar incompletos."}</p>}
+      {(partial || truncated) && <p className="inline-notice" role="status"><Icon name="attention" size={14} />{partial || "Há mais exames disponíveis; os resumos abaixo correspondem aos exames já carregados."}</p>}
+      {paginationError && <p role="alert">{paginationError}</p>}
+      {truncated && <button type="button" className="button button-ghost" disabled={loadingMore || refreshing} onClick={() => void loadMore()}>{loadingMore ? "Carregando exames…" : "Carregar mais exames"}</button>}
 
       <nav className="home-quick" aria-label="Atalhos">
         {quick.map((card) => <Link key={card.label} href={card.href} className={`home-quick-card tone-${card.tone}`}>
@@ -118,8 +137,8 @@ function ClinicalHome({ user }: { user: SessionUser }) {
             const total = Math.max(sectorItems.length, 1);
             const share = (group: string) => `${(sectorItems.filter((item) => STATE_GROUP[item.status] === group).length / total) * 100}%`;
             return <Link key={sector.departmentCode} href={`/queues?dept=${sector.departmentCode}`} className="home-sector">
-              <header><DepartmentIcon code={sector.departmentCode} size={15} /><span>{departmentLabel(sector.departmentCode)}</span><span className={`sector-state sector-state-${sector.state.toLowerCase()}`}>{sector.state === "CLEAR" ? "Em dia" : sector.state === "ATTENTION" ? "Atenção" : "Ativo"}</span></header>
-              <div className="home-sector-stats"><span><b>{sector.activeItems}</b>ativos</span><span><b>{sector.attention}</b>atenção</span><span><b className={sector.overdue ? "text-danger" : ""}>{sector.overdue}</b>atrasados</span></div>
+              <header><DepartmentIcon code={sector.departmentCode} size={15} /><span>{sector.name}</span><span className={`sector-state sector-state-${sector.state.toLowerCase()}`}>{filteredView ? "Visão aplicada" : sector.state === "CLEAR" ? "Em dia" : sector.state === "ATTENTION" ? "Atenção" : "Ativo"}</span></header>
+              <div className="home-sector-stats"><span><b>{sectorItems.length}</b>ativos</span><span><b>{filteredView ? sectorItems.filter(item => item.overdue || item.priority !== "ROUTINE" || ["ATTENTION", "URGENT"].includes(item.operationalContext?.escalationLevel ?? "NONE") || item.status === "RECOLLECTION_REQUIRED").length : sector.attention}</b>atenção</span><span><b className={sectorItems.some((item) => item.overdue) ? "text-danger" : ""}>{sectorItems.filter((item) => item.overdue).length}</b>atrasados</span></div>
               <div className="home-sector-bar" aria-hidden="true"><span style={{ width: share("unstarted"), background: "var(--state-unstarted)" }} /><span style={{ width: share("started"), background: "var(--state-started)" }} /><span style={{ width: share("review"), background: "var(--state-review)" }} /><span style={{ width: share("attention"), background: "var(--state-attention)" }} /></div>
             </Link>;
           })}
@@ -127,7 +146,7 @@ function ClinicalHome({ user }: { user: SessionUser }) {
       </section>}
 
       <section className="home-widget" aria-labelledby="home-recent">
-        <div className="home-widget-head"><h2 id="home-recent">Solicitações recentes</h2><Link href="/queues?view=mine">Ver mais <Icon name="arrow-right" size={13} /></Link></div>
+        <div className="home-widget-head"><h2 id="home-recent">Solicitações recentes</h2><Link href="/queues">Ver mais <Icon name="arrow-right" size={13} /></Link></div>
         <div className="home-list">
           {loading ? <HomeRowsSkeleton rows={4} /> : recent.length === 0 ? <p className="home-empty">Nenhuma solicitação ainda.</p> : recent.map((item) => <HomeRow key={item.id} item={item} compact />)}
         </div>

@@ -8,6 +8,7 @@ import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { ErrorState, LoadingState } from "./feedback-states";
 import { Icon } from "./ui-icons";
+import { hospitalTimezone } from "@/lib/hospital-time";
 
 const roleLabels: Record<string, string> = {
   SUPERADMIN: "Superadmin",
@@ -58,7 +59,7 @@ function PasswordChangePanel() {
   return <section className="panel account-panel account-password" aria-labelledby="account-password-title"><div className="panel-heading"><div><p className="eyebrow">Credencial</p><h2 id="account-password-title">Alterar senha</h2></div></div><p className="field-hint">Use de 12 a 200 caracteres, com letras e números. As outras sessões abertas com sua conta serão encerradas.</p><form className="admin-create-form" onSubmit={(event) => void changePassword(event)}><label>Senha atual<input type="password" autoComplete="current-password" maxLength={200} required value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label><label>Nova senha<input type="password" autoComplete="new-password" minLength={12} maxLength={200} required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label><label>Confirmar nova senha<input type="password" autoComplete="new-password" minLength={12} maxLength={200} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>{error && <p role="alert" className="form-alert">{error}</p>}{saved && <p role="status" className="form-success">Senha alterada. As outras sessões foram encerradas.</p>}<ActionButton type="submit" state={saving ? "pending" : "idle"}>Alterar senha</ActionButton></form></section>;
 }
 
-const consentDate = new Intl.DateTimeFormat("pt-BR", { dateStyle: "short" });
+const consentDate = new Intl.DateTimeFormat("pt-BR", { timeZone: hospitalTimezone(), dateStyle: "short" });
 
 /** PROD-402: the person's own WhatsApp number for critical-result alerts, registered with consent. */
 function AlertContactPanel({ user, onChange }: { user: SessionUser; onChange: (user: SessionUser) => void }) {

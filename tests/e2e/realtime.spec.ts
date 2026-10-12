@@ -19,14 +19,14 @@ test.describe("realtime browser contract", () => {
       expect((await mutationIdentity).status()).toBe(200);
 
       const refreshedDashboard = page.waitForResponse((response) => (
-        response.url().includes("/api/v1/diagnostic-requests?limit=100") &&
+        new URL(response.url()).pathname === "/api/v1/diagnostic-requests" &&
+        new URL(response.url()).searchParams.get("limit") === "50" &&
         response.request().method() === "GET" &&
         response.status() === 200
       ));
-      const committedMutation = mutationPage.waitForResponse((response) => (
+      const initialMutation = mutationPage.waitForResponse((response) => (
         response.url().endsWith("/api/v1/diagnostic-requests") &&
-        response.request().method() === "POST" &&
-        response.status() === 201
+        response.request().method() === "POST"
       ));
 
       const dialog = mutationPage.getByRole("dialog", { name: "Solicitar exames" });
@@ -35,24 +35,27 @@ test.describe("realtime browser contract", () => {
       await dialog.getByText("Hemograma", { exact: true }).click();
       await dialog.getByRole("button", { name: /Confirmar solicitação/ }).click();
 
-      const duplicateReason = mutationPage.getByLabel("Motivo para prosseguir com a duplicidade");
-      try {
-        await duplicateReason.waitFor({ state: "visible", timeout: 1_500 });
-        await duplicateReason.fill("Repetição sintética para provar a reconciliação realtime da tela aberta.");
+      let committedResponse = await initialMutation;
+      if (committedResponse.status() === 409) {
+        expect((await committedResponse.json()).error.code).toBe("DUPLICATE_WARNING");
+        await mutationPage.getByLabel("Motivo para prosseguir com a duplicidade").fill("Repetição sintética para provar a reconciliação realtime da tela aberta.");
+        const confirmed = mutationPage.waitForResponse((response) => (
+          new URL(response.url()).pathname === "/api/v1/diagnostic-requests" && response.request().method() === "POST"
+        ));
         await mutationPage.getByRole("button", { name: /Confirmar duplicidade/ }).click();
-      } catch {
-        // The isolated fixture may not contain a matching active request.
+        committedResponse = await confirmed;
       }
 
-      const committedResponse = await committedMutation;
-      const committedBody = await committedResponse.json() as { data?: { requestCode?: string } };
+      expect(committedResponse.status()).toBe(201);
+      const committedBody = await committedResponse.json() as { data?: { requestCode?: string; items: { id: string; departmentCode: string }[] } };
       const requestCode = committedBody.data?.requestCode;
       expect(requestCode).toMatch(/^EX-/);
 
       await refreshedDashboard;
-      // The home lists exams by their sector key (LAB-0012), built from the protocol.
-      const key = `LAB-${requestCode!.split("-").at(-1)}`;
-      await expect(page.getByRole("link", { name: new RegExp(`${key}\\s*Thor — Hemograma`) }).first()).toBeVisible({ timeout: 15_000 });
+      const item = committedBody.data!.items[0];
+      const examination = page.locator(`a[href="/queues?dept=${item.departmentCode}&item=${encodeURIComponent(item.id)}"]`);
+      await expect(examination).toBeVisible({ timeout: 15_000 });
+      await expect(examination).toContainText("Thor — Hemograma");
       await expect(page).toHaveURL(/\/$/);
     } finally {
       await mutationPage.close();

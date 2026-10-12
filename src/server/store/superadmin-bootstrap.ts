@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { StateStore } from "../domain/models";
 import { checkBreachedPassword } from "../security/password-policy";
+import { systemGroupId } from "../security/access-group-policy";
 import { createProductionBootstrapState, type ProductionBootstrapInput } from "./production-bootstrap";
 
 /** Offline, one-time provisioning of the first global administrator in an existing installation. */
@@ -18,7 +19,7 @@ export async function bootstrapSuperadmin(
     if (state.users.some((user) => user.role === "SUPERADMIN")) throw new Error("SUPERADMIN_ALREADY_PROVISIONED");
     if (!state.users.some((user) => user.role === "ADMIN" && user.active)) throw new Error("SUPERADMIN_BOOTSTRAP_REQUIRES_EXISTING_ADMIN");
     if (state.users.some((user) => user.email.toLowerCase() === candidate.email)) throw new Error("SUPERADMIN_BOOTSTRAP_EMAIL_IN_USE");
-    const user = { ...candidate, role: "SUPERADMIN" as const, mustChangePassword: true as const };
+    const user = { ...candidate, role: "SUPERADMIN" as const, accessGroupId: systemGroupId("SUPERADMIN"), mustChangePassword: true as const };
     const audit = {
       id: `audit-${randomUUID()}`,
       eventType: "SuperadminBootstrapped",

@@ -1,0 +1,228 @@
+{
+  "schemaVersion": 1,
+  "commit": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+  "previousCommit": "272581dc60b764a8fee78108110dc7e465f62542",
+  "scope": "Exact source fragments from pinned HIS revisions; synthetic offline test producer only, no installed service or provider configuration",
+  "fragments": {
+    "sharedEnvelope": {
+      "path": "packages/shared/types/src/event-envelope.ts",
+      "sourceSha256": "8a1edd8a1676108f6ff59214924e18630b2ebeb048295ce42fa432da9bfb69b8",
+      "fragmentSha256": "8a1edd8a1676108f6ff59214924e18630b2ebeb048295ce42fa432da9bfb69b8",
+      "code": "import type { AccountId, CorrelationId, ModuleName } from './index.js';\n\n/** The stable metadata contract carried by every outbox event. */\nexport const CURRENT_EVENT_SCHEMA_VERSION = 1;\n\nexport type EventActorType = 'user' | 'service' | 'system';\n\nexport interface EventActor {\n  readonly type: EventActorType;\n  readonly id: string;\n}\n\nexport interface EventEnvelopeMetadata {\n  readonly eventId: string;\n  readonly eventType: string;\n  readonly schemaVersion: number;\n  readonly occurredAt: string;\n  readonly accountId: AccountId;\n  readonly sourceModule: ModuleName;\n  readonly actor: EventActor;\n  readonly correlationId: CorrelationId;\n  readonly causationId: string | null;\n}\n\nexport interface BuildEventEnvelopeInput {\n  readonly eventId: string;\n  readonly eventType: string;\n  readonly accountId: AccountId;\n  readonly sourceModule: ModuleName;\n  readonly correlationId: CorrelationId;\n  readonly actor?: EventActor;\n  readonly causationId?: string | null;\n  readonly schemaVersion?: number;\n  readonly occurredAt?: string;\n}\n\nconst EVENT_TYPE_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;\nconst IDENTIFIER_MAX_LENGTH = 255;\nconst ISO_TIMESTAMP_PATTERN =\n  /^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])([T ]([01][0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9](\\.[0-9]+)?)?(Z|[+-]([01][0-9]|2[0-3]):?[0-5][0-9])?)?$/;\n\nfunction identifierLength(value: string): number {\n  // PostgreSQL char_length counts Unicode code points, not UTF-16 code units.\n  return Array.from(value).length;\n}\n\nfunction assertNonEmptyIdentifier(value: unknown, name: string): asserts value is string {\n  if (\n    typeof value !== 'string' ||\n    value.trim().length === 0 ||\n    identifierLength(value) > IDENTIFIER_MAX_LENGTH\n  ) {\n    throw new Error(`${name} must contain 1 to ${IDENTIFIER_MAX_LENGTH} characters`);\n  }\n}\n\nfunction assertIsoTimestamp(value: unknown, name: string): asserts value is string {\n  if (\n    typeof value !== 'string' ||\n    !ISO_TIMESTAMP_PATTERN.test(value) ||\n    Number.isNaN(Date.parse(value))\n  ) {\n    throw new Error(`${name} must be a valid ISO-8601 timestamp`);\n  }\n}\n\nfunction assertActor(actor: unknown): asserts actor is EventActor {\n  if (!actor || typeof actor !== 'object' || Array.isArray(actor)) {\n    throw new Error('Event actor must be an object');\n  }\n  const candidate = actor as Record<string, unknown>;\n  if (candidate.type !== 'user' && candidate.type !== 'service' && candidate.type !== 'system') {\n    throw new Error('Event actor type must be user, service or system');\n  }\n  assertNonEmptyIdentifier(candidate.id, 'Event actor id');\n}\n\nexport function buildEventEnvelopeMetadata(input: BuildEventEnvelopeInput): EventEnvelopeMetadata {\n  assertNonEmptyIdentifier(input.eventId, 'Event id');\n  assertNonEmptyIdentifier(input.eventType, 'Event type');\n  if (!EVENT_TYPE_PATTERN.test(input.eventType)) {\n    throw new Error(\n      `Event type '${input.eventType}' does not follow the canonical naming convention`\n    );\n  }\n  assertNonEmptyIdentifier(input.accountId, 'Event account id');\n  assertNonEmptyIdentifier(input.sourceModule, 'Event source module');\n  assertNonEmptyIdentifier(input.correlationId, 'Event correlation id');\n\n  const schemaVersion = input.schemaVersion ?? CURRENT_EVENT_SCHEMA_VERSION;\n  if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 1 || schemaVersion > 1000) {\n    throw new Error('Event schema version must be an integer between 1 and 1000');\n  }\n\n  const occurredAt = input.occurredAt ?? new Date().toISOString();\n  assertIsoTimestamp(occurredAt, 'Event occurredAt');\n\n  const actor = input.actor ?? { type: 'system', id: 'event-bus' };\n  assertActor(actor);\n\n  const causationId = input.causationId ?? null;\n  if (causationId !== null) assertNonEmptyIdentifier(causationId, 'Event causation id');\n\n  return {\n    eventId: input.eventId,\n    eventType: input.eventType,\n    schemaVersion,\n    occurredAt,\n    accountId: input.accountId,\n    sourceModule: input.sourceModule,\n    actor,\n    correlationId: input.correlationId,\n    causationId\n  };\n}\n\nconst PROTECTED_METADATA_KEYS = [\n  'eventId',\n  'eventType',\n  'schemaVersion',\n  'occurredAt',\n  'accountId',\n  'sourceModule',\n  'actor',\n  'correlationId',\n  'causationId'\n] as const;\n\n/** Merges caller metadata without allowing a caller to forge envelope identity. */\nexport function mergeEventEnvelopeMetadata(\n  metadata: Record<string, unknown>,\n  envelope: EventEnvelopeMetadata\n): Record<string, unknown> {\n  for (const key of PROTECTED_METADATA_KEYS) {\n    if (\n      metadata[key] !== undefined &&\n      JSON.stringify(metadata[key]) !== JSON.stringify(envelope[key])\n    ) {\n      throw new Error(`Outbox payload _meta.${key} conflicts with the canonical event envelope`);\n    }\n  }\n  return { ...metadata, ...envelope };\n}\n\nexport function readEventEnvelopeMetadata(payload: Record<string, unknown>): EventEnvelopeMetadata {\n  const raw = payload['_meta'];\n  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {\n    throw new Error('Outbox payload _meta must be an object with the event envelope');\n  }\n  const candidate = raw as Record<string, unknown>;\n  const actor = candidate.actor;\n  assertActor(actor);\n  return buildEventEnvelopeMetadata({\n    eventId: candidate.eventId as string,\n    eventType: candidate.eventType as string,\n    schemaVersion: candidate.schemaVersion as number | undefined,\n    occurredAt: candidate.occurredAt as string | undefined,\n    accountId: candidate.accountId as AccountId,\n    sourceModule: candidate.sourceModule as ModuleName,\n    actor,\n    correlationId: candidate.correlationId as CorrelationId,\n    causationId: candidate.causationId as string | null\n  });\n}\n\nexport function assertEventEnvelopeMatches(\n  payload: Record<string, unknown>,\n  expected: Omit<\n    EventEnvelopeMetadata,\n    'actor' | 'causationId' | 'schemaVersion' | 'occurredAt'\n  > & {\n    readonly schemaVersion?: number;\n    readonly occurredAt?: string;\n    readonly actor?: EventActor;\n    readonly causationId?: string | null;\n  }\n): EventEnvelopeMetadata {\n  const actual = readEventEnvelopeMetadata(payload);\n  const required: Array<[string, unknown, unknown]> = [\n    ['eventId', actual.eventId, expected.eventId],\n    ['eventType', actual.eventType, expected.eventType],\n    ['accountId', actual.accountId, expected.accountId],\n    ['sourceModule', actual.sourceModule, expected.sourceModule],\n    ['correlationId', actual.correlationId, expected.correlationId]\n  ];\n  for (const [name, actualValue, expectedValue] of required) {\n    if (actualValue !== expectedValue)\n      throw new Error(`Outbox event envelope ${name} does not match the claimed event`);\n  }\n  if (expected.schemaVersion !== undefined && actual.schemaVersion !== expected.schemaVersion) {\n    throw new Error('Outbox event envelope schema version does not match the claimed event');\n  }\n  if (expected.occurredAt !== undefined && actual.occurredAt !== expected.occurredAt) {\n    throw new Error('Outbox event envelope occurredAt does not match the claimed event');\n  }\n  if (\n    expected.actor !== undefined &&\n    JSON.stringify(actual.actor) !== JSON.stringify(expected.actor)\n  ) {\n    throw new Error('Outbox event envelope actor does not match the claimed event');\n  }\n  if (expected.causationId !== undefined && actual.causationId !== expected.causationId) {\n    throw new Error('Outbox event envelope causationId does not match the claimed event');\n  }\n  return actual;\n}\n",
+      "lineStart": 1,
+      "lineEnd": 207,
+      "previousCommitSourceSha256": "8a1edd8a1676108f6ff59214924e18630b2ebeb048295ce42fa432da9bfb69b8",
+      "previousCommitFragmentSha256": "8a1edd8a1676108f6ff59214924e18630b2ebeb048295ce42fa432da9bfb69b8",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "eventEnvelope": {
+      "path": "packages/modules/event-bus/src/event-envelope.ts",
+      "sourceSha256": "65ffa51ef92610681314388645399de33c151d4b1847d9244f7a0539267f734e",
+      "fragmentSha256": "65ffa51ef92610681314388645399de33c151d4b1847d9244f7a0539267f734e",
+      "code": "import {\n  buildEventEnvelopeMetadata as buildSharedEventEnvelopeMetadata,\n  CURRENT_EVENT_SCHEMA_VERSION as SHARED_CURRENT_EVENT_SCHEMA_VERSION\n} from '@cvg-his-v2/shared-types';\nimport type { BuildEventEnvelopeInput, EventEnvelopeMetadata } from '@cvg-his-v2/shared-types';\nimport { EVENT_SCHEMA_VERSIONS } from './event-catalog.js';\n\nexport {\n  assertEventEnvelopeMatches,\n  mergeEventEnvelopeMetadata,\n  readEventEnvelopeMetadata\n} from '@cvg-his-v2/shared-types';\nexport type {\n  BuildEventEnvelopeInput,\n  EventActor,\n  EventActorType,\n  EventEnvelopeMetadata\n} from '@cvg-his-v2/shared-types';\nexport { CURRENT_EVENT_SCHEMA_VERSION } from '@cvg-his-v2/shared-types';\n\nexport function buildEventEnvelopeMetadata(input: BuildEventEnvelopeInput): EventEnvelopeMetadata {\n  return buildSharedEventEnvelopeMetadata({\n    ...input,\n    schemaVersion:\n      input.schemaVersion ??\n      EVENT_SCHEMA_VERSIONS[input.eventType] ??\n      SHARED_CURRENT_EVENT_SCHEMA_VERSION\n  });\n}\n",
+      "lineStart": 1,
+      "lineEnd": 30,
+      "previousCommitSourceSha256": "65ffa51ef92610681314388645399de33c151d4b1847d9244f7a0539267f734e",
+      "previousCommitFragmentSha256": "65ffa51ef92610681314388645399de33c151d4b1847d9244f7a0539267f734e",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "eventCatalog": {
+      "path": "packages/modules/event-bus/src/event-catalog.ts",
+      "sourceSha256": "f1b88f9d532a391a2df9971bee8876828bb2aa3fd37eeb28500569f36dfa81c2",
+      "fragmentSha256": "f1b88f9d532a391a2df9971bee8876828bb2aa3fd37eeb28500569f36dfa81c2",
+      "code": "/**\n * Event Catalog — CVG-HIS-V2\n *\n * Complete list of domain events published by the Event Bus.\n * Each event follows the pattern: { type: '<domain>.<entity>.<action>', payload: {...}, timestamp, correlationId }\n *\n * @see EventBusService.publish()\n *\n * ## Event Schema\n *\n * Every event has the following shape:\n * ```ts\n * {\n *   id: string;              // UUID v4\n *   eventType: string;        // e.g. 'encounter.started'\n *   accountId: string;        // tenant context\n *   payload: EventPayload;    // event-specific data\n *   correlationId: string;   // traces across services\n *   createdAt: string;       // ISO 8601\n *   status: 'pending' | 'processing' | 'completed' | 'failed' | 'dlq';\n *   attempts: number;\n *   maxAttempts: number;\n *   scheduledAt: string;\n * }\n * ```\n */\n\n/* ===========================\n   CLINICAL DOMAIN EVENTS\n   =========================== */\n\n// Encounter lifecycle\nexport const ENCOUNTER_STARTED = 'encounter.started';\nexport const ENCOUNTER_CLOSED = 'encounter.closed';\nexport const ENCOUNTER_TRANSFERRED = 'encounter.transferred';\nexport const ENCOUNTER_FLAGGED = 'encounter.flagged';\nexport const ENCOUNTER_DOCUMENT_ADDED = 'encounter.document_added';\n\n// Command lifecycle\nexport const COMMAND_FINALIZED = 'command.finalized';\nexport const COMMAND_CANCELLED = 'command.cancelled';\nexport const COMMAND_CREATED = 'command.created';\n\n// Clinical notes\nexport const CLINICAL_NOTE_ADDED = 'clinical_note.added';\nexport const CLINICAL_NOTE_UPDATED = 'clinical_note.updated';\nexport const CLINICAL_NOTE_ARCHIVED = 'clinical_note.archived';\n\n// Medical records\nexport const MEDICAL_RECORD_CREATED = 'medical_record.created';\nexport const MEDICAL_RECORD_UPDATED = 'medical_record.updated';\n\n// Prescription\nexport const PRESCRIPTION_CREATED = 'prescription.created';\nexport const PRESCRIPTION_EXECUTED = 'prescription.executed';\nexport const PRESCRIPTION_CANCELLED = 'prescription.cancelled';\n\n/* ===========================\n   SCHEDULING & QUEUE EVENTS\n   =========================== */\n\nexport const APPOINTMENT_CREATED = 'appointment.created';\nexport const APPOINTMENT_CANCELLED = 'appointment.cancelled';\nexport const APPOINTMENT_CONFIRMED = 'appointment.confirmed';\nexport const APPOINTMENT_RESCHEDULED = 'appointment.rescheduled';\n\nexport const QUEUE_ENTRY_ADDED = 'queue.entry_added';\nexport const QUEUE_ENTRY_REMOVED = 'queue.entry_removed';\nexport const QUEUE_ENTRY_CALLED = 'queue.entry_called';\nexport const QUEUE_ENTRY_NO_SHOW = 'queue.entry_no_show';\n\n/* ===========================\n   INPATIENT EVENTS\n   =========================== */\n\nexport const INPATIENT_ADMITTED = 'inpatient.admitted';\nexport const INPATIENT_DISCHARGED = 'inpatient.discharged';\nexport const INPATIENT_BED_CHANGED = 'inpatient.bed_changed';\nexport const INPATIENT_PROGRESS_NOTE_ADDED = 'inpatient.progress_note_added';\n\n// Shift handover lifecycle. These events are intentionally versioned through\n// EVENT_SCHEMA_VERSIONS below so projections can evolve without changing the\n// sovereign handover tables.\nexport const HANDOVER_CREATED = 'handover.created';\nexport const HANDOVER_UPDATED = 'handover.updated';\nexport const HANDOVER_READY = 'handover.ready';\nexport const HANDOVER_ACKNOWLEDGED = 'handover.acknowledged';\nexport const HANDOVER_OVERDUE = 'handover.overdue';\n\n/* ===========================\n   INVENTORY EVENTS\n   =========================== */\n\nexport const STOCK_MOVED = 'stock.moved';\nexport const INVENTORY_CONSUMPTION_CREATED = 'inventory.consumption.created';\nexport const STOCK_LOW = 'stock.low';\nexport const STOCK_REORDER_TRIGGERED = 'stock.reorder_triggered';\nexport const PRODUCT_CREATED = 'product.created';\nexport const PRODUCT_UPDATED = 'product.updated';\n\n/* ===========================\n   BILLING & PAYMENTS EVENTS\n   =========================== */\n\nexport const RECEIVABLE_PAID = 'receivable.paid';\nexport const RECEIVABLE_CANCELLED = 'receivable.cancelled';\nexport const PAYABLE_PAID = 'payable.paid';\nexport const BILLING_RECORD_CREATED = 'billing.record.created';\nexport const BILLING_RECORD_SETTLED = 'billing.record.settled';\n\nexport const PAYMENT_PIX_INTENT_CREATED = 'payment.pix.intent.created';\nexport const PAYMENT_PIX_COMPLETED = 'payment.pix.confirmed';\nexport const PAYMENT_PIX_FAILED = 'payment.pix.failed';\nexport const PAYMENT_CARD_INTENT_CREATED = 'payment.card.intent.created';\nexport const PAYMENT_CARD_COMPLETED = 'payment.card.completed';\nexport const PAYMENT_CARD_FAILED = 'payment.card.failed';\n\n/* ===========================\n   NOTIFICATION EVENTS\n   =========================== */\n\nexport const NOTIFICATION_SENT = 'notification.sent';\nexport const NOTIFICATION_FAILED = 'notification.failed';\nexport const NOTIFICATION_WHATSAPP_RECEIVED = 'notification.whatsapp.received';\nexport const NOTIFICATION_WHATSAPP_DELIVERED = 'notification.whatsapp.delivered';\n\n/* ===========================\n   ACCESS & AUDIT EVENTS\n   =========================== */\n\nexport const USER_LOGIN = 'user.login';\nexport const USER_LOGIN_MFA_REQUIRED = 'user.login_mfa_required';\nexport const USER_LOGOUT = 'user.logout';\nexport const USER_MFA_ENABLED = 'user.mfa_enabled';\nexport const USER_MFA_DISABLED = 'user.mfa_disabled';\n\n/* ===========================\n   ALL EVENTS ARRAY\n   =========================== */\n\n/**\n * All domain events in the catalog.\n * Used for documentation, validation, and event discovery.\n */\nexport const EVENT_CATALOG: readonly string[] = [\n  // Clinical\n  ENCOUNTER_STARTED,\n  ENCOUNTER_CLOSED,\n  ENCOUNTER_TRANSFERRED,\n  ENCOUNTER_FLAGGED,\n  ENCOUNTER_DOCUMENT_ADDED,\n  COMMAND_FINALIZED,\n  COMMAND_CANCELLED,\n  COMMAND_CREATED,\n  CLINICAL_NOTE_ADDED,\n  CLINICAL_NOTE_UPDATED,\n  CLINICAL_NOTE_ARCHIVED,\n  MEDICAL_RECORD_CREATED,\n  MEDICAL_RECORD_UPDATED,\n  PRESCRIPTION_CREATED,\n  PRESCRIPTION_EXECUTED,\n  PRESCRIPTION_CANCELLED,\n  // Scheduling\n  APPOINTMENT_CREATED,\n  APPOINTMENT_CANCELLED,\n  APPOINTMENT_CONFIRMED,\n  APPOINTMENT_RESCHEDULED,\n  QUEUE_ENTRY_ADDED,\n  QUEUE_ENTRY_REMOVED,\n  QUEUE_ENTRY_CALLED,\n  QUEUE_ENTRY_NO_SHOW,\n  // Inpatient\n  INPATIENT_ADMITTED,\n  INPATIENT_DISCHARGED,\n  INPATIENT_BED_CHANGED,\n  INPATIENT_PROGRESS_NOTE_ADDED,\n  HANDOVER_CREATED,\n  HANDOVER_UPDATED,\n  HANDOVER_READY,\n  HANDOVER_ACKNOWLEDGED,\n  HANDOVER_OVERDUE,\n  // Inventory\n  INVENTORY_CONSUMPTION_CREATED,\n  STOCK_MOVED,\n  STOCK_LOW,\n  STOCK_REORDER_TRIGGERED,\n  PRODUCT_CREATED,\n  PRODUCT_UPDATED,\n  // Billing\n  RECEIVABLE_PAID,\n  RECEIVABLE_CANCELLED,\n  PAYABLE_PAID,\n  BILLING_RECORD_CREATED,\n  BILLING_RECORD_SETTLED,\n  PAYMENT_PIX_INTENT_CREATED,\n  PAYMENT_PIX_COMPLETED,\n  PAYMENT_PIX_FAILED,\n  PAYMENT_CARD_INTENT_CREATED,\n  PAYMENT_CARD_COMPLETED,\n  PAYMENT_CARD_FAILED,\n  // Notifications\n  NOTIFICATION_SENT,\n  NOTIFICATION_FAILED,\n  NOTIFICATION_WHATSAPP_RECEIVED,\n  NOTIFICATION_WHATSAPP_DELIVERED,\n  // Access\n  USER_LOGIN,\n  USER_LOGIN_MFA_REQUIRED,\n  USER_LOGOUT,\n  USER_MFA_ENABLED,\n  USER_MFA_DISABLED\n] as const;\n\nexport const EVENT_COUNT = EVENT_CATALOG.length as number;\n\n// The catalog exceeds the 30+ event blueprint requirement and includes the\n// complete handover lifecycle needed by the clinical timeline projection.\nvoid EVENT_COUNT;\n\n/**\n * Check if an event type string is a known catalog event.\n */\nexport function isKnownEvent(eventType: string): eventType is (typeof EVENT_CATALOG)[number] {\n  return EVENT_CATALOG.includes(eventType as (typeof EVENT_CATALOG)[number]);\n}\n\n/**\n * Group events by domain for display in docs/catalogs.\n */\nexport const EVENTS_BY_DOMAIN: Record<string, readonly string[]> = {\n  clinical: [\n    ENCOUNTER_STARTED,\n    ENCOUNTER_CLOSED,\n    ENCOUNTER_TRANSFERRED,\n    ENCOUNTER_FLAGGED,\n    ENCOUNTER_DOCUMENT_ADDED,\n    COMMAND_FINALIZED,\n    COMMAND_CANCELLED,\n    COMMAND_CREATED,\n    CLINICAL_NOTE_ADDED,\n    CLINICAL_NOTE_UPDATED,\n    CLINICAL_NOTE_ARCHIVED,\n    MEDICAL_RECORD_CREATED,\n    MEDICAL_RECORD_UPDATED,\n    PRESCRIPTION_CREATED,\n    PRESCRIPTION_EXECUTED,\n    PRESCRIPTION_CANCELLED\n  ],\n  scheduling: [\n    APPOINTMENT_CREATED,\n    APPOINTMENT_CANCELLED,\n    APPOINTMENT_CONFIRMED,\n    APPOINTMENT_RESCHEDULED,\n    QUEUE_ENTRY_ADDED,\n    QUEUE_ENTRY_REMOVED,\n    QUEUE_ENTRY_CALLED,\n    QUEUE_ENTRY_NO_SHOW\n  ],\n  inpatient: [\n    INPATIENT_ADMITTED,\n    INPATIENT_DISCHARGED,\n    INPATIENT_BED_CHANGED,\n    INPATIENT_PROGRESS_NOTE_ADDED\n  ],\n  handover: [\n    HANDOVER_CREATED,\n    HANDOVER_UPDATED,\n    HANDOVER_READY,\n    HANDOVER_ACKNOWLEDGED,\n    HANDOVER_OVERDUE\n  ],\n  inventory: [\n    INVENTORY_CONSUMPTION_CREATED,\n    STOCK_MOVED,\n    STOCK_LOW,\n    STOCK_REORDER_TRIGGERED,\n    PRODUCT_CREATED,\n    PRODUCT_UPDATED\n  ],\n  billing: [\n    RECEIVABLE_PAID,\n    RECEIVABLE_CANCELLED,\n    PAYABLE_PAID,\n    BILLING_RECORD_CREATED,\n    BILLING_RECORD_SETTLED,\n    PAYMENT_PIX_INTENT_CREATED,\n    PAYMENT_PIX_COMPLETED,\n    PAYMENT_PIX_FAILED,\n    PAYMENT_CARD_INTENT_CREATED,\n    PAYMENT_CARD_COMPLETED,\n    PAYMENT_CARD_FAILED\n  ],\n  notifications: [\n    NOTIFICATION_SENT,\n    NOTIFICATION_FAILED,\n    NOTIFICATION_WHATSAPP_RECEIVED,\n    NOTIFICATION_WHATSAPP_DELIVERED\n  ],\n  access: [USER_LOGIN, USER_LOGIN_MFA_REQUIRED, USER_LOGOUT, USER_MFA_ENABLED, USER_MFA_DISABLED]\n};\n\n/**\n * Version registry for the public event envelope. A new payload contract must\n * be introduced with a new number and a compatibility note in the governance\n * document; consumers must continue accepting the previous version during a\n * deprecation window.\n */\nexport const EVENT_SCHEMA_VERSIONS: Readonly<Record<string, number>> = Object.freeze(\n  Object.fromEntries(EVENT_CATALOG.map((eventType) => [eventType, 1]))\n);\n\n/**\n * Validate the catalog as a runtime contract instead of treating it as\n * documentation only. This catches duplicate names, unowned events and\n * schema-version drift before a worker can consume an ambiguous envelope.\n */\nexport function findEventCatalogIntegrityViolations(): readonly string[] {\n  const violations: string[] = [];\n  const catalogSet = new Set(EVENT_CATALOG);\n\n  if (catalogSet.size !== EVENT_CATALOG.length) {\n    violations.push('EVENT_CATALOG contains duplicate event names');\n  }\n\n  for (const eventType of EVENT_CATALOG) {\n    if (!/^[a-z][a-z0-9_-]*(?:\\.[a-z][a-z0-9_-]*)+$/.test(eventType)) {\n      violations.push(`event name is not a stable dotted identifier: ${eventType}`);\n    }\n\n    const schemaVersion = EVENT_SCHEMA_VERSIONS[eventType];\n    if (!Number.isSafeInteger(schemaVersion) || schemaVersion < 1) {\n      violations.push(`event has no valid schema version: ${eventType}`);\n    }\n  }\n\n  const domainEvents = Object.entries(EVENTS_BY_DOMAIN).flatMap(([domain, events]) =>\n    events.map((eventType) => ({ domain, eventType }))\n  );\n  const ownership = new Map<string, string>();\n  for (const { domain, eventType } of domainEvents) {\n    if (!catalogSet.has(eventType)) {\n      violations.push(`domain ${domain} references an unknown event: ${eventType}`);\n      continue;\n    }\n    const previousDomain = ownership.get(eventType);\n    if (previousDomain) {\n      violations.push(`event is owned by multiple domains: ${eventType}`);\n    } else {\n      ownership.set(eventType, domain);\n    }\n  }\n\n  for (const eventType of EVENT_CATALOG) {\n    if (!ownership.has(eventType)) {\n      violations.push(`event is not assigned to a domain: ${eventType}`);\n    }\n  }\n\n  for (const eventType of Object.keys(EVENT_SCHEMA_VERSIONS)) {\n    if (!catalogSet.has(eventType)) {\n      violations.push(`schema registry references an unknown event: ${eventType}`);\n    }\n  }\n\n  return violations;\n}\n\nexport function assertEventCatalogIntegrity(): void {\n  const violations = findEventCatalogIntegrityViolations();\n  if (violations.length > 0) {\n    throw new Error(`Event catalog integrity failed: ${violations.join('; ')}`);\n  }\n}\n",
+      "lineStart": 1,
+      "lineEnd": 374,
+      "previousCommitSourceSha256": "f1b88f9d532a391a2df9971bee8876828bb2aa3fd37eeb28500569f36dfa81c2",
+      "previousCommitFragmentSha256": "f1b88f9d532a391a2df9971bee8876828bb2aa3fd37eeb28500569f36dfa81c2",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "nowIso": {
+      "path": "packages/shared/utils/src/index.ts",
+      "sourceSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+      "fragmentSha256": "a94e3f29a5f0e2192e87807554617aabc0f2c39a74d44ab7b169b131526567e4",
+      "code": "export function nowIso(): string {\n  return new Date().toISOString();\n}",
+      "lineStart": 8,
+      "lineEnd": 10,
+      "previousCommitSourceSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+      "previousCommitFragmentSha256": "a94e3f29a5f0e2192e87807554617aabc0f2c39a74d44ab7b169b131526567e4",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "createCorrelationId": {
+      "path": "packages/shared/utils/src/index.ts",
+      "sourceSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+      "fragmentSha256": "2f6c874f3dabfdf8757181378f63b57cab68f41ae648d19ec3d60df878eda27d",
+      "code": "export function createCorrelationId(prefix = 'cvg'): string {\n  const random = randomBytes(CORRELATION_ID_ENTROPY_BYTES).toString('hex');\n  return `${prefix}_${Date.now().toString(36)}_${random}`;\n}",
+      "lineStart": 19,
+      "lineEnd": 22,
+      "previousCommitSourceSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+      "previousCommitFragmentSha256": "2f6c874f3dabfdf8757181378f63b57cab68f41ae648d19ec3d60df878eda27d",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "correlationEntropy": {
+      "path": "packages/shared/utils/src/index.ts",
+      "sourceSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+      "fragmentSha256": "d62476edcd616897914947db1d35f91f462d6fef946eaa0d0b988190a7e94c88",
+      "code": "const CORRELATION_ID_ENTROPY_BYTES = 9;",
+      "lineStart": 4,
+      "lineEnd": 4,
+      "previousCommitSourceSha256": "9b09f03d597a41238dbfa1e158aa13a6698c29d1354763611846605ee3b19d0b",
+      "previousCommitFragmentSha256": "d62476edcd616897914947db1d35f91f462d6fef946eaa0d0b988190a7e94c88",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "eventBusPublish": {
+      "path": "packages/modules/event-bus/src/event-bus.service.ts",
+      "sourceSha256": "c1b76aae1b824f984acc7c22cfc6db2b2e23a5a9e7c53d63e43ea59ed78636a4",
+      "fragmentSha256": "44a727111d17306050ddd65166636543a37a5d4f43ba0b1589ba89f018eb9055",
+      "code": "async publish(input: CreateOutboxEventInput): Promise<OutboxEvent> {\n    const rawMeta = input.payload['_meta'];\n    if (\n      rawMeta !== undefined &&\n      (!rawMeta || typeof rawMeta !== 'object' || Array.isArray(rawMeta))\n    ) {\n      throw new Error('Outbox payload _meta must be an object');\n    }\n    const payloadMeta = (rawMeta ?? {}) as Record<string, unknown>;\n    const payloadAccountId =\n      typeof input.payload.accountId === 'string'\n        ? input.payload.accountId\n        : typeof (input.payload._meta as Record<string, unknown> | undefined)?.accountId ===\n            'string'\n          ? ((input.payload._meta as Record<string, unknown>).accountId as string)\n          : undefined;\n    const accountId = input.accountId ?? getTenantContext()?.accountId ?? payloadAccountId;\n    if (!accountId) throw new Error('Outbox event requires an accountId');\n    if (payloadAccountId && payloadAccountId !== accountId) {\n      throw new Error('Outbox payload account does not match event account');\n    }\n    const eventId = randomUUID();\n    const createdAt = nowIso();\n    const envelope = buildEventEnvelopeMetadata({\n      eventId,\n      eventType: input.eventType,\n      accountId: accountId as AccountId,\n      sourceModule: input.moduleName,\n      correlationId: input.correlationId,\n      actor: input.actor,\n      causationId: input.causationId,\n      schemaVersion: input.schemaVersion,\n      occurredAt: input.occurredAt ?? createdAt\n    });\n    const event: OutboxEvent = {\n      id: eventId,\n      accountId: accountId as AccountId,\n      correlationId: input.correlationId,\n      moduleName: input.moduleName,\n      eventType: input.eventType,\n      payload: {\n        ...input.payload,\n        accountId,\n        _meta: mergeEventEnvelopeMetadata(payloadMeta, envelope)\n      },\n      status: 'pending',\n      attempts: 0,\n      maxAttempts: input.maxAttempts ?? 3,\n      scheduledAt: input.scheduledAt ?? createdAt,\n      processedAt: null,\n      error: null,\n      createdAt\n    };\n\n    await this.#repository.create(event);\n    return event;\n  }",
+      "lineStart": 662,
+      "lineEnd": 718,
+      "previousCommitSourceSha256": "c1b76aae1b824f984acc7c22cfc6db2b2e23a5a9e7c53d63e43ea59ed78636a4",
+      "previousCommitFragmentSha256": "44a727111d17306050ddd65166636543a37a5d4f43ba0b1589ba89f018eb9055",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "runtimePublishEvent": {
+      "path": "apps/api/src/runtime.ts",
+      "sourceSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+      "fragmentSha256": "144c7c24dc8c6c656fd95eea086a03e28f90d22d6f471a6d72f43332f5c90a7c",
+      "code": "async function publishEvent(\n    moduleName: ModuleName,\n    eventType: string,\n    payload: Record<string, unknown>\n  ) {\n    const tenantContext = getTenantContext();\n    const correlationId =\n      (tenantContext?.correlationId as CorrelationId | undefined) ??\n      (createCorrelationId('evt') as CorrelationId);\n    const activeSpan = otelTrace.getActiveSpan();\n    const activeSpanContext = activeSpan?.spanContext();\n    const traceparent =\n      activeSpanContext && otelTrace.isSpanContextValid(activeSpanContext)\n        ? `00-${activeSpanContext.traceId}-${activeSpanContext.spanId}-${activeSpanContext.traceFlags\n            .toString(16)\n            .padStart(2, '0')}`\n        : undefined;\n\n    await eventBus.publish({\n      correlationId,\n      moduleName,\n      eventType,\n      payload: {\n        ...payload,\n        _meta: {\n          ...(typeof payload._meta === 'object' && payload._meta !== null\n            ? (payload._meta as Record<string, unknown>)\n            : {}),\n          correlationId,\n          publishedAt: nowIso(),\n          sourceService: 'cvg-his-v2-api',\n          tenantId: tenantContext?.tenantId,\n          accountId: tenantContext?.accountId,\n          traceparent\n        }\n      }\n    });\n  }",
+      "lineStart": 463,
+      "lineEnd": 500,
+      "previousCommitSourceSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+      "previousCommitFragmentSha256": "144c7c24dc8c6c656fd95eea086a03e28f90d22d6f471a6d72f43332f5c90a7c",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "runtimeOnEncounterCreated": {
+      "path": "apps/api/src/runtime.ts",
+      "sourceSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+      "fragmentSha256": "5a158bb6dff04449766176400bb450a1a3356047d5593a67544df4cd5bd95752",
+      "code": "async onEncounterCreated(encounter) {\n      await publishEvent('encounters' as ModuleName, 'encounter.created', {\n        id: encounter.id,\n        accountId: encounter.accountId,\n        patientId: encounter.patientId,\n        ownerId: encounter.ownerId,\n        status: encounter.status,\n        visitType: encounter.visitType,\n        origin: encounter.origin,\n        reason: encounter.reason,\n        openedAt: encounter.openedAt,\n        createdByUserId: encounter.createdByUserId\n      });\n    }",
+      "lineStart": 668,
+      "lineEnd": 681,
+      "previousCommitSourceSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+      "previousCommitFragmentSha256": "5a158bb6dff04449766176400bb450a1a3356047d5593a67544df4cd5bd95752",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "consumer": {
+      "path": "packages/modules/event-consumers/src/webhooks.consumer.ts",
+      "sourceSha256": "ee3d3955d9510cef34ef61162e49f94b29c57aa331abe24d07913fa38f9dccfa",
+      "fragmentSha256": "fcc9080ed9aa4d43b076fd7af050cb04e55d46f267d3c48a8ecf419ff969b930",
+      "code": "export class WebhooksEventHandlers {\n  readonly name = 'webhooks';\n  readonly #webhooks: WebhooksService;\n\n  constructor(options: WebhooksConsumerOptions) {\n    this.#webhooks = options.webhooks;\n  }\n\n  /**\n   * Returns an EventHandler-compatible function for eventBus.subscribe().\n   * Errors are logged and propagated to the event bus retry logic.\n   */\n  get handlers(): EventHandler {\n    return async (event: OutboxEvent): Promise<void> => {\n      await this.handle(event);\n    };\n  }\n\n  async handle(event: OutboxEvent): Promise<void> {\n    const ctx: WebhookDispatchContext = { ...event.payload, accountId: event.accountId };\n    const enqueue = this.#webhooks.enqueue?.bind(this.#webhooks);\n    const dispatch = enqueue ?? this.#webhooks.dispatch.bind(this.#webhooks);\n\n    switch (event.eventType) {\n      case 'patient.created':\n        await dispatch(event.accountId as AccountId, 'patient.created', ctx);\n        break;\n      case 'appointment.scheduled':\n        await dispatch(event.accountId as AccountId, 'appointment.scheduled', ctx);\n        break;\n      case 'appointment.status_changed':\n        await dispatch(event.accountId as AccountId, 'appointment.status_changed', ctx);\n        break;\n      case 'encounter.created':\n        await dispatch(event.accountId as AccountId, 'encounter.created', ctx);\n        break;\n      case 'encounter.status_changed':\n        await dispatch(event.accountId as AccountId, 'encounter.status_changed', ctx);\n        break;\n      case 'billing.record.created':\n        await dispatch(event.accountId as AccountId, 'billing.record.created', ctx);\n        break;\n      case 'billing.status_changed':\n        await dispatch(event.accountId as AccountId, 'billing.status_changed', ctx);\n        break;\n      case 'notification.sent':\n        await dispatch(event.accountId as AccountId, 'notification.sent', ctx);\n        break;\n      default:\n        break;\n    }\n  }\n}",
+      "lineStart": 43,
+      "lineEnd": 95,
+      "previousCommitSourceSha256": "ee3d3955d9510cef34ef61162e49f94b29c57aa331abe24d07913fa38f9dccfa",
+      "previousCommitFragmentSha256": "fcc9080ed9aa4d43b076fd7af050cb04e55d46f267d3c48a8ecf419ff969b930",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookEnqueue": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "c86d96fe3965c3b3850f4c99d3ce53ecafdca9b499db518bb6a6c90127ab6dd5",
+      "code": "public async enqueue(\n    accountId: AccountId,\n    event: string,\n    data: Record<string, unknown>\n  ): Promise<number> {\n    if (!this.#repository) {\n      return 0;\n    }\n\n    const webhooks = await this.#repository.findActiveByEvent(accountId, event);\n    if (webhooks.length === 0) {\n      return 0;\n    }\n\n    const payload: WebhookPayload = {\n      id: createCorrelationId('whpay'),\n      event,\n      timestamp: nowIso(),\n      accountId,\n      data\n    };\n\n    for (const webhook of webhooks) {\n      await this.#repository.createDelivery({\n        id: createCorrelationId('whdel') as WebhookDeliveryId,\n        accountId,\n        webhookId: webhook.id,\n        event,\n        payload: payload as unknown as Record<string, unknown>,\n        status: 'pending',\n        attempts: 0,\n        createdAt: nowIso()\n      });\n    }\n\n    return webhooks.length;\n  }",
+      "lineStart": 550,
+      "lineEnd": 586,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "c86d96fe3965c3b3850f4c99d3ce53ecafdca9b499db518bb6a6c90127ab6dd5",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookAttemptDelivery": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "5dd988a0b6d2d3ea4f16a6c6618f3e6e2490590e2d70ed2098c0f7fd1d80fa7c",
+      "code": "async #attemptDelivery(\n    webhook: WebhookSummary,\n    payload: WebhookPayload,\n    delivery: WebhookDeliverySummary\n  ): Promise<WebhookDeliveryResult> {\n    try {\n      // Re-validate values loaded from PostgreSQL as well as values received by\n      // the registration API. This protects against legacy rows, manual SQL,\n      // and any future repository implementation that bypasses register().\n      const normalizedUrl = normalizeWebhookUrl(webhook.url);\n      const target = new URL(normalizedUrl);\n      const addresses = await this.#resolveHostname(target.hostname);\n      if (addresses.length === 0 || addresses.some(isPrivateAddress)) {\n        return { success: false };\n      }\n      const body = JSON.stringify(payload);\n      // R2-SEC-02: the signature covers `${timestamp}.${body}` so receivers can\n      // reject replays outside WEBHOOK_SIGNATURE_TOLERANCE_SECONDS.\n      const timestamp = Math.floor(Date.now() / 1000);\n      const signature = webhook.secret\n        ? signWebhookPayload({ secret: webhook.secret, timestamp, body })\n        : undefined;\n      const result = await this.#deliverRequest({\n        url: normalizedUrl,\n        address: addresses[0],\n        headers: {\n          'Content-Type': 'application/json',\n          'X-Webhook-ID': webhook.id,\n          'X-Webhook-Event': delivery.event,\n          'X-Webhook-Delivery-ID': delivery.id,\n          // External receivers must use this stable key to deduplicate the\n          // unavoidable crash window after provider acceptance and before the\n          // worker can durably complete its lease-fenced claim.\n          'Idempotency-Key': delivery.id,\n          ...(signature\n            ? {\n                'X-Webhook-Signature': signature,\n                'X-Webhook-Timestamp': String(timestamp),\n                'X-Webhook-Signature-Version': WEBHOOK_SIGNATURE_VERSION\n              }\n            : {})\n        },\n        body,\n        timeoutMs: 10000\n      });\n      return result;\n    } catch {\n      return { success: false, error: 'webhook delivery request failed' };\n    }\n  }",
+      "lineStart": 588,
+      "lineEnd": 637,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "5dd988a0b6d2d3ea4f16a6c6618f3e6e2490590e2d70ed2098c0f7fd1d80fa7c",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookNormalizeUrl": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "c2df1abf9010273d6d4b677d25fd7bc55a406c8a4b9b5b4d949f873aca1a7a58",
+      "code": "function normalizeWebhookUrl(rawUrl: string): string {\n  const url = requireNonEmptyString(rawUrl, 'url');\n  let parsed: URL;\n\n  try {\n    parsed = new URL(url);\n  } catch {\n    throw new Error('Invalid webhook URL');\n  }\n\n  if (!['http:', 'https:'].includes(parsed.protocol)) {\n    throw new Error('Webhook URL must use HTTP or HTTPS');\n  }\n\n  if (parsed.username || parsed.password) {\n    throw new Error('Webhook URL must not include credentials');\n  }\n\n  const hostname = parsed.hostname.toLowerCase();\n  if (hostname === 'localhost' || hostname.endsWith('.localhost')) {\n    throw new Error('Webhook URL must not target a private network');\n  }\n  if (isIP(hostname) !== 0 && isPrivateAddress(hostname)) {\n    throw new Error('Webhook URL must not target a private network');\n  }\n\n  return parsed.toString();\n}",
+      "lineStart": 196,
+      "lineEnd": 223,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "c2df1abf9010273d6d4b677d25fd7bc55a406c8a4b9b5b4d949f873aca1a7a58",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookPrivateAddress": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "54ac9700ea74a1e45f59fc13c1ce48108b2ba3adde72fde0ee95b815804b099f",
+      "code": "function isPrivateAddress(address: string): boolean {\n  const family = isIP(address);\n  if (family === 0) return true;\n  return nonPublicAddresses.check(address, family === 6 ? 'ipv6' : 'ipv4');\n}",
+      "lineStart": 115,
+      "lineEnd": 119,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "54ac9700ea74a1e45f59fc13c1ce48108b2ba3adde72fde0ee95b815804b099f",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookAddressBlockList": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "2f364c3f839566a84c6fda3231e6fed0b56bf6e93103f0a567dd4e263a12ecf3",
+      "code": "const nonPublicAddresses = new BlockList();",
+      "lineStart": 85,
+      "lineEnd": 85,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "2f364c3f839566a84c6fda3231e6fed0b56bf6e93103f0a567dd4e263a12ecf3",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookIpv4BlockList": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "885d79ca92d3a80910422432c471075645e508cdd3ae984eaa3d0e30f5a05913",
+      "code": "for (const [network, prefix] of [\n  ['0.0.0.0', 8],\n  ['10.0.0.0', 8],\n  ['100.64.0.0', 10],\n  ['127.0.0.0', 8],\n  ['169.254.0.0', 16],\n  ['172.16.0.0', 12],\n  ['192.0.0.0', 24],\n  ['192.0.2.0', 24],\n  ['192.168.0.0', 16],\n  ['198.18.0.0', 15],\n  ['198.51.100.0', 24],\n  ['203.0.113.0', 24],\n  ['224.0.0.0', 4],\n  ['240.0.0.0', 4]\n] as const) {\n  nonPublicAddresses.addSubnet(network, prefix, 'ipv4');\n}",
+      "lineStart": 86,
+      "lineEnd": 103,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "885d79ca92d3a80910422432c471075645e508cdd3ae984eaa3d0e30f5a05913",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookIpv6BlockList": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "0134786b67af4fb1ecd3ffd642b802ad951893b3f30dc7e0897cbd4319aedae7",
+      "code": "for (const [network, prefix] of [\n  ['::', 128],\n  ['::1', 128],\n  ['fc00::', 7],\n  ['fe80::', 10],\n  ['ff00::', 8],\n  ['2001:db8::', 32]\n] as const) {\n  nonPublicAddresses.addSubnet(network, prefix, 'ipv6');\n}",
+      "lineStart": 104,
+      "lineEnd": 113,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "0134786b67af4fb1ecd3ffd642b802ad951893b3f30dc7e0897cbd4319aedae7",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookSignature": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "f89f05779aecee7f45a27dda1e26226a48db9bd764ebe2822fe936238f18b291",
+      "code": "export function signWebhookPayload(input: WebhookSignatureInput): string {\n  return `sha256=${createHmac('sha256', input.secret).update(`${input.timestamp}.${input.body}`).digest('hex')}`;\n}",
+      "lineStart": 759,
+      "lineEnd": 761,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "f89f05779aecee7f45a27dda1e26226a48db9bd764ebe2822fe936238f18b291",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "webhookSignatureVersion": {
+      "path": "packages/modules/webhooks/src/index.ts",
+      "sourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "fragmentSha256": "0e1e8a3579020c97476dc8fd2e1d58c7e4f1884f77ce72dd19f2adef5ff88418",
+      "code": "export const WEBHOOK_SIGNATURE_VERSION = 'v2';",
+      "lineStart": 746,
+      "lineEnd": 746,
+      "previousCommitSourceSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+      "previousCommitFragmentSha256": "0e1e8a3579020c97476dc8fd2e1d58c7e4f1884f77ce72dd19f2adef5ff88418",
+      "sameFragmentAcrossPinnedCommits": true
+    },
+    "requireNonEmptyString": {
+      "path": "packages/shared/validation/src/index.ts",
+      "sourceSha256": "de745402342b82538f9bd5ba98ffee2de2030812600658eaaa17bfbe2893ac47",
+      "fragmentSha256": "3729c81df3007ec67dcb8e8c011acf9ca49ded69ac4daafd044b13f70e955ed6",
+      "code": "export function requireNonEmptyString(\n  value: unknown,\n  field: string,\n): string {\n  if (typeof value !== \"string\" || value.trim().length === 0) {\n    throw new ValidationError(`Field ${field} must be a non-empty string`, {\n      field,\n      reason: \"required\",\n    });\n  }\n\n  return value.trim();\n}",
+      "lineStart": 40,
+      "lineEnd": 52,
+      "previousCommitSourceSha256": "de745402342b82538f9bd5ba98ffee2de2030812600658eaaa17bfbe2893ac47",
+      "previousCommitFragmentSha256": "3729c81df3007ec67dcb8e8c011acf9ca49ded69ac4daafd044b13f70e955ed6",
+      "sameFragmentAcrossPinnedCommits": true
+    }
+  }
+}

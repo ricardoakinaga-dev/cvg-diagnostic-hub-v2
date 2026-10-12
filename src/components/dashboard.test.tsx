@@ -168,7 +168,7 @@ describe("RequestDialog patient search", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: /Hemograma/ }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar solicitação" }));
 
-    await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
+    await waitFor(() => expect(onCreated).toHaveBeenCalledWith({ id: "request-101" }));
     const createCall = apiFetchMock.mock.calls.find(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST");
     expect(JSON.parse(createCall?.[1]?.body as string)).toEqual({ patientId: remotePatient.id, encounterId: remoteEncounter.id, priority: "ROUTINE", items: [{ serviceId: "service-1" }] });
     expect(createCall?.[1]?.headers).toMatchObject({ "x-correlation-id": expect.stringMatching(/^ui-/) });

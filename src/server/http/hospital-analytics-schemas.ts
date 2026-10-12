@@ -1,0 +1,13 @@
+import { z } from "zod";
+import { HOSPITAL_METRIC_CODES } from "@cvg/contracts";
+const id = z.string().min(1).max(100);
+const departmentCode = z.string().trim().regex(/^[A-Za-z0-9_-]{1,60}$/);
+const revision = z.number().int().positive();
+const filters = { from: z.iso.datetime({ offset: true }), to: z.iso.datetime({ offset: true }), departmentCode: departmentCode.optional() };
+const ordered = (value: { from: string; to: string }) => Date.parse(value.from) < Date.parse(value.to);
+export const hospitalMetricFiltersSchema = z.object(filters).strict().refine(ordered, "Informe um intervalo com início anterior ao fim.");
+export const hospitalMetricRowsFiltersSchema = z.object({ ...filters, limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() }).strict().refine(ordered);
+export const hospitalReportCreateSchema = z.object({ name: z.string().trim().min(1).max(160), sharedDepartmentCode: departmentCode.optional(), metricCode: z.enum(HOSPITAL_METRIC_CODES), filters: hospitalMetricFiltersSchema, format: z.enum(["CSV", "JSONL"]) }).strict();
+export const hospitalReportPatchSchema = hospitalReportCreateSchema.partial().extend({ sharedDepartmentCode: departmentCode.nullable().optional(), active: z.boolean().optional(), expectedVersion: revision }).strict().refine((value) => Object.keys(value).some((key) => key !== "expectedVersion"));
+export const hospitalReportJobCreateSchema = z.object({ reportId: id, expectedReportVersion: revision }).strict();
+export const hospitalReportJobRetrySchema = z.object({ expectedVersion: revision }).strict();

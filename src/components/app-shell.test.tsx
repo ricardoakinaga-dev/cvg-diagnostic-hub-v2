@@ -3,6 +3,11 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app-shell";
 import { apiFetch } from "./api-client";
+import type { Department } from "@cvg/contracts";
+
+const directory = vi.hoisted(() => ({ departments: [] as Department[], services: [] }));
+vi.mock("./use-departments", async (original) => ({ ...await original<typeof import("./use-departments")>(), useDepartments: () => directory }));
+function department(code: string, name: string): Department { return { id: `department-${code}`, code, name, type: "DIAGNOSTIC", active: true, memberUserIds: [], version: 1, createdAt: "2026-10-11T00:00:00Z", updatedAt: "2026-10-11T00:00:00Z" }; }
 
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a {...props}>{children}</a>,
@@ -52,6 +57,7 @@ const originalEventSource = globalThis.EventSource;
 
 describe("AppShell", () => {
   beforeEach(() => {
+    directory.departments = [department("LABORATORY", "Laboratório")];
     window.localStorage.clear();
     navigationState.pathname = "/";
     navigationState.searchParams = new URLSearchParams();
@@ -99,6 +105,41 @@ describe("AppShell", () => {
     render(<AppShell><h1>Workspace</h1></AppShell>);
     const crumb = await screen.findByRole("navigation", { name: "Você está em" });
     expect(crumb).toHaveTextContent(label);
+  });
+
+  it("shows independent hospital destinations only for effective grants in desktop and mobile navigation", async () => {
+    navigationState.pathname = "/planner/beds";
+    vi.mocked(apiFetch).mockImplementation(async (path) => path.startsWith("/notifications") ? [] as never : { user: { id: "viewer-hospital", role: "VIEWER", displayName: "Leitura de internação", email: "synthetic@example.invalid", departmentCode: "IT", timezone: "UTC", permissions: ["hospital_task.view", "plan.view", "shift.view", "admission.view"] } } as never);
+    render(<AppShell><h1>Censo autorizado</h1></AppShell>);
+    const navigation = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(navigation).getByRole("link", { name: "Planos assistenciais" })).toHaveAttribute("href", "/planner/plans");
+    expect(within(navigation).getByRole("link", { name: "Plantões e cobertura" })).toHaveAttribute("href", "/planner/shifts");
+    expect(within(navigation).getByRole("link", { name: "Passagem de plantão" })).toHaveAttribute("href", "/planner/handoffs");
+    expect(within(navigation).getByRole("link", { name: "Leitos e censo" })).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).getByRole("link", { name: "Planner hospitalar" })).not.toHaveAttribute("aria-current");
+    expect(within(navigation).queryByRole("link", { name: "Agenda de recursos" })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Recursos e leitos" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Você está em" })).toHaveTextContent("Leitos e censo");
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menu" }));
+    expect(document.querySelector(".app-frame")).toHaveClass("sidebar-mobile-open");
+    fireEvent.click(within(navigation).getByRole("link", { name: "Planos assistenciais" }));
+    expect(document.querySelector(".app-frame")).not.toHaveClass("sidebar-mobile-open");
+  });
+
+  it("keeps new documents, personal inbox and technical integration destinations independent of clinical role", async () => {
+    navigationState.pathname = "/admin/integrations";
+    vi.mocked(apiFetch).mockImplementation(async (path) => path.startsWith("/notifications") ? [] as never : { user: { id: "technical-docs", role: "ADMIN", displayName: "Administrador técnico", email: "synthetic@example.invalid", departmentCode: "IT", timezone: "UTC", permissions: ["hospital_document.view", "work_notification.view", "integration.manage"] } } as never);
+    render(<AppShell><h1>Integrações autorizadas</h1></AppShell>);
+    const navigation = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(navigation).getByRole("link", { name: "Protocolos e documentos" })).toHaveAttribute("href", "/planner/documents");
+    expect(within(navigation).getByRole("link", { name: "Caixa de trabalho" })).toHaveAttribute("href", "/planner/inbox");
+    expect(within(navigation).getByRole("link", { name: "Integrações hospitalares" })).toHaveAttribute("aria-current", "page");
+    expect(within(navigation).queryByRole("link", { name: "Planner hospitalar" })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Indicadores hospitalares" })).not.toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Meu trabalho" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir menu" }));
+    fireEvent.click(within(navigation).getByRole("link", { name: "Caixa de trabalho" }));
+    expect(document.querySelector(".app-frame")).not.toHaveClass("sidebar-mobile-open");
   });
 
   it("persists desktop collapse and sector expansion and dismisses mobile query navigation", async () => {
@@ -344,6 +385,7 @@ describe("AppShell", () => {
   });
 
   it("combines administrative, management and clinical navigation only for SUPERADMIN", async () => {
+    directory.departments = [department("LABORATORY", "Laboratório"), department("RADIOLOGY", "Radiologia"), department("ULTRASOUND", "Ultrassom")];
     vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", email: "super@cvg.local", displayName: "Superadmin", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC" } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     const nav = await screen.findByRole("navigation", { name: "Navegação principal" });

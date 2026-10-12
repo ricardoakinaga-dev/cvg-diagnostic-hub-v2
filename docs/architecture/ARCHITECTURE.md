@@ -43,6 +43,8 @@ There is no NestJS API in this repository. `src/app/api/v1/[...path]/route.ts` p
 
 The former 2,800-line application service is split into modules; production source files are bounded below 800 lines. Dependency direction is route → application → domain ports/adapters, with no UI write bypassing the API.
 
+Hospital planner read filters live in `packages/domain/src/diagnostic-planner-filters.ts`. Application services import this pure projection from `@cvg/domain`; `@cvg/shared-state` re-exports it for browser filter consumers. The shared-state → package-domain dependency is explicit in the architecture check. Application services do not depend on browser state, and filtering does not authorize objects or execute clinical transitions.
+
 ## 4. Persistence boundary
 
 PostgreSQL is required for the disposable integration harness and the configured runtime mode. Migrations `001`–`006` create the ledger, snapshot row, audit/outbox projections, outbox claim ownership, distributed rate-limit buckets and `runtime_storage_boundaries`; migrations `007`–`009` add the expand-only relational clinical/sample-lineage seam and its readiness contract. The latter records the current contract (`StoreState-v1`) and its transitional status so a future relational migration cannot silently change the source of truth.

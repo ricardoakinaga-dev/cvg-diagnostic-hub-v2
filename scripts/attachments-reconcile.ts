@@ -8,7 +8,7 @@ import "./load-file-secrets";
 import { ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import { reconcileAttachments } from "../src/server/storage/attachments-reconcile";
 import { getRuntimeStoreAsync } from "../src/server/store/runtime";
-import { archivedAttachmentKeys } from "./attachment-references";
+import { activeAttachmentReferences, archivedAttachmentKeys } from "./attachment-references";
 
 interface BucketAccess { readonly client: S3Client; readonly bucket: string }
 
@@ -39,7 +39,7 @@ async function main(): Promise<void> {
   const store = await getRuntimeStoreAsync();
   const state = await store.readState();
   const [archived, objectKeys] = await Promise.all([archivedAttachmentKeys(store), listObjectKeys(access)]);
-  const report = reconcileAttachments(state.attachments, archived, objectKeys);
+  const report = reconcileAttachments(activeAttachmentReferences(state), archived, objectKeys);
   // Attachment ids and counts only: no file name, no patient, no result content.
   console.log(JSON.stringify({ event: report.ok ? "attachments.reconciled" : "attachments.divergent", ...report, checkedAt: new Date().toISOString() }));
   if (!report.ok) process.exitCode = 1;

@@ -1,3 +1,4 @@
+import { systemGroupId } from "../security/access-group-policy";
 import { describe, expect, it } from "vitest";
 import type { RoleCode } from "@cvg/contracts";
 import type { User } from "../domain/models";
@@ -10,14 +11,14 @@ async function setup() {
   const author = state.users.find((user) => user.role === "VETERINARIAN")!;
   const admin = state.users.find((user) => user.role === "ADMIN")!;
   const readers: User[] = [
-    ...(["VETERINARIAN", "INPATIENT_TEAM", "VIEWER"] as const).map((role) => ({ ...admin, id: `reader-${role}`, email: `reader-${role}@cvg.test`, role, patientIds: ["patient-thor"], serviceCodes: [], managedDepartmentCodes: [] })),
+    ...(["VETERINARIAN", "INPATIENT_TEAM", "VIEWER"] as const).map((role) => ({ ...admin, id: `reader-${role}`, email: `reader-${role}@cvg.test`, role, accessGroupId: systemGroupId(role), patientIds: ["patient-thor"], serviceCodes: [], managedDepartmentCodes: [] })),
     ...([
       ["LAB_TECH", "LABORATORY", "CRP"],
       ["RADIOLOGY_TEAM", "RADIOLOGY", "XRAY_THORAX"],
       ["ULTRASOUND_TEAM", "ULTRASOUND", "ULTRASOUND_ABDOMEN"]
-    ] as const).map(([role, departmentCode, serviceCode]) => ({ ...admin, id: `reader-${role}`, email: `reader-${role}@cvg.test`, role, departmentCode, patientIds: [], serviceCodes: [serviceCode], managedDepartmentCodes: [] })),
-    { ...admin, id: "reader-MANAGER", email: "reader-MANAGER@cvg.test", role: "MANAGER", patientIds: [], serviceCodes: [], managedDepartmentCodes: ["LABORATORY"] },
-    { ...admin, id: "reader-SUPERADMIN", email: "reader-SUPERADMIN@cvg.test", role: "SUPERADMIN", patientIds: [], serviceCodes: [], managedDepartmentCodes: [] }
+    ] as const).map(([role, departmentCode, serviceCode]) => ({ ...admin, id: `reader-${role}`, email: `reader-${role}@cvg.test`, role, accessGroupId: systemGroupId(role), departmentCode, patientIds: [], serviceCodes: [serviceCode], managedDepartmentCodes: [] })),
+    { ...admin, id: "reader-MANAGER", email: "reader-MANAGER@cvg.test", role: "MANAGER", accessGroupId: systemGroupId("MANAGER"), patientIds: [], serviceCodes: [], managedDepartmentCodes: ["LABORATORY"] },
+    { ...admin, id: "reader-SUPERADMIN", email: "reader-SUPERADMIN@cvg.test", role: "SUPERADMIN", accessGroupId: systemGroupId("SUPERADMIN"), patientIds: [], serviceCodes: [], managedDepartmentCodes: [] }
   ];
   state.users.push(...readers);
   const store = new MemoryStore(state);

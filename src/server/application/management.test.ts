@@ -21,7 +21,9 @@ async function authenticatedActor(store: MemoryStore, email: string, stepUp = fa
 }
 
 function setup() {
-  const store = new MemoryStore(createDemoState("management-test-password"));
+  const initial = createDemoState("management-test-password");
+  initial.departments.push({ ...initial.departments[0], id: "department-OPERATIONS", code: "OPERATIONS", name: "Operações", memberUserIds: [] });
+  const store = new MemoryStore(initial);
   const service = createApplicationService(store);
   const user = (email: string) => {
     const actor = store.getState().users.find((entry) => entry.email === email);

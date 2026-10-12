@@ -10,6 +10,14 @@ const e2eProxyHeaders = (clientAddress: string) => ({
   "x-forwarded-for": clientAddress
 });
 const externalBaseUrl = process.env.BASE_URL;
+const isolatedProject = process.env.CVG_E2E_PROJECT;
+if (isolatedProject && !["chromium", "tablet", "mobile"].includes(isolatedProject)) {
+  throw new Error("CVG_E2E_PROJECT must be chromium, tablet or mobile.");
+}
+if (isolatedProject && externalBaseUrl) {
+  throw new Error("An isolated canonical project cannot use an external BASE_URL.");
+}
+const serverLogging = process.env.CVG_E2E_RUNTIME_TELEMETRY === "true" ? { stdout: "pipe" as const, stderr: "pipe" as const } : {};
 const e2ePortBase = Number(process.env.E2E_PORT_BASE ?? "3100");
 if (!Number.isInteger(e2ePortBase) || e2ePortBase < 1024 || e2ePortBase > 65533) {
   throw new Error("E2E_PORT_BASE must be an integer between 1024 and 65533.");
@@ -30,7 +38,7 @@ const e2eWebServers = externalBaseUrl
       reuseExistingServer,
       timeout: 120_000
     }
-  : Object.entries(e2eProjectPorts).map(([name, port]) => ({ name, command: e2eCommand(port), url: `http://localhost:${port}`, reuseExistingServer: false, timeout: 120_000 }));
+  : Object.entries(e2eProjectPorts).filter(([name]) => !isolatedProject || name === isolatedProject).map(([name, port]) => ({ name, command: e2eCommand(port), url: `http://localhost:${port}`, reuseExistingServer: false, timeout: 120_000, ...serverLogging }));
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -57,7 +65,7 @@ export default defineConfig({
     // without the touch profile, which exits before launch on the available host.
     { name: "tablet", use: { ...devices["Desktop Chrome"], baseURL: externalBaseUrl ?? `http://localhost:${e2eProjectPorts.tablet}`, viewport: { width: 834, height: 1194 }, extraHTTPHeaders: e2eProxyHeaders("198.51.100.11") } },
     { name: "mobile", use: { ...devices["Pixel 5"], baseURL: externalBaseUrl ?? `http://localhost:${e2eProjectPorts.mobile}`, extraHTTPHeaders: e2eProxyHeaders("198.51.100.12") } }
-  ],
+  ].filter((project) => !isolatedProject || project.name === isolatedProject),
   // The E2E servers are disposable and synthetic. Each project gets an isolated
   // memory store so one viewport cannot contaminate another project's state.
   // An explicit BASE_URL keeps the existing single external-server mode.

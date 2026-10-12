@@ -164,7 +164,8 @@ const allowedTargets: Record<Layer, ReadonlySet<Layer>> = {
   observability: new Set(["observability", "server-domain"]),
   contracts: new Set(["contracts"]),
   services: new Set(["services", "contracts"]),
-  "shared-state": new Set(["shared-state", "contracts"]),
+  // Read filters use pure domain projections shared with the application; no server or UI dependency is introduced.
+  "shared-state": new Set(["shared-state", "contracts", "package-domain"]),
   ui: new Set(["ui", "contracts"])
 };
 

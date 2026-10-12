@@ -1,3 +1,4 @@
+import { systemGroupId } from "../security/access-group-policy";
 import { describe, expect, it } from "vitest";
 import type { User } from "../domain/models";
 import { authenticateRequest, loginUser, reauthenticateUser } from "../security/session";
@@ -10,8 +11,9 @@ const PASSWORD = "management-superadmin-test-2026";
 
 function setup() {
   const initial = createDemoState(PASSWORD);
+  initial.departments.push({ ...initial.departments[0], id: "department-OPERATIONS", code: "OPERATIONS", name: "Operações", memberUserIds: [] });
   const admin = initial.users.find((user) => user.role === "ADMIN")!;
-  const superadmin: User = { ...admin, id: "user-superadmin", email: "superadmin@test.local", role: "SUPERADMIN" };
+  const superadmin: User = { ...admin, id: "user-superadmin", email: "superadmin@test.local", role: "SUPERADMIN", accessGroupId: systemGroupId("SUPERADMIN") };
   const peer: User = { ...superadmin, id: "user-superadmin-peer", email: "superadmin-peer@test.local" };
   const store = new MemoryStore({ ...initial, users: [...initial.users.filter((user) => user.role !== "SUPERADMIN"), superadmin, peer] });
   return { store, service: createApplicationService(store), admin, superadmin, peer,

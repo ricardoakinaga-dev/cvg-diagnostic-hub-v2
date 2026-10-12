@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { hospitalTimezone } from "@/lib/hospital-time";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardRequest, DashboardService, DashboardView, Encounter, Notification, Patient, Priority, SearchResult, SessionResponse, SessionUser } from "@cvg/contracts";
 import { ApiClientError, apiFetch, createClientUniqueId, formatRelativeTime, getSafeErrorMessage } from "./api-client";
@@ -11,6 +12,7 @@ import { PatientDialog, type CreatedPatientPayload } from "./patient-dialog";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon, type IconName } from "./ui-icons";
 import { CommandCenterPanel } from "@/features/command-center/command-center-panel";
+import { RequestCreatedNotice, type CreatedRequest } from "./request-created-notice";
 
 type Request = DashboardRequest;
 type Service = DashboardService;
@@ -29,7 +31,7 @@ function searchStatusLabel(status: string): string {
 }
 
 function dashboardDateLabel(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).formatToParts(date);
+  const parts = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: hospitalTimezone() }).formatToParts(date);
   const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
   const day = parts.find((part) => part.type === "day")?.value ?? "";
   const month = parts.find((part) => part.type === "month")?.value ?? "";
@@ -120,6 +122,7 @@ function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
 
 function ClinicalDashboard({ displayName, role }: { displayName: string; role?: string }) {
   const [showRequest, setShowRequest] = useState(false);
+  const [createdRequest, setCreatedRequest] = useState<CreatedRequest>();
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
@@ -270,7 +273,8 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
         </section>
       </div>
       <section className="bottom-strip"><div><span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span><div><strong>Visibilidade ponta a ponta</strong><p>Os estados são confirmados pelo servidor e auditados em uma única timeline.</p></div></div><span className="strip-status">Atualizado {stats ? formatRelativeTime(stats.updatedAt) : "indisponível"}</span></section>
-      {showRequest && <RequestDialog canCreatePatient={canCreateClinicalRequest} services={services} servicesError={servicesResource.error} onRetryServices={loadServices} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); reloadAll(); }} />}
+      {createdRequest && <RequestCreatedNotice request={createdRequest} />}
+      {showRequest && <RequestDialog canCreatePatient={canCreateClinicalRequest} services={services} servicesError={servicesResource.error} onRetryServices={loadServices} onClose={() => setShowRequest(false)} onCreated={(request) => { setCreatedRequest(request); setShowRequest(false); reloadAll(); }} />}
     </div>
   );
 }
@@ -298,7 +302,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
 
 function DashboardSkeleton() { return <div className="dashboard-page"><div className="skeleton-heading skeleton-block" /><div className="skeleton-search skeleton-block" /><div className="metric-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="metric-card skeleton-card" />)}</div><div className="dashboard-columns"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></div>; }
 
-export function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
+export function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: (request: CreatedRequest) => void }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -323,6 +327,7 @@ export function RequestDialog({ canCreatePatient, services, servicesError, onRet
   const [showPatientCreate, setShowPatientCreate] = useState(false);
   const [patientNotice, setPatientNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const submitIntent = useRef<{ body: string; key: string } | undefined>(undefined);
   useDialogFocus(dialogRef, onClose, closeButtonRef);
   useEffect(() => {
     const controller = new AbortController();
@@ -409,21 +414,18 @@ export function RequestDialog({ canCreatePatient, services, servicesError, onRet
       return;
     }
     try {
-      await apiFetch("/diagnostic-requests", {
+      const body = JSON.stringify({ patientId: currentPatientId, encounterId: currentEncounterId, priority, items: selected.map((serviceId) => ({ serviceId })), ...(duplicateWarning ? { overrideReason: overrideReason.trim() } : {}) });
+      if (submitIntent.current?.body !== body) submitIntent.current = { body, key: createClientUniqueId() };
+      const request = await apiFetch<CreatedRequest>("/diagnostic-requests", {
         method: "POST",
         headers: {
+          "idempotency-key": submitIntent.current.key,
           "x-correlation-id": `ui-${createClientUniqueId()}`,
           ...(duplicateWarning ? { "x-duplicate-override": "true" } : {})
         },
-        body: JSON.stringify({
-          patientId: currentPatientId,
-          encounterId: currentEncounterId,
-          priority,
-          items: selected.map((serviceId) => ({ serviceId })),
-          ...(duplicateWarning ? { overrideReason: overrideReason.trim() } : {})
-        })
+        body
       });
-      onCreated();
+      onCreated(request);
     } catch (cause) {
       if (cause instanceof ApiClientError && cause.code === "DUPLICATE_WARNING") {
         setDuplicateWarning(true);

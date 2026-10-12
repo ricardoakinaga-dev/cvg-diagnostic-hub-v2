@@ -12,6 +12,7 @@ const target: ManagedUser = { id: "target", email: "target@cvg.local", displayNa
 function mockApi(identity = creator, original = target) {
   return vi.spyOn(apiClient, "apiFetch").mockImplementation(async <T,>(path: string, init?: RequestInit): Promise<T> => {
     if (path === "/session/me" || path === "/session/reauth") return { user: identity } as T;
+    if (path === "/departments?includeInactive=true") return [["IT", "Tecnologia"], ["INPATIENT", "Internação"], ["LABORATORY", "Laboratório"]].map(([code, name]) => ({ id: `dept-${code}`, code, name, type: code === "LABORATORY" ? "DIAGNOSTIC" : "CLINICAL", active: true, memberUserIds: [], version: 1, createdAt: "2026-10-11T00:00:00Z", updatedAt: "2026-10-11T00:00:00Z" })) as T;
     if (path === "/users" && !init?.method) return [original] as T;
     if (path === "/diagnostic-services?includeInactive=true" || path === "/reason-codes") return [] as T;
     if (path === "/users" && init?.method === "POST") return { ...original, ...JSON.parse(init.body as string), initialPassword: "SyntheticInitial123" } as T;
@@ -27,6 +28,7 @@ async function open(section: "all" | "users" | "catalog" = "all") {
   await screen.findByRole("heading", { name: section === "users" ? "Acessos" : section === "catalog" ? "Catálogos" : "Administração", level: 1 });
   await screen.findByRole("button", { name: "Atualizar" });
   if (section !== "catalog") await screen.findByText(target.displayName);
+  if (section !== "users") await screen.findByRole("form", { name: "Adicionar serviço" });
 }
 function callsTo(mock: ReturnType<typeof mockApi>, path: string, method: string) {
   return mock.mock.calls.filter(([request, init]) => request === path && init?.method === method);

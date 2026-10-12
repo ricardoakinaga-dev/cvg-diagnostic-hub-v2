@@ -1,13 +1,13 @@
 import { createStructuredLogger } from "../observability/structured-logger";
 import { recordAttachmentScan } from "../observability/metrics";
 
-export interface AttachmentScanSignal {
+interface AttachmentScanSignalFields {
   attachmentId: string;
-  resultVersionId: string;
   declaredMime: string;
   detectedMime: string;
   sizeBytes: number;
 }
+export type AttachmentScanSignal = AttachmentScanSignalFields & ({ resultVersionId: string; taskId?: never } | { taskId: string; resultVersionId?: never });
 
 /**
  * PROD-308: metric for every scanned upload and a structured warning when the verdict is not CLEAN. The object stays

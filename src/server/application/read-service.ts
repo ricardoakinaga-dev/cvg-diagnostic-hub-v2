@@ -9,7 +9,7 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import { decodeQueueCursor, encodeQueueCursor } from "./queue-pagination";
 import * as helpers from "./service-common";
-import { auditScopeForActor, requestAuditScope } from "./audit-read";
+import { auditEventWithinScope, auditScopeForActor, redactPlannerAuditEvent, requestAuditScope } from "./audit-read";
 import { canViewNotification } from "./notification-visibility";
 import { encountersForPatient, findById, samplesForItem } from "../domain/state-index";
 const {
@@ -132,8 +132,13 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       requirePermission(currentActor, "audit.view", { departmentCode: currentActor.departmentCode });
       const limit = pageSize(filters.limit);
       const cursor = decodeAuditCursor(filters.cursor);
-      const page = await store.readAuditEvents({ scope: auditScopeForActor(state, currentActor), order: "desc", limit, cursor });
-      const items = page.items.map((event) => ({ ...event, metadata: { ...event.metadata } }));
+      const scope = auditScopeForActor(state, currentActor);
+      const page = await store.readAuditEvents({ scope, order: "desc", limit, cursor });
+      const fresh = await store.readState(); const refreshed = requireActiveUser(fresh, actor);
+      requirePermission(refreshed, "audit.view", { departmentCode: refreshed.departmentCode });
+      const finalScope = auditScopeForActor(fresh, refreshed);
+      if (scope.entities.some((entity) => !auditEventWithinScope(finalScope, entity)) || page.items.some((event) => !auditEventWithinScope(finalScope, event))) throw new ApiError("SCOPE_DENIED", "O acesso ao histórico mudou durante a leitura.", 404);
+      const items = page.items.map((event) => redactPlannerAuditEvent(fresh, refreshed, event));
       const last = page.items.at(-1);
       const nextCursor = last && page.hasMore ? encodeKeysetCursor({ occurredAt: last.occurredAt, id: last.id }) : undefined;
       return { items, nextCursor, limit, total: page.total };
