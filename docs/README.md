@@ -35,7 +35,9 @@ Uma decisão documental não transforma uma hipótese operacional em fato. Pergu
 
 ## CI e revisão corrente do planner — 12/10/2026
 
-O [registro corrente](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json) acompanham a correção dos quatro testes dependentes da data e o tempo de execução da CI. São dois inputs de validação alterados, com produto idêntico ao commit `5111a50`; 11 testes passaram em UTC e Honolulu. Os resultados completos são acompanhados no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). A primeira CI e suas falhas foram preservadas; a nova rodada precisa ser conferida no GitHub. Homologação e piloto continuam abertos.
+O [registro corrente](build/HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json) acompanham o reparo e a validação dos sete controles de mutação em cópias seguras. A segunda CI passou 5.305 testes de unidade/PostgreSQL, mas falhou no sentinel antigo; as duas CI com falha foram preservadas. Produto e testes existentes permanecem idênticos ao commit `007b8c4`. Os sete checks completos da nova rodada são acompanhados no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Homologação HIS e piloto continuam abertos.
+
+O [registro do relógio dos testes](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.md) conserva RED/GREEN em UTC e Honolulu e a captura anterior de inputs; seus resultados não certificam o novo runner.
 
 ## Compatibilidade HIS — captura anterior de 12/10/2026
 

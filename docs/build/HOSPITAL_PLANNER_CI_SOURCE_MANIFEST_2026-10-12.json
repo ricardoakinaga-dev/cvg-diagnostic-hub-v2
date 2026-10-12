@@ -4434,5 +4434,13 @@
       "path": "vitest.postgres.config.ts",
       "sha256": "0c972a5b4c910c2e5f257e6321c902d8230fe43bbf8405897a240e9cc1a057ca"
     }
-  ]
+  ],
+  "snapshotApplicability": {
+    "status": "SUPERSEDED_BY_VALIDATION_RUNNER_CHANGE",
+    "validOnlyForSnapshotFingerprint": "cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8",
+    "currentCandidateCertified": false,
+    "supersededBy": "HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json",
+    "currentSourceManifest": "HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "meaning": "Original captured fields and failures retain their dated input scope. The second remote CI completed G4 but failed the sentinel; current validation inputs require a fresh complete run."
+  }
 }

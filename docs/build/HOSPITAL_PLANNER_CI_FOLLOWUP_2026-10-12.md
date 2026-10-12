@@ -1,5 +1,7 @@
 # Revisão da CI do planner hospitalar
 
+> Captura histórica anterior ao reparo do controle de mutações. A segunda CI completou G4 e falhou no sentinel; a revisão posterior está no [novo registro](HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.md). Os resultados e campos abaixo preservam a captura original.
+
 **Data:** 12/10/2026 · **Estado:** primeira CI falhou; relógio dos testes corrigido e provas focadas aprovadas; nova CI pendente da publicação · **042:** PARTIAL · **051:** OPEN · **Release:** não aplicada.
 
 O [registro estruturado](HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json) e o [manifesto corrente](HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json) identificam 1.085 arquivos, fonte `cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8`. A [correção HIS anterior](HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.md) mantém suas provas focadas nos inputs que continuam idênticos. Os resultados completos de 11/10 continuam históricos.

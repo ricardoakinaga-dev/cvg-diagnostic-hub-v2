@@ -945,5 +945,13 @@
     "No installed HIS, clinical database, running hospital service, credentials or external clinical delivery were changed.",
     "LIS/PACS and nominal hospital validators remain unknown.",
     "The real pilot still needs its selected content/flows, approved endpoints and mappings, target workload/restore/alerts and named acceptance."
-  ]
+  ],
+  "snapshotApplicability": {
+    "status": "SUPERSEDED_BY_VALIDATION_RUNNER_CHANGE",
+    "validOnlyForSnapshotFingerprint": "cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8",
+    "currentCandidateCertified": false,
+    "supersededBy": "HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json",
+    "currentSourceManifest": "HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "meaning": "Original captured fields and failures retain their dated input scope. The second remote CI completed G4 but failed the sentinel; current validation inputs require a fresh complete run."
+  }
 }

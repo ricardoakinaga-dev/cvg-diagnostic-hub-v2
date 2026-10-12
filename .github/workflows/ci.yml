@@ -118,7 +118,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mutation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: mutation-report.json
+          path: |
+            mutation-report.json
+            /tmp/cvg-mutation-evidence-*/
           if-no-files-found: warn
           retention-days: 14
 
