@@ -33,13 +33,17 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Correção corrente do teste de privacidade de alertas — 12/10/2026
+## Imagens e permissões persistidas — candidata de 12/10/2026
 
-O [teste de alerta crítico](build/HOSPITAL_PLANNER_ALERT_PRIVACY_TEST_FOLLOWUP_2026-10-12.md) agora aceita o UUID legítimo que colidiu com um fragmento de telefone sintético e exige a estrutura completa da mensagem. Os 14 testes passaram e três alterações temporárias do produtor com PII foram rejeitadas, sem mudar produto ou guards. Apenas esse teste difere no [manifesto atual](build/HOSPITAL_PLANNER_ALERT_PRIVACY_TEST_SOURCE_MANIFEST_2026-10-12.json). A CI 38214466428 permanece FAIL; a nova CI e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Piloto e gates no alvo continuam pendentes.
+A [nova alteração](build/HOSPITAL_PLANNER_IMAGE_AUTHORITY_FOLLOWUP_2026-10-12.md) fixa a base Alpine das imagens, remove gestores globais de runtime, inclui vulnerabilidades sem correção nos gates e acrescenta 20 cenários de autoridade efetiva em PostgreSQL. O [registro](build/HOSPITAL_PLANNER_IMAGE_AUTHORITY_FOLLOWUP_2026-10-12.json) conserva o smoke de protótipo com 63 checks e os dois ensaios PostgreSQL; essas provas antecedem a adoção. CI e quatro imagens da [nova fonte](build/HOSPITAL_PLANNER_IMAGE_AUTHORITY_SOURCE_MANIFEST_2026-10-12.json) serão vinculadas ao commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Aceite hospitalar, HIS e revisão externa continuam pendentes.
+
+## Correção anterior do teste de privacidade de alertas — captura de 12/10/2026
+
+O [teste de alerta crítico](build/HOSPITAL_PLANNER_ALERT_PRIVACY_TEST_FOLLOWUP_2026-10-12.md) agora aceita o UUID legítimo que colidiu com um fragmento de telefone sintético e exige a estrutura completa da mensagem. Os 14 testes passaram e três alterações temporárias do produtor com PII foram rejeitadas, sem mudar produto ou guards. Apenas esse teste difere no [manifesto daquela captura](build/HOSPITAL_PLANNER_ALERT_PRIVACY_TEST_SOURCE_MANIFEST_2026-10-12.json). A CI 38214466428 permanece FAIL; a nova CI e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Piloto e gates no alvo continuam pendentes.
 
 ## Validação anterior da fixture de UX — captura de 12/10/2026
 
-A [correção da sequência e das expectativas de acesso](build/HOSPITAL_PLANNER_UX_FIXTURE_FOLLOWUP_2026-10-12.md) preserva o cadastro, busca de paciente além dos primeiros 100, criação do exame e revogação de sessão. Seis casos de UX e três checks da Home passaram no executor canônico, sem retries. Só o teste de UX mudou no [manifesto atual](build/HOSPITAL_PLANNER_UX_FIXTURE_SOURCE_MANIFEST_2026-10-12.json); produto e guards permanecem iguais. A CI 38209256914 continua FAIL, e a nova rodada e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Capturas anteriores e aceite hospitalar são preservados.
+A [correção da sequência e das expectativas de acesso](build/HOSPITAL_PLANNER_UX_FIXTURE_FOLLOWUP_2026-10-12.md) preserva o cadastro, busca de paciente além dos primeiros 100, criação do exame e revogação de sessão. Seis casos de UX e três checks da Home passaram no executor canônico, sem retries. Só o teste de UX mudou no [manifesto daquela captura](build/HOSPITAL_PLANNER_UX_FIXTURE_SOURCE_MANIFEST_2026-10-12.json); produto e guards permanecem iguais. A CI 38209256914 continua FAIL, e a nova rodada e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Capturas anteriores e aceite hospitalar são preservados.
 
 ## Correção anterior da política de cobertura — captura de 12/10/2026
 
@@ -51,7 +55,7 @@ A [revisão literal e suas correções](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANC
 
 ## CI e revisão anterior do planner — captura de 12/10/2026
 
-O [registro corrente](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json) acompanham as correções da edição de amostra, da ação encoberta pela navegação e da preparação laboratorial sintética para PostgreSQL. A quarta CI passou 5.305 testes de backend, 195 cenários na matriz completa de navegador e a imagem, mas falhou em 9/48 jornadas PostgreSQL. A nova rodada completa será acompanhada no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78); capturas/falhas anteriores continuam preservadas.
+O [registro daquela captura](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json) acompanham as correções da edição de amostra, da ação encoberta pela navegação e da preparação laboratorial sintética para PostgreSQL. A quarta CI passou 5.305 testes de backend, 195 cenários na matriz completa de navegador e a imagem, mas falhou em 9/48 jornadas PostgreSQL. A nova rodada completa será acompanhada no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78); capturas/falhas anteriores continuam preservadas.
 
 O solicitante confirmou que fará a validação dos fluxos e o aceite do piloto, conforme o [registro de responsabilidade](operations/HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json). O [pacote de UAT](operations/HOSPITAL_PLANNER_PILOT.md) conserva cenários e fichas; execução, resultados e aceite continuam pendentes. Homologação HIS permanece parcial.
 

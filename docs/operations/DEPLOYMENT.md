@@ -203,7 +203,7 @@ identificador de sessão ou paciente. Para executar sob demanda:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production \
-  run --rm worker npm run runtime:retention
+  run --rm worker node_modules/.bin/tsx scripts/runtime-retention.ts
 ```
 
 A auditoria não passa por esta poda: `audit_events` é append-only por trigger e por contrato, e desde a migration 013 é a única fonte de leitura. O snapshot guarda `auditEvents` vazio (constraint `runtime_audit_is_transient`).
@@ -367,11 +367,11 @@ Decisão D5: solicitações concluídas há mais de 24 meses saem do agregado at
 | `ARCHIVE_INTERVAL_MS` | `86400000` (24 h; mínimo 1 h) | Cadência do job no worker. |
 | `ARCHIVE_PURGE_AFTER_MONTHS` | vazio | Prazo legal em meses a partir do arquivamento. Vazio ou `0`: nenhum expurgo; ao definir, o worker também remove os anexos do S3. |
 
-Sob demanda: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm worker npm run runtime:archive -- --dry-run` (ensaio; `--apply` aplica, `--purge` exige o prazo legal definido). Cada lote grava um evento `ClinicalRecordsArchived` só com contagens.
+Sob demanda: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm worker node_modules/.bin/tsx scripts/clinical-archive.ts --dry-run` (ensaio; `--apply` aplica, `--purge` exige o prazo legal definido). Cada lote grava um evento `ClinicalRecordsArchived` só com contagens.
 
 ## 7. Papéis de banco separados (PROD-305)
 
-Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:
+Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `node_modules/.bin/tsx scripts/db-roles.ts` com três conexões, que o Compose monta sozinho:
 
 | Variável | Papel | Quem recebe |
 | --- | --- | --- |
@@ -443,7 +443,7 @@ O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco 
 
 O servidor do hospital deixa de compilar imagens. O workflow [`release.yml`](../../.github/workflows/release.yml) roda depois de cada CI verde num push para `main`:
 
-1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`), a operacional (`<prefixo>-ops:sha-…`) e a do armazenamento de objetos do modo on-prem (`<prefixo>-minio:sha-…`, MinIO compilado da fonte fixada em `deploy/minio/Dockerfile`, §12) e a do cliente usado pelo `storage-iam` (`<prefixo>-mc:sha-…`, `deploy/minio/Dockerfile.mc`), todas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH com correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das quatro, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
+1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`), a operacional (`<prefixo>-ops:sha-…`) e a do armazenamento de objetos do modo on-prem (`<prefixo>-minio:sha-…`, MinIO compilado da fonte fixada em `deploy/minio/Dockerfile`, §12) e a do cliente usado pelo `storage-iam` (`<prefixo>-mc:sha-…`, `deploy/minio/Dockerfile.mc`), todas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH, incluindo os achados sem correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das quatro, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
 2. **promote-staging:** move a tag `staging` das duas imagens para essa release, sem aprovação (homologação automática).
 3. **promote-production:** move a tag `production`. O job usa o ambiente `production` do GitHub e espera a aprovação de quem estiver em *required reviewers*. Antes de mover a tag ele confere, pela API, que o ambiente tem revisores obrigatórios; se não tiver, falha.
 

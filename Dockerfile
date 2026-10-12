@@ -1,13 +1,9 @@
 # syntax=docker/dockerfile:1.7
 
-FROM node:22-bookworm-slim AS base
+FROM mirror.gcr.io/library/node:22-alpine3.23@sha256:baf676f7d0e552f3231945c2f979055ca121bce128c152f7a34e6bd1728b1c5a AS base
 
-# The published Node image can lag behind Debian security updates (libpcre2,
-# perl-base, ...). Apply every pending upgrade instead of chasing single
-# packages, so the image gate does not fail each time Debian ships a fix.
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get upgrade --yes --no-install-recommends \
-    && rm -rf /var/lib/apt/lists/*
+# Install native dependencies in the same musl environment used by both runtimes.
+RUN apk upgrade --no-cache
 
 FROM base AS dependencies
 
@@ -55,19 +51,10 @@ FROM dependencies AS ops
 WORKDIR /app
 ENV NODE_ENV=production
 
-# Operations use npm run; retain a patched CLI instead of the vulnerable
-# bundled npm. Runtime application dependencies still come from the lockfile.
-# Published npm 11/12 still bundle vulnerable patch versions; update only those
-# bundled dependencies, within their existing major versions (D-027).
-RUN npm install --global npm@11.21.0 \
-    && npm install --prefix /tmp/npm-cli-security \
-      --omit=dev --ignore-scripts --no-package-lock \
-      brace-expansion@5.0.11 undici@6.28.1 \
-    && rm -rf /usr/local/lib/node_modules/npm/node_modules/brace-expansion \
-      /usr/local/lib/node_modules/npm/node_modules/undici \
-    && cp -a /tmp/npm-cli-security/node_modules/. /usr/local/lib/node_modules/npm/node_modules/ \
-    && rm -rf /tmp/npm-cli-security \
-    && npm cache clean --force
+# Operational entrypoints use the local tsx CLI; global package managers are unnecessary.
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
+    /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg /root/.npm
 
 COPY --chown=node:node package.json package-lock.json tsconfig.json ./
 COPY --chown=node:node db ./db
@@ -117,6 +104,7 @@ COPY --from=builder --chown=node:node /app/package.json ./package.json
 
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack \
     /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /opt/yarn-v* /usr/local/bin/yarn /usr/local/bin/yarnpkg /root/.npm \
     && mkdir -p .data/uploads \
     && chown -R node:node .data
 

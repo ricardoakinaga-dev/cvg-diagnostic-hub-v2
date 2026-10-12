@@ -92,7 +92,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit operational image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -100,7 +100,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-ops:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit object storage image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -108,7 +108,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-minio:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit storage client image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -116,7 +116,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-mc:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Generate the application image SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

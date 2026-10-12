@@ -642,7 +642,7 @@ jobs:
           image-ref: cvg-diagnostics-hub:ci
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit operational image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -650,7 +650,7 @@ jobs:
           image-ref: cvg-diagnostics-hub-ops:ci
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit MinIO image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -658,7 +658,7 @@ jobs:
           image-ref: cvg-minio-source:7aac2a2
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Build MinIO client image (storage-iam, D-051)
         run: bash scripts/ci-docker-build.sh --file deploy/minio/Dockerfile.mc --tag cvg-mc-source:7394ce0 .
@@ -668,7 +668,7 @@ jobs:
           image-ref: cvg-mc-source:7394ce0
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Boot image and verify livez and readyz
         run: |
