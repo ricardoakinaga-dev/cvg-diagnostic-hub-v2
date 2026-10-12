@@ -18,6 +18,17 @@ import { stateFromRow, versionFromRow } from "./postgres-state-codec";
  * appends and replaces in place; anything else renumbers that collection.
  */
 export const ENTITY_COLLECTIONS = [
+  "savedPlannerViews",
+  "hospitalTaskTypes", "hospitalTasks", "hospitalTaskDependencies", "hospitalIntakes",
+  "hospitalServices",
+  "hospitalHisV4Deliveries", "hospitalIntegrationCredentials", "hospitalIntegrationMessages", "hospitalAiSuggestions",
+  "hospitalDocuments", "hospitalTaskComments", "hospitalTaskAttachments", "workNotifications", "workNotificationPreferences", "workActivityPreferences", "hospitalReports", "hospitalReportJobs", "hospitalInstitutionSettings", "hospitalUserInvitations",
+  "hospitalResources",
+  "hospitalPlans", "hospitalShifts", "hospitalHandoffs", "hospitalChecklistTemplates", "hospitalRecurrences",
+  "examDefinitions",
+  "accessGroups",
+  "patientGrants",
+  "departments",
   "users",
   "sessions",
   "patients",

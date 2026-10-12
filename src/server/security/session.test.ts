@@ -340,6 +340,27 @@ describe("secure server sessions", () => {
     await expect(reauthenticateUser(store, request, "wrong-password")).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
   });
 
+  it("bounds wrong reauthentication passwords per account and revokes the guessing session", async () => {
+    resetRateLimits();
+    try {
+      const store = new MemoryStore(createDemoState("test-password"));
+      const guessing = await loginUser(store, "admin@cvg.local", "test-password");
+      const other = await loginUser(store, "admin@cvg.local", "test-password");
+      const request = (token: string) => new Request("http://localhost/api/v1/session/reauth", { headers: { cookie: `cvg_session=${token}` } });
+
+      for (let attempt = 1; attempt < 5; attempt += 1) {
+        await expect(reauthenticateUser(store, request(guessing.sessionToken), "wrong-password")).rejects.toMatchObject({ code: "UNAUTHENTICATED", status: 401 });
+      }
+      await expect(reauthenticateUser(store, request(guessing.sessionToken), "wrong-password")).rejects.toMatchObject({ code: "SESSION_EXPIRED", status: 401 });
+      await expect(authenticateRequest(store, request(guessing.sessionToken))).rejects.toMatchObject({ status: 401 });
+      // The budget is per account: another session cannot keep guessing, even with the right password.
+      await expect(reauthenticateUser(store, request(other.sessionToken), "test-password")).rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
+      await expect(authenticateRequest(store, request(other.sessionToken))).resolves.toMatchObject({ id: other.user.id });
+    } finally {
+      resetRateLimits();
+    }
+  });
+
   it("expires an otherwise valid session after the configured idle timeout", async () => {
     const previousIdleTimeout = process.env.SESSION_IDLE_TIMEOUT_MS;
     process.env.SESSION_IDLE_TIMEOUT_MS = "1000";

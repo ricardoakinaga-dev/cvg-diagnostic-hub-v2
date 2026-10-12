@@ -1,0 +1,12 @@
+import { z } from "zod";
+const id = z.string().min(1).max(100); const expectedVersion = z.number().int().positive(); const date = z.iso.datetime({ offset: true });
+const members = z.array(z.object({ userId: id, replacesUserId: id.optional() }).strict()).max(100).refine((values) => new Set(values.map((entry) => entry.userId)).size === values.length);
+const name = z.string().trim().min(1).max(200); const departmentCode = z.string().min(1).max(60);
+const page = { limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() };
+export const hospitalShiftCreateSchema = z.object({ name, departmentCode, startAt: date, endAt: date, members }).strict();
+export const hospitalShiftPatchSchema = z.object({ name: name.optional(), startAt: date.optional(), endAt: date.optional(), members: members.optional(), status: z.enum(["CLOSED", "ARCHIVED"]).optional(), expectedVersion }).strict();
+export const hospitalShiftFiltersSchema = z.object({ departmentCode: departmentCode.optional(), current: z.boolean().optional(), status: z.enum(["PLANNED", "CLOSED", "ARCHIVED"]).optional(), from: date.optional(), to: date.optional(), ...page }).strict();
+export const hospitalActivityShiftSchema = z.object({ targetType: z.enum(["HOSPITAL_TASK", "DIAGNOSTIC_ITEM"]), targetId: id, shiftId: id.nullable(), expectedVersion }).strict();
+export const hospitalHandoffOfferSchema = z.object({ fromShiftId: id, toShiftId: id, recipientUserId: id, entries: z.array(z.object({ targetType: z.enum(["HOSPITAL_TASK", "DIAGNOSTIC_ITEM"]), targetId: id, expectedTargetVersion: expectedVersion }).strict()).min(1).max(100).refine((values) => new Set(values.map((entry) => `${entry.targetType}:${entry.targetId}`)).size === values.length) }).strict();
+export const hospitalHandoffDecisionSchema = z.object({ decision: z.enum(["ACCEPT", "REJECT"]), reason: z.string().trim().min(1).max(500).optional(), expectedVersion }).strict();
+export const hospitalHandoffFiltersSchema = z.object({ departmentCode: departmentCode.optional(), state: z.enum(["OFFERED", "ACCEPTED", "REJECTED"]).optional(), ...page }).strict();

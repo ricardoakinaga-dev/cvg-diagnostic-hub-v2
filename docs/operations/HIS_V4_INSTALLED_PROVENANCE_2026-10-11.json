@@ -1,0 +1,308 @@
+{
+  "schemaVersion": 1,
+  "evidenceType": "HIS_V4_INSTALLED_IMAGE_PROVENANCE",
+  "observedAt": "2026-10-11T18:57:03.574400+00:00",
+  "method": {
+    "readOnly": true,
+    "description": "docker ps e docker inspect de containers/imagens, somente campos selecionados e labels de proveniência permitidos",
+    "selectedFields": [
+      "container.name",
+      "container.imageReference",
+      "image.id",
+      "image.repoDigests"
+    ],
+    "provenanceLabels": [
+      "org.opencontainers.image.revision",
+      "org.opencontainers.image.version",
+      "org.opencontainers.image.source",
+      "org.label-schema.vcs-ref",
+      "org.label-schema.version",
+      "org.label-schema.vcs-url"
+    ],
+    "excludedAccess": [
+      "Environment/Env",
+      "segredos",
+      "dados hospitalares",
+      "APIs clínicas",
+      "filesystem dos containers"
+    ]
+  },
+  "sourceRepository": "/home/rmakinaga/cvg-his-v4",
+  "sourceHead": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+  "deploymentVerified": false,
+  "applicationComparison": [
+    {
+      "role": "SPA",
+      "name": "/cvg-his-v4-cvg-his-v2-spa-1",
+      "imageReference": "cvg-his-v2-cvg-his-v2-spa:272581dc60b7",
+      "imageId": "sha256:c09c916f1f56054a5eda7f16923723861393a9826eca4ed0cd6a715da4be44f3",
+      "repoDigests": [
+        "cvg-his-v2-cvg-his-v2-spa@sha256:c09c916f1f56054a5eda7f16923723861393a9826eca4ed0cd6a715da4be44f3"
+      ],
+      "labels": {
+        "revision": null,
+        "version": null,
+        "source": null
+      },
+      "sourceHeadMatch": "UNKNOWN"
+    },
+    {
+      "role": "API",
+      "name": "/cvg-his-v4-cvg-his-v2-api-1",
+      "imageReference": "cvg-his-v2-cvg-his-v2-api:272581dc60b7",
+      "imageId": "sha256:a0766ea3446f4143d4560586b049bffabe48daadfedea2ff8cedcc9db12d2a9a",
+      "repoDigests": [
+        "cvg-his-v2-cvg-his-v2-api@sha256:a0766ea3446f4143d4560586b049bffabe48daadfedea2ff8cedcc9db12d2a9a"
+      ],
+      "labels": {
+        "revision": null,
+        "version": null,
+        "source": null
+      },
+      "sourceHeadMatch": "UNKNOWN"
+    },
+    {
+      "role": "WORKER",
+      "name": "/cvg-his-v4-cvg-his-v2-worker-1",
+      "imageReference": "cvg-his-v2-cvg-his-v2-worker:272581dc60b7",
+      "imageId": "sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707",
+      "repoDigests": [
+        "cvg-his-v2-cvg-his-v2-worker@sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707"
+      ],
+      "labels": {
+        "revision": null,
+        "version": null,
+        "source": null
+      },
+      "sourceHeadMatch": "UNKNOWN"
+    }
+  ],
+  "limits": [
+    "A observação registra identidade dos artefatos em execução no instante indicado; não comprova o commit usado na construção.",
+    "Labels de revisão, versão e origem, inclusive os equivalentes permitidos, estavam ausentes nas três imagens e containers; correspondência ao HEAD da fonte permanece UNKNOWN.",
+    "Tags são nomes mutáveis e não constituem prova de revisão de fonte.",
+    "Não houve chamada de integração, transmissão, configuração de endpoint/credencial ou homologação externa; deploymentVerified permanece false."
+  ],
+  "sourceContractComparison": {
+    "observedAt": "2026-10-11T21:20:51.604840+00:00",
+    "mode": "READ_ONLY_OFFLINE_SOURCE_METADATA",
+    "sourceRepository": "/home/rmakinaga/cvg-his-v4",
+    "previousInstalledMetadata": {
+      "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/operations/HIS_V4_INSTALLED_PROVENANCE_2026-10-11.json",
+      "sha256": "c756f562d9e10de5c01a1d55dd378cf06c6138052869c69171287e8993fcd743"
+    },
+    "alreadyObservedInstalledImageTag": "272581dc60b7",
+    "tagTextResolvesToGitCommit": "272581dc60b764a8fee78108110dc7e465f62542",
+    "inspectedContractReferenceCommit": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+    "tagCommitIsAncestorOfReference": true,
+    "contractSources": [
+      {
+        "path": "apps/api/src/routes/api-keys-routes.ts",
+        "tagCommitSha256": "b56389e72c8d0f2b411e308d142e190d147c9320334494420593cd30d3fe5908",
+        "referenceCommitSha256": "b56389e72c8d0f2b411e308d142e190d147c9320334494420593cd30d3fe5908",
+        "equalBytes": true
+      },
+      {
+        "path": "apps/api/src/helpers/auth-helpers.ts",
+        "tagCommitSha256": "21b10c94380e2d1169c8fa399a91ecbb6a0decfcda512ef4c89d6298ba224f4b",
+        "referenceCommitSha256": "21b10c94380e2d1169c8fa399a91ecbb6a0decfcda512ef4c89d6298ba224f4b",
+        "equalBytes": true
+      },
+      {
+        "path": "packages/modules/webhooks/src/index.ts",
+        "tagCommitSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+        "referenceCommitSha256": "9f7c1837e160cc442d02fc9afc3a9868091e853e54e0f306f4d0b99270ebcea8",
+        "equalBytes": true
+      },
+      {
+        "path": "apps/api/src/runtime.ts",
+        "tagCommitSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+        "referenceCommitSha256": "8d9d426fd34e6e8dab4638da1d2aaf24938feeb5f524539d7efe149f3c62d623",
+        "equalBytes": true
+      },
+      {
+        "path": "packages/modules/event-consumers/src/webhooks.consumer.ts",
+        "tagCommitSha256": "ee3d3955d9510cef34ef61162e49f94b29c57aa331abe24d07913fa38f9dccfa",
+        "referenceCommitSha256": "ee3d3955d9510cef34ef61162e49f94b29c57aa331abe24d07913fa38f9dccfa",
+        "equalBytes": true
+      },
+      {
+        "path": "packages/modules/encounters/src/index.ts",
+        "tagCommitSha256": "4fb695b10ca4dc206518154b155b0fcfb8e95e4c836c7af51afea63c13b53a48",
+        "referenceCommitSha256": "4fb695b10ca4dc206518154b155b0fcfb8e95e4c836c7af51afea63c13b53a48",
+        "equalBytes": true
+      },
+      {
+        "path": "apps/api/src/routes/laboratory-integration-routes.ts",
+        "tagCommitSha256": "fb17a5bb899983c7641f38207b242c2cc1bfe9df0a4ec0b8c1e164e1bedfeea4",
+        "referenceCommitSha256": "fb17a5bb899983c7641f38207b242c2cc1bfe9df0a4ec0b8c1e164e1bedfeea4",
+        "equalBytes": true
+      }
+    ],
+    "allSevenContractSourcesIdentical": true,
+    "claim": "The Git commit matching the already observed image tag has identical bytes for seven exact HIS integration authority sources used in the Hub contract inspection. This reduces reference-source uncertainty only.",
+    "sourceHeadMatchForInstalledImages": "UNKNOWN",
+    "deploymentVerified": false,
+    "limits": [
+      "No container/image filesystem, Env, secret, database, clinical HTTP or API-key access.",
+      "A Docker tag is mutable and resolving its text in Git does not establish the source of the running images.",
+      "Only seven exact source paths were compared, not the entire application or generated images.",
+      "No HIS discovery, delivery, mapping, recovery or hospital UAT was performed.",
+      "No source, test, tracking document, pilot package or installed provenance document changed during this comparison."
+    ],
+    "evidenceArtifact": {
+      "path": "/tmp/cvg-hpl-his-v4-tag-contract-comparison-20261011.json",
+      "sha256": "fef4c12f6395df0b2789aa9387fb609c628299c77e1ff7897d26f923abd46e43"
+    },
+    "preservedAt": "2026-10-11T21:22:59.769654+00:00",
+    "recordingScope": "Additive offline comparison only. Original installed-image capture fields, observedAt, imageIDs/digests, labels and limits are preserved. The comparison artifact predates this documentation consolidation.",
+    "doesNotProve": [
+      "The commit used to build the installed SPA/API/worker images",
+      "Whole-application or image-byte equality",
+      "Runtime discovery, mapping, webhook delivery, vendor compatibility or hospital UAT"
+    ],
+    "classificationUnchanged": {
+      "sourceHeadMatchForInstalledImages": "UNKNOWN",
+      "deploymentVerified": false,
+      "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+      "BLD-HPL-051": "OPEN"
+    }
+  },
+  "subsequentInstalledMetadataObservations": [
+    {
+      "observation": {
+        "observedAt": "2026-10-11T22:59:03.468800+00:00",
+        "scope": "Current source HEAD and installed HIS image/name/provenance metadata only; no Env/secrets/filesystem/clinical API/database/configuration access.",
+        "sourceHead": "0ebfc5b6627c8ed006075dc5285fd3514443c806",
+        "sameSourceHeadAsPriorCapture": true,
+        "applications": [
+          {
+            "name": "/cvg-his-v4-cvg-his-v2-spa-1",
+            "imageReference": "cvg-his-v2-cvg-his-v2-spa:272581dc60b7",
+            "imageId": "sha256:b4feaeee183e20be906e3b63dcf3567a154d33aa9ac9eb7a371d31093c8ef07d",
+            "labels": {
+              "org.opencontainers.image.revision": "",
+              "org.opencontainers.image.version": "",
+              "org.opencontainers.image.source": "",
+              "org.label-schema.vcs-ref": "",
+              "org.label-schema.version": "",
+              "org.label-schema.vcs-url": ""
+            },
+            "role": "SPA",
+            "imageMetadata": {
+              "id": "sha256:b4feaeee183e20be906e3b63dcf3567a154d33aa9ac9eb7a371d31093c8ef07d",
+              "repoDigests": [
+                "cvg-his-v2-cvg-his-v2-spa@sha256:b4feaeee183e20be906e3b63dcf3567a154d33aa9ac9eb7a371d31093c8ef07d"
+              ],
+              "labels": {
+                "org.opencontainers.image.revision": null,
+                "org.opencontainers.image.version": null,
+                "org.opencontainers.image.source": null,
+                "org.label-schema.vcs-ref": null,
+                "org.label-schema.version": null,
+                "org.label-schema.vcs-url": null
+              }
+            },
+            "sameImageAsPriorCapture": false
+          },
+          {
+            "name": "/cvg-his-v4-cvg-his-v2-api-1",
+            "imageReference": "cvg-his-v2-cvg-his-v2-api:272581dc60b7",
+            "imageId": "sha256:4922059c8d16e9fbc1445b49eae6efebb1963b143cb58dff9356435c2b0e0bd5",
+            "labels": {
+              "org.opencontainers.image.revision": "",
+              "org.opencontainers.image.version": "",
+              "org.opencontainers.image.source": "",
+              "org.label-schema.vcs-ref": "",
+              "org.label-schema.version": "",
+              "org.label-schema.vcs-url": ""
+            },
+            "role": "API",
+            "imageMetadata": {
+              "id": "sha256:4922059c8d16e9fbc1445b49eae6efebb1963b143cb58dff9356435c2b0e0bd5",
+              "repoDigests": [
+                "cvg-his-v2-cvg-his-v2-api@sha256:4922059c8d16e9fbc1445b49eae6efebb1963b143cb58dff9356435c2b0e0bd5"
+              ],
+              "labels": {
+                "org.opencontainers.image.revision": null,
+                "org.opencontainers.image.version": null,
+                "org.opencontainers.image.source": null,
+                "org.label-schema.vcs-ref": null,
+                "org.label-schema.version": null,
+                "org.label-schema.vcs-url": null
+              }
+            },
+            "sameImageAsPriorCapture": false
+          },
+          {
+            "name": "/cvg-his-v4-cvg-his-v2-worker-1",
+            "imageReference": "cvg-his-v2-cvg-his-v2-worker:272581dc60b7",
+            "imageId": "sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707",
+            "labels": {
+              "org.opencontainers.image.revision": "",
+              "org.opencontainers.image.version": "",
+              "org.opencontainers.image.source": "",
+              "org.label-schema.vcs-ref": "",
+              "org.label-schema.version": "",
+              "org.label-schema.vcs-url": ""
+            },
+            "role": "WORKER",
+            "imageMetadata": {
+              "id": "sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707",
+              "repoDigests": [
+                "cvg-his-v2-cvg-his-v2-worker@sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707"
+              ],
+              "labels": {
+                "org.opencontainers.image.revision": null,
+                "org.opencontainers.image.version": null,
+                "org.opencontainers.image.source": null,
+                "org.label-schema.vcs-ref": null,
+                "org.label-schema.version": null,
+                "org.label-schema.vcs-url": null
+              }
+            },
+            "sameImageAsPriorCapture": true
+          }
+        ],
+        "sourceHeadMatch": "UNKNOWN",
+        "deploymentVerified": false,
+        "meaning": "Matching current image IDs and source HEAD do not establish which source built installed images, accepted endpoint/mappings, exchange or institutional sign-off."
+      },
+      "artifact": {
+        "path": "/tmp/cvg-hpl-goal-continuation-his-metadata-20261011.json",
+        "sha256": "6f95b772f9e95da23ed52ae140170e38315af77431e1b32a529968f4ce4dd223"
+      },
+      "comparisonToInitialCapture": {
+        "observedAt": "2026-10-11T18:57:03.574400+00:00",
+        "sameSourceHead": true,
+        "roles": [
+          {
+            "role": "SPA",
+            "previousImageId": "sha256:c09c916f1f56054a5eda7f16923723861393a9826eca4ed0cd6a715da4be44f3",
+            "currentImageId": "sha256:b4feaeee183e20be906e3b63dcf3567a154d33aa9ac9eb7a371d31093c8ef07d",
+            "sameImage": false
+          },
+          {
+            "role": "API",
+            "previousImageId": "sha256:a0766ea3446f4143d4560586b049bffabe48daadfedea2ff8cedcc9db12d2a9a",
+            "currentImageId": "sha256:4922059c8d16e9fbc1445b49eae6efebb1963b143cb58dff9356435c2b0e0bd5",
+            "sameImage": false
+          },
+          {
+            "role": "WORKER",
+            "previousImageId": "sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707",
+            "currentImageId": "sha256:588df5ea4c37725599ee001633ad7e4c214985ab96066a2a5a2d002d7a5e2707",
+            "sameImage": true
+          }
+        ]
+      },
+      "classificationUnchanged": {
+        "sourceHeadMatch": "UNKNOWN",
+        "deploymentVerified": false,
+        "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+        "BLD-HPL-051": "OPEN"
+      },
+      "meaning": "Additive later read-only capture. SPA/API image identities changed; worker unchanged. Initial capture and offline seven-source comparison retained unchanged. No build-commit provenance labels; same tag does not establish source, adoption, exchange or acceptance."
+    }
+  ]
+}

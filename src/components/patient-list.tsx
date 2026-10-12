@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Patient, SessionResponse } from "@cvg/contracts";
-import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
 import { PatientDialog } from "./patient-dialog";
 import { Icon } from "./ui-icons";
@@ -18,17 +18,30 @@ export function PatientList() {
   const [showCreate, setShowCreate] = useState(false);
   const [canCreate, setCanCreate] = useState(false);
   const loadVersion = useRef(0);
+  const identity = useRef<string | null>(null);
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     setLoading(true);
+    setCanCreate(false);
     setError("");
+    let identityConfirmed = false;
     try {
+      const { user } = await apiFetch<SessionResponse>("/session/me");
+      if (loadVersion.current !== version) return;
+      identityConfirmed = true;
+      if (identity.current !== null && identity.current !== user.id) setPatients([]);
+      identity.current = user.id;
+      setCanCreate(Boolean(user.permissions?.includes("patient.create") && ["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM"].includes(user.role)));
+      if (!user.permissions?.includes("patient.view")) { setPatients([]); setError(getSafeErrorMessage(new ApiClientError(403, {}), "Não foi possível carregar os pacientes.")); return; }
       const nextPatients = await apiFetch<Patient[]>(`/patients?q=${encodeURIComponent(query)}`);
       if (loadVersion.current !== version) return;
       setPatients(nextPatients);
     }
     catch (cause) {
-      if (loadVersion.current === version) setError(getSafeErrorMessage(cause, "Não foi possível carregar os pacientes."));
+      if (loadVersion.current === version) {
+        if (!identityConfirmed || (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status))) { setPatients([]); setCanCreate(false); setShowCreate(false); }
+        setError(getSafeErrorMessage(cause, "Não foi possível carregar os pacientes."));
+      }
     }
     finally {
       if (loadVersion.current === version) setLoading(false);
@@ -39,10 +52,10 @@ export function PatientList() {
     return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
   useEffect(() => {
-    void apiFetch<SessionResponse>("/session/me")
-      .then(({ user }) => setCanCreate(user.role === "VETERINARIAN" || user.role === "INPATIENT_TEAM"))
-      .catch(() => setCanCreate(false));
-  }, []);
+    const refresh = () => { setPatients([]); setCanCreate(false); setShowCreate(false); void load(); };
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => window.removeEventListener("cvg:realtime-resync", refresh);
+  }, [load]);
 
   return <>
     <PageHeader crumbs={[{ label: "Pacientes", icon: "paw" }]} count={loading ? undefined : patients.length}>
@@ -50,8 +63,8 @@ export function PatientList() {
       {canCreate && <button type="button" className="button-primary-sm" onClick={() => setShowCreate(true)}><Icon name="add" size={14} />Novo paciente</button>}
     </PageHeader>
     <div className="patient-page">
-      {error && <div className="page-body-tight"><ErrorState title="Não foi possível carregar os pacientes" message={error} onRetry={load} retrying={loading} /></div>}
-      {loading ? <LoadingState className="resource-loading" label="Carregando pacientes" /> : patients.length === 0 ? <EmptyState title="Nenhum paciente atribuído" message="Refine a busca ou confirme o escopo de atendimento." /> : <section className="patient-rows" aria-label="Pacientes autorizados">
+      {error && <div className="page-body-tight"><ErrorState title="Não foi possível carregar os pacientes" message={`${error}${patients.length > 0 ? " Os pacientes exibidos são o último snapshot autorizado." : ""}`} onRetry={load} retrying={loading} /></div>}
+      {loading ? <LoadingState className="resource-loading" label="Carregando pacientes" /> : patients.length === 0 ? !error && <EmptyState title="Nenhum paciente atribuído" message="Refine a busca ou confirme o escopo de atendimento." /> : <section className="patient-rows" aria-label="Pacientes autorizados">
         <div className="patient-rows-head" aria-hidden="true"><span>Paciente</span><span>Espécie e raça</span><span>Identificador</span><span>Tutor</span></div>
         {patients.map((patient) => <Link href={`/patients/${patient.id}/diagnostics`} className="patient-row" key={patient.id}>
           <span className="patient-row-name"><Avatar name={patient.displayName} size="sm" /><strong>{patient.displayName}</strong><small>{patient.sex}</small></span>
@@ -62,6 +75,6 @@ export function PatientList() {
         </Link>)}
       </section>}
     </div>
-    {showCreate && <PatientDialog onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); void load(); }} />}
+    {showCreate && canCreate && <PatientDialog onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); void load(); }} />}
   </>;
 }

@@ -4,8 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 import type { DiagnosticService } from "@cvg/contracts";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { RequestDialog } from "./dashboard";
+import type { CreatedRequest } from "./request-created-notice";
 
-export function QueueBoardRequestDialog({ departments, canCreatePatient, onClose, onCreated }: { departments: string[]; canCreatePatient: boolean; onClose: () => void; onCreated: () => void }) {
+export function QueueBoardRequestDialog({ departments, canCreatePatient, onClose, onCreated }: { departments: string[]; canCreatePatient: boolean; onClose: () => void; onCreated: (request: CreatedRequest) => void }) {
   const [services, setServices] = useState<DiagnosticService[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

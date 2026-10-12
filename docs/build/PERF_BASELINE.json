@@ -1,25 +1,116 @@
 {
   "schemaVersion": 1,
-  "benchmark": "prod-2026-10-snapshot-v2",
-  "recordedOn": "2026-10-03",
-  "recordedOnNode": "v24.20.0",
-  "policy": "Only deterministic UTF-8 snapshot bytes are gated for all three workloads. Fixture timestamps are fixed and password salts/hashes are normalized inside the benchmark. A byte measurement above recorded.bytes * (1 + regressionToleranceRatio) or max.bytes fails. Zero tolerance rejects even one byte of growth. The prior temporal regression gate was irreproducible across machines and load. stringifyMs, parseMs and doubleCloneMs (including their historical maxima) retain the prior measurements as informational values, never acceptance criteria. Missing, duplicate or invalid workloads/samples and missing, malformed or mismatched baselines fail closed. Recorded bytes were confirmed unchanged after normalization. This synthetic byte gate is not evidence of PostgreSQL WAL, locking, network latency, staging load or production p95 acceptance. Raise a byte threshold only with a measured reason recorded in this file.",
+  "benchmark": "prod-2026-10-snapshot-v3-hpl",
+  "recordedOn": "2026-10-11",
+  "recordedOnNode": "v22.23.3",
+  "policy": "Only deterministic UTF-8 snapshot bytes are gated for all three workloads. Fixture timestamps are fixed and password salts/hashes are normalized inside the benchmark. The complete hospital-planner domain shape, access groups, departments, patient grants and task types remain present. A byte measurement above recorded.bytes * (1 + regressionToleranceRatio) or max.bytes fails. Zero tolerance rejects even one byte of growth. Version v3-hpl records exactly 24,342 additional fixed bytes versus v2, independently reproduced from the source base revision and attributed below; the synthetic audit-event byte increments are unchanged. All absolute byte budgets are unchanged. stringifyMs, parseMs and doubleCloneMs are the informational local measurements from this revision; their historical maxima remain informational and never decide acceptance. Missing, duplicate or invalid workloads/samples and missing, malformed or mismatched baselines fail closed. This synthetic byte gate is not evidence of PostgreSQL WAL, locking, network latency, staging load or production p95 acceptance. Raise a byte threshold only with a measured reason recorded in this file.",
   "regressionToleranceRatio": 0,
   "samples": [
     {
       "auditEvents": 1000,
-      "recorded": { "bytes": 239872, "stringifyMs": 0.57, "parseMs": 1.42, "doubleCloneMs": 2.45 },
-      "max": { "bytes": 700000, "stringifyMs": 60, "parseMs": 60, "doubleCloneMs": 120 }
+      "recorded": {
+        "bytes": 264214,
+        "stringifyMs": 0.65,
+        "parseMs": 0.67,
+        "doubleCloneMs": 3.69
+      },
+      "max": {
+        "bytes": 700000,
+        "stringifyMs": 60,
+        "parseMs": 60,
+        "doubleCloneMs": 120
+      }
     },
     {
       "auditEvents": 10000,
-      "recorded": { "bytes": 2363872, "stringifyMs": 5.88, "parseMs": 6.93, "doubleCloneMs": 39.12 },
-      "max": { "bytes": 6000000, "stringifyMs": 300, "parseMs": 400, "doubleCloneMs": 700 }
+      "recorded": {
+        "bytes": 2388214,
+        "stringifyMs": 5.62,
+        "parseMs": 10.11,
+        "doubleCloneMs": 40.99
+      },
+      "max": {
+        "bytes": 6000000,
+        "stringifyMs": 300,
+        "parseMs": 400,
+        "doubleCloneMs": 700
+      }
     },
     {
       "auditEvents": 100000,
-      "recorded": { "bytes": 23873872, "stringifyMs": 84.56, "parseMs": 79.51, "doubleCloneMs": 401.42 },
-      "max": { "bytes": 60000000, "stringifyMs": 3000, "parseMs": 4000, "doubleCloneMs": 8000 }
+      "recorded": {
+        "bytes": 23898214,
+        "stringifyMs": 77.45,
+        "parseMs": 76.72,
+        "doubleCloneMs": 451.63
+      },
+      "max": {
+        "bytes": 60000000,
+        "stringifyMs": 3000,
+        "parseMs": 4000,
+        "doubleCloneMs": 8000
+      }
     }
-  ]
+  ],
+  "revision": {
+    "previousBenchmark": "prod-2026-10-snapshot-v2",
+    "previousByteSamples": [
+      {
+        "auditEvents": 1000,
+        "bytes": 239872
+      },
+      {
+        "auditEvents": 10000,
+        "bytes": 2363872
+      },
+      {
+        "auditEvents": 100000,
+        "bytes": 23873872
+      }
+    ],
+    "fixedOverheadBytes": 24342,
+    "sourceBaseRevision": "a94e77f4443f700bbb073108594090d40efa4496",
+    "sourceState": "Uncommitted hospital-planner working tree measured on 2026-10-11; this is source provenance, not an installed image digest.",
+    "fixtureProfile": "createDemoState(snapshot-scale-password), DEMO_SUPERADMIN_ENABLED=false, NODE_ENV=test; all domain fields retained, six demo users; synthetic UTF-8 snapshot only.",
+    "byteAttribution": [
+      {
+        "field": "accessGroups",
+        "addedBytes": 20862,
+        "reason": "Nine initial system groups and their explicit permissions; includes the new field separator."
+      },
+      {
+        "field": "departments",
+        "addedBytes": 1150,
+        "reason": "Five explicit department records with memberships; includes the new field separator."
+      },
+      {
+        "field": "hospitalTaskTypes",
+        "addedBytes": 961,
+        "reason": "Two operational task types with defined states; includes the new field separator."
+      },
+      {
+        "field": "patientGrants",
+        "addedBytes": 444,
+        "reason": "Two explicit legacy patient-grant records; includes the new field separator."
+      },
+      {
+        "field": "users.accessGroupId",
+        "addedBytes": 253,
+        "reason": "Explicit system-group bindings on all six demo users."
+      },
+      {
+        "field": "26 other hospital-planner collections",
+        "addedBytes": 672,
+        "reason": "Empty required domain arrays and their JSON keys/separators; no domain collection is omitted to reduce size."
+      }
+    ],
+    "normalizedSnapshot1000Sha256": "e65a4ba5ff258244fef2aa55b91d3d36e1cb91dc85dc28e5183204ad69161573",
+    "sourceSha256": {
+      "src/server/store/fixtures.ts": "b73404accdd5f4e3652d9f3260fd9166cc9b4739bbc6da67518c3dfef187c25f",
+      "src/server/security/access-group-policy.ts": "df2b508cca4d8f5c1a2c042dbabbbc6f6bb6453e9b6c9b51e03713641803a62b",
+      "src/server/security/authorization.ts": "50e97b581525ea816960cea8fc28b84db827056847a011b7585af45561104362",
+      "src/server/domain/hospital-task-types.ts": "9a01d827c3c3e6372bb9fa04ab0dd33a19b783df7628a4bb691ccdf9c9f63d10",
+      "packages/contracts/src/identity-roles.ts": "3e6f1c6e72221d912e0febf03f25bcb9fef32c998514bd26e7bfa6e5b1299a46"
+    }
+  }
 }

@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EncounterCloseDialog, EncounterOpenDialog } from "./encounter-actions";
 import * as apiClient from "./api-client";
+import { bedCensus, hospitalBed, hospitalUser } from "./hospital-ui.test-helpers";
 
 const encounter = { id: "encounter-1", patientId: "patient-1", externalId: "ATD-1", type: "OUTPATIENT" as const, status: "OPEN" as const, openedAt: "2026-10-08T12:00:00.000Z" };
 
@@ -30,6 +31,25 @@ describe("encounter dialogs", () => {
     render(<EncounterOpenDialog patientId="p" onClose={onClose} onOpened={vi.fn()} />);
     fireEvent.mouseDown(screen.getByRole("dialog"));
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("opens inpatient context with a real compatible bed ID and excludes incompatible species", async () => {
+    const onOpened = vi.fn(); const api = vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path, init) => {
+      if (path === "/session/me") return { user: hospitalUser } as never;
+      if (path === "/bed-census") return bedCensus({ beds: [{ resource: hospitalBed(), state: "AVAILABLE" }, { resource: hospitalBed({ id: "feline", name: "Leito felino", allowedSpecies: ["Felino"] }), state: "AVAILABLE" }] }) as never;
+      if (path === "/patients/patient-1") return { species: "Canino" } as never;
+      if (init?.method === "POST") return { encounter: { ...encounter, type: "INPATIENT" } } as never;
+      throw new Error(`Unexpected ${path}`);
+    });
+    render(<EncounterOpenDialog patientId="patient-1" onClose={vi.fn()} onOpened={onOpened} />);
+    fireEvent.change(screen.getByLabelText("Tipo de atendimento"), { target: { value: "INPATIENT" } });
+    fireEvent.change(await screen.findByLabelText("Leito cadastrado"), { target: { value: "bed-1" } });
+    expect(screen.getByRole("option", { name: /Leito felino/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir atendimento" }));
+    await waitFor(() => expect(onOpened).toHaveBeenCalledOnce());
+    const write = api.mock.calls.find(([, init]) => init?.method === "POST")!;
+    expect(write[0]).toBe("/patients/patient-1/encounters");
+    expect(JSON.parse(write[1]!.body as string)).toEqual({ encounterType: "INPATIENT", bedResourceId: "bed-1" });
   });
 
   it("ignores a second confirmation while the close request is pending and reports the result", async () => {

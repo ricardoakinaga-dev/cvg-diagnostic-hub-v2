@@ -1,3 +1,4 @@
+import { systemGroupId } from "../security/access-group-policy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { User } from "../domain/models";
 import { CRITICAL_ALERT_WHATSAPP_EVENT } from "../domain/models";
@@ -5,7 +6,7 @@ import { InProcessEventBus, processOutboxBatch } from "../operations/outbox";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { updateOwnAlertContact } from "./alert-contact";
-import { runCriticalEscalation } from "./critical-escalation";
+import { CRITICAL_UNREACHABLE_EVENT, runCriticalEscalation } from "./critical-escalation";
 import type { CriticalResultPolicy } from "./critical-result-policy";
 import { createApplicationService } from "./service";
 
@@ -82,6 +83,55 @@ describe("critical result escalation (PROD-402)", () => {
     expect(store.getState().notifications.find((entry) => entry.id === root.id)!.escalation).toEqual({ level: 3, lastEscalatedAt: at(61).toISOString(), unreachableAt: at(61).toISOString() });
     expect(await runCriticalEscalation(store, { policy, now: at(240) })).toEqual({ due: 0, notified: 0, unreachable: 0 });
     expect(store.getState().notifications.filter((entry) => entry.recipientUserId === "user-admin")).toHaveLength(1);
+  });
+
+  it.each(["result.view", "notification.acknowledge", "GROUP_INACTIVE"] as const)("never escalates or grants patient scope after the on-call group loses %s", async (removed) => {
+    const { store, onCall, root, at, notificationsOf } = await releasedCritical();
+    await store.transaction((state) => {
+      const baseline = state.accessGroups.find((group) => group.id === systemGroupId("VETERINARIAN"))!;
+      const group = { ...baseline, id: "restricted-on-call", code: "RESTRICTED_ON_CALL", systemRole: undefined, active: removed !== "GROUP_INACTIVE", permissions: baseline.permissions.filter((permission) => permission !== removed) };
+      return { state: { ...state, accessGroups: [...state.accessGroups, group], users: state.users.map((user) => user.id === onCall.id ? { ...user, accessGroupId: group.id } : user) }, result: undefined };
+    });
+    expect(await runCriticalEscalation(store, { policy, now: at(16), environment: { WHATSAPP_ENABLED: "true" } })).toEqual({ due: 1, notified: 1, unreachable: 0 });
+    expect(notificationsOf(onCall.id)).toEqual([]);
+    expect(notificationsOf("user-manager")).toHaveLength(1);
+    expect(store.getState().users.find((user) => user.id === onCall.id)?.patientIds).toEqual([]);
+    expect(store.getState().patientGrants.filter((grant) => grant.userId === onCall.id)).toEqual([]);
+    expect(store.getState().auditEvents.filter((event) => event.eventType === "CriticalEscalationPatientAccessGranted" && event.entityId === onCall.id)).toEqual([]);
+    const escalation = [...store.getState().auditEvents].reverse().find((event) => event.eventType === "CriticalResultEscalated");
+    expect(escalation).toMatchObject({ entityId: root.id, metadata: { rule: "DEPARTMENT_MANAGER", recipients: "1" } });
+    expect(store.getState().outbox.filter((event) => event.payload.recipientUserId === onCall.id)).toEqual([]);
+  });
+
+  it.each(["GROUP_INACTIVE", "SYSTEM_ACCESS_REMOVED"] as const)("does not alert an administrator whose current group lost %s", async (removed) => {
+    const { store, root, at } = await releasedCritical();
+    await store.transaction((state) => ({ state: { ...state, users: state.users.filter((user) => !user.onCall && user.role !== "MANAGER"), accessGroups: state.accessGroups.map((group) => group.id === systemGroupId("ADMIN") ? { ...group, active: removed !== "GROUP_INACTIVE", permissions: group.permissions.filter((permission) => permission !== "health.readiness" && permission !== "outbox.manage") } : group) }, result: undefined }));
+    expect(await runCriticalEscalation(store, { policy: { ...policy, recipientRules: ["REQUESTER", "ON_CALL"] }, now: at(16) })).toEqual({ due: 1, notified: 0, unreachable: 1 });
+    expect(store.getState().notifications.filter((entry) => entry.recipientUserId === "user-admin")).toEqual([]);
+    expect(store.getState().notifications.find((entry) => entry.id === root.id)?.escalation?.unreachableAt).toBe(at(16).toISOString());
+    expect(store.getState().outbox.filter((event) => event.eventType === CRITICAL_UNREACHABLE_EVENT)).toEqual([]);
+  });
+
+  it("reaches a global SUPERADMIN who can open the critical result across departments", async () => {
+    const { store, released, at, notificationsOf, service } = await releasedCritical();
+    const administrator = store.getState().users.find((user) => user.role === "ADMIN")!;
+    const superadmin: User = { ...administrator, id: "global-superadmin", email: "global-super@test.local", role: "SUPERADMIN", accessGroupId: systemGroupId("SUPERADMIN"), departmentCode: "IT" };
+    await store.transaction((state) => ({ state: { ...state, users: [...state.users, superadmin] }, result: undefined }));
+    const fallback: CriticalResultPolicy = { ...policy, recipientRules: ["REQUESTER", "ADMIN_FALLBACK"] };
+    expect(await runCriticalEscalation(store, { policy: fallback, now: at(16) })).toEqual({ due: 1, notified: 1, unreachable: 0 });
+    expect(notificationsOf(superadmin.id)).toHaveLength(1);
+    expect(notificationsOf("user-admin")).toHaveLength(0);
+    expect(store.getState().users.find((user) => user.id === superadmin.id)?.patientIds).toEqual(superadmin.patientIds);
+    expect(await service.getResult(superadmin, released.result.id)).toMatchObject({ result: { id: released.result.id } });
+  });
+
+  it("alerts an active SUPERADMIN operationally when the configured clinical ladder has nobody left", async () => {
+    const { store, root, at } = await releasedCritical();
+    await store.transaction((state) => ({ state: { ...state, users: state.users
+      .filter((user) => user.role !== "MANAGER" && !user.onCall)
+      .map((user) => user.role === "ADMIN" ? { ...user, role: "SUPERADMIN" as const, accessGroupId: systemGroupId("SUPERADMIN") } : user) }, result: undefined }));
+    expect(await runCriticalEscalation(store, { policy: { ...policy, recipientRules: ["REQUESTER", "ON_CALL"] }, now: at(16) })).toEqual({ due: 1, notified: 0, unreachable: 1 });
+    expect(store.getState().notifications.find((entry) => entry.recipientUserId === "user-admin")).toMatchObject({ category: "ADMINISTRATIVE", dedupeKey: `critical-unreachable:${root.id}:user-admin` });
   });
 
   it("catches up one level per cycle when the first run comes after several thresholds (AUD-01)", async () => {

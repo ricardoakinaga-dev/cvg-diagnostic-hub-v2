@@ -212,7 +212,7 @@ describe("planCatalogImport", () => {
     const template = first.writes[0]!.next.resultTemplate!;
     expect(template).toMatchObject({ kind: "LABORATORY_PANEL", code: "PANEL_X", name: "Painel X", version: 1, schemaVersion: "1.0", status: "ACTIVE" });
     expect(template.analytes.map((entry) => entry.code)).toEqual(["A_VALUE", "B_VALUE", "B_COMMENT", "C_QUAL"]);
-    expect(template.analytes[0]!.referenceRange).toEqual({ kind: "NUMERIC", unitCode: "g/dL", low: 1.5, high: 3, source: "HUMAN_APPROVED", note: "Cães e gatos" });
+    expect(template.analytes[0]!.referenceRange).toEqual({ kind: "NUMERIC", unitCode: "g/dL", low: 1.5, high: 3, source: "PENDING_HUMAN_POLICY", note: "Cães e gatos" });
     expect(template.analytes[1]!.referenceRange).toEqual({ kind: "PENDING_POLICY", unitCode: "g/dL", source: "PENDING_HUMAN_POLICY", note: "Faixa pendente da diretoria" });
     expect(template.analytes[2]!.referenceRange).toMatchObject({ kind: "PENDING_POLICY", unitCode: "TEXT", note: "Não interpretado clinicamente." });
     expect(template.analytes[3]).toMatchObject({ valueType: "QUALITATIVE", unitCode: "TEXT" });

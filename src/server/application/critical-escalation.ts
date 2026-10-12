@@ -1,7 +1,8 @@
 import type { RoleCode } from "@cvg/contracts";
 import type { AuditEvent, Notification, StateStore, StoreState, User } from "../domain/models";
 import { findById } from "../domain/state-index";
-import { canAccessResource, hasPermission } from "../security/authorization";
+import { canAccessResource } from "../security/authorization";
+import { hydrateUserPermissions } from "../security/access-group-policy";
 import { withCriticalWhatsAppAlert } from "./critical-alert-channel";
 import { criticalPolicyFromEnvironment, nextCriticalRecipients, planCriticalEscalation, type CriticalEscalationDecision, type CriticalResultPolicy } from "./critical-result-policy";
 import { createAudit, createOutbox, criticalResultResource, id, notificationFor, requestForNotification } from "./service-common";
@@ -30,9 +31,8 @@ const PATIENT_SCOPED_ROLES: readonly RoleCode[] = ["VETERINARIAN", "INPATIENT_TE
  * confirm, and stop the climb, without seeing it. A manager reaches it through the exam's department.
  */
 function canOpenResult(user: User, resource: { patientId: string; departmentCode: string; serviceCode: string }): boolean {
-  if (!hasPermission(user.role, "notification.acknowledge")) return false;
   const granted = PATIENT_SCOPED_ROLES.includes(user.role) ? { ...user, patientIds: [...(user.patientIds ?? []), resource.patientId] } : user;
-  return canAccessResource(granted, "result.view", resource);
+  return canAccessResource(granted, "result.view", resource) && canAccessResource(granted, "notification.acknowledge", resource);
 }
 
 function isRoot(notification: Notification): boolean {
@@ -90,6 +90,7 @@ export async function runCriticalEscalation(store: StateStore, options: Critical
         responsibleUserId: admission?.responsibleUserId,
         departmentCode: request.requestingDepartmentCode,
         candidates: state.users
+          .map((user) => hydrateUserPermissions(state, user))
           .filter((user) => canOpenResult(user, resource))
           .map((user) => ({ userId: user.id, role: user.role, departmentCode: user.departmentCode, active: user.active !== false, managedDepartmentCodes: user.managedDepartmentCodes, onCall: user.onCall }))
       }, policy, reached) : undefined;
@@ -153,7 +154,9 @@ function alertAdministrators(
       level, departmentCode: request.requestingDepartmentCode, requestCode: request.requestCode, resultVersionId: root.entityId
     })]
   };
-  const administrators = next.users.filter((user) => user.role === "ADMIN" && user.active !== false).sort((left, right) => left.id.localeCompare(right.id));
+  const administrators = next.users.map((user) => hydrateUserPermissions(next, user))
+    .filter((user) => (user.role === "ADMIN" || user.role === "SUPERADMIN") && (canAccessResource(user, "health.readiness", {}) || canAccessResource(user, "outbox.manage", {})))
+    .sort((left, right) => left.id.localeCompare(right.id));
   for (const administrator of administrators) {
     const dedupeKey = `critical-unreachable:${root.id}:${administrator.id}`;
     const before = next.notifications.length;

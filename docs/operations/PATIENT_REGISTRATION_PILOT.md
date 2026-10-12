@@ -2,7 +2,7 @@
 
 **Knowledge status:** `DECISION/PROPOSAL` operacional (PROD-408, decisão D6 opção B: cadastro no Hub durante o piloto). O procedimento está escrito; nomes, sistema de prontuário e aprovação da gestão clínica dependem do hospital. A regra final para homônimos (OQ-019) segue aberta.
 
-**Relacionados:** [decisão D6](../build/PACOTE_DECISOES_2026-10-08.md) · [D-036 (atendimentos)](../DECISION_LOG.md) · [OQ-019](../discovery/OPEN_QUESTIONS.md) · [backlog](../build/PRODUCTION_BACKLOG.md)
+**Relacionados:** [decisão D6](../build/PACOTE_DECISOES_2026-10-08.md) · [D-036 (atendimentos)](../DECISION_LOG.md) · [OQ-019](../discovery/OPEN_QUESTIONS.md) · [backlog](../build/PRODUCTION_BACKLOG.md) · [UAT do planner](HOSPITAL_PLANNER_PILOT.md)
 
 ## 1. Princípio
 
@@ -18,7 +18,7 @@ No piloto o Hub **não** é integrado ao prontuário. O paciente é cadastrado d
 
 ## 2. Quem cadastra e quando
 
-- Cadastra quem tem a permissão `patient.create`: veterinário e equipe de internação.
+- Cadastra quem tem a permissão efetiva `patient.create` e escopo corrente. Nos perfis-base, ela é concedida a veterinário, equipe de internação e SUPERADMIN; grupos reduzidos podem retirá-la. ADMIN técnico e MANAGER não recebem essa permissão pelo perfil-base.
 - Cadastre **depois** de o paciente existir no prontuário, para copiar dele o número do registro. Nunca invente o identificador.
 - Cadastre antes do primeiro pedido de exame. Sem paciente e sem atendimento aberto não há como solicitar exame.
 - Emergência: se não der tempo de abrir o prontuário, cadastre no Hub sem `externalId` (o Hub gera um código `CVG-…`), anote o código e complete a correção em até o fim do turno (seção 6).
@@ -49,9 +49,11 @@ Regra final: ____________ (a definir pelo hospital, OQ-019).
 | Data de nascimento | Do prontuário; se for estimada, a estimativa do prontuário | Não, mas preencha |
 | Tutor (rótulo) | Nome abreviado do tutor, como no prontuário (ex.: "A. Oliveira"). Não digite telefone, CPF ou endereço | Sim |
 | Tipo de atendimento | Internação, emergência ou ambulatorial | Sim |
-| Ala e leito | Só para internação; devem ficar vazios nos outros tipos | Internação |
+| Leito cadastrado (`bedResourceId`) | Só para internação: selecionar ID de leito ativo, compatível com a espécie e disponível no setor autorizado. Ala/rótulo vêm do inventário, não de texto livre | Internação |
 
 O cadastro cria o paciente e o atendimento inicial juntos.
+
+Se não houver leito elegível ou o setor estiver `UNRECONCILED`, a abertura da internação é recusada. Reconciliar as ocupações existentes por mudança de leito explícita conforme o [cutover hospitalar](HOSPITAL_PLANNER_CUTOVER.md#inventário-e-internações-existentes). Não inventar rótulos nem remover internações para liberar uma vaga. Tipos ambulatorial/emergência não criam ocupação de leito.
 
 ## 5. Paciente que volta: novo atendimento
 

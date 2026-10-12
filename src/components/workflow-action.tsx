@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import type { ItemState, QueueItem, ReasonCode, ResultView, SampleLabel, SessionRole } from "@cvg/contracts";
+import type { ItemState, Permission, QueueItem, ReasonCode, ResultView, SampleLabel, SessionRole } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
+import { hospitalDateTimeInputToIso } from "@/lib/hospital-time";
 import { Icon } from "./ui-icons";
+import { useWorkflowPermissions } from "./workflow-permissions";
+import { HospitalResourcePicker } from "./hospital-resource-picker";
+import { usePlannerIdentity } from "./use-planner";
+import { usePlannerCommand } from "./planner-command";
 
 export type WorkflowActionKind =
   | "RECEIVE_SAMPLE"
@@ -27,7 +32,7 @@ export type WorkflowActionKind =
 
 type WorkflowPendingAction = "submit" | "release" | null;
 
-export type WorkflowActionItem = Pick<QueueItem, "id" | "status" | "workflowType" | "version" | "currentResultId" | "currentSampleId" | "procedureId" | "procedureVersion">;
+export type WorkflowActionItem = Pick<QueueItem, "id" | "status" | "workflowType" | "version" | "currentResultId" | "currentSampleId" | "procedureId" | "procedureVersion"> & { departmentCode?: string };
 
 export function workflowActionFor(item: Pick<WorkflowActionItem, "status" | "workflowType" | "currentResultId" | "currentSampleId">): WorkflowActionKind | undefined {
   if (item.currentResultId && ["IN_PROGRESS", "AWAITING_REPORT"].includes(item.status)) return "EDIT_RESULT";
@@ -71,9 +76,8 @@ export function secondaryWorkflowActionFor(item: WorkflowActionItem): WorkflowAc
 }
 
 export function apiDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new Error("Informe uma data e hora válidas.");
-  return date.toISOString();
+  try { return hospitalDateTimeInputToIso(value); }
+  catch (cause) { throw new WorkflowInputError(cause instanceof Error ? cause.message : "Informe uma data e hora válidas no horário do hospital."); }
 }
 
 export function workflowActionForTransition(item: WorkflowActionItem, target: ItemState): WorkflowActionKind | undefined {
@@ -90,12 +94,23 @@ export function workflowActionForTransition(item: WorkflowActionItem, target: It
 }
 
 export function canUseWorkflowAction(role: SessionRole, action: WorkflowActionKind, item?: WorkflowActionItem): boolean {
-  if (role === "MANAGER") return true;
+  if (role === "MANAGER" || role === "SUPERADMIN") return true;
   if (action === "CANCEL" && item && ["RECEIVED", "IN_PROGRESS", "AWAITING_REPORT", "FAILED"].includes(item.status)) return false;
   if (["VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)) return action === "CANCEL" || action === "REVIEW_RESULT";
-  if (role === "VIEWER" || role === "ADMIN") return action === "REVIEW_RESULT";
-  if (["RELEASE_RESULT", "CREATE_RESULT", "EDIT_RESULT", "REVIEW_RESULT", "AMEND"].includes(action)) return true;
+  if (role === "VIEWER" || role === "ADMIN") return false;
+  if (action === "REVIEW_RESULT") return false;
+  if (["RELEASE_RESULT", "CREATE_RESULT", "EDIT_RESULT", "AMEND"].includes(action)) return true;
   return role === "LAB_TECH" ? ["RECEIVE_SAMPLE", "START_PROCESSING", "RECEIVE_REPLACEMENT", "REQUEST_RECOLLECTION", "REJECT"].includes(action) : ["SCHEDULE", "RESCHEDULE", "START_PROCEDURE", "MARK_PERFORMED"].includes(action);
+}
+
+export const WORKFLOW_ACTION_PERMISSIONS: Record<WorkflowActionKind, Permission> = {
+  RECEIVE_SAMPLE: "sample.receive", RECEIVE_REPLACEMENT: "sample.replacement.receive", START_PROCESSING: "sample.process", REQUEST_RECOLLECTION: "sample.recollection.request",
+  SCHEDULE: "procedure.schedule", RESCHEDULE: "procedure.reschedule", START_PROCEDURE: "procedure.start", MARK_PERFORMED: "procedure.mark_performed",
+  CREATE_RESULT: "result.draft.create", EDIT_RESULT: "result.draft.edit_own", RELEASE_RESULT: "result.release", REVIEW_RESULT: "result.review", AMEND: "result.amend",
+  CANCEL: "item.cancel", REJECT: "item.reject", COMPLETE: "item.complete"
+};
+export function canUseGrantedWorkflowAction(role: SessionRole, action: WorkflowActionKind, item: WorkflowActionItem | undefined, permissions: readonly Permission[]): boolean {
+  return permissions.includes(WORKFLOW_ACTION_PERMISSIONS[action]) && canUseWorkflowAction(role, action, item);
 }
 
 export class WorkflowInputError extends Error {}
@@ -124,7 +139,9 @@ export async function executeSimpleWorkflowAction(item: WorkflowActionItem, acti
   await apiFetch(`/diagnostic-items/${item.id}/${path}`, { method: "POST", body: JSON.stringify({ expectedVersion: item.version }) });
 }
 
-export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction, role }: { item: WorkflowActionItem; onComplete?: () => void; onDraftCreated?: () => void; initialAction?: WorkflowActionKind; role?: SessionRole }) {
+export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction, role = "VIEWER", permissions: suppliedPermissions }: { item: WorkflowActionItem; onComplete?: () => void; onDraftCreated?: () => void; initialAction?: WorkflowActionKind; role?: SessionRole; permissions?: readonly Permission[] }) {
+  const permissions = useWorkflowPermissions(suppliedPermissions);
+  const allowed = (kind: WorkflowActionKind) => canUseGrantedWorkflowAction(role, kind, item, permissions);
   const action = workflowActionFor(item);
   const secondaryAction = secondaryWorkflowActionFor(item);
   const formId = useId();
@@ -139,11 +156,13 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   const [notice, setNotice] = useState("");
   const [accessionCode, setAccessionCode] = useState("");
   const [sampleType, setSampleType] = useState("EDTA");
+  const sampleTypeEditedRef = useRef(false);
   const [sampleLabel, setSampleLabel] = useState<SampleLabel["sample"] | null>(null);
   const [narrative, setNarrative] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [endsAt, setEndsAt] = useState("");
-  const [resource, setResource] = useState("");
+  const [resourceIds, setResourceIds] = useState<string[]>([]);
+  const scheduleCommand = usePlannerCommand();
   const [reasonCode, setReasonCode] = useState("");
   const [reasons, setReasons] = useState<ReasonCode[]>([]);
   const [reasonLoading, setReasonLoading] = useState(Boolean(initialAction && ["REQUEST_RECOLLECTION", "CANCEL", "REJECT", "AMEND"].includes(initialAction)));
@@ -163,21 +182,21 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   const expectedSample = receiving && sampleLabel?.id === expectedSampleId && sampleLabel?.status === "EXPECTED" ? sampleLabel : null;
   const sampleVersion = sampleLabel?.id === expectedSampleId ? sampleLabel?.version : undefined;
   useEffect(() => {
-    if (!open || !expectedSampleId) return;
+    if (!open || !expectedSampleId || !selectedAction || !canUseGrantedWorkflowAction(role, selectedAction, item, permissions)) return;
     let active = true;
     void apiFetch<SampleLabel>(`/samples/${expectedSampleId}/label`).then((label) => {
       if (!active) return;
       setSampleLabel(label.sample);
       if (label.sample.status !== "EXPECTED") return;
-      // Keep what the user already typed; the catalog type replaces only the untouched default.
-      setSampleType((current) => current !== "EDTA" ? current : label.sample.sampleType === "A definir" ? "" : label.sample.sampleType);
+      // An explicit EDTA entry is also an edit, even though it matches the initial default.
+      if (!sampleTypeEditedRef.current) setSampleType((current) => current !== "EDTA" ? current : label.sample.sampleType === "A definir" ? "" : label.sample.sampleType);
     }).catch(() => { /* the expected code is a convenience; the server still validates the receipt */ });
     return () => { active = false; };
-  }, [open, expectedSampleId]);
+  }, [open, expectedSampleId, selectedAction, role, item, permissions]);
 
   const reasonType = selectedAction === "REQUEST_RECOLLECTION" ? "RECOLLECTION" : selectedAction === "CANCEL" ? "CANCEL" : selectedAction === "REJECT" ? "REJECT" : selectedAction === "AMEND" ? "AMEND" : undefined;
   useEffect(() => {
-    if (!open || !reasonType) return;
+    if (!open || !reasonType || !selectedAction || !canUseGrantedWorkflowAction(role, selectedAction, item, permissions)) return;
     let active = true;
     void apiFetch<ReasonCode[]>("/clinical-reasons").then((catalog) => {
       if (active) setReasons(catalog.filter((reason) => reason.active && reason.type === reasonType));
@@ -185,9 +204,10 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
       if (active) setReasonError(getSafeErrorMessage(cause, "Não foi possível carregar os motivos autorizados. Solicite acesso ao catálogo."));
     }).finally(() => { if (active) setReasonLoading(false); });
     return () => { active = false; };
-  }, [open, reasonType, reasonRetry]);
+  }, [open, reasonType, reasonRetry, selectedAction, role, item, permissions]);
 
   function openAction(nextAction: WorkflowActionKind, toggle = false) {
+    if (!allowed(nextAction)) return;
     if (open && selectedAction === nextAction && !toggle) { firstFieldNodeRef.current?.focus(); return; }
     setSelectedAction(nextAction);
     setOpen(toggle && selectedAction === nextAction ? !open : true);
@@ -200,15 +220,15 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
 
   if (!action && !initialAction) return <span className="next-action">Sem ação disponível</span>;
   if (action === "REVIEW_RESULT" && item.currentResultId && !initialAction) {
-    return <Link className="button button-ghost workflow-action-link" href={`/results/${item.currentResultId}`}>{actionLabel[action]} <Icon name="arrow-right" size={15} /></Link>;
+    return <Link className="button button-ghost workflow-action-link" href={`/results/${item.currentResultId}`}>{!allowed(action) ? "Abrir resultado" : actionLabel[action]} <Icon name="arrow-right" size={15} /></Link>;
   }
   if (action === "EDIT_RESULT" && item.currentResultId && (!initialAction || initialAction === "CREATE_RESULT")) {
-    return !role || canUseWorkflowAction(role, action, item) ? <Link className="button button-ghost workflow-action-link" href={`/results/${item.currentResultId}`}>Abrir draft <Icon name="arrow-right" size={15} /></Link> : <span className="next-action">Sem ação disponível</span>;
+    return allowed(action) ? <Link className="button button-ghost workflow-action-link" href={`/results/${item.currentResultId}`}>Abrir draft <Icon name="arrow-right" size={15} /></Link> : <span className="next-action">Sem ação disponível</span>;
   }
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (pendingAction) return;
+    if (pendingAction || !selectedAction || !allowed(selectedAction)) return;
     setPendingAction("submit");
     setError("");
     setNotice("");
@@ -223,7 +243,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
       setPendingAction(null);
       return;
     }
-    if ((selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE") && (!startsAt || !endsAt || !resource.trim())) {
+    if ((selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE") && (!startsAt || !endsAt)) {
       setError("Informe janela e recurso da agenda.");
       setPendingAction(null);
       return;
@@ -253,10 +273,13 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
         const path = selectedAction === "RECEIVE_SAMPLE" ? `/diagnostic-items/${item.id}/receive-sample` : `/samples/${item.currentSampleId}/receive-replacement`;
         const replacementVersion = selectedAction === "RECEIVE_REPLACEMENT" ? sampleVersion ?? (await apiFetch<SampleLabel>(`/samples/${item.currentSampleId}/label`)).sample.version : undefined;
         await apiFetch(path, { method: "POST", body: JSON.stringify({ ...(accessionCode.trim() ? { accessionCode: accessionCode.trim().toUpperCase() } : {}), ...(sampleType.trim() ? { sampleType: sampleType.trim() } : {}), expectedVersion: item.version, ...(replacementVersion !== undefined ? { expectedSampleVersion: replacementVersion } : {}) }) });
-      } else if (selectedAction === "SCHEDULE") {
-        await apiFetch(`/diagnostic-items/${item.id}/schedule`, { method: "POST", body: JSON.stringify({ startsAt: apiDateTime(startsAt), endsAt: apiDateTime(endsAt), resource: resource.trim(), expectedVersion: item.version }) });
-      } else if (selectedAction === "RESCHEDULE" && item.procedureId && item.procedureVersion) {
-        await apiFetch(`/procedures/${item.procedureId}/reschedule`, { method: "POST", body: JSON.stringify({ startsAt: apiDateTime(startsAt), endsAt: apiDateTime(endsAt), resource: resource.trim(), reason: rescheduleReason.trim() || undefined, expectedVersion: item.procedureVersion }) });
+      } else if (selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE") {
+        const beginning = apiDateTime(startsAt); const ending = apiDateTime(endsAt);
+        if (beginning >= ending || Date.parse(ending) - Date.parse(beginning) > 86_400_000) throw new WorkflowInputError("Informe uma janela crescente de até 24 horas.");
+        if (!resourceIds.length || !item.departmentCode || !permissions.includes("hospital_resource.view")) throw new WorkflowInputError("Escolha ao menos um recurso cadastrado autorizado para este setor.");
+        if (selectedAction === "RESCHEDULE" && (!rescheduleReason.trim() || !item.procedureId || !item.procedureVersion)) throw new WorkflowInputError("Informe o motivo e a versão vigente para remarcar.");
+        const result = await scheduleCommand.execute(selectedAction === "SCHEDULE" ? `/diagnostic-items/${item.id}/schedule` : `/procedures/${item.procedureId}/reschedule`, "POST", { startsAt: beginning, endsAt: ending, resourceIds, expectedVersion: selectedAction === "SCHEDULE" ? item.version : item.procedureVersion, ...(selectedAction === "RESCHEDULE" ? { reason: rescheduleReason.trim() } : {}) });
+        if (!result) return;
       } else if (selectedAction === "REQUEST_RECOLLECTION" && item.currentSampleId) {
         await apiFetch(`/diagnostic-items/${item.id}/request-recollection`, { method: "POST", body: JSON.stringify({ reasonCode, note: reasonNote.trim() || undefined, expectedVersion: item.version, ...(sampleVersion !== undefined ? { expectedSampleVersion: sampleVersion } : {}) }) });
       } else if (selectedAction === "CREATE_RESULT") {
@@ -286,7 +309,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   }
 
   async function releaseDraft() {
-    if (!draft || pendingAction) return;
+    if (!draft || pendingAction || !allowed("RELEASE_RESULT")) return;
     setPendingAction("release");
     setError("");
     try {
@@ -304,22 +327,23 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
 
   return (
     <div className="workflow-action">
-      {action && (!role || canUseWorkflowAction(role, action, item)) && <ActionButton className="workflow-primary-action" type="button" onClick={() => openAction(action, true)} aria-expanded={open && selectedAction === action} aria-controls={formId} disabled={pendingAction !== null} state={pendingAction === "submit" && selectedAction === action ? "pending" : "idle"}>
+      {action && (allowed(action)) && <ActionButton className="workflow-primary-action" type="button" onClick={() => openAction(action, true)} aria-expanded={open && selectedAction === action} aria-controls={formId} disabled={pendingAction !== null} state={pendingAction === "submit" && selectedAction === action ? "pending" : "idle"}>
         {actionLabel[action]}
       </ActionButton>}
-      {action === "CREATE_RESULT" && item.status === "RESULT_VOIDED" && item.currentResultId && (!role || canUseWorkflowAction(role, "EDIT_RESULT", item)) && <Link className="button button-ghost" href={`/results/${item.currentResultId}`}>Abrir resultado atual</Link>}
-      {secondaryAction && (!role || canUseWorkflowAction(role, secondaryAction, item)) && <ActionButton tone="ghost" className="workflow-secondary-action" type="button" onClick={() => openAction(secondaryAction)} aria-expanded={open && selectedAction === secondaryAction} aria-controls={formId} disabled={pendingAction !== null} state={pendingAction === "submit" && selectedAction === secondaryAction ? "pending" : "idle"}>{actionLabel[secondaryAction]}</ActionButton>}
-      {open && selectedAction && <form id={formId} className="workflow-form" aria-label={actionLabel[selectedAction]} onSubmit={(event) => void submit(event)}>
+      {action === "CREATE_RESULT" && item.status === "RESULT_VOIDED" && item.currentResultId && (allowed("EDIT_RESULT")) && <Link className="button button-ghost" href={`/results/${item.currentResultId}`}>Abrir resultado atual</Link>}
+      {secondaryAction && (allowed(secondaryAction)) && <ActionButton tone="ghost" className="workflow-secondary-action" type="button" onClick={() => openAction(secondaryAction)} aria-expanded={open && selectedAction === secondaryAction} aria-controls={formId} disabled={pendingAction !== null} state={pendingAction === "submit" && selectedAction === secondaryAction ? "pending" : "idle"}>{actionLabel[secondaryAction]}</ActionButton>}
+      {open && selectedAction && allowed(selectedAction) && <form id={formId} className="workflow-form" aria-label={actionLabel[selectedAction]} onSubmit={(event) => void submit(event)}>
         {reasonType && <h3>{actionLabel[selectedAction]}</h3>}
         {selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT" ? <>
           {expectedSample && <p className="workflow-expected-sample">Amostra esperada: <strong className="mono">{expectedSample.accessionCode}</strong></p>}
           <label>Accession<input ref={setFirstFieldRef} value={accessionCode} onChange={(event) => setAccessionCode(event.target.value)} autoComplete="off" placeholder={expectedSample ? "Leia o código de barras ou deixe em branco" : "Leia o código de barras ou digite o accession"} /></label>
-          <label>Tipo de amostra<input value={sampleType} onChange={(event) => setSampleType(event.target.value)} placeholder="EDTA" /></label>
+          <label>Tipo de amostra<input value={sampleType} onInput={() => { sampleTypeEditedRef.current = true; }} onChange={(event) => { sampleTypeEditedRef.current = true; setSampleType(event.target.value); }} placeholder="EDTA" /></label>
         </> : null}
         {selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE" ? <>
-          <label>Início<input ref={setFirstFieldRef} type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
-          <label>Fim<input type="datetime-local" value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label>
-          <label>Recurso<input value={resource} onChange={(event) => setResource(event.target.value)} placeholder="US-01" /></label>
+          <label>Início<input ref={setFirstFieldRef} type="datetime-local" aria-describedby={`${formId}-hospital-time`} value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
+          <label>Fim<input type="datetime-local" aria-describedby={`${formId}-hospital-time`} value={endsAt} onChange={(event) => setEndsAt(event.target.value)} /></label>
+          <p id={`${formId}-hospital-time`} className="field-help">Informe o início e o fim no horário do hospital.</p>
+          <DiagnosticResourceFields departmentCode={item.departmentCode} permissions={permissions} selectedIds={resourceIds} onChange={setResourceIds} />
           {selectedAction === "RESCHEDULE" && <label>Motivo<input value={rescheduleReason} onChange={(event) => setRescheduleReason(event.target.value)} placeholder="Conflito de agenda" /></label>}
         </> : null}
         {reasonType ? <>
@@ -330,11 +354,19 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
           <label>Observação (opcional)<textarea value={reasonNote} onChange={(event) => setReasonNote(event.target.value)} rows={3} placeholder="Acrescente contexto clínico, se necessário." /></label>
         </> : null}
         {selectedAction === "CREATE_RESULT" || selectedAction === "AMEND" ? <label>Resultado<textarea ref={setFirstFieldRef} value={narrative} onChange={(event) => setNarrative(event.target.value)} rows={4} placeholder="Descreva o resultado confirmado pelo setor." /></label> : null}
-        {error && <p className="form-alert" role="alert">{error}</p>}
+        {(error || (selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE") && scheduleCommand.error) && <p className="form-alert" role="alert">{error || scheduleCommand.error}</p>}
         {notice && <p className="form-notice" role="status">{notice}</p>}
         <div className="workflow-form-actions"><button className="button button-ghost" type="button" onClick={() => setOpen(false)} disabled={pendingAction !== null}>Cancelar</button><ActionButton state={pendingAction === "submit" ? "pending" : "idle"} disabled={pendingAction !== null || (Boolean(reasonType) && (reasonLoading || !reasonCode)) || (selectedAction === "CREATE_RESULT" && Boolean(draft))} type="submit">{pendingAction === "submit" ? "Confirmando…" : "Confirmar"}</ActionButton></div>
-        {draft && <div className="workflow-draft-actions"><Link className="button button-ghost" href={`/results/${draft.id}`}>Abrir draft</Link>{item.workflowType === "LABORATORY" ? <span className="workflow-draft-guidance">Abra o editor para preencher e liberar o painel.</span> : <ActionButton state={pendingAction === "release" ? "pending" : "idle"} disabled={pendingAction !== null} onClick={() => void releaseDraft()}>{pendingAction === "release" ? "Liberando…" : "Liberar resultado"}</ActionButton>}</div>}
+        {draft && <div className="workflow-draft-actions"><Link className="button button-ghost" href={`/results/${draft.id}`}>Abrir draft</Link>{item.workflowType === "LABORATORY" ? <span className="workflow-draft-guidance">Abra o editor para preencher e liberar o painel.</span> : allowed("RELEASE_RESULT") ? <ActionButton state={pendingAction === "release" ? "pending" : "idle"} disabled={pendingAction !== null} onClick={() => void releaseDraft()}>{pendingAction === "release" ? "Liberando…" : "Liberar resultado"}</ActionButton> : null}</div>}
       </form>}
     </div>
   );
+}
+
+function DiagnosticResourceFields({ departmentCode, permissions, selectedIds, onChange }: { departmentCode?: string; permissions: readonly Permission[]; selectedIds: string[]; onChange: (ids: string[]) => void }) {
+  const { user, error } = usePlannerIdentity();
+  if (error) return <p role="alert">{error}</p>;
+  if (!departmentCode || !permissions.includes("hospital_resource.view")) return <p role="status">A agenda exige acesso ao inventário autorizado do setor. Solicite o cadastro ou acesso aos recursos.</p>;
+  if (!user) return <p role="status">Consultando inventário autorizado…</p>;
+  return <HospitalResourcePicker key={`${user.id}:${departmentCode}`} userId={user.id} departmentCode={departmentCode} selectedIds={selectedIds} onChange={onChange} canConfigure={permissions.includes("hospital_resource.create")} />;
 }

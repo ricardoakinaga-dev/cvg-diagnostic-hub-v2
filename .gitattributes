@@ -1,0 +1,4 @@
+# These spreadsheet exports intentionally use CRLF. Keep the standard checks and recognize CR as part of the terminator.
+docs/avaliacoes/plane-preview-2026-10-11/matriz-cadastros-acessos.csv whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/avaliacoes/plane-preview-2026-10-11/matriz-permissoes-atuais.csv whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol
+docs/avaliacoes/plane-preview-2026-10-11/matriz.csv whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

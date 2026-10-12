@@ -2,6 +2,18 @@ import { describe, expect, it } from "vitest";
 import { canAccessResource, hasPermission, hasPermissionForUser, rolePermissions } from "./authorization";
 
 describe("server authorization", () => {
+  it("gives SUPERADMIN exactly the union of defined permissions and global clinical scope", () => {
+    const union = new Set(Object.entries(rolePermissions).filter(([role]) => role !== "SUPERADMIN").flatMap(([, permissions]) => permissions));
+    expect(new Set(rolePermissions.SUPERADMIN)).toEqual(union);
+    const superadmin = { id: "superadmin", role: "SUPERADMIN" as const, departmentCode: "IT", patientIds: [], serviceCodes: [], managedDepartmentCodes: [], active: true };
+    for (const permission of union) {
+      expect(canAccessResource(superadmin, permission, { patientId: "unassigned-patient", departmentCode: "ANOTHER_DEPARTMENT", serviceCode: "ANOTHER_EXAM", ownerId: superadmin.id })).toBe(true);
+      expect(canAccessResource({ ...superadmin, active: false }, permission, {})).toBe(false);
+    }
+    expect(canAccessResource(superadmin, "result.draft.edit_own", { ownerId: "another-author" })).toBe(false);
+    expect(hasPermissionForUser({ ...superadmin, active: false }, "user_role.manage")).toBe(false);
+  });
+
   it("grants encounter.manage only to veterinarians, the inpatient team and managers", () => {
     for (const role of ["VETERINARIAN", "INPATIENT_TEAM", "MANAGER"] as const) expect(hasPermission(role, "encounter.manage")).toBe(true);
     for (const role of ["ADMIN", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"] as const) expect(hasPermission(role, "encounter.manage")).toBe(false);

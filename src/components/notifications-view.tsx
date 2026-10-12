@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Notification } from "@cvg/contracts";
+import type { Notification, SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
-import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { ApiClientError, apiFetch, apiFetchWithMeta, formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { Icon } from "./ui-icons";
 import { PageHeader } from "./page-header";
@@ -18,6 +18,7 @@ interface NotificationActionsProps {
   onAcknowledge: () => void;
   pending: boolean;
   blocked: boolean;
+  permitted: boolean;
 }
 
 const notificationTabs = [
@@ -27,11 +28,12 @@ const notificationTabs = [
   ["CRITICAL", "Críticas"]
 ] as const;
 
-function NotificationActions({ item, reason, confirmed, onReasonChange, onConfirmationChange, onAcknowledge, pending, blocked }: NotificationActionsProps) {
+function NotificationActions({ item, reason, confirmed, onReasonChange, onConfirmationChange, onAcknowledge, pending, blocked, permitted }: NotificationActionsProps) {
   if (item.state === "ACKNOWLEDGED") return <span className="notification-delivery-state">Confirmada</span>;
   if (item.state === "PENDING") return <span className="notification-delivery-state" role="status">Entrega pendente; a confirmação ficará disponível após o canal confirmar.</span>;
   if (item.state === "FAILED") return <span className="notification-delivery-state" role="alert">Entrega não confirmada; acione o suporte operacional.</span>;
   if (item.state === "SUPERSEDED") return <span className="notification-delivery-state">Resultado substituído; abra o contexto atual.</span>;
+  if (!permitted) return <span className="notification-delivery-state">Sua conta pode consultar esta notificação; a confirmação exige permissão.</span>;
   return <div className="notification-confirmation">
     <label htmlFor={`reason-${item.id}`}>Motivo da confirmação</label>
     <input id={`reason-${item.id}`} value={reason} onChange={(event) => onReasonChange(event.target.value)} maxLength={500} />
@@ -58,6 +60,11 @@ export function NotificationsView() {
   const [items, setItems] = useState<Notification[]>([]);
   const [filter, setFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [paginationError, setPaginationError] = useState("");
+  const [nextCursor, setNextCursor] = useState<string>();
+  const [total, setTotal] = useState(0);
+  const [canAcknowledge, setCanAcknowledge] = useState(false);
   const [error, setError] = useState("");
   const [lastConfirmedAt, setLastConfirmedAt] = useState<string | null>(null);
   const [reasons, setReasons] = useState<Record<string, string>>({});
@@ -85,23 +92,48 @@ export function NotificationsView() {
     const version = loadVersion.current + 1;
     loadVersion.current = version;
     setLoading(true);
+    setLoadingMore(false);
+    setPaginationError("");
+    setCanAcknowledge(false);
     try {
       setError("");
-      const nextItems = await apiFetch<Notification[]>(`/notifications?filter=${filter}`);
+      const [session, page] = await Promise.all([apiFetch<SessionResponse>("/session/me"), apiFetchWithMeta<Notification[]>(`/notifications?filter=${filter}&limit=50`)]);
       if (loadVersion.current !== version) return;
-      setItems(nextItems);
+      setItems(page.data);
+      setCanAcknowledge(session.user.permissions?.includes("notification.acknowledge") === true);
+      setNextCursor(typeof page.meta.nextCursor === "string" ? page.meta.nextCursor : undefined);
+      setTotal(typeof page.meta.total === "number" ? page.meta.total : page.data.length);
       setLastConfirmedAt(new Date().toISOString());
     } catch (cause) {
       if (loadVersion.current !== version) return;
+      if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) { setItems([]); setNextCursor(undefined); setSelectedId(null); }
       setError(getSafeErrorMessage(cause, "Não foi possível carregar as notificações."));
     } finally {
       if (loadVersion.current === version) setLoading(false);
     }
   }, [filter]);
 
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || loading || loadingMore) return;
+    const version = loadVersion.current;
+    setLoadingMore(true);
+    setPaginationError("");
+    try {
+      const page = await apiFetchWithMeta<Notification[]>(`/notifications?filter=${filter}&limit=50&cursor=${encodeURIComponent(nextCursor)}`);
+      if (loadVersion.current !== version) return;
+      setItems((current) => [...new Map([...current, ...page.data].map((item) => [item.id, item])).values()]);
+      setNextCursor(typeof page.meta.nextCursor === "string" ? page.meta.nextCursor : undefined);
+      setTotal(typeof page.meta.total === "number" ? page.meta.total : page.data.length);
+    } catch (cause) {
+      if (loadVersion.current !== version) return;
+      if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) { setItems([]); setNextCursor(undefined); setSelectedId(null); setCanAcknowledge(false); }
+      setPaginationError(getSafeErrorMessage(cause, "Não foi possível carregar mais notificações."));
+    } finally { if (loadVersion.current === version) setLoadingMore(false); }
+  }, [filter, loading, loadingMore, nextCursor]);
+
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
-    return () => window.clearTimeout(timer);
+    return () => { window.clearTimeout(timer); loadVersion.current += 1; };
   }, [load]);
 
   useEffect(() => {
@@ -115,6 +147,7 @@ export function NotificationsView() {
   }, [load]);
 
   async function acknowledge(notification: Notification) {
+    if (!canAcknowledge) return;
     const reason = reasons[notification.id]?.trim();
     if (!reason || !confirmations[notification.id]) {
       setError("Informe o motivo e confirme a ação antes de continuar.");
@@ -141,10 +174,10 @@ export function NotificationsView() {
   }, [items, selected]);
   const categoryLabel = (item: Notification) => item.category === "CRITICAL" ? "Crítica" : item.category === "ACTIONABLE" ? "Ação necessária" : item.category === "ADMINISTRATIVE" ? "Administrativa" : "Informativa";
   const categoryTone = (item: Notification) => item.category === "CRITICAL" ? "critical" : item.category === "ACTIONABLE" ? "actionable" : "info";
-  const isUnread = (item: Notification) => item.state !== "ACKNOWLEDGED" && item.state !== "SUPERSEDED";
+  const isUnread = (item: Notification) => item.state !== "SEEN" && item.state !== "ACKNOWLEDGED" && item.state !== "SUPERSEDED";
 
   return <>
-    <PageHeader crumbs={[{ label: "Caixa de entrada", icon: "inbox" }]} count={loading && items.length === 0 ? undefined : items.length}>
+    <PageHeader crumbs={[{ label: "Caixa de entrada", icon: "inbox" }]} count={loading && items.length === 0 ? undefined : total}>
       <button type="button" className="icon-button header-refresh" onClick={() => void load()} aria-label="Atualizar notificações" title="Atualizar"><Icon name="refresh" size={14} className={loading ? "spin" : undefined} /></button>
     </PageHeader>
     {error && items.length > 0 && <div className="page-body page-body-tight"><StaleNotice title="Notificações confirmadas; atualização falhou" message={error} lastConfirmedAt={lastConfirmedAt ? formatRelativeTime(lastConfirmedAt) : undefined} onRetry={load} retrying={loading} /></div>}
@@ -158,6 +191,8 @@ export function NotificationsView() {
             <span className={`inbox-icon tone-${categoryTone(item)}`} aria-hidden="true"><Icon name={item.category === "CRITICAL" ? "attention" : item.category === "ACTIONABLE" ? "arrow-right" : "notifications"} size={14} /></span>
             <span className="inbox-item-copy"><strong>{item.title}</strong><span>{item.body}</span><time dateTime={item.createdAt}>{categoryLabel(item)} · {formatRelativeTime(item.createdAt)}</time></span>
           </button>)}
+          {paginationError && <ErrorState title="Notificações parcialmente carregadas" message={paginationError} onRetry={loadMore} retrying={loadingMore} />}
+          {nextCursor && <div className="workspace-pagination"><span>Carregadas {items.length} de {total} notificações</span><ActionButton tone="ghost" state={loadingMore ? "pending" : "idle"} disabled={loading} onClick={() => void loadMore()}>{loadingMore ? "Carregando…" : "Carregar mais notificações"}</ActionButton></div>}
         </section>
       </div>
       <section className="inbox-detail" aria-label="Notificação selecionada">
@@ -169,7 +204,7 @@ export function NotificationsView() {
           <CriticalChannels item={selected} />
           <div className="inbox-detail-actions"><Link href={selected.deepLink} className="button button-primary">Abrir contexto <Icon name="arrow-right" size={15} /></Link></div>
           <div className="inbox-ack">
-            <NotificationActions item={selected} reason={reasons[selected.id] ?? ""} confirmed={confirmations[selected.id] === true} pending={acknowledgingId === selected.id} blocked={acknowledgingId !== null && acknowledgingId !== selected.id} onReasonChange={(value) => setReasons((current) => ({ ...current, [selected.id]: value }))} onConfirmationChange={(value) => setConfirmations((current) => ({ ...current, [selected.id]: value }))} onAcknowledge={() => void acknowledge(selected)} />
+            <NotificationActions item={selected} permitted={canAcknowledge} reason={reasons[selected.id] ?? ""} confirmed={confirmations[selected.id] === true} pending={acknowledgingId === selected.id} blocked={acknowledgingId !== null && acknowledgingId !== selected.id} onReasonChange={(value) => setReasons((current) => ({ ...current, [selected.id]: value }))} onConfirmationChange={(value) => setConfirmations((current) => ({ ...current, [selected.id]: value }))} onAcknowledge={() => void acknowledge(selected)} />
           </div>
         </article> : <div className="empty-panel"><span className="empty-panel-icon" aria-hidden="true"><Icon name="inbox" size={26} /></span><h2>Selecione uma notificação</h2><p>Os detalhes e a confirmação aparecem aqui.</p></div>}
       </section>

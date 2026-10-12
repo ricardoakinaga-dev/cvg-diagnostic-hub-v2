@@ -165,7 +165,7 @@ describe("CatalogImportPanel", () => {
   });
 
   it("is available inside the administration console and reloads the catalog after applying", async () => {
-    const identity = { id: "admin", email: "admin@cvg.local", displayName: "Admin", role: "ADMIN", departmentCode: "INPATIENT", timezone: "America/Sao_Paulo" };
+    const identity = { id: "admin", email: "admin@cvg.local", displayName: "Admin", role: "ADMIN", departmentCode: "INPATIENT", timezone: "America/Sao_Paulo", permissions: ["department.view", "service.catalog.manage", "reason_code.manage", "user_role.manage"] };
     let catalogLoads = 0;
     vi.spyOn(apiClient, "apiFetch").mockImplementation(async <T,>(path: string): Promise<T> => {
       if (path === "/session/me") return { user: identity } as T;

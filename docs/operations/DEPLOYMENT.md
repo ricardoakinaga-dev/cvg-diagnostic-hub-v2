@@ -36,6 +36,10 @@ Armazenamento S3 e antivírus são **serviços obrigatórios fora do processo**:
 
 O `/readyz` falha (503) em produção, antes de tocar no banco, se `SESSION_SECRET` ou `TRUST_PROXY_SHARED_SECRET` tiverem menos de 32 caracteres ou se `TRUST_PROXY` não for `true`.
 
+**Fuso institucional.** `APP_TIMEZONE` é a escolha única de instalação, com padrão `America/Sao_Paulo`. Os arquivos Compose de produção e instalação local enviam o mesmo valor à build de `runner` e `ops` e ao ambiente de app, worker e comandos de manutenção. O Dockerfile deriva `NEXT_PUBLIC_HOSPITAL_TIMEZONE` desse argumento e rejeita um fuso IANA inválido antes de publicar as imagens. O navegador recebe o valor congelado em `next build`; alterar apenas o ambiente de um container já construído não muda o horário exibido pela interface. Os templates de ambiente também expandem `NEXT_PUBLIC_HOSPITAL_TIMEZONE=$APP_TIMEZONE` para `next dev` e builds fora do Docker.
+
+Na publicação pelo GitHub, a variável de repositório `APP_TIMEZONE` usa o mesmo padrão e alimenta as duas imagens; o manifesto da release registra `timezone`, e ambas carregam o label `org.cvg.hospital.timezone`. O `deploy.sh` compara esses labels com o ambiente efetivo do Compose, incluindo overlays, antes de backup, parada ou migração. Recusa labels ausentes e fusos divergentes em app, worker, migrate ou bootstrap; o JSON de configuração passa somente pelo stdin de um validador isolado, sem disco nem logs. Imagens publicadas antes desse label exigem uma nova release com o Dockerfile atual. Para trocar o fuso, construa e publique uma nova release com esse valor, recrie app e worker juntos e atualize o cadastro institucional pelo comando versionado e auditado. A API recusa gravar um fuso que diverge do runtime ou da build da interface; o cadastro não altera o fuso dos containers nem reconstrói o navegador. Datas persistidas continuam em UTC.
+
 **Girar o `SESSION_SECRET`** invalida as sessões anteriores e **os links de redefinição de senha ainda não usados**. A impressão digital da sessão usa HMAC-SHA256 e inclui um identificador derivado da geração do segredo; a autorização verifica essa geração mesmo para SSE já aberto e sem mudança no banco. Sessões antigas sem chave expiram no primeiro deploy desta versão. Faça a troca em janela de manutenção, interrompa o acesso e recrie **todas** as instâncias `app` e `worker` com o novo segredo; uma instância ainda com o segredo antigo continuará aceitando a sua geração. Não volte ao segredo antigo. Confira a recusa de cookies e links antigos e o encerramento dos streams, além do login novo. Se alguém estava com um link pendente, emita outro depois (`POST /users/{id}/password-reset-link` ou `npm run db:reset-link`).
 
 ## 3. Primeiro deploy
@@ -199,7 +203,7 @@ identificador de sessão ou paciente. Para executar sob demanda:
 
 ```bash
 docker compose -f docker-compose.prod.yml --env-file .env.production \
-  run --rm worker npm run runtime:retention
+  run --rm worker node_modules/.bin/tsx scripts/runtime-retention.ts
 ```
 
 A auditoria não passa por esta poda: `audit_events` é append-only por trigger e por contrato, e desde a migration 013 é a única fonte de leitura. O snapshot guarda `auditEvents` vazio (constraint `runtime_audit_is_transient`).
@@ -363,11 +367,11 @@ Decisão D5: solicitações concluídas há mais de 24 meses saem do agregado at
 | `ARCHIVE_INTERVAL_MS` | `86400000` (24 h; mínimo 1 h) | Cadência do job no worker. |
 | `ARCHIVE_PURGE_AFTER_MONTHS` | vazio | Prazo legal em meses a partir do arquivamento. Vazio ou `0`: nenhum expurgo; ao definir, o worker também remove os anexos do S3. |
 
-Sob demanda: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm worker npm run runtime:archive -- --dry-run` (ensaio; `--apply` aplica, `--purge` exige o prazo legal definido). Cada lote grava um evento `ClinicalRecordsArchived` só com contagens.
+Sob demanda: `docker compose -f docker-compose.prod.yml --env-file .env.production run --rm worker node_modules/.bin/tsx scripts/clinical-archive.ts --dry-run` (ensaio; `--apply` aplica, `--purge` exige o prazo legal definido). Cada lote grava um evento `ClinicalRecordsArchived` só com contagens.
 
 ## 7. Papéis de banco separados (PROD-305)
 
-Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `npm run db:roles` com três conexões, que o Compose monta sozinho:
+Já faz parte do primeiro deploy e de toda atualização (§3): o serviço `migrate` roda `node_modules/.bin/tsx scripts/db-roles.ts` com três conexões, que o Compose monta sozinho:
 
 | Variável | Papel | Quem recebe |
 | --- | --- | --- |
@@ -439,7 +443,7 @@ O que o hospital ainda precisa fornecer (D11): o **servidor** (disco para banco 
 
 O servidor do hospital deixa de compilar imagens. O workflow [`release.yml`](../../.github/workflows/release.yml) roda depois de cada CI verde num push para `main`:
 
-1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`), a operacional (`<prefixo>-ops:sha-…`) e a do armazenamento de objetos do modo on-prem (`<prefixo>-minio:sha-…`, MinIO compilado da fonte fixada em `deploy/minio/Dockerfile`, §12) e a do cliente usado pelo `storage-iam` (`<prefixo>-mc:sha-…`, `deploy/minio/Dockerfile.mc`), todas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH com correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das quatro, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
+1. **publish:** compila uma vez a imagem da aplicação (`<prefixo>:sha-<12 hex do commit>`), a operacional (`<prefixo>-ops:sha-…`) e a do armazenamento de objetos do modo on-prem (`<prefixo>-minio:sha-…`, MinIO compilado da fonte fixada em `deploy/minio/Dockerfile`, §12) e a do cliente usado pelo `storage-iam` (`<prefixo>-mc:sha-…`, `deploy/minio/Dockerfile.mc`), todas com o rótulo `org.opencontainers.image.revision=<commit>`. Depois as audita com Trivy, reprovando CRITICAL/HIGH, incluindo os achados sem correção disponível (mesmo critério do CI). Por fim gera o SBOM CycloneDX das quatro, publica e guarda os digests no artefato `release-sha-…` e no resumo do job.
 2. **promote-staging:** move a tag `staging` das duas imagens para essa release, sem aprovação (homologação automática).
 3. **promote-production:** move a tag `production`. O job usa o ambiente `production` do GitHub e espera a aprovação de quem estiver em *required reviewers*. Antes de mover a tag ele confere, pela API, que o ambiente tem revisores obrigatórios; se não tiver, falha.
 

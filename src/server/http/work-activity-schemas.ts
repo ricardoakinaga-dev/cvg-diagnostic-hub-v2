@@ -1,0 +1,10 @@
+import { z } from "zod";
+import { WORK_ACTIVITY_TARGETS, WORK_NOTIFICATION_EVENTS } from "@cvg/contracts";
+const id = z.string().min(1).max(100); const expectedVersion = z.number().int().nonnegative();
+const page = { limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() };
+export const workActivityPreferenceSchema = z.object({ targetType: z.enum(WORK_ACTIVITY_TARGETS), targetId: id, favorite: z.boolean().optional(), favoriteGroup: z.string().trim().min(1).max(80).nullable().optional(), following: z.boolean().optional(), privateNote: z.string().trim().max(4000).nullable().optional(), opened: z.literal(true).optional(), hiddenFromRecents: z.boolean().optional(), expectedVersion }).strict();
+export const workActivityPreferenceFiltersSchema = z.object({ targetType: z.enum(WORK_ACTIVITY_TARGETS).optional(), targetId: id.optional(), mode: z.enum(["ALL", "FAVORITES", "RECENTS", "FOLLOWING", "NOTES"]).optional(), ...page }).strict().refine((input) => !input.targetId || Boolean(input.targetType));
+export const workNotificationFiltersSchema = z.object({ includeArchived: z.boolean().optional(), unreadOnly: z.boolean().optional(), ...page }).strict();
+export const workNotificationReadSchema = z.object({ notificationIds: z.array(id).min(1).max(100).refine((values) => new Set(values).size === values.length).optional(), all: z.literal(true).optional(), read: z.boolean().optional() }).strict().refine((input) => Boolean(input.notificationIds) !== Boolean(input.all) && !(input.all && input.read === false));
+export const workNotificationArchiveSchema = z.object({ archived: z.boolean(), expectedVersion: expectedVersion.refine((value) => value > 0) }).strict();
+export const workNotificationPreferenceSchema = z.object({ mutedEvents: z.array(z.enum(WORK_NOTIFICATION_EVENTS)).max(10).refine((values) => new Set(values).size === values.length), expectedVersion }).strict();

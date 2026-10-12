@@ -1,0 +1,56 @@
+﻿Permissão;Ação;Condição;SUPERADMIN;ADMIN;MANAGER;VETERINARIAN;INPATIENT_TEAM;LAB_TECH;RADIOLOGY_TEAM;ULTRASOUND_TEAM;VIEWER
+admission.context.manage;Transferir/atualizar contexto de internação;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Não;Não;Não;Não
+admission.view;Consultar internação;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+attachment.download;Baixar anexo;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Não
+attachment.finalize;Finalizar/validar upload;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+attachment.upload_session;Iniciar upload de anexo;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+attachment.view;Consultar anexo;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+audit.view;Consultar auditoria;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Não;Não;Não;Não;Não;Não
+critical_result_policy.manage;Administrar política de críticos;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Não;Não;Não;Não;Não;Não;Não
+dashboard.view;Consultar indicadores;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+diagnostic.timeline.view;Consultar timeline diagnóstica do paciente;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+encounter.manage;Abrir/encerrar atendimento;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Não;Não;Não;Não
+encounter.view;Consultar atendimento;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+health.liveness;Consultar liveness;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Não;Não;Não;Não;Não;Não;Não
+health.readiness;Consultar readiness;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Não;Não;Não;Não;Não;Não;Não
+item.cancel;Cancelar item diagnóstico;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Não;Não;Não;Não
+item.complete;Concluir item manualmente;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Não;Não;Não;Não
+item.reject;Rejeitar item/amostra;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Não;Não;Não
+item.view;Consultar item diagnóstico;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+notification.acknowledge;Confirmar notificação elegível;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Não
+notification.view;Consultar notificações próprias;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+outbox.manage;Administrar entregas/outbox;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Não;Não;Não;Não;Não;Não;Não
+patient.create;Cadastrar paciente;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Não;Sim;Sim;Não;Não;Não;Não
+patient.data_export;Exportar dados do titular;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Não;Não;Não;Não;Não;Não;Não
+patient.view;Consultar paciente;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+procedure.mark_performed;Registrar procedimento realizado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Não;Sim;Sim;Não
+procedure.reschedule;Remarcar procedimento;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Não;Sim;Sim;Não
+procedure.schedule;Agendar procedimento;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Não;Sim;Sim;Não
+procedure.start;Iniciar procedimento;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Não;Sim;Sim;Não
+queue.view;Consultar fila;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+realtime.connect;Conectar ao realtime autorizado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+reason_code.manage;Administrar motivos clínicos;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Não;Não;Não;Não;Não;Não
+request.cancel;Cancelar solicitação;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Não;Não;Não;Não
+request.create;Solicitar exames;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Não;Não;Não;Não
+request.duplicate_override;Confirmar solicitação duplicada;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Não;Não;Não;Não
+request.list;Listar solicitações;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+request.view;Consultar solicitação;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+result.amend;Retificar resultado liberado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+result.draft.create;Criar rascunho de resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+result.draft.edit_own;Editar próprio rascunho;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+result.history.view;Consultar versões de resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+result.release;Liberar resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+result.review;Revisar resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Não;Não;Não;Não
+result.view;Consultar resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+result.view.record;Registrar leitura do resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+result.void;Invalidar resultado;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Sim;Sim;Não
+sample.process;Processar amostra;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Não;Não;Não
+sample.receive;Receber amostra;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Não;Não;Não
+sample.recollection.request;Solicitar recoleta;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Não;Não;Não
+sample.replacement.receive;Receber amostra substituta;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Não;Não;Sim;Não;Não;Não
+search.execute;Buscar recursos autorizados;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+service.catalog.manage;Administrar catálogo diagnóstico;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Não;Não;Não;Não;Não;Não
+service.catalog.view;Consultar catálogo diagnóstico;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+sla_policy.manage;Administrar SLA;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Não;Não;Não;Não;Não;Não
+timeline.view;Consultar timeline da solicitação/item;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Não;Sim;Sim;Sim;Sim;Sim;Sim;Sim
+user_role.manage;Administrar usuários/perfis;Sujeita a escopo, estado, autoria e regras do servidor;Sim;Sim;Sim;Não;Não;Não;Não;Não;Não

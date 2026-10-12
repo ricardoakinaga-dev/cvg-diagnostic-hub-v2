@@ -51,6 +51,7 @@ x-app-environment: &app-environment
   CRITICAL_POLICY_VERSION: ${CRITICAL_POLICY_VERSION:-}
   CRITICAL_POLICY_APPROVAL_REF: ${CRITICAL_POLICY_APPROVAL_REF:-}
   CRITICAL_POLICY_APPROVED_AT: ${CRITICAL_POLICY_APPROVED_AT:-}
+  HOSPITAL_INTAKE_REJECTION_POLICY_JSON: ${HOSPITAL_INTAKE_REJECTION_POLICY_JSON:-}
   # PROD-402: escalation ladder run by the worker (defaults repeat the code: 15/30/60 min, requester first).
   CRITICAL_POLICY_EFFECTIVE_FROM: ${CRITICAL_POLICY_EFFECTIVE_FROM:-}
   CRITICAL_POLICY_ESCALATION_AFTER_MS: ${CRITICAL_POLICY_ESCALATION_AFTER_MS:-900000,1800000,3600000}
@@ -79,6 +80,7 @@ x-app-environment: &app-environment
   # interpolation, so a value not listed here never reaches the containers.
   # The defaults repeat the code defaults.
   APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+  NEXT_PUBLIC_HOSPITAL_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
   SESSION_IDLE_TIMEOUT_MS: ${SESSION_IDLE_TIMEOUT_MS:-1800000}
   SESSION_ACTIVITY_TOUCH_INTERVAL_MS: ${SESSION_ACTIVITY_TOUCH_INTERVAL_MS:-60000}
   SESSION_RETENTION_MS: ${SESSION_RETENTION_MS:-86400000}
@@ -163,7 +165,7 @@ services:
   # administrative and DDL credentials: it creates/rotates the migration and runtime roles, hands the
   # schema to the migration role, applies migrations and grants the runtime role DML only.
   migrate:
-    build: { context: ., target: ops, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
+    build: { context: ., target: ops, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}", APP_TIMEZONE: "${APP_TIMEZONE:-America/Sao_Paulo}" } }
     image: ${IMAGE_PREFIX:-cvg-hub}-ops:${IMAGE_TAG:-latest}
     command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
     environment:
@@ -208,7 +210,7 @@ services:
     # on 2026-10-08: peak RSS 539 MB at 12 months (55k exams, 700 MB heap) and
     # 912 MB at 24 months (110k, 1200 MB heap). Size both values from D2.
     mem_limit: ${APP_MEM_LIMIT:-2g}
-    build: { context: ., target: runner, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
+    build: { context: ., target: runner, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}", APP_TIMEZONE: "${APP_TIMEZONE:-America/Sao_Paulo}" } }
     image: ${IMAGE_PREFIX:-cvg-hub}:${IMAGE_TAG:-latest}
     environment:
       <<: *app-environment

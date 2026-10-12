@@ -66,7 +66,7 @@ describe("memory store clinical archive", () => {
     const thor = await store.readClinicalArchive({ patientId: "patient-thor", limit: 10 });
     expect(thor).toEqual([{
       requestId: "request-old", requestCode: "EX-old", patientId: "patient-thor", encounterId: "encounter-thor", requestingDepartmentCode: "INPATIENT",
-      archivedAt: ARCHIVE_NOW.toISOString(), completedAt: "2024-06-01T12:00:00.000Z",
+      archivedAt: ARCHIVE_NOW.toISOString(), completedAt: "2024-06-01T12:00:00.000Z", updatedAt: "2024-06-01T12:00:00.000Z",
       services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY", attachmentCount: 1 }, { code: "XRAY_THORAX", name: "RX de tórax", departmentCode: "RADIOLOGY", attachmentCount: 0 }],
       attachmentCount: 1
     }]);

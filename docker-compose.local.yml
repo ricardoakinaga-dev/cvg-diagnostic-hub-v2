@@ -4,6 +4,8 @@
 x-runtime-environment: &runtime-environment
   NODE_ENV: production
   APP_DATA_MODE: postgres
+  APP_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
+  NEXT_PUBLIC_HOSPITAL_TIMEZONE: ${APP_TIMEZONE:-America/Sao_Paulo}
   DATABASE_URL: postgresql://cvg_runtime:${POSTGRES_RUNTIME_PASSWORD:?}@postgres:5432/${POSTGRES_DB:?}
   DB_POOL_MAX: "4"
   SESSION_SECRET: ${SESSION_SECRET:?}
@@ -114,7 +116,7 @@ services:
       retries: 6
 
   migrate:
-    build: { context: ., target: ops, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
+    build: { context: ., target: ops, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}", APP_TIMEZONE: "${APP_TIMEZONE:-America/Sao_Paulo}" } }
     image: cvg-diagnostic-local-ops:20261003
     command: ["node_modules/.bin/tsx", "scripts/db-roles.ts"]
     environment:
@@ -155,7 +157,7 @@ services:
     cpus: 1
 
   app:
-    build: { context: ., target: runner, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}" } }
+    build: { context: ., target: runner, args: { SOURCE_REVISION: "${SOURCE_REVISION:-unknown}", APP_TIMEZONE: "${APP_TIMEZONE:-America/Sao_Paulo}" } }
     image: cvg-diagnostic-local:20261003
     restart: unless-stopped
     environment: *runtime-environment

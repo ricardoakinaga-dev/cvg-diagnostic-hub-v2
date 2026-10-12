@@ -5,6 +5,7 @@ import { outboxMetrics, outboxPage } from "../domain/outbox-read";
 import type { OutboxTransactionQuery } from "../domain/models";
 import { activityRowsAfterPrune, compactRuntimeState, retentionRemovedAnything, runtimeRetentionAuditEvent } from "./runtime-retention";
 import { freezeState } from "./immutable-state";
+import { STATE_COLLECTIONS } from "./postgres-state-codec";
 import { archiveAuditEvent, archiveEntries, assertBoundedArchiveQuery, archiveRows, archiveSummary, newArchiveBatchId, planClinicalArchive, purgeAuditEvent, purgeCutoff } from "../domain/clinical-archive";
 
 function cloneState(state: StoreState): StoreState {
@@ -153,7 +154,8 @@ export class MemoryStore implements StateStore {
     const requests = new Set(this.archive
       .filter((row) => row.collection === "requests" && (query.patientId === undefined || row.data.patientId === query.patientId) && (query.requestId === undefined || row.requestId === query.requestId))
       .map((row) => row.requestId));
-    const entries = archiveEntries(this.archive.filter((row) => requests.has(row.requestId)), state.services);
+    const entries = archiveEntries(this.archive.filter((row) => requests.has(row.requestId)), state.services)
+      .filter((entry) => !query.cursor || entry.updatedAt < query.cursor.updatedAt || (entry.updatedAt === query.cursor.updatedAt && entry.requestId > query.cursor.requestId));
     const offset = query.offset ?? 0;
     return entries.slice(offset, query.limit === undefined ? undefined : offset + query.limit);
   }
@@ -254,8 +256,7 @@ export class MemoryStore implements StateStore {
 
   async healthcheck(): Promise<void> {
     const state = await this.readState();
-    const collections: (keyof typeof state)[] = ["users", "sessions", "patients", "encounters", "admissions", "services", "reasonCodes", "requests", "items", "samples", "procedures", "schedules", "results", "resultVersions", "notifications", "auditEvents", "outbox", "idempotency", "attachments"];
-    if (!Number.isSafeInteger(state.protocolSequence) || state.protocolSequence < 0 || collections.some((key) => !Array.isArray(state[key]))) {
+    if (!Number.isSafeInteger(state.protocolSequence) || state.protocolSequence < 0 || STATE_COLLECTIONS.some((key) => !Array.isArray(state[key]))) {
       throw new Error("MEMORY_RUNTIME_STATE_INVALID");
     }
   }

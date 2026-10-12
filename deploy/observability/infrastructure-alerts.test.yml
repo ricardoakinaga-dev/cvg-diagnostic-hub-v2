@@ -272,3 +272,96 @@ tests:
       exp_annotations:
         summary: Dump ou backup base inexistente ou mais antigo que 48 horas.
         runbook: docs/operations/BACKUP_RESTORE.md
+
+- name: PostgreSQL HTTP reachable but database login denied
+  interval: 30s
+  input_series:
+  - series: up{job="cvg-postgres",instance="postgres-monitor:9187"}
+    values: 1x12
+  - series: pg_up{job="cvg-postgres",instance="postgres-monitor:9187"}
+    values: 0x12
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: CvgPostgresExporterDown
+    exp_alerts: []
+  - eval_time: 3m
+    alertname: CvgPostgresConnectionFailed
+    exp_alerts:
+    - exp_labels: {severity: critical, job: cvg-postgres, instance: "postgres-monitor:9187"}
+      exp_annotations:
+        summary: Monitor não consegue conectar ao PostgreSQL com o perfil dedicado.
+        runbook: docs/operations/MONITORING.md
+- name: PostgreSQL collector failure while the connection remains healthy
+  interval: 30s
+  input_series:
+  - series: up{job="cvg-postgres"}
+    values: 1x12
+  - series: pg_up{job="cvg-postgres"}
+    values: 1x12
+  - series: pg_scrape_collector_success{job="cvg-postgres",collector="stat_database"}
+    values: 0x12
+  - series: pg_scrape_collector_success{job="cvg-postgres",collector="stat_bgwriter"}
+    values: 1x12
+  - series: pg_scrape_collector_success{job="cvg-postgres",collector="stat_archiver"}
+    values: 1x12
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: CvgPostgresCollectorFailed
+    exp_alerts:
+    - exp_labels: {severity: warning, job: cvg-postgres, collector: stat_database}
+      exp_annotations:
+        summary: Coleta de contadores PostgreSQL falhou ou um coletor obrigatório está ausente.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 3m
+    alertname: CvgPostgresConnectionFailed
+    exp_alerts: []
+- name: PostgreSQL missing exporter and missing counters fail closed
+  interval: 30s
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: CvgPostgresExporterDown
+    exp_alerts:
+    - exp_labels: {severity: critical, job: cvg-postgres}
+      exp_annotations:
+        summary: Exporter PostgreSQL indisponível ou coleta não configurada.
+        runbook: docs/operations/MONITORING.md
+  - eval_time: 3m
+    alertname: CvgPostgresCollectorFailed
+    exp_alerts:
+    - exp_labels: {severity: warning, job: cvg-postgres, collector: stat_database}
+      exp_annotations:
+        summary: Coleta de contadores PostgreSQL falhou ou um coletor obrigatório está ausente.
+        runbook: docs/operations/MONITORING.md
+    - exp_labels: {severity: warning, job: cvg-postgres, collector: stat_bgwriter}
+      exp_annotations:
+        summary: Coleta de contadores PostgreSQL falhou ou um coletor obrigatório está ausente.
+        runbook: docs/operations/MONITORING.md
+    - exp_labels: {severity: warning, job: cvg-postgres, collector: stat_archiver}
+      exp_annotations:
+        summary: Coleta de contadores PostgreSQL falhou ou um coletor obrigatório está ausente.
+        runbook: docs/operations/MONITORING.md
+- name: healthy PostgreSQL and idle archiver do not fire database alerts
+  interval: 30s
+  input_series:
+  - series: up{job="cvg-postgres"}
+    values: 1x12
+  - series: pg_up{job="cvg-postgres"}
+    values: 1x12
+  - series: pg_scrape_collector_success{job="cvg-postgres",collector="stat_database"}
+    values: 1x12
+  - series: pg_scrape_collector_success{job="cvg-postgres",collector="stat_bgwriter"}
+    values: 1x12
+  - series: pg_scrape_collector_success{job="cvg-postgres",collector="stat_archiver"}
+    values: 1x12
+  - series: pg_stat_archiver_archived_count{job="cvg-postgres"}
+    values: 0x12
+  alert_rule_test:
+  - eval_time: 3m
+    alertname: CvgPostgresExporterDown
+    exp_alerts: []
+  - eval_time: 3m
+    alertname: CvgPostgresConnectionFailed
+    exp_alerts: []
+  - eval_time: 3m
+    alertname: CvgPostgresCollectorFailed
+    exp_alerts: []

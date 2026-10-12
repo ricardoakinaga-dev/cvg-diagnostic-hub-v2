@@ -9,7 +9,7 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext } from "./service-context";
 import { decodeQueueCursor, encodeQueueCursor } from "./queue-pagination";
 import * as helpers from "./service-common";
-import { auditScopeForActor, requestAuditScope } from "./audit-read";
+import { auditEventWithinScope, auditScopeForActor, redactPlannerAuditEvent, requestAuditScope } from "./audit-read";
 import { canViewNotification } from "./notification-visibility";
 import { encountersForPatient, findById, samplesForItem } from "../domain/state-index";
 const {
@@ -120,7 +120,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const normalizedQuery = query.trim().toLocaleLowerCase("pt-BR");
       if (Array.from(normalizedQuery).length > 200) throw new ApiError("VALIDATION_ERROR", "A busca de pacientes é muito longa.", 400);
       return state.patients
-        .filter((patient) => currentActor.role === "MANAGER" ? hasManagerPatientContext(state, currentActor, patient.id) : Boolean(currentActor.patientIds?.includes(patient.id)) || (isExecutorRole(currentActor) && hasServicePatientContext(state, currentActor, patient.id)))
+        .filter((patient) => currentActor.role === "SUPERADMIN" || (currentActor.role === "MANAGER" ? hasManagerPatientContext(state, currentActor, patient.id) : Boolean(currentActor.patientIds?.includes(patient.id)) || (isExecutorRole(currentActor) && hasServicePatientContext(state, currentActor, patient.id))))
         .filter((patient) => !normalizedQuery || [patient.displayName, patient.externalId, patient.species, patient.ownerLabel].some((field) => field.toLocaleLowerCase("pt-BR").includes(normalizedQuery)))
         .map((patient) => ({ ...patient }))
         .slice(0, 100);
@@ -132,8 +132,13 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       requirePermission(currentActor, "audit.view", { departmentCode: currentActor.departmentCode });
       const limit = pageSize(filters.limit);
       const cursor = decodeAuditCursor(filters.cursor);
-      const page = await store.readAuditEvents({ scope: auditScopeForActor(state, currentActor), order: "desc", limit, cursor });
-      const items = page.items.map((event) => ({ ...event, metadata: { ...event.metadata } }));
+      const scope = auditScopeForActor(state, currentActor);
+      const page = await store.readAuditEvents({ scope, order: "desc", limit, cursor });
+      const fresh = await store.readState(); const refreshed = requireActiveUser(fresh, actor);
+      requirePermission(refreshed, "audit.view", { departmentCode: refreshed.departmentCode });
+      const finalScope = auditScopeForActor(fresh, refreshed);
+      if (scope.entities.some((entity) => !auditEventWithinScope(finalScope, entity)) || page.items.some((event) => !auditEventWithinScope(finalScope, event))) throw new ApiError("SCOPE_DENIED", "O acesso ao histórico mudou durante a leitura.", 404);
+      const items = page.items.map((event) => redactPlannerAuditEvent(fresh, refreshed, event));
       const last = page.items.at(-1);
       const nextCursor = last && page.hasMore ? encodeKeysetCursor({ occurredAt: last.occurredAt, id: last.id }) : undefined;
       return { items, nextCursor, limit, total: page.total };
@@ -261,7 +266,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         }
         if (notification.recipientUserId !== currentActor.id) {
           const request = requestForNotification(originalState, notification);
-          if (currentActor.role !== "MANAGER" || !request || !hasManagerRequestContext(originalState, currentActor, request)) throw new ApiError("NOT_FOUND", "Notificação não encontrada.", 404);
+          if (!request || (currentActor.role !== "SUPERADMIN" && (currentActor.role !== "MANAGER" || !hasManagerRequestContext(originalState, currentActor, request)))) throw new ApiError("NOT_FOUND", "Notificação não encontrada.", 404);
         } else if (!canViewNotification(originalState, currentActor, notification)) {
           throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
         }
@@ -287,7 +292,7 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const normalizedDepartment = departmentCode.trim().toUpperCase();
       if (!/^[A-Z0-9_-]{1,60}$/.test(normalizedDepartment)) throw new ApiError("VALIDATION_ERROR", "O departamento informado é inválido.", 400);
       requirePermission(currentActor, "queue.view", { departmentCode: normalizedDepartment });
-      if (currentActor.role !== "MANAGER" && currentActor.departmentCode !== normalizedDepartment) throw new ApiError("NOT_FOUND", "Fila não encontrada.", 404);
+      if (currentActor.role !== "MANAGER" && currentActor.role !== "SUPERADMIN" && currentActor.departmentCode !== normalizedDepartment) throw new ApiError("NOT_FOUND", "Fila não encontrada.", 404);
       const currentTime = Date.now();
       const asOf = new Date(currentTime).toISOString();
       const priorityRank: Record<Priority, number> = { EMERGENCY: 0, URGENT: 1, ROUTINE: 2 };
@@ -520,9 +525,11 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
         .filter((item) => item.operationalContext.escalationLevel !== "NONE")
         .sort((left, right) => escalationRank[left.operationalContext.escalationLevel] - escalationRank[right.operationalContext.escalationLevel] || priorityRank[left.priority] - priorityRank[right.priority] || left.dueAt.localeCompare(right.dueAt))
         .slice(0, 24);
-      const scopedDepartments = currentActor.role === "MANAGER"
-        ? managerDepartmentCodes(currentActor)
-        : Array.from(new Set([currentActor.departmentCode, ...visibleItems.map((item) => item.departmentCode)])).filter(Boolean).sort();
+      const scopedDepartments = currentActor.role === "SUPERADMIN"
+        ? Array.from(new Set([...state.services.map((service) => service.departmentCode), ...visibleItems.map((item) => item.departmentCode)])).filter(Boolean).sort()
+        : currentActor.role === "MANAGER"
+          ? managerDepartmentCodes(currentActor)
+          : Array.from(new Set([currentActor.departmentCode, ...visibleItems.map((item) => item.departmentCode)])).filter(Boolean).sort();
       const departments = scopedDepartments.map((departmentCode) => {
         const departmentItems = activeItems.filter((item) => item.departmentCode === departmentCode);
         const departmentAttention = attention.filter((item) => item.departmentCode === departmentCode && item.operationalContext.escalationLevel !== "NONE").length;
@@ -555,14 +562,18 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
     async managementOverview(actor: User): Promise<ManagementOverview> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
-      if (currentActor.role !== "MANAGER") throw new ApiError("SCOPE_DENIED", "Este centro é exclusivo da gestão operacional.", 404);
+      if (currentActor.role !== "MANAGER" && currentActor.role !== "SUPERADMIN") throw new ApiError("SCOPE_DENIED", "Este centro é exclusivo da gestão operacional.", 404);
       requirePermission(currentActor, "dashboard.view", { departmentCode: currentActor.departmentCode });
       requirePermission(currentActor, "user_role.manage", { departmentCode: currentActor.departmentCode });
       const asOf = now();
       const currentTime = Date.parse(asOf);
       const terminalStatuses = new Set<ItemState>(["COMPLETED", "CANCELLED", "REJECTED"]);
+      const canAccessDepartment = (departmentCode: string) => currentActor.role === "SUPERADMIN" || managerCanAccessDepartment(currentActor, departmentCode);
+      const departmentCodes = currentActor.role === "SUPERADMIN"
+        ? Array.from(new Set(state.services.map((service) => service.departmentCode))).sort()
+        : managerDepartmentCodes(currentActor);
       const visibleItems = state.items
-        .filter((item) => managerCanAccessDepartment(currentActor, item.departmentCode))
+        .filter((item) => canAccessDepartment(item.departmentCode))
         .map((item) => ({ item, request: requestFor(state, item.requestId), service: findOrThrow(findById(state.services, item.serviceId)) }));
       const activeItems = visibleItems.filter(({ item }) => !terminalStatuses.has(item.status));
       const visibleRequestIds = new Set(visibleItems.map(({ request }) => request.id));
@@ -578,9 +589,9 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
       const critical = state.notifications.filter((notification) => {
         if (notification.category !== "CRITICAL" || notification.escalationOf !== undefined || notification.state === "ACKNOWLEDGED" || notification.state === "SUPERSEDED" || acknowledgedCritical.has(notification.entityId)) return false;
         const request = requestForNotification(state, notification);
-        return Boolean(request && request.itemIds.some((itemId) => managerCanAccessDepartment(currentActor, itemFor(state, itemId).departmentCode)));
+        return Boolean(request && request.itemIds.some((itemId) => canAccessDepartment(itemFor(state, itemId).departmentCode)));
       }).length;
-      const departments = managerDepartmentCodes(currentActor)
+      const departments = departmentCodes
         .filter((departmentCode) => state.services.some((service) => service.departmentCode === departmentCode))
         .sort()
         .map((departmentCode) => {
@@ -607,12 +618,12 @@ export function createReadService({ store, storage }: ApplicationServiceContext)
           aggregateStatus: request.aggregateStatus,
           priority: request.priority,
           updatedAt: request.updatedAt,
-          itemCount: request.itemIds.filter((itemId) => managerCanAccessDepartment(currentActor, itemFor(state, itemId).departmentCode)).length,
+          itemCount: request.itemIds.filter((itemId) => canAccessDepartment(itemFor(state, itemId).departmentCode)).length,
           deepLink: `/requests/${request.id}`
         }));
       return {
         asOf,
-        scope: { departments: managerDepartmentCodes(currentActor), label: managerDepartmentCodes(currentActor).join(" · ") },
+        scope: { departments: departmentCodes, label: departmentCodes.join(" · ") },
         summary: {
           totalRequests: visibleRequestIds.size,
           activeItems: activeItems.length,

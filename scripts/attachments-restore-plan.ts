@@ -6,7 +6,7 @@ import { lstat, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { planAttachmentRestore } from "../src/server/storage/attachments-restore-plan";
 import { closeRuntimeStore, getRuntimeStoreAsync } from "../src/server/store/runtime";
-import { archivedAttachmentReferences } from "./attachment-references";
+import { activeAttachmentReferences, archivedAttachmentReferences } from "./attachment-references";
 import { verifySelectedAttachmentBytes } from "./attachment-bytes";
 
 async function objectKeys(directory: string, prefix = ""): Promise<string[]> {
@@ -36,9 +36,10 @@ async function main(): Promise<void> {
   try {
     const store = await getRuntimeStoreAsync();
     const state = await store.readState();
+    const active = activeAttachmentReferences(state);
     const archived = await archivedAttachmentReferences(store);
-    const plan = planAttachmentRestore(state.attachments, archived, await objectKeys(source));
-    const integrity = plan.ok ? await verifySelectedAttachmentBytes(source, plan.selectedObjectKeys, [...state.attachments, ...archived]) : undefined;
+    const plan = planAttachmentRestore(active, archived, await objectKeys(source));
+    const integrity = plan.ok ? await verifySelectedAttachmentBytes(source, plan.selectedObjectKeys, [...active, ...archived]) : undefined;
     await writeFile(report, `${JSON.stringify({ ...plan, ok: plan.ok && integrity?.ok === true, integrity, checkedAt: new Date().toISOString() }, null, 2)}\n`, { flag: "wx", mode: 0o600 });
     if (!plan.ok) throw new Error("Cópia externa sem objeto finalizado ou arquivado exigido pelo banco: restauração bloqueada; consulte o relatório privado.");
     if (!integrity?.ok) throw new Error("Checksum, tamanho ou metadados dos objetos selecionados divergem do banco recuperado: restauração bloqueada; consulte o relatório privado.");

@@ -20,10 +20,17 @@ export const clinicalHandlers = {
     } },
   getPatientDiagnostics: { authentication: "session", handle: async ({ request, path, correlationId, id, service, actor }) => {
       const search = new URL(request.url).searchParams;
-      return responseFor(await service.getPatientDiagnostics(actor, path[1], { limit: parseLimit(search.get("limit")), cursor: parseCursor(search.get("cursor")) }), correlationId, id);
+      return responseFor(await service.getPatientDiagnostics(actor, path[1], { limit: parseLimit(search.get("limit")), cursor: parseCursor(search.get("cursor")), timelineLimit: 50 }), correlationId, id);
+    } },
+  getPatientTimeline: { authentication: "session", handle: async ({ request, path, correlationId, id, service, actor }) => {
+      const search = new URL(request.url).searchParams;
+      const page = await service.getPatientTimeline(actor, path[1], { limit: parseLimit(search.get("limit")), cursor: parseCursor(search.get("cursor")) });
+      return responseFor(page.items, correlationId, id, 200, { nextCursor: page.nextCursor, limit: page.limit, total: page.total });
     } },
   listPatientArchive: { authentication: "session", handle: async ({ request, path, correlationId, id, service, actor }) => {
-      return responseFor(await service.listPatientArchive(actor, path[1], { limit: parseLimit(new URL(request.url).searchParams.get("limit")) }), correlationId, id);
+      const search = new URL(request.url).searchParams;
+      const page = await service.listPatientArchivePage(actor, path[1], { limit: parseLimit(search.get("limit")), cursor: parseCursor(search.get("cursor")) });
+      return responseFor(page.items, correlationId, id, 200, { nextCursor: page.nextCursor, limit: page.limit, total: page.total });
     } },
   getArchivedRequest: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       return responseFor(await service.getArchivedRequest(actor, path[2], correlationId), correlationId, id);
@@ -202,9 +209,12 @@ export const clinicalHandlers = {
       const downloaded = await service.downloadAttachment(actor, path[1]);
       return new Response(downloaded.content as unknown as BodyInit, { status: 200, headers: { "content-type": downloaded.attachment.detectedMime, "content-length": String(downloaded.content.byteLength), "content-disposition": `attachment; filename="${downloaded.attachment.safeName}"`, "cache-control": "private, no-store", "x-correlation-id": correlationId } });
     } },
-  getResult: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
+  getResult: { authentication: "session", handle: async ({ request, path, correlationId, id, service, actor }) => {
       const resultId = path[1];
-      return responseFor(await service.getResult(actor, resultId), correlationId, id);
+      const versionId = new URL(request.url).searchParams.get("versionId");
+      if (versionId !== null && !/^[A-Za-z0-9_-]{1,100}$/.test(versionId))
+        throw new ApiError("VALIDATION_ERROR", "O identificador da versão é inválido.", 400);
+      return responseFor(await service.getResult(actor, resultId, { versionId: versionId ?? undefined }), correlationId, id);
     } },
   listResultVersions: { authentication: "session", handle: async ({ path, correlationId, id, service, actor }) => {
       const resultId = path[1];

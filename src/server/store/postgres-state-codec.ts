@@ -12,7 +12,18 @@ export const LOCKED_STATE_SQL = `${CURRENT_STATE_SQL} FOR UPDATE`;
 /** The global write lock without expanding the JSONB aggregate. */
 export const LOCKED_VERSION_SQL = `${CURRENT_VERSION_SQL} FOR UPDATE`;
 
-const STATE_COLLECTIONS = [
+export const STATE_COLLECTIONS = [
+  "savedPlannerViews",
+  "hospitalTaskTypes", "hospitalTasks", "hospitalTaskDependencies", "hospitalIntakes",
+  "hospitalServices",
+  "hospitalHisV4Deliveries", "hospitalIntegrationCredentials", "hospitalIntegrationMessages", "hospitalAiSuggestions",
+  "hospitalDocuments", "hospitalTaskComments", "hospitalTaskAttachments", "workNotifications", "workNotificationPreferences", "workActivityPreferences", "hospitalReports", "hospitalReportJobs", "hospitalInstitutionSettings", "hospitalUserInvitations",
+  "hospitalResources",
+  "hospitalPlans", "hospitalShifts", "hospitalHandoffs", "hospitalChecklistTemplates", "hospitalRecurrences",
+  "examDefinitions",
+  "accessGroups",
+  "patientGrants",
+  "departments",
   "users",
   "sessions",
   "patients",

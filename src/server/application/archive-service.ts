@@ -1,12 +1,13 @@
 import type { ClinicalArchiveEntry, ClinicalArchiveRow, DiagnosticItem, DiagnosticRequest, Result, ResultVersion, Sample, Attachment, StoreState, User } from "../domain/models";
 import { ApiError } from "../http/envelope";
-import { canAccessResource, hasPermission, managerCanAccessDepartment } from "../security/authorization";
+import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import { findById } from "../domain/state-index";
 import { archiveEntries, archivedEntitiesOf } from "../domain/clinical-archive";
 import { createAudit, id, isExecutorRole, requireActiveUser, requirePatientPermission, requirePermission } from "./service-common";
-import { pageSize } from "./service-pagination";
+import { decodeKeysetCursor, pageSize } from "./service-pagination";
 import type { ApplicationServiceContext } from "./service-context";
 import type { ArchivedRequestView } from "./service-types";
+import { snapshotForResult } from "./exam-definition";
 
 const DENIED = () => new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
 /** Requests read per round trip while scanning a patient's archive for the entries the actor may see. */
@@ -43,7 +44,7 @@ function requirePatientArchiveAccess(state: StoreState, actor: User, patientId: 
     try {
       requirePatientPermission(state, actor, permission, patientId);
     } catch (error) {
-      const archiveOnly = (actor.role === "MANAGER" || isExecutorRole(actor)) && hasPermission(actor.role, permission);
+      const archiveOnly = (actor.role === "MANAGER" || isExecutorRole(actor)) && canAccessResource(actor, permission, {});
       if (!archiveOnly) throw error;
       refusal ??= error;
     }
@@ -53,6 +54,48 @@ function requirePatientArchiveAccess(state: StoreState, actor: User, patientId: 
 
 export function createArchiveService({ store }: ApplicationServiceContext) {
   return {
+    async listPatientArchivePage(actor: User, patientId: string, filters: { limit?: number; cursor?: string } = {}) {
+      const state = await store.readState();
+      const currentActor = requireActiveUser(state, actor);
+      const limit = pageSize(filters.limit);
+      const cursor = decodeKeysetCursor<{ patientId: string; updatedAt: string; requestId: string }>(filters.cursor, (value) => value.patientId === patientId && typeof value.updatedAt === "string" && Number.isFinite(Date.parse(value.updatedAt)) && typeof value.requestId === "string" && value.requestId.length > 0 && value.requestId.length <= 200);
+      requirePatientArchiveAccess(state, currentActor, patientId);
+      const candidates: ClinicalArchiveEntry[] = [];
+      let total = 0;
+      let scanCursor: { updatedAt: string; requestId: string } | undefined;
+      // Count the authorized history while retaining only this page plus a look-ahead row.
+      // Every storage read is bounded and keyset based, so adding/removing a newer request cannot shift an offset.
+      while (true) {
+        const page = await store.readClinicalArchive({ patientId, limit: ARCHIVE_SCAN_PAGE, ...(scanCursor ? { cursor: scanCursor } : {}) });
+        const pageState = await store.readState();
+        const pageActor = requireActiveUser(pageState, currentActor);
+        requirePatientArchiveAccess(pageState, pageActor, patientId);
+        if (pageActor.version !== currentActor.version) throw DENIED();
+        for (const entry of page) {
+          const scoped = scopedArchiveEntry(pageActor, entry);
+          if (!scoped) continue;
+          total += 1;
+          if (candidates.length <= limit && (!cursor || entry.updatedAt < cursor.updatedAt || (entry.updatedAt === cursor.updatedAt && entry.requestId > cursor.requestId))) candidates.push(scoped);
+        }
+        if (page.length < ARCHIVE_SCAN_PAGE) break;
+        const last = page.at(-1)!;
+        if (scanCursor && last.updatedAt === scanCursor.updatedAt && last.requestId === scanCursor.requestId) throw new Error("ARCHIVE_READ_CURSOR_NOT_ADVANCING");
+        scanCursor = { updatedAt: last.updatedAt, requestId: last.requestId };
+      }
+      const finalState = await store.readState();
+      const finalActor = requireActiveUser(finalState, currentActor);
+      const refusal = requirePatientArchiveAccess(finalState, finalActor, patientId);
+      if (finalActor.version !== currentActor.version) throw DENIED();
+      const visible = candidates.flatMap((entry) => { const scoped = scopedArchiveEntry(finalActor, entry); return scoped ? [scoped] : []; });
+      // Do not return earlier counts when the final policy no longer matches the scan.
+      if (visible.length !== candidates.length) throw DENIED();
+      if (refusal !== undefined && total === 0) throw refusal;
+      const items = visible.slice(0, limit);
+      const last = items.at(-1);
+      const nextCursor = last && visible.length > limit ? Buffer.from(JSON.stringify({ patientId, updatedAt: last.updatedAt, requestId: last.requestId })).toString("base64url") : undefined;
+      return { items, limit, total, nextCursor };
+    },
+
     async listPatientArchive(actor: User, patientId: string, filters: { limit?: number } = {}): Promise<ClinicalArchiveEntry[]> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
@@ -162,7 +205,7 @@ function archivedRequestView(state: StoreState, actor: User, rows: readonly Clin
     patient: patient ? { id: patient.id, displayName: patient.displayName, species: patient.species, externalId: patient.externalId } : null,
     items: items.map((item) => ({
       id: item.id,
-      service: { code: serviceById.get(item.serviceId)?.code ?? item.serviceId, name: serviceById.get(item.serviceId)?.name ?? item.serviceId },
+      service: { code: item.definitionSnapshot?.definition.code ?? serviceById.get(item.serviceId)?.code ?? item.serviceId, name: item.definitionSnapshot?.definition.name ?? serviceById.get(item.serviceId)?.name ?? item.serviceId },
       departmentCode: item.departmentCode,
       status: item.status,
       priority: item.priority,
@@ -179,11 +222,13 @@ function archivedRequestView(state: StoreState, actor: User, rows: readonly Clin
           .filter((version) => version.resultId === result.id && version.status !== "DRAFT")
           .map((version) => {
             if (["RELEASED", "SUPERSEDED"].includes(version.status)) visibleVersionIds.add(version.id);
+            const snapshot = snapshotForResult(item, version);
             return {
               id: version.id,
               sequence: version.sequence,
               status: version.status,
               content: version.content,
+              ...(snapshot ? { definitionSnapshot: snapshot } : {}),
               narrative: version.narrative,
               ...(version.conclusion ? { conclusion: version.conclusion } : {}),
               ...(version.releasedAt ? { releasedAt: version.releasedAt } : {}),

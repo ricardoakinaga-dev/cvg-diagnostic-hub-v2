@@ -1,11 +1,12 @@
-import { TERMINAL_ITEM_STATES, type ItemState, type OperationalContext, type Patient, type Priority, type QueueItem, type WorkflowType } from "@cvg/contracts";
+import { TERMINAL_ITEM_STATES, type DiagnosticPlanning, type ItemState, type OperationalContext, type Patient, type Priority, type QueueItem, type WorkflowType } from "@cvg/contracts";
+import { formatHospitalDateTime, hospitalDateKey, hospitalTimezone } from "@/lib/hospital-time";
 
 /**
  * A diagnostic item as the Plane-style workspace sees it: one row, card or
  * calendar entry. It merges the scoped request listing (every role can read
  * it) with the richer queue projection when the user also works that queue.
  */
-export interface WorkItem {
+export interface WorkItem extends DiagnosticPlanning {
   id: string;
   requestId: string;
   requestCode: string;
@@ -40,7 +41,7 @@ export interface RequestListEntry {
   requesterId?: string;
   requestingDepartmentCode?: string;
   patient: Pick<Patient, "id" | "displayName" | "species" | "externalId"> & Partial<Pick<Patient, "breed" | "ownerLabel">>;
-  items: Array<{
+  items: Array<DiagnosticPlanning & {
     id: string;
     requestId: string;
     status: ItemState;
@@ -62,6 +63,11 @@ const terminalStates = new Set<ItemState>(TERMINAL_ITEM_STATES);
 
 export function isTerminal(status: ItemState): boolean {
   return terminalStates.has(status);
+}
+
+/** The API already scopes access; active work includes other care-team authors. */
+export function activeWorkItems(items: readonly WorkItem[]): WorkItem[] {
+  return items.filter((item) => !isTerminal(item.status));
 }
 
 export function isOverdue(item: Pick<WorkItem, "status" | "dueAt">, now = Date.now()): boolean {
@@ -86,6 +92,7 @@ export function fromRequests(requests: RequestListEntry[], now = Date.now()): Wo
       dueAt: item.dueAt,
       createdAt: item.requestedAt ?? request.createdAt,
       overdue: false,
+      assignedUserId: item.assignedUserId, assignedAt: item.assignedAt, assignedBy: item.assignedBy, plannedStartsAt: item.plannedStartsAt, plannedEndsAt: item.plannedEndsAt,
       currentResultId: item.currentResultId,
       currentSampleId: item.currentSampleId,
       procedureId: item.procedureId,
@@ -113,6 +120,7 @@ export function fromQueueItem(item: QueueItem, departmentCode: string): WorkItem
     createdAt: item.createdAt,
     overdue: item.overdue,
     nextAction: item.nextAction,
+    assignedUserId: item.assignedUserId, assignedAt: item.assignedAt, assignedBy: item.assignedBy, plannedStartsAt: item.plannedStartsAt, plannedEndsAt: item.plannedEndsAt,
     currentResultId: item.currentResultId,
     currentSampleId: item.currentSampleId,
     procedureId: item.procedureId,
@@ -363,21 +371,21 @@ export function groupItems(items: WorkItem[], groupBy: GroupBy, showEmpty: boole
 
 /* ---------- Dates ---------- */
 
-const dueFormatter = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" });
-const dueTimeFormatter = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
+const dueFormatter = new Intl.DateTimeFormat("pt-BR", { timeZone: hospitalTimezone(), day: "2-digit", month: "short" });
+const dueTimeFormatter = new Intl.DateTimeFormat("pt-BR", { timeZone: hospitalTimezone(), hour: "2-digit", minute: "2-digit" });
 
 export function formatDue(value: string, now = new Date()): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Sem prazo";
-  const sameDay = date.toDateString() === now.toDateString();
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
+  const todayKey = hospitalDateKey(now);
+  const sameDay = hospitalDateKey(date) === todayKey;
+  const tomorrow = new Date(`${todayKey}T12:00:00.000Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   if (sameDay) return `Hoje, ${dueTimeFormatter.format(date)}`;
-  if (date.toDateString() === tomorrow.toDateString()) return `Amanhã, ${dueTimeFormatter.format(date)}`;
+  if (hospitalDateKey(date) === tomorrow.toISOString().slice(0, 10)) return `Amanhã, ${dueTimeFormatter.format(date)}`;
   return dueFormatter.format(date).replace(".", "");
 }
 
 export function formatDateTime(value: string | null | undefined): string {
-  if (!value || !Number.isFinite(Date.parse(value))) return "Não informado";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return formatHospitalDateTime(value);
 }

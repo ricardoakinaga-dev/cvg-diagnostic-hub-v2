@@ -1,8 +1,12 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { BoardLayout, CalendarLayout, ListLayout, SpreadsheetLayout, type LayoutProps } from "./layouts";
+import { WorkflowPermissionsProvider } from "@/components/workflow-permissions";
+import { rolePermissions } from "@/server/security/authorization";
 import { DEFAULT_DISPLAY, groupItems, type WorkItem } from "./model";
+
+const render = (ui: React.ReactNode) => baseRender(ui, { wrapper: ({ children }) => <WorkflowPermissionsProvider permissions={rolePermissions.MANAGER}>{children}</WorkflowPermissionsProvider> });
 
 const today = new Date(2026, 9, 6, 12);
 
@@ -29,7 +33,18 @@ function layoutProps(items: WorkItem[], overrides: Partial<LayoutProps> = {}): L
 
 describe("work item layouts", () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(today); });
-  afterEach(() => { cleanup(); vi.useRealTimers(); });
+  afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+  it.each(["Asia/Tokyo", "America/Los_Angeles"])("places midnight-boundary deadlines on the hospital civil day when the device timezone is %s", (deviceTimezone) => {
+    vi.stubEnv("TZ", deviceTimezone);
+    vi.stubEnv("NEXT_PUBLIC_HOSPITAL_TIMEZONE", "America/Sao_Paulo");
+    vi.setSystemTime(new Date("2026-10-07T01:30:00Z"));
+    calendar([item(1, { dueAt: "2026-10-07T01:30:00Z" })]);
+    const day = screen.getByRole("gridcell", { name: "06/10/2026: 1 exames" });
+    expect(within(day).getByRole("button", { name: "Abrir Hemograma — Paciente 1" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Semana" }));
+    expect(within(screen.getByRole("gridcell", { name: "06/10/2026: 1 exames" })).getByRole("button", { name: "Abrir Hemograma — Paciente 1" })).toBeInTheDocument();
+  });
 
   it.each(["month", "week"] as const)("owns all calendar headers and cells through seven-column rows in %s mode", (mode) => {
     calendar([]);

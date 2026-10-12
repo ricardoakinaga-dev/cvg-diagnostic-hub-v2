@@ -39,14 +39,27 @@ export async function monitoringConfiguration(environment, readSecret) {
     if (isIP(bind) !== 4 || !/^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.)\d/.test(bind)) {
       throw new Error("MONITOR_AGENT_BIND_IP must be a private/VPN IPv4 address");
     }
-    return { "node-exporter-web.yml": { tls_server_config: { cert_file: "/run/secrets/agent_server_cert.pem",
+    const web = { tls_server_config: { cert_file: "/run/secrets/agent_server_cert.pem",
       key_file: "/run/secrets/agent_server_key.pem", client_auth_type: "RequireAndVerifyClientCert",
-      client_ca_file: "/run/secrets/agent_ca.pem", ...tls } } };
+      client_ca_file: "/run/secrets/agent_ca.pem", ...tls } };
+    const configurations = { "node-exporter-web.yml": web };
+    if (environment.MONITOR_POSTGRES_ENABLED === "true") {
+      if ((await readSecret("postgres_user")).trim() !== "cvg_pg_exporter") throw new Error("postgres_user must be the isolated cvg_pg_exporter role");
+      const password = await readSecret("postgres_password");
+      if (password.length < 32 || /[\r\n\x00]/.test(password) || password !== password.trim()) throw new Error("postgres_password requires at least 32 characters without whitespace padding or line breaks");
+      const uri = await readSecret("postgres_uri");
+      if (!/^postgres:5432\/[a-zA-Z_][a-zA-Z0-9_]{0,62}\?sslmode=disable&connect_timeout=5$/.test(uri)) {
+        throw new Error("postgres_uri must address the Hub postgres service on its private Docker network with the documented connection timeout");
+      }
+      configurations["postgres-exporter-web.yml"] = web;
+    } else if (environment.MONITOR_POSTGRES_ENABLED && environment.MONITOR_POSTGRES_ENABLED !== "false") throw new Error("MONITOR_POSTGRES_ENABLED must be true or false");
+    return configurations;
   }
   if (role !== "external") throw new Error("MONITOR_ROLE must be external or agent");
   const hub = endpoint(required(environment, "MONITOR_HUB_URL"), "MONITOR_HUB_URL");
   const agent = endpoint(required(environment, "MONITOR_AGENT_URL"), "MONITOR_AGENT_URL");
-  if (hub.pathname !== "/" || hub.search || agent.pathname !== "/" || agent.search) throw new Error("monitor target URLs must not contain a path or query");
+  const postgres = endpoint(required(environment, "MONITOR_POSTGRES_URL"), "MONITOR_POSTGRES_URL");
+  if (hub.pathname !== "/" || hub.search || agent.pathname !== "/" || agent.search || postgres.pathname !== "/" || postgres.search) throw new Error("monitor target URLs must not contain a path or query");
   const clientCert = certificate(await readSecret("agent_client_cert.pem"), "agent client");
   if (clientCert.ca) throw new Error("agent client must use a leaf certificate, not the CA certificate");
   if (!clientCert.checkPrivateKey(createPrivateKey(await readSecret("agent_client_key.pem")))) throw new Error("agent client key does not match certificate");
@@ -79,6 +92,8 @@ export async function monitoringConfiguration(environment, readSecret) {
           static_configs: [{ targets: [hub.host], labels: { environment: "production" } }] },
         { job_name: "cvg-host", scheme: "https", tls_config: { ...tls, ca_file: "/run/secrets/agent_ca.pem",
           cert_file: "/run/secrets/agent_client_cert.pem", key_file: "/run/secrets/agent_client_key.pem" }, static_configs: [{ targets: [agent.host] }] },
+        { job_name: "cvg-postgres", scheme: "https", scrape_timeout: "10s", tls_config: { ...tls, ca_file: "/run/secrets/agent_ca.pem",
+          cert_file: "/run/secrets/agent_client_cert.pem", key_file: "/run/secrets/agent_client_key.pem" }, static_configs: [{ targets: [postgres.host] }] },
         { job_name: "cvg-https", metrics_path: "/probe", params: { module: ["https_2xx"] }, static_configs: [{ targets: [`${hub.origin}/api/v1/livez`] }],
           relabel_configs: [{ source_labels: ["__address__"], target_label: "__param_target" }, { source_labels: ["__param_target"], target_label: "instance" },
             { target_label: "__address__", replacement: "blackbox:9115" }] },

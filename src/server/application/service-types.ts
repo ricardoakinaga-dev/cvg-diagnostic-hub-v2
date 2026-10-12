@@ -1,4 +1,4 @@
-import type { ItemState, ManagedSession, OperationalContext, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { ExamDefinitionProvenance, ItemState, ManagedSession, OperationalContext, Permission, Priority, RoleCode, ServiceAccessPolicy, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StoreState, User } from "../domain/models";
 
 export interface CommandMeta {
@@ -18,14 +18,16 @@ export type AdmissionContextCommandInput =
   | (AdmissionContextCommandBase & {
       action: "TRANSFER";
       departmentCode: string;
-      ward: string;
-      bed: string;
+      ward?: string;
+      bed?: string;
+      bedResourceId?: string;
       responsibleUserId: string;
     })
   | (AdmissionContextCommandBase & {
       action: "BED_CHANGE";
-      ward: string;
-      bed: string;
+      ward?: string;
+      bed?: string;
+      bedResourceId?: string;
     })
   | (AdmissionContextCommandBase & {
       action: "DISCHARGE";
@@ -69,6 +71,7 @@ export interface CreatePatientInput {
   encounterType: StoreState["encounters"][number]["type"];
   ward?: string;
   bed?: string;
+  bedResourceId?: string;
 }
 
 export type PatientCreateResult = {
@@ -81,6 +84,7 @@ export interface EncounterOpenInput {
   encounterType: StoreState["encounters"][number]["type"];
   ward?: string;
   bed?: string;
+  bedResourceId?: string;
   reason?: string;
 }
 
@@ -140,7 +144,8 @@ export interface AmendInput extends CommandMeta {
 export interface ScheduleInput extends CommandMeta {
   startsAt: string;
   endsAt: string;
-  resource: string;
+  resource?: string;
+  resourceIds?: string[];
   reason?: string;
 }
 
@@ -223,10 +228,13 @@ export interface ReasonCodePatchInput extends CommandMeta {
 }
 
 export interface UserRoleUpdateInput extends CommandMeta {
+  displayName?: string;
+  email?: string;
   role: RoleCode;
   departmentCode: string;
   managedDepartmentCodes?: string[];
   serviceCodes?: string[];
+  serviceAccessPolicy?: ServiceAccessPolicy;
   active?: boolean;
   reason?: string;
   confirm?: boolean;
@@ -240,6 +248,7 @@ export interface ManagedUserCreateInput extends CommandMeta {
   departmentCode?: string;
   managedDepartmentCodes?: string[];
   serviceCodes?: string[];
+  serviceAccessPolicy?: ServiceAccessPolicy;
   timezone?: string;
   reason?: string;
   confirm?: boolean;
@@ -262,9 +271,11 @@ export interface ManagedUser {
   email: string;
   displayName: string;
   role: RoleCode;
+  accessGroupId?: string;
   departmentCode: string;
   managedDepartmentCodes?: ReadonlyArray<string>;
   serviceCodes?: ReadonlyArray<string>;
+  serviceAccessPolicy?: ServiceAccessPolicy;
   timezone: string;
   active: boolean;
   createdAt: string;
@@ -474,6 +485,8 @@ export interface RequestView extends DiagnosticRequest {
 }
 
 export interface ResultView {
+  permissions?: Permission[];
+  definitionProvenance?: ExamDefinitionProvenance;
   result: Result;
   version: ResultVersion;
   item: DiagnosticItem;
@@ -585,6 +598,8 @@ export type PatientDiagnosticsResult = {
   admissions: Admission[];
   items: PatientWorkspaceRequestView[];
   events: AuditEvent[];
+  timelineNextCursor?: string;
+  timelineTotal?: number;
   nextActions: PatientNextAction[];
   workspace: PatientWorkspaceSummary;
   nextCursor?: string;
@@ -613,7 +628,7 @@ export type ArchivedRequestView = {
     results: Array<{
       id: string;
       lifecycleStatus: Result["lifecycleStatus"];
-      versions: Array<Pick<ResultVersion, "id" | "sequence" | "status" | "content" | "narrative" | "conclusion" | "releasedAt" | "critical" | "amendmentReason">>;
+      versions: Array<Pick<ResultVersion, "id" | "sequence" | "status" | "content" | "narrative" | "conclusion" | "releasedAt" | "critical" | "amendmentReason" | "definitionSnapshot">>;
     }>;
   }>;
   samples: Array<Pick<Sample, "id" | "accessionCode" | "sampleType" | "status" | "collectedAt" | "receivedAt">>;

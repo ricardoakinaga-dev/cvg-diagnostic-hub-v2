@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-12T10:24:36.608270+00:00",
+  "status": "TEST_CLOCK_FIX_AND_TEST_TARGET_PREPARED_FULL_CANDIDATE_VALIDATION_PENDING",
+  "source": {
+    "baseCommit": "ad861ab4a55c5a0aa0a2847ae9311a4c4e4c29b1",
+    "workingTreeCommitted": false,
+    "manifest": "HOSPITAL_PLANNER_TASK_PERIOD_TEST_SOURCE_MANIFEST_2026-10-12.json",
+    "selectedInputs": 1092,
+    "fingerprintSha256": "ec76128e16272257acb26bb00a9e1db86bf069664dab92f09b289622512004b1",
+    "changedSelectedPaths": [
+      "src/server/application/hospital-task-service.test.ts"
+    ],
+    "remaining1091SelectedInputsByteIdenticalToBase": true
+  },
+  "change": {
+    "dateOnlyClockUtc": "2026-10-12T08:00:00Z",
+    "scope": "One existing task period unit case; restore Date in finally",
+    "nativeTimersUnchanged": true,
+    "allOriginalAssertionsPreserved": true,
+    "productionFiltersPermissionsThresholdsRetriesTimeoutsChanged": false
+  },
+  "localVerification": {
+    "proof": {
+      "path": "/tmp/cvg-hpl-task-period-clock-fix-20261012/proof.json",
+      "bytes": 9576,
+      "sha256": "b52d0067d3c707c1c4efde6ebae6c032696f522fa77b8f79a7a6da2b4794aa5f"
+    },
+    "red": {
+      "exitCode": 1,
+      "passed": 0,
+      "failed": 1,
+      "filtered": 17,
+      "assertionFailure": "Expected3IDs to equal original1ID interval assertion"
+    },
+    "greenFocused": {
+      "exitCode": 0,
+      "success": true,
+      "numTotalTests": 18,
+      "numPassedTests": 1,
+      "numFailedTests": 0,
+      "numPendingTests": 17,
+      "numTotalTestSuites": 2,
+      "numPassedTestSuites": 2,
+      "numFailedTestSuites": 0,
+      "filteredExplanation": "17 other cases intentionally excluded by -t; no whole-file skip claim"
+    },
+    "greenFile": {
+      "exitCode": 0,
+      "success": true,
+      "numTotalTests": 18,
+      "numPassedTests": 18,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "numTotalTestSuites": 2,
+      "numPassedTestSuites": 2,
+      "numFailedTestSuites": 0
+    },
+    "lint": {
+      "exitCode": 0,
+      "scope": "Only changed test file"
+    },
+    "types": {
+      "exitCode": 0,
+      "scope": "Private tsconfig extends repository; only changed test entry plus its actual imported dependency graph; no global typecheck claim",
+      "config": {
+        "path": "/tmp/cvg-hpl-task-period-clock-fix-20261012/tsconfig.focused.json",
+        "bytes": 338,
+        "sha256": "e0f494aba3b76637e18b09521229bec3cf03b49034bb5dadff77e5024a774cca"
+      }
+    },
+    "allReferencedRawArtifactsHashVerified": true
+  },
+  "historicalFailedCI": {
+    "commit": "ad861ab4a55c5a0aa0a2847ae9311a4c4e4c29b1",
+    "runId": 38233377860,
+    "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38233377860",
+    "status": "FAILURE",
+    "unitPass": 5318,
+    "unitFail": 1,
+    "postgresNewCasesExecuted": 0,
+    "postgresCoverageFinalSentinelsBrowserImages": "NOT_RUN_OR_SKIPPED",
+    "packet": {
+      "path": "/tmp/cvg-hpl-ci-ad861ab4-38233377860-20261012-d7_39sp4/ci-current-ad861ab4-final-proof.json",
+      "bytes": 35163,
+      "sha256": "b242333e8cb5a06349fad751c8396a1617c3f43217bc20d743492160e0cad867"
+    }
+  },
+  "historicalImageComponents": {
+    "commit": "ad861ab4a55c5a0aa0a2847ae9311a4c4e4c29b1",
+    "nativeBuildsPassed": 4,
+    "includingUnfixedHighCriticalScansPassed": 4,
+    "detectedHighCritical": 0,
+    "detectedSecrets": 0,
+    "nonemptySbom": 4,
+    "wholeExecutorStatus": "FAIL_EXISTING_OR_ADDITIONAL_CONTAINER_METADATA_CHANGED_CAUSE_NOT_ATTRIBUTED",
+    "originalProof": {
+      "path": "/tmp/cvg-hpl-stamped-release-20261012-gnjmt3za/build-scan-proof.json",
+      "bytes": 336557,
+      "sha256": "cafc01078f28b85e5093ce9f213ea7e6ff0b65d07e5322294ca8bd0735eb4c00"
+    },
+    "independentReadReview": {
+      "path": "/tmp/cvg-hpl-stamped-release-20261012-gnjmt3za/root-native-components-read-review-preserving-baseline-fail.json",
+      "bytes": 10335,
+      "sha256": "8c4ef865612f5e4c1d01b79bbce12a4945379880390b68d6bf042f92786a336c"
+    },
+    "hisSpaContainerReplacementObserved": true,
+    "replacementInitiator": "UNKNOWN",
+    "runtime": "NOT_RUN"
+  },
+  "nextCommittedCandidate": {
+    "fullCI": "PENDING",
+    "fourStampedImagesScansSbom": "PENDING",
+    "imageRuntimeSmoke": "PENDING",
+    "score": null
+  },
+  "homologation": {
+    "environmentSelection": "Current VPS, selected by requester",
+    "record": "../operations/HOSPITAL_PLANNER_TEST_ENVIRONMENT_2026-10-12.json",
+    "owner": "Requester; already confirmed",
+    "approvedPeakConcurrentUsers": null,
+    "his": "cvg-his-v4 installed on this VPS",
+    "hisHomologationEndpoint": null,
+    "lis": "UNKNOWN",
+    "pacs": "UNKNOWN",
+    "uatExecution": "PENDING",
+    "signedAcceptance": "PENDING",
+    "productionApproved": false,
+    "BLD-HPL-051": "OPEN",
+    "PROD-605": "EXTERNAL_REVIEW_OPEN"
+  },
+  "backlog": {
+    "deliveries": 51,
+    "pairedItems": 137,
+    "invariants": 15,
+    "originalAcceptanceCriteriaUnchanged": true,
+    "noDoneInferredFromTestFix": true
+  },
+  "limits": [
+    "Focused checks do not replace full CI or current committed images.",
+    "Historical failed CI and whole image executor failure remain failures.",
+    "Target selected, but hospital workload, integration endpoint, UAT, signed pilot and external review remain pending.",
+    "No existing service, DB, environment or release publication changed by this adjustment."
+  ]
+}

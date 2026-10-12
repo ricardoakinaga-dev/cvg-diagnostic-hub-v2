@@ -194,7 +194,7 @@ function expectedRequestAggregate(state: StoreState, requestId: string): Expecte
   const sampleIds = new Set(samples.map((row) => row.id));
   const procedures = state.procedures.filter((row) => itemIds.has(row.itemId));
   const procedureIds = new Set(procedures.map((row) => row.id));
-  const schedules = state.schedules.filter((row) => procedureIds.has(row.procedureId));
+  const schedules = state.schedules.filter((row) => row.procedureId !== undefined && procedureIds.has(row.procedureId));
   const results = state.results.filter((row) => itemIds.has(row.itemId));
   const resultIds = new Set(results.map((row) => row.id));
   const resultVersions = state.resultVersions.filter((row) => resultIds.has(row.resultId));

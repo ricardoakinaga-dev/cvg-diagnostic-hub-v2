@@ -93,6 +93,22 @@ for image in "$prefix:$tag" "$prefix-ops:$tag"; do
   [[ -n "$revision" && "$revision" == "$commit"* ]] || fail release.revision_mismatch "$image is not built from commit $commit"
 done
 
+# Next.js freezes public values at build time. Check the fully interpolated
+# runtime (including overlays) against both images before any backup or stop.
+# JSON may contain secrets: stream it only to an isolated, non-logging process
+# from the already verified app image; the validator emits only a valid zone.
+timezone_guard='try { const {services}=JSON.parse(require("node:fs").readFileSync(0,"utf8")); const zone=services.app.environment.APP_TIMEZONE; if(typeof zone!=="string"||!zone) throw 0; new Intl.DateTimeFormat("en",{timeZone:zone}).format(0); for(const name of ["app","worker","migrate","bootstrap"]) for(const key of ["APP_TIMEZONE","NEXT_PUBLIC_HOSPITAL_TIMEZONE"]) if(services[name]?.environment?.[key]!==zone) throw 0; process.stdout.write(zone); } catch { process.exit(1); }'
+timezone="$(compose --profile bootstrap config --format json 2>/dev/null \
+  | "$DOCKER" run --rm -i --network none --read-only --cap-drop ALL \
+    --security-opt no-new-privileges --log-driver none --entrypoint node \
+    "$prefix:$tag" -e "$timezone_guard" 2>/dev/null)" \
+  || fail release.timezone_mismatch "runtime timezone configuration is missing, invalid or inconsistent"
+for image in "$prefix:$tag" "$prefix-ops:$tag"; do
+  built_timezone="$("$DOCKER" image inspect --format '{{index .Config.Labels "org.cvg.hospital.timezone"}}' "$image" 2>/dev/null || true)"
+  [[ -n "$built_timezone" && "$built_timezone" == "$timezone" ]] \
+    || fail release.timezone_mismatch "$image must be rebuilt with the installation APP_TIMEZONE"
+done
+
 if [[ "$maintenance" == true ]]; then
   compose stop proxy app worker backup || fail release.stop_failed "could not stop the runtime"
 fi

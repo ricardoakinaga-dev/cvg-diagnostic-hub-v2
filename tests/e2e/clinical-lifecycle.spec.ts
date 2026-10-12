@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { signInAs, signOut } from "./support/auth";
+import { E2E_LABORATORY_POLICY_REFERENCE, E2E_LABORATORY_REFERENCE_NOTE } from "../../src/test/e2e-laboratory-policy";
 
 async function expectNoAxeViolations(page: Page, name: string): Promise<void> {
   const rules = ["aria-allowed-attr", "aria-required-attr", "aria-valid-attr", "button-name", "document-title", "duplicate-id-aria", "html-has-lang", "heading-order", "label", "landmark-one-main", "link-name", "nested-interactive", "role-img-alt", "tabindex"];
@@ -127,15 +128,26 @@ test.describe("clinical result lifecycle", () => {
     await expect(page.getByRole("region", { name: /Painel laboratorial Hemograma sintético/ })).toBeVisible();
     await expect(page.getByText("Este draft ainda usa conteúdo legado")).toBeVisible();
     await fillStructuredHemogram(page, "Hemograma estruturado preenchido pelo setor.");
-    await expect(page.getByText("Faixa pendente de aprovação").first()).toBeVisible();
+    const approvedSyntheticFixture = process.env.E2E_APPROVED_SYNTHETIC_LABORATORY === "true";
+    if (approvedSyntheticFixture) {
+      await expect(page.getByRole("region", { name: /Painel laboratorial Hemograma sintético/ }).getByText("0 – 1000000 g/dL", { exact: true })).toBeVisible();
+    } else {
+      await expect(page.getByText("Faixa pendente de aprovação").first()).toBeVisible();
+    }
     await expect(page.getByText("Não interpretado").first()).toBeVisible();
 
-    const stored = await readApi<{ version: { content: { kind: string; panelCode: string; observations: Array<{ analyteCode: string; value: number | string; flag: string }> } } }>(page, `/results/${resultId}`);
+    const stored = await readApi<{ version: { definitionSnapshot?: { definition: { resultTemplate?: { approval?: { policyReference: string; approvedBy: string; population: { species: string[] } } } } }; content: { kind: string; panelCode: string; observations: Array<{ analyteCode: string; value: number | string; flag: string; referenceRange?: { kind: string; source: string; note?: string } }> } } }>(page, `/results/${resultId}`);
     expect(stored.version.content).toMatchObject({ kind: "LABORATORY_STRUCTURED", panelCode: "SYNTHETIC_HEMOGRAM" });
     expect(stored.version.content.observations).toEqual(expect.arrayContaining([
-      expect.objectContaining({ analyteCode: "HEMOGLOBIN", value: 12.4, flag: "UNINTERPRETED" }),
-      expect.objectContaining({ analyteCode: "PLATELETS", value: 240, flag: "UNINTERPRETED" })
+      expect.objectContaining({ analyteCode: "HEMOGLOBIN", value: 12.4, flag: approvedSyntheticFixture ? "NORMAL" : "UNINTERPRETED" }),
+      expect.objectContaining({ analyteCode: "PLATELETS", value: 240, flag: approvedSyntheticFixture ? "NORMAL" : "UNINTERPRETED" })
     ]));
+    if (approvedSyntheticFixture) {
+      expect(stored.version.definitionSnapshot?.definition.resultTemplate?.approval).toMatchObject({ approvedBy: "user-vet", policyReference: E2E_LABORATORY_POLICY_REFERENCE, population: { species: ["Canino", "Felino"] } });
+      for (const observation of stored.version.content.observations.filter((entry) => entry.analyteCode !== "COMMENT")) expect(observation.referenceRange).toMatchObject({ kind: "NUMERIC", source: "HUMAN_APPROVED", note: E2E_LABORATORY_REFERENCE_NOTE });
+    } else {
+      expect(stored.version.definitionSnapshot?.definition.resultTemplate?.approval).toBeUndefined();
+    }
     await expectNoAxeViolations(page, "structured laboratory draft");
 
     await page.goto("/queues");
@@ -214,8 +226,13 @@ test.describe("clinical result lifecycle", () => {
     await expect(page.getByRole("heading", { name: /Laudo confirmado/ })).toBeVisible({ timeout: 15000 });
     await page.getByRole("button", { name: "Invalidar" }).click();
     await page.getByLabel("Motivo").fill("Invalidação controlada para correção clínica.");
+    const invalidationResponse = page.waitForResponse((response) => response.url().endsWith(`/api/v1/results/${xrayResultId}/void`) && response.request().method() === "POST");
     await page.getByRole("button", { name: "Confirmar", exact: true }).click();
-    await expect(page.getByRole("alert").filter({ hasText: "Resultado invalidado" })).toBeVisible({ timeout: 15000 });
+    const invalidation = await invalidationResponse;
+    expect(invalidation.status()).toBe(200);
+    expect((await invalidation.json()).data.version.status).toBe("VOIDED");
+    await expect(page.getByRole("heading", { name: "Versão invalidada", exact: true })).toBeVisible({ timeout: 15000 });
+    await expect(page.getByRole("status").filter({ hasText: "Consulta histórica · somente leitura" })).toBeVisible();
     await page.goto("/queues");
     const replacementRow = await queueRow(page, requestId, "RX de tórax");
     await expect(replacementRow.getByRole("button", { name: "Registrar resultado" })).toBeVisible({ timeout: 15000 });

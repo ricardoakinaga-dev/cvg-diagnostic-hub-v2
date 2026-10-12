@@ -116,10 +116,10 @@ describe("work item model", () => {
     expect(departmentLabel("ULTRASOUND")).toBe("Ultrassom");
     expect(departmentLabel("BLOOD_BANK")).toBe("Blood bank");
     expect(departmentKey("BLOOD_BANK")).toBe("BLO");
-    const now = new Date(2026, 9, 6, 9, 0);
-    expect(formatDue(new Date(2026, 9, 6, 14, 30).toISOString(), now)).toMatch(/^Hoje, 14:30$/);
-    expect(formatDue(new Date(2026, 9, 7, 8, 5).toISOString(), now)).toMatch(/^Amanhã, 08:05$/);
-    expect(formatDue(new Date(2026, 9, 20, 8, 5).toISOString(), now)).toMatch(/20/);
+    const now = new Date("2026-10-06T12:00:00.000Z");
+    expect(formatDue("2026-10-06T17:30:00.000Z", now)).toMatch(/^Hoje, 14:30$/);
+    expect(formatDue("2026-10-07T11:05:00.000Z", now)).toMatch(/^Amanhã, 08:05$/);
+    expect(formatDue("2026-10-20T11:05:00.000Z", now)).toMatch(/20/);
     expect(formatDue("nope", now)).toBe("Sem prazo");
     expect(formatDateTime(undefined)).toBe("Não informado");
     expect(formatDateTime("2026-10-06T12:00:00.000Z")).toMatch(/2026/);

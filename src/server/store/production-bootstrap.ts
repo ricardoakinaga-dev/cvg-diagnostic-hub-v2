@@ -1,7 +1,9 @@
+import { initialHospitalTaskTypes } from "../domain/hospital-task-types";
 import { randomBytes, randomUUID } from "node:crypto";
 import { Pool } from "pg";
 import type { AuditEvent, StoreState, User } from "../domain/models";
 import { hashPassword } from "../security/password";
+import { initialSystemAccessGroups, systemGroupId } from "../security/access-group-policy";
 import { assertPasswordPolicy, checkBreachedPassword } from "../security/password-policy";
 import { createPasswordResetGrant, passwordResetUrl } from "../security/password-reset";
 import { assertRuntimeSchemaReady } from "./migrations";
@@ -76,6 +78,7 @@ export function createProductionBootstrap(input: ProductionBootstrapInput, now =
     email: validated.email,
     displayName: validated.displayName,
     role: "ADMIN",
+    accessGroupId: systemGroupId("ADMIN"),
     departmentCode: validated.departmentCode,
     passwordHash: hashPassword(withLink ? randomBytes(32).toString("hex") : validated.password),
     mustChangePassword: true,
@@ -108,6 +111,16 @@ export function createProductionBootstrap(input: ProductionBootstrapInput, now =
     occurredAt
   }] : [];
   const state: StoreState = {
+    accessGroups: initialSystemAccessGroups(occurredAt),
+    patientGrants: [],
+    examDefinitions: [],
+    hospitalServices: [],
+    hospitalHisV4Deliveries: [], hospitalIntegrationCredentials: [], hospitalIntegrationMessages: [], hospitalAiSuggestions: [], hospitalDocuments: [], hospitalTaskComments: [], hospitalTaskAttachments: [], workNotifications: [], workNotificationPreferences: [], workActivityPreferences: [], hospitalReports: [], hospitalReportJobs: [], hospitalInstitutionSettings: [], hospitalUserInvitations: [],
+    hospitalResources: [],
+    hospitalPlans: [], hospitalShifts: [], hospitalHandoffs: [], hospitalChecklistTemplates: [], hospitalRecurrences: [],
+    hospitalTaskTypes: initialHospitalTaskTypes(occurredAt),
+    hospitalTasks: [], hospitalTaskDependencies: [], hospitalIntakes: [], savedPlannerViews: [],
+    departments: [{ id: `department-${admin.departmentCode}`, code: admin.departmentCode, name: admin.departmentCode, type: "ADMINISTRATIVE", memberUserIds: [admin.id], active: true, version: 1, createdAt: occurredAt, updatedAt: occurredAt }],
     users: [admin],
     sessions: [],
     patients: [],

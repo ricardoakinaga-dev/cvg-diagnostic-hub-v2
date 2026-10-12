@@ -1,7 +1,7 @@
 import type { RoleCode } from "@cvg/contracts";
 import type { Admission, StoreState, User } from "../domain/models";
 import { ApiError } from "../http/envelope";
-import { managerCanAccessDepartment } from "../security/authorization";
+import { canAccessResource, managerCanAccessDepartment } from "../security/authorization";
 import type { ApplicationServiceContext } from "./service-context";
 import type { AdmissionContextCommandInput, AdmissionContextCommandResult } from "./service-types";
 import {
@@ -13,11 +13,16 @@ import {
   requireActiveUser,
   requireIdempotencyKey,
   requirePermission,
+  requirePatientPermission,
   requireText,
   saveIdempotency,
   withIdempotency
 } from "./service-common";
 import { findById } from "../domain/state-index";
+import { resolveAdmissionBed } from "./hospital-bed-policy";
+import { admissionContextOptionsFiltersSchema } from "../http/hospital-resource-schemas";
+import { validateCommand } from "./hospital-service-policy";
+import { hydrateUserPermissions } from "../security/access-group-policy";
 
 const TERMINAL_ITEM_STATES = new Set(["COMPLETED", "CANCELLED", "REJECTED"]);
 const RESPONSIBLE_ROLES = new Set<RoleCode>(["VETERINARIAN", "INPATIENT_TEAM"]);
@@ -102,6 +107,7 @@ function responsibleUser(
   if (
     !user
     || user.active !== true
+    || user.mustChangePassword
     || !policy.allowedResponsibleRoles.has(user.role)
     || user.departmentCode.trim().toUpperCase() !== departmentCode
     || !user.patientIds?.includes(patientId)
@@ -112,6 +118,9 @@ function responsibleUser(
       422
     );
   }
+  const current = hydrateUserPermissions(state, user);
+  requirePatientPermission(state, current, "patient.view", patientId);
+  requirePatientPermission(state, current, "admission.view", patientId);
   return user;
 }
 
@@ -123,6 +132,22 @@ function contextLabel(admission: Admission): string {
 
 export function createAdmissionContextService({ store }: ApplicationServiceContext) {
   return {
+    async getAdmissionContextOptions(actor: User, admissionId: string, filters: { departmentCode?: string } = {}) {
+      const parsed = validateCommand(admissionContextOptionsFiltersSchema, filters);
+      const state = await store.readState(); const currentActor = requireActiveUser(state, actor);
+      const admission = findOrThrow(findById(state.admissions, admissionId)); const encounter = findOrThrow(findById(state.encounters, admission.encounterId));
+      requirePermission(currentActor, "admission.context.manage", { patientId: encounter.patientId, departmentCode: admission.departmentCode });
+      requirePatientPermission(state, currentActor, "patient.view", encounter.patientId);
+      if (admission.dischargedAt || encounter.status !== "OPEN") throw new ApiError("INVALID_STATE_TRANSITION", "A internação já está encerrada.", 409);
+      const policy = requireAdmissionContextPolicy();
+      const departments = state.departments.filter((department) => department.active && canAccessResource(currentActor, "admission.context.manage", { departmentCode: department.code, patientId: encounter.patientId }));
+      if (parsed.departmentCode && !departments.some((department) => department.code === parsed.departmentCode)) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
+      const eligibleResponsibles = state.users.flatMap((user) => {
+        if (parsed.departmentCode && user.departmentCode !== parsed.departmentCode || !departments.some((department) => department.code === user.departmentCode)) return [];
+        try { responsibleUser(state, user.id, encounter.patientId, user.departmentCode, policy); return [{ id: user.id, displayName: user.displayName, departmentCode: user.departmentCode }]; } catch { return []; }
+      });
+      return { departments: departments.map((department) => ({ code: department.code, name: department.name })), eligibleResponsibles };
+    },
     async updateAdmissionContext(
       actor: User,
       admissionId: string,
@@ -168,13 +193,14 @@ export function createAdmissionContextService({ store }: ApplicationServiceConte
 
         if (input.action === "TRANSFER") {
           const departmentCode = normalizedDepartmentCode(input.departmentCode);
-          if (!managerCanAccessDepartment(currentActor, departmentCode)) {
+          if (currentActor.role !== "SUPERADMIN" && !managerCanAccessDepartment(currentActor, departmentCode)) {
             throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
           }
-          const ward = requireText(input.ward, "ward", 100);
-          const bed = requireText(input.bed, "bed", 100);
+          const patient = findOrThrow(findById(originalState.patients, encounter.patientId));
+          const placement = resolveAdmissionBed(originalState, currentActor, patient, { departmentCode, ward: input.ward, bed: input.bed, bedResourceId: input.bedResourceId }, admission.id);
+          const { ward, bed } = placement;
           const responsible = responsibleUser(originalState, input.responsibleUserId, encounter.patientId, departmentCode, policy);
-          if (departmentCode === admission.departmentCode && ward === admission.ward && bed === admission.bed && responsible.id === admission.responsibleUserId) {
+          if (departmentCode === admission.departmentCode && ward === admission.ward && bed === admission.bed && placement.bedResourceId === admission.bedResourceId && responsible.id === admission.responsibleUserId) {
             throw new ApiError("CONFLICT", "A transferência não altera o contexto atual.", 409);
           }
           nextAdmission = {
@@ -182,6 +208,7 @@ export function createAdmissionContextService({ store }: ApplicationServiceConte
             departmentCode,
             ward,
             bed,
+            bedResourceId: placement.bedResourceId,
             responsibleUserId: responsible.id,
             contextEffectiveAt: effectiveAt,
             updatedAt,
@@ -192,24 +219,29 @@ export function createAdmissionContextService({ store }: ApplicationServiceConte
             previousDepartmentCode: admission.departmentCode,
             departmentCode,
             previousResponsibleUserId: admission.responsibleUserId ?? null,
-            responsibleUserId: responsible.id
+            responsibleUserId: responsible.id,
+            previousBedResourceId: admission.bedResourceId ?? null,
+            bedResourceId: placement.bedResourceId ?? null,
+            previousWard: admission.ward, previousBed: admission.bed, ward, bed
           });
         } else if (input.action === "BED_CHANGE") {
-          const ward = requireText(input.ward, "ward", 100);
-          const bed = requireText(input.bed, "bed", 100);
-          if (ward === admission.ward && bed === admission.bed) {
+          const patient = findOrThrow(findById(originalState.patients, encounter.patientId));
+          const placement = resolveAdmissionBed(originalState, currentActor, patient, { departmentCode: admission.departmentCode, ward: input.ward, bed: input.bed, bedResourceId: input.bedResourceId }, admission.id);
+          const { ward, bed } = placement;
+          if (ward === admission.ward && bed === admission.bed && placement.bedResourceId === admission.bedResourceId) {
             throw new ApiError("CONFLICT", "A mudança não altera a acomodação atual.", 409);
           }
           nextAdmission = {
             ...admission,
             ward,
             bed,
+            bedResourceId: placement.bedResourceId,
             contextEffectiveAt: effectiveAt,
             updatedAt,
             version: admission.version + 1
           };
           eventType = "AdmissionBedChanged";
-          Object.assign(metadata, { previousWard: admission.ward, previousBed: admission.bed, ward, bed });
+          Object.assign(metadata, { previousWard: admission.ward, previousBed: admission.bed, ward, bed, previousBedResourceId: admission.bedResourceId ?? null, bedResourceId: placement.bedResourceId ?? null });
         } else if (input.action === "RESPONSIBILITY_CHANGE") {
           const responsible = responsibleUser(originalState, input.responsibleUserId, encounter.patientId, admission.departmentCode, policy);
           if (responsible.id === admission.responsibleUserId) {

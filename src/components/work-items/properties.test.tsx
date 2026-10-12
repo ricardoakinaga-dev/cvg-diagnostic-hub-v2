@@ -1,8 +1,12 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render as baseRender, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { NextActionButtons, StatePill, WorkItemProperties, nextActions } from "./properties";
+import { WorkflowPermissionsProvider } from "@/components/workflow-permissions";
+import { rolePermissions } from "@/server/security/authorization";
 import type { WorkItem } from "./model";
+
+const render = (ui: React.ReactNode) => baseRender(ui, { wrapper: ({ children }) => <WorkflowPermissionsProvider permissions={rolePermissions.MANAGER}>{children}</WorkflowPermissionsProvider> });
 
 const item: WorkItem = { id: "item", requestId: "req", requestCode: "EX-261006-0001", status: "RECEIVED", priority: "URGENT", workflowType: "LABORATORY", departmentCode: "LABORATORY", version: 2, dueAt: "2026-10-06T14:00:00Z", createdAt: "2026-10-06T12:00:00Z", overdue: true, currentSampleId: "sample", patient: { id: "p", displayName: "Thor", species: "Canino", externalId: "THOR" }, service: { id: "s", code: "HEM", name: "Hemograma" } };
 afterEach(() => { cleanup(); });

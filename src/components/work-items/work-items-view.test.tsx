@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { rolePermissions } from "@/server/security/authorization";
 import type { QueueItem, SessionUser } from "@cvg/contracts";
 import { apiFetch, apiFetchWithMeta } from "@/components/api-client";
 import type { RequestListEntry } from "./model";
 import { WorkItemsView } from "./work-items-view";
+import { queuePreferenceKey } from "@/components/use-queue-preferences";
+const preferenceView = "/queues?dept=&preset=&view=all:display";
 
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a {...props}>{children}</a>
@@ -15,8 +18,19 @@ const router = { push: vi.fn(), replace: vi.fn(), refresh: vi.fn() };
 vi.mock("next/navigation", () => ({ useSearchParams: () => navigation.params, useRouter: () => router }));
 vi.mock("@/components/api-client", async (importOriginal) => ({ ...await importOriginal<typeof import("@/components/api-client")>(), apiFetch: vi.fn(), apiFetchWithMeta: vi.fn() }));
 
-const lab: SessionUser = { id: "user-lab", email: "lab@cvg.local", displayName: "Joana Lima", role: "LAB_TECH", departmentCode: "LABORATORY", timezone: "UTC" };
-const vet: SessionUser = { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina", role: "VETERINARIAN", departmentCode: "INPATIENT", timezone: "UTC" };
+const lab: SessionUser = { id: "user-lab", email: "lab@cvg.local", displayName: "Joana Lima", role: "LAB_TECH", departmentCode: "LABORATORY", timezone: "UTC", permissions: [...rolePermissions.LAB_TECH] };
+const vet: SessionUser = { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina", role: "VETERINARIAN", departmentCode: "INPATIENT", timezone: "UTC", permissions: [...rolePermissions.VETERINARIAN] };
+const operationalScopes = [
+  ["SUPERADMIN", "IT", "LABORATORY"],
+  ["VETERINARIAN", "INPATIENT", "LABORATORY"],
+  ["VET", "INPATIENT", "LABORATORY"],
+  ["INPATIENT_TEAM", "INPATIENT", "LABORATORY"],
+  ["MANAGER", "IT", "RADIOLOGY"],
+  ["VIEWER", "IT", "LABORATORY"],
+  ["LAB_TECH", "LABORATORY", "LABORATORY"],
+  ["RADIOLOGY_TEAM", "RADIOLOGY", "RADIOLOGY"],
+  ["ULTRASOUND_TEAM", "ULTRASOUND", "ULTRASOUND"]
+] as const;
 const future = new Date(Date.now() + 6 * 3600_000).toISOString();
 const past = new Date(Date.now() - 3600_000).toISOString();
 
@@ -45,7 +59,8 @@ const queueItem = {
 
 function mockApi(user: SessionUser, options: { requests?: RequestListEntry[]; fail?: boolean } = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-    if (path === "/session/me") return { user } as never;
+    if (path === "/session/me") return { user: { ...user, permissions: user.permissions ?? rolePermissions[user.role === "VET" ? "VETERINARIAN" : user.role] } } as never;
+    if (path === "/departments?includeInactive=true") return [{ id: "dept-lab", code: "LABORATORY", name: "Laboratório", type: "DIAGNOSTIC", active: true }, { id: "dept-rx", code: "RADIOLOGY", name: "Radiologia", type: "DIAGNOSTIC", active: true }] as never;
     if (path.startsWith("/timeline")) return [{ id: "event-1", eventType: "SampleReceived", newState: "RECEIVED", occurredAt: "2026-10-06T10:30:00.000Z" }] as never;
     if (path.includes("/start-processing")) return {} as never;
     return [] as never;
@@ -71,6 +86,16 @@ describe("WorkItemsView", () => {
   });
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
+  it.each(["VETERINARIAN", "INPATIENT_TEAM", "SUPERADMIN"] as const)("does not offer nested patient creation to %s with request.create alone", async (role) => {
+    mockApi({ ...vet, role, permissions: ["request.list", "queue.view", "service.catalog.view", "request.create"] });
+    await renderView();
+    fireEvent.click(screen.getAllByRole("button", { name: "Nova solicitação" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar exames" });
+    expect(within(dialog).queryByRole("button", { name: /Cadastrar paciente/ })).not.toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.some(([, init]) => init?.method)).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  });
+
   it("lists scoped exams grouped by state with Plane properties and a count", async () => {
     await renderView();
     expect(screen.getByRole("navigation", { name: "Você está em" })).toHaveTextContent("Todos os exames");
@@ -79,7 +104,7 @@ describe("WorkItemsView", () => {
     expect(screen.getByText("LAB-0001")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Estado: Amostra recebida. Mudar estado" })).toBeEnabled();
     expect(screen.getAllByText(/Atrasado/).length).toBeGreaterThan(0);
-    expect(vi.mocked(apiFetchWithMeta)).toHaveBeenCalledWith("/queues/LABORATORY/items?limit=100");
+    expect(vi.mocked(apiFetchWithMeta)).toHaveBeenCalledWith("/queues/LABORATORY/items?limit=50");
   });
 
   it("marks preserved exams as stale after a refresh failure and retries", async () => {
@@ -141,7 +166,7 @@ describe("WorkItemsView", () => {
     expect(within(table).getAllByRole("row")[1]).toHaveTextContent("Mel");
     fireEvent.click(within(table).getByRole("button", { name: "Paciente" }));
     expect(within(table).getAllByRole("row")[1]).toHaveTextContent("Thor");
-    expect(JSON.parse(window.localStorage.getItem("cvg.work-items.display.v1") ?? "{}")).toMatchObject({ layout: "spreadsheet" });
+    expect(JSON.parse(window.localStorage.getItem(queuePreferenceKey(lab.id, preferenceView)) ?? "{}").value).toMatchObject({ layout: "spreadsheet" });
   });
 
   it("filters with Plane chips, searches and clears", async () => {
@@ -170,6 +195,32 @@ describe("WorkItemsView", () => {
     expect(screen.queryByText("LAB-0001")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: "Nenhum" }));
     expect(screen.getByRole("listitem", { name: "Todos os exames: 3 exames" })).toBeInTheDocument();
+  });
+
+  it("uses a newly registered sector name in filters, groups, properties and the exam context", async () => {
+    const entry: RequestListEntry = { ...requests[0], id: "onc-request", requestCode: "EX-ONC-1", items: [{ ...requests[0].items[0], id: "onc-item", requestId: "onc-request", status: "REQUESTED", departmentCode: "ONCOLOGY", service: { id: "onc-service", code: "ONC_PANEL", name: "Painel oncológico" } }] };
+    mockApi({ ...lab, role: "SUPERADMIN" }, { requests: [entry] });
+    const prior = vi.mocked(apiFetch).getMockImplementation()!;
+    vi.mocked(apiFetch).mockImplementation((path, init) => {
+      if (path === "/departments?includeInactive=true") return Promise.resolve([{ id: "onc", code: "ONCOLOGY", name: "Oncologia veterinária", type: "DIAGNOSTIC", active: true }, { id: "lab", code: "LABORATORY", name: "Laboratório", type: "DIAGNOSTIC", active: true }]) as never;
+      if (path === "/diagnostic-services") return Promise.resolve([{ ...entry.items[0].service, departmentCode: "ONCOLOGY", active: true }]) as never;
+      return prior(path, init);
+    });
+    render(<WorkItemsView />);
+    await screen.findByRole("button", { name: "Abrir Painel oncológico — Thor" });
+    fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "Oncologia veterinária" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("button", { name: "Remover filtro Oncologia veterinária" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Exibição" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Setor" }));
+    fireEvent.click(screen.getByRole("button", { name: "Setor" }));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("listitem", { name: "Oncologia veterinária: 1 exames" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Abrir Painel oncológico — Thor" }));
+    const peek = screen.getByRole("dialog", { name: "Painel oncológico" });
+    expect(within(peek).getByText("Oncologia veterinária")).toBeInTheDocument();
+    expect(screen.queryByText("Oncology")).not.toBeInTheDocument();
   });
 
   it("opens the side peek with properties, actions and activity", async () => {
@@ -240,12 +291,12 @@ describe("WorkItemsView", () => {
     expect(screen.queryByRole("button", { name: /^Estado: Amostra recebida/ })).not.toBeInTheDocument();
   });
 
-  it("shows only the clinician's own requests in Meu trabalho and lets them create", async () => {
+  it("shows the clinician's authorized care-team requests in Meu trabalho and lets them create", async () => {
     navigation.params = new URLSearchParams("view=mine");
     mockApi(vet);
     await renderView();
     expect(screen.getByRole("navigation", { name: "Você está em" })).toHaveTextContent("Meu trabalho");
-    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Abrir RX de tórax — Thor" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Estado: Amostra recebida" })).toBeDisabled();
     expect(screen.getAllByRole("button", { name: "Nova solicitação" }).length).toBeGreaterThan(0);
@@ -264,7 +315,7 @@ describe("WorkItemsView", () => {
     let finishRequests!: (value: unknown) => void;
     vi.mocked(apiFetchWithMeta).mockImplementation(() => new Promise((resolve) => { finishRequests = resolve; }) as never);
     const view = render(<WorkItemsView />);
-    await waitFor(() => expect(apiFetchWithMeta).toHaveBeenCalledWith("/diagnostic-requests?limit=100"));
+    await waitFor(() => expect(apiFetchWithMeta).toHaveBeenCalledWith("/diagnostic-requests?limit=50"));
     expect(await screen.findByRole("dialog", { name: "Solicitar exames" })).toBeInTheDocument();
     expect(view.container.querySelector(".work-items-canvas")).toHaveAttribute("aria-busy", "true");
     expect(window.location.search).toBe("");
@@ -301,14 +352,14 @@ describe("WorkItemsView", () => {
   });
 
   it.each(["{broken", "[]", "42", "null"])("recovers unusable persisted display %s", async (saved) => {
-    window.localStorage.setItem("cvg.work-items.display.v1", saved);
+    window.localStorage.setItem(queuePreferenceKey(lab.id, preferenceView), saved);
     await renderView();
     expect(screen.getByRole("radio", { name: "Lista" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("button", { name: "Estado: Amostra recebida. Mudar estado" })).toBeInTheDocument();
   });
 
   it("restores valid preferences and normalizes an ungrouped board", async () => {
-    window.localStorage.setItem("cvg.work-items.display.v1", JSON.stringify({ layout: "board", groupBy: "none", orderBy: "patient", properties: ["state", "unknown", 2], showEmptyGroups: true }));
+    window.localStorage.setItem(queuePreferenceKey(lab.id, preferenceView), JSON.stringify({ version: 2, userId: lab.id, view: preferenceView, value: { layout: "board", groupBy: "none", orderBy: "patient", properties: ["state", "unknown", 2], showEmptyGroups: true } }));
     await renderView();
     await waitFor(() => expect(screen.getByRole("radio", { name: "Quadro" })).toHaveAttribute("aria-checked", "true"));
     expect(screen.getByRole("region", { name: "Amostra recebida" })).toBeInTheDocument();
@@ -332,6 +383,7 @@ describe("WorkItemsView", () => {
   it("removes each applied filter chip without dropping other selected filters", async () => {
     await renderView();
     fireEvent.click(screen.getByRole("button", { name: "Filtros" }));
+    await screen.findByRole("checkbox", { name: "Laboratório" });
     for (const name of ["Amostra recebida", "Emergência", "Laboratório", "Hemograma", "Somente atrasados", "Ocultar concluídos e cancelados"]) fireEvent.click(screen.getByRole("checkbox", { name }));
     fireEvent.keyDown(document, { key: "Escape" });
     for (const name of ["Amostra recebida", "Emergência", "Laboratório", "Hemograma", "Somente atrasados", "Sem concluídos"]) {
@@ -356,12 +408,37 @@ describe("WorkItemsView", () => {
     expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" })).not.toBeInTheDocument();
   });
 
-  it.each(["MANAGER", "LAB_TECH"] as const)("scopes Meu trabalho for %s", async (role) => {
-    navigation.params = new URLSearchParams("view=mine");
-    mockApi({ ...lab, role });
+  it.each(["MANAGER", "VETERINARIAN"] as const)("keeps explicit department filters in %s Meu trabalho", async (role) => {
+    navigation.params = new URLSearchParams("view=mine&dept=LABORATORY");
+    mockApi({ ...vet, role, managedDepartmentCodes: role === "MANAGER" ? ["LABORATORY", "RADIOLOGY"] : undefined });
     await renderView();
-    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" }) !== null).toBe(role === "LAB_TECH");
-    expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" }) !== null).toBe(role === "MANAGER");
+    expect(screen.getByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Abrir RX de tórax — Thor" })).not.toBeInTheDocument();
+  });
+
+  it.each(operationalScopes)("shows another professional's sole authorized future routine exam in %s Meu trabalho", async (role, departmentCode, workflowType) => {
+    navigation.params = new URLSearchParams("view=mine");
+    const routineRequest: RequestListEntry = { ...requests[1], requesterId: "another-professional", items: [{ ...requests[1].items[0], workflowType, departmentCode: workflowType }] };
+    mockApi({ ...vet, role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined }, { requests: [routineRequest] });
+    vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? [routineRequest] : [], meta: {} }) as never);
+    render(<WorkItemsView />);
+    expect(await screen.findByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(screen.getByText("1 itens")).toBeInTheDocument();
+    expect(screen.getByRole("listitem", { name: "Solicitado: 1 exames" })).toBeInTheDocument();
+    expect(screen.queryAllByRole("button", { name: "Nova solicitação" }).length > 0).toBe(["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(role));
+  });
+
+  it.each(operationalScopes)("keeps COMPLETED, CANCELLED and REJECTED outside %s Meu trabalho while retaining routine work", async (role, departmentCode, workflowType) => {
+    navigation.params = new URLSearchParams("view=mine");
+    const routineRequest: RequestListEntry = { ...requests[1], requesterId: "another-professional", items: [{ ...requests[1].items[0], workflowType, departmentCode: workflowType }] };
+    const terminalItems = (["COMPLETED", "CANCELLED", "REJECTED"] as const).map((status) => ({ ...routineRequest.items[0], requestId: "terminal-request", id: `terminal-${status}`, status, priority: "EMERGENCY" as const, service: { id: `service-${status}`, code: status, name: `Histórico ${status}` } }));
+    const data = [routineRequest, { ...requests[1], id: "terminal-request", requesterId: vet.id, items: terminalItems }];
+    mockApi({ ...vet, role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined }, { requests: data });
+    vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? data : [], meta: {} }) as never);
+    render(<WorkItemsView />);
+    expect(await screen.findByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(screen.getByText("1 itens")).toBeInTheDocument();
+    for (const status of ["COMPLETED", "CANCELLED", "REJECTED"]) expect(screen.queryByRole("button", { name: `Abrir Histórico ${status} — Mel` })).not.toBeInTheDocument();
   });
 
   it("keeps row actions available while a background refresh is loading", async () => {
@@ -400,7 +477,7 @@ describe("WorkItemsView", () => {
     fireEvent.change(within(form).getByRole("textbox", { name: "Accession" }), { target: { value: "acc-1" } });
     vi.mocked(apiFetchWithMeta).mockClear();
     fireEvent.click(within(form).getByRole("button", { name: "Confirmar" }));
-    await waitFor(() => expect(apiFetchWithMeta).toHaveBeenCalledWith("/diagnostic-requests?limit=100"));
+    await waitFor(() => expect(apiFetchWithMeta).toHaveBeenCalledWith("/diagnostic-requests?limit=50"));
     expect(screen.queryByRole("form", { name: "Receber amostra" })).not.toBeInTheDocument();
   });
 
@@ -479,4 +556,38 @@ describe("WorkItemsView", () => {
     fireEvent.click(within(empty as HTMLElement).getByRole("button", { name: "Limpar filtros" }));
     expect(screen.getByRole("button", { name: "Abrir Hemograma — Thor" })).toBeInTheDocument();
   });
+  it("keeps the server-created request reachable when an explicit results filter hides the routine exam", async () => {
+    navigation.params = new URLSearchParams("view=mine&preset=results");
+    let feed: RequestListEntry[] = [];
+    const created: RequestListEntry = { ...requests[1], id: "request-created", requestCode: "EX-CREATED", requesterId: vet.id, items: [{ ...requests[1].items[0], id: "created-item", requestId: "request-created" }] };
+    mockApi(vet, { requests: [] });
+    const prior = vi.mocked(apiFetch).getMockImplementation()!;
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => {
+      if (path === "/patients") return [{ ...created.patient, active: true }] as never;
+      if (path === "/diagnostic-services") return [{ ...created.items[0].service, active: true, departmentCode: "LABORATORY", workflowType: "LABORATORY" }] as never;
+      if (path.endsWith("/encounters")) return [{ id: "encounter-new", externalId: "ATD-NEW", patientId: created.patient.id, status: "OPEN", type: "OUTPATIENT" }] as never;
+      if (path === "/diagnostic-requests" && init?.method === "POST") { feed = [created]; return created as never; }
+      return prior(path, init);
+    });
+    vi.mocked(apiFetchWithMeta).mockImplementation(async (path) => ({ data: path.startsWith("/diagnostic-requests") ? feed : [], meta: {} }) as never);
+    render(<WorkItemsView />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Nova solicitação" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Nova solicitação" }));
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar exames" });
+    await within(dialog).findByRole("option", { name: /Mel/ });
+    fireEvent.change(within(dialog).getByLabelText("Paciente"), { target: { value: created.patient.id } });
+    await within(dialog).findByRole("option", { name: /ATD-NEW/ });
+    fireEvent.change(within(dialog).getByLabelText("Atendimento"), { target: { value: "encounter-new" } });
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: /Proteína C reativa/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Confirmar solicitação" }));
+    const link = await screen.findByRole("link", { name: "Abrir solicitação" });
+    expect(link).toHaveAttribute("href", "/requests/request-created");
+    expect(screen.getByText(/Os filtros atuais ocultam os novos exames/)).toHaveTextContent("Resultado disponível");
+    expect(screen.queryByRole("button", { name: "Abrir Proteína C reativa — Mel" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Limpar filtros e mostrar exames" }));
+    expect(await screen.findByRole("button", { name: "Abrir Proteína C reativa — Mel" })).toBeInTheDocument();
+    expect(router.replace).toHaveBeenCalledWith("/queues?view=mine");
+    expect(vi.mocked(apiFetch).mock.calls.filter(([path, init]) => path === "/diagnostic-requests" && init?.method === "POST")).toHaveLength(1);
+  });
+
 });

@@ -1,0 +1,15 @@
+# Correção do registro de exceções de cobertura
+
+**Captura:** 12/10/2026 · **Base:** `44a66a6` · **Estado:** política corrigida; nova CI completa pendente · **Piloto:** não iniciado.
+
+A [CI 38207033632](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38207033632) executou **5.319 testes unitários e 141 PostgreSQL**, todos aprovados em 363 suites. A cobertura combinada foi 98,42% de linhas, 95,96% de statements, 97,20% de funções e 92,66% de branches. O check global falhou exclusivamente porque o console de administração passou a superar os pisos e sua exceção ficou obsoleta. Sentinel, build e navegadores dependentes não executaram; essa rodada permanece FAIL.
+
+Foi removida apenas a entrada de `src/components/admin-console.tsx` em [COVERAGE_EXCEPTIONS.json](COVERAGE_EXCEPTIONS.json). Os pisos continuam 90% de linhas/funções e 85% de branches; o registro contém 19 exceções para 19 arquivos abaixo do piso. A reavaliação do sumário nativo dessa rodada, sem alterar os dados nem reexecutar testes, passou com `uncovered=[]` e `stale=[]`. Isso confirma a correção do registro, não certifica a próxima CI inteira.
+
+Prova privada dessa reavaliação: `/tmp/cvg-hpl-coverage-policy-gate-correction-20261012.json`, SHA-256 `35c53af09108424f42cd475c1df3cd589882b82fe132f9b1b8b43d7b3ff5b009`. Sumário nativo: SHA-256 `05ec8454b8110fb13edc4de7585e7ce6e7fe7b5546151e8b4e6dafb4079e684a`; a raiz do checkout GitHub foi passada ao normalizador original. Scripts, testes, código do produto, pisos e demais exceções permanecem com os mesmos bytes.
+
+O [manifesto desta captura](HOSPITAL_PLANNER_COVERAGE_POLICY_SOURCE_MANIFEST_2026-10-12.json) conserva 1.091 inputs, fingerprint `114abf651308af7ba9fefd1d28c6dc2b3e634d836b09e600a536a4cb8938c6c5`. Comparado ao [manifesto anterior](HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_SOURCE_MANIFEST_2026-10-12.json), só o registro de exceções mudou; 1.090 inputs são idênticos. A captura precede o novo commit, que será vinculado aos mesmos hashes no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78).
+
+A [auditoria literal](HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_FOLLOWUP_2026-10-12.md), suas 51 entregas e seus critérios e as correções de acesso preservam sua proveniência. As imagens locais e o smoke da fonte 44a foram executados e passam no seu escopo; a próxima revisão precisa de novos carimbos e evidência própria. A primeira tentativa do build 44a falhou na leitura opcional de `User` do MinIO, foi preservada e corrigida no executor privado antes da tentativa aprovada; os guards do produto não foram relaxados.
+
+O benchmark sintético de 12 meses passou nos tetos da CI, mas não atingiu todas as metas PRD propostas: leituras de 695–752 ms frente a 500 ms e escrita de 1.481,54 ms frente a 800 ms. Volume/pico D2, ensaios no alvo, integração HIS real, revisão externa e aceite do piloto continuam pendentes. O solicitante fará a validação e o aceite; nenhuma captura declara DONE hospitalar, merge, implantação ou publicação em registry.

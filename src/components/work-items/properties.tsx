@@ -1,26 +1,29 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ITEM_STATES, type ItemState, type SessionRole } from "@cvg/contracts";
+import { ITEM_STATES, type ItemState, type Permission, type SessionRole } from "@cvg/contracts";
 import { Icon } from "@/components/ui-icons";
-import { actionLabel, canUseWorkflowAction, workflowActionFor, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
+import { actionLabel, canUseGrantedWorkflowAction, canUseWorkflowAction, workflowActionFor, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
 import { Avatar, DepartmentIcon, PriorityIcon, StateIcon } from "./icons";
-import { PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, departmentLabel, formatDue, workItemKey, type DisplayProperty, type WorkItem } from "./model";
+import { PRIORITY_LABELS, STATE_LABELS, STATE_ORDER, formatDue, workItemKey, type DisplayProperty, type WorkItem } from "./model";
+import { useWorkflowPermissions } from "@/components/workflow-permissions";
+import { useDepartmentName } from "@/components/department-labels";
 
 export interface Transition { target: ItemState; action: WorkflowActionKind }
 
-export function allowedTransitions(item: WorkItem, role: SessionRole): Transition[] {
+export function allowedTransitions(item: WorkItem, role: SessionRole, permissions?: readonly Permission[]): Transition[] {
   return ITEM_STATES.flatMap((target) => {
     const action = workflowActionForTransition(item, target);
-    return action && canUseWorkflowAction(role, action, item) ? [{ target, action }] : [];
+    return action && (permissions ? canUseGrantedWorkflowAction(role, action, item, permissions) : canUseWorkflowAction(role, action, item)) ? [{ target, action }] : [];
   }).sort((a, b) => STATE_ORDER.indexOf(a.target) - STATE_ORDER.indexOf(b.target));
 }
 
 /** Plane's state pill: shows the state and opens the allowed transitions. */
-export function StatePill({ item, role, onMove, showLabel = true, disabled = false }: { item: WorkItem; role: SessionRole; onMove: (item: WorkItem, target: ItemState) => void; showLabel?: boolean; disabled?: boolean }) {
+export function StatePill({ item, role, permissions: suppliedPermissions, onMove, showLabel = true, disabled = false }: { item: WorkItem; role: SessionRole; permissions?: readonly Permission[]; onMove: (item: WorkItem, target: ItemState) => void; showLabel?: boolean; disabled?: boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const transitions = allowedTransitions(item, role);
+  const permissions = useWorkflowPermissions(suppliedPermissions);
+  const transitions = allowedTransitions(item, role, permissions);
   useEffect(() => {
     if (!open) return;
     ref.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
@@ -37,7 +40,7 @@ export function StatePill({ item, role, onMove, showLabel = true, disabled = fal
     <button type="button" className={`pill${canOpen ? " pill-interactive" : ""}`} aria-haspopup={canOpen ? "menu" : undefined} aria-expanded={canOpen ? open : undefined} disabled={!canOpen} onClick={() => setOpen((value) => !value)} onKeyDown={(event) => { if (canOpen && !open && ["ArrowDown", "ArrowUp"].includes(event.key)) { event.preventDefault(); setOpen(true); } }} aria-label={`Estado: ${STATE_LABELS[item.status]}${canOpen ? ". Mudar estado" : ""}`} title={STATE_LABELS[item.status]}>
       <StateIcon state={item.status} />{showLabel && <span>{STATE_LABELS[item.status]}</span>}
     </button>
-    {open && <div className="dropdown pill-dropdown" role="menu" aria-label={`Mover ${item.service.name} de ${item.patient.displayName}`} onKeyDown={(event) => {
+    {open && canOpen && <div className="dropdown pill-dropdown" role="menu" aria-label={`Mover ${item.service.name} de ${item.patient.displayName}`} onKeyDown={(event) => {
       const entries = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]"));
       if (event.key === "Tab") { setOpen(false); ref.current?.querySelector<HTMLButtonElement>("button")?.focus(); return; }
       if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
@@ -54,6 +57,7 @@ export function StatePill({ item, role, onMove, showLabel = true, disabled = fal
 }
 
 export function WorkItemProperties({ item, role, properties, onMove, disabled }: { item: WorkItem; role: SessionRole; properties: DisplayProperty[]; onMove: (item: WorkItem, target: ItemState) => void; disabled?: boolean }) {
+  const departmentLabel = useDepartmentName();
   const show = (property: DisplayProperty) => properties.includes(property);
   const owner = item.operationalContext?.currentOwner.label;
   return <div className="properties">
@@ -75,16 +79,17 @@ export function WorkItemKey({ item }: { item: WorkItem }) {
  * The next clinical step as one button on the row or card, so the most common
  * action (receive, start, release) stays a single interaction.
  */
-export function nextActions(item: WorkItem, role: SessionRole): WorkflowActionKind[] {
+export function nextActions(item: WorkItem, role: SessionRole, permissions?: readonly Permission[]): WorkflowActionKind[] {
   const primary = workflowActionFor(item);
   const actions: WorkflowActionKind[] = [];
   if (primary && primary !== "REVIEW_RESULT" && primary !== "EDIT_RESULT" && canUseWorkflowAction(role, primary, item)) actions.push(primary);
   if (primary !== "RELEASE_RESULT" && item.currentResultId && workflowActionForTransition(item, "RESULT_AVAILABLE") === "RELEASE_RESULT" && canUseWorkflowAction(role, "RELEASE_RESULT", item)) actions.push("RELEASE_RESULT");
-  return actions;
+  return permissions ? actions.filter((action) => canUseGrantedWorkflowAction(role, action, item, permissions)) : actions;
 }
 
-export function NextActionButtons({ item, role, onAction, disabled }: { item: WorkItem; role: SessionRole; onAction: (item: WorkItem, action: WorkflowActionKind) => void; disabled?: boolean }) {
-  const actions = nextActions(item, role);
+export function NextActionButtons({ item, role, permissions: suppliedPermissions, onAction, disabled }: { item: WorkItem; role: SessionRole; permissions?: readonly Permission[]; onAction: (item: WorkItem, action: WorkflowActionKind) => void; disabled?: boolean }) {
+  const permissions = useWorkflowPermissions(suppliedPermissions);
+  const actions = nextActions(item, role, permissions);
   if (!actions.length) return null;
   return <span className="next-actions" onClick={(event) => event.stopPropagation()}>
     {actions.map((action) => <button key={action} type="button" className="next-action-button" disabled={disabled} onClick={() => onAction(item, action)}>{actionLabel[action]}</button>)}

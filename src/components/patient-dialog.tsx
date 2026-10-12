@@ -3,9 +3,11 @@
 import { useRef, useState, type FormEvent } from "react";
 import type { PatientCreateResult } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
+import { hospitalDateKey } from "@/lib/hospital-time";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon } from "./ui-icons";
+import { HospitalNewAdmissionFields } from "./hospital-bed-picker";
 
 export type CreatedPatientPayload = PatientCreateResult;
 
@@ -18,8 +20,7 @@ interface PatientDraft {
   ownerLabel: string;
   externalId: string;
   encounterType: "INPATIENT" | "EMERGENCY" | "OUTPATIENT";
-  ward: string;
-  bed: string;
+  bedResourceId: string;
 }
 
 const initialDraft: PatientDraft = {
@@ -31,8 +32,7 @@ const initialDraft: PatientDraft = {
   ownerLabel: "",
   externalId: "",
   encounterType: "OUTPATIENT",
-  ward: "",
-  bed: ""
+  bedResourceId: ""
 };
 
 const encounterLabels: Record<PatientDraft["encounterType"], string> = {
@@ -57,6 +57,7 @@ export function PatientDialog({ onClose, onCreated, nested = false }: { onClose:
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (draft.encounterType === "INPATIENT" && !draft.bedResourceId) { setError("Selecione um leito cadastrado elegível para abrir a internação."); return; }
     setBusy(true);
     setError("");
     try {
@@ -71,8 +72,7 @@ export function PatientDialog({ onClose, onCreated, nested = false }: { onClose:
           ownerLabel: draft.ownerLabel.trim(),
           ...(draft.externalId.trim() ? { externalId: draft.externalId.trim() } : {}),
           encounterType: draft.encounterType,
-          ...(draft.encounterType === "INPATIENT" && draft.ward.trim() ? { ward: draft.ward.trim() } : {}),
-          ...(draft.encounterType === "INPATIENT" && draft.bed.trim() ? { bed: draft.bed.trim() } : {})
+          ...(draft.encounterType === "INPATIENT" ? { bedResourceId: draft.bedResourceId } : {})
         })
       });
       onCreated(result);
@@ -101,12 +101,12 @@ export function PatientDialog({ onClose, onCreated, nested = false }: { onClose:
           <div className="patient-form-grid">
             <label>Raça ou tipo<input value={draft.breed} onChange={(event) => setField("breed", event.target.value)} minLength={2} maxLength={120} placeholder="Ex.: Labrador" /></label>
             <label>Sexo<select value={draft.sex} onChange={(event) => setField("sex", event.target.value)}><option value="Macho">Macho</option><option value="Fêmea">Fêmea</option><option value="Não informado">Não informado</option></select></label>
-            <label>Data de nascimento<input type="date" value={draft.birthDate} onChange={(event) => setField("birthDate", event.target.value)} max={new Date().toISOString().slice(0, 10)} /></label>
+            <label>Data de nascimento<input type="date" value={draft.birthDate} onChange={(event) => setField("birthDate", event.target.value)} max={hospitalDateKey(new Date())} /></label>
             <label className="patient-form-wide">Prontuário ou identificador externo <span className="field-optional">opcional</span><input value={draft.externalId} onChange={(event) => setField("externalId", event.target.value.toUpperCase())} maxLength={100} placeholder="Será gerado se não for informado" /><small className="field-hint">Use o identificador do hospital quando existir. No modo local, o Hub gera um código único.</small></label>
           </div>
-          <fieldset className="patient-encounter-fieldset"><legend>Atendimento inicial</legend><p className="field-hint patient-encounter-hint">Escolha o contexto clínico que será aberto para este paciente e usado na solicitação.</p><div className="encounter-choice-list">{(Object.keys(encounterLabels) as PatientDraft["encounterType"][]).map((type) => <label key={type} className={`encounter-choice ${draft.encounterType === type ? "selected" : ""}`}><input type="radio" name="encounterType" value={type} checked={draft.encounterType === type} onChange={() => setField("encounterType", type)} /><span><strong>{encounterLabels[type]}</strong><small>{type === "INPATIENT" ? "Abre também ala e leito." : "Fica disponível para a solicitação de exames."}</small></span></label>)}</div></fieldset>
+          <fieldset className="patient-encounter-fieldset"><legend>Atendimento inicial</legend><p className="field-hint patient-encounter-hint">Escolha o contexto clínico que será aberto para este paciente e usado na solicitação.</p><div className="encounter-choice-list">{(Object.keys(encounterLabels) as PatientDraft["encounterType"][]).map((type) => <label key={type} className={`encounter-choice ${draft.encounterType === type ? "selected" : ""}`}><input type="radio" name="encounterType" value={type} checked={draft.encounterType === type} onChange={() => setField("encounterType", type)} /><span><strong>{encounterLabels[type]}</strong><small>{type === "INPATIENT" ? "Abre internação com leito cadastrado." : "Fica disponível para a solicitação de exames."}</small></span></label>)}</div></fieldset>
           </>}</div>
-          {draft.encounterType === "INPATIENT" && <div className="patient-form-grid patient-admission-fields"><label>Ala ou unidade<input value={draft.ward} onChange={(event) => setField("ward", event.target.value)} maxLength={100} required placeholder="Ex.: UTI 1" /></label><label>Leito<input value={draft.bed} onChange={(event) => setField("bed", event.target.value)} maxLength={100} required placeholder="Ex.: Box 03" /></label></div>}
+          {draft.encounterType === "INPATIENT" && <HospitalNewAdmissionFields value={draft.bedResourceId} onChange={(id) => setField("bedResourceId", id)} species={draft.species} />}
           {error && <div className="form-alert" role="alert">{error}</div>}
           <div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><ActionButton type="submit" state={busy ? "pending" : "idle"} aria-label={busy ? "Cadastrando paciente" : "Confirmar cadastro de paciente"} icon={<Icon name="arrow-right" size={15} />}>{busy ? "Cadastrando…" : "Cadastrar paciente"}</ActionButton></div>
         </form>

@@ -10,6 +10,7 @@ services:
     environment:
       MONITOR_ROLE: external
       MONITOR_HUB_URL: ${MONITOR_HUB_URL:?Set the actual Hub HTTPS URL}
+      MONITOR_POSTGRES_URL: ${MONITOR_POSTGRES_URL:?Set the PostgreSQL exporter HTTPS VPN endpoint}
       MONITOR_AGENT_URL: ${MONITOR_AGENT_URL:?Set the VPN agent HTTPS URL}
       MONITOR_HUB_PRIVATE_CA: ${MONITOR_HUB_PRIVATE_CA:-false}
       MONITOR_WEBHOOK_PRIVATE_CA: ${MONITOR_WEBHOOK_PRIVATE_CA:-false}

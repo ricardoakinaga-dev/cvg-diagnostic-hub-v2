@@ -32,15 +32,15 @@ O worker do outbox roda o arquivamento uma vez por `ARCHIVE_INTERVAL_MS` (padrã
 ```bash
 # ensaio (padrão): mostra o que seria arquivado, sem gravar nada
 docker compose -f docker-compose.prod.yml --env-file .env.production \
-  run --rm worker npm run runtime:archive -- --dry-run
+  run --rm worker node_modules/.bin/tsx scripts/clinical-archive.ts --dry-run
 
 # aplicar
 docker compose -f docker-compose.prod.yml --env-file .env.production \
-  run --rm worker npm run runtime:archive -- --apply
+  run --rm worker node_modules/.bin/tsx scripts/clinical-archive.ts --apply
 
 # janela diferente só nesta execução (por exemplo, 36 meses)
 docker compose -f docker-compose.prod.yml --env-file .env.production \
-  run --rm worker npm run runtime:archive -- --dry-run --months 36
+  run --rm worker node_modules/.bin/tsx scripts/clinical-archive.ts --dry-run --months 36
 ```
 
 A saída é um JSON com o corte, as contagens (solicitações, entidades, anexos) e os ids das solicitações. O ensaio lê o agregado em cache e não toma a trava de escrita. A aplicação é uma única transação: insere as linhas no arquivo, remove as linhas ativas (registrando as remoções para os outros processos) e grava o evento de auditoria; se qualquer passo falha, nada muda. Uma execução sem nada a arquivar não grava lote nem evento.

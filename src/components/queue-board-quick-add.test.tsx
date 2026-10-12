@@ -41,7 +41,7 @@ describe("QueueBoardQuickAdd", () => {
     expect(screen.queryByRole("option", { name: "Radiografia" })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByLabelText("Exame"), { key: "Enter" });
     await waitFor(() => expect(onCreated).toHaveBeenCalledOnce());
-    expect(api).toHaveBeenCalledWith("/diagnostic-requests", { method: "POST", body: JSON.stringify({ patientId: "p1", encounterId: "e1", priority: "ROUTINE", items: [{ serviceId: "s1" }] }) });
+    expect(api).toHaveBeenCalledWith("/diagnostic-requests", { method: "POST", headers: { "idempotency-key": expect.any(String) }, body: JSON.stringify({ patientId: "p1", encounterId: "e1", priority: "ROUTINE", items: [{ serviceId: "s1" }] }) });
   });
 
   it("requires selection when multiple open encounters exist", async () => {
@@ -94,7 +94,7 @@ describe("QueueBoardQuickAdd", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Já existe um exame ativo");
     expect(onCreated).not.toHaveBeenCalled();
     expect(api.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
-    expect(api.mock.calls.at(-1)?.[1]?.headers).toBeUndefined();
+    expect(api.mock.calls.at(-1)?.[1]?.headers).toHaveProperty("idempotency-key");
   });
   it("refreshes newly created patients via realtime without clearing patient, exam or encounter", async () => {
     const api = mockApi([encounter(), encounter("p1", "e2")]);
@@ -424,4 +424,26 @@ describe("QueueBoardQuickAdd", () => {
     await act(async () => { if (settle === "resolve") post.resolve({}); else post.reject(new Error("unmounted")); });
     expect(onCreated).not.toHaveBeenCalled();
   });
+  it("reuses the same intent after an ambiguous transport failure and links the persisted server response", async () => {
+    const api = mockApi();
+    const prior = api.getMockImplementation()!;
+    let attempts = 0;
+    api.mockImplementation((path, init) => {
+      if (path === "/diagnostic-requests") return ++attempts === 1 ? Promise.reject(new Error("response lost")) as never : Promise.resolve({ id: "persisted-server-id", requestCode: "EX-PERSISTED" }) as never;
+      return prior(path, init);
+    });
+    const onCreated = vi.fn();
+    render(<QueueBoardQuickAdd departments={[]} disabled={false} onCreated={onCreated} />);
+    await selectQuickAdd();
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar exame" }));
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Adicionar exame" }));
+    expect(await screen.findByRole("link", { name: "Abrir solicitação" })).toHaveAttribute("href", "/requests/persisted-server-id");
+    const posts = api.mock.calls.filter(([path]) => path === "/diagnostic-requests");
+    expect(posts).toHaveLength(2);
+    expect(posts[0][1]?.headers).toEqual(posts[1][1]?.headers);
+    expect(posts[0][1]?.body).toEqual(posts[1][1]?.body);
+    expect(onCreated).toHaveBeenCalledWith({ id: "persisted-server-id", requestCode: "EX-PERSISTED" });
+  });
+
 });

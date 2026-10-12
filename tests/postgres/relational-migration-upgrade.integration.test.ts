@@ -218,9 +218,19 @@ async function withUpgradeProbe<T>(
 }
 
 async function seed001Baseline(probe: UpgradeProbe, state: StoreState): Promise<void> {
+  // Model a real 001 installation, before hospital configuration existed.
+  const legacyState = Object.fromEntries(Object.entries(state).filter(([key]) => ![
+    "departments", "accessGroups", "patientGrants", "examDefinitions", "hospitalServices",
+    "hospitalTaskTypes", "hospitalTasks", "hospitalTaskDependencies", "hospitalIntakes", "savedPlannerViews",
+    "hospitalResources", "hospitalPlans", "hospitalShifts", "hospitalHandoffs", "hospitalChecklistTemplates", "hospitalRecurrences",
+    "hospitalDocuments", "hospitalTaskComments", "hospitalTaskAttachments", "workNotifications", "workNotificationPreferences",
+    "workActivityPreferences", "hospitalReports", "hospitalReportJobs", "hospitalInstitutionSettings", "hospitalUserInvitations",
+    "hospitalIntegrationCredentials", "hospitalIntegrationMessages", "hospitalAiSuggestions", "hospitalHisV4Deliveries"
+  ].includes(key)));
+  legacyState.users = state.users.map(({ accessGroupId: _group, permissions: _permissions, ...user }) => user);
   await probe.query(
     "INSERT INTO cvg_runtime_state (id, state, version) VALUES (1, $1::jsonb, $2)",
-    [JSON.stringify(state), 1]
+    [JSON.stringify(legacyState), 1]
   );
   const event = state.auditEvents[0];
   if (!event) throw new Error("Synthetic migration audit event is missing.");
@@ -399,15 +409,35 @@ describe("SAA-022 relational migration upgrade safety on disposable PostgreSQL",
           rows: [{ schema_version: LATEST_RUNTIME_SCHEMA_VERSION }],
           rowCount: 1
         });
-        // 015 keeps only the header in the snapshot row; every entity survives as a row, in order.
-        const migratedState = { ...beforeState, auditEvents: [], outbox: [] };
-        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual(stateHeader(migratedState));
+        // 015 externalizes payloads; 019–027 add configuration without changing clinical records.
         const entities = await loadEntityState({ query: async (text, values) => {
           const result = await probe.query(text, values);
           return { rows: [...result.rows], rowCount: result.rowCount ?? null };
         } });
-        expect(entities.state).toEqual(migratedState);
-        expect(await probe.query("SELECT * FROM audit_events ORDER BY id")).toEqual(beforeAudits);
+        expect((await probe.query("SELECT state FROM cvg_runtime_state WHERE id = 1")).rows[0]?.state).toEqual(stateHeader(entities.state));
+        for (const [collection, values] of Object.entries(beforeState)) {
+          if (["users", "auditEvents", "outbox"].includes(collection)) continue;
+          expect(entities.state[collection as keyof StoreState], collection).toEqual(values);
+        }
+        expect(entities.state.auditEvents).toEqual([]);
+        expect(entities.state.outbox).toEqual([]);
+        expect(entities.state.users).toHaveLength(beforeState.users.length);
+        for (const previous of beforeState.users) {
+          const current = entities.state.users.find((user) => user.id === previous.id)!;
+          const { accessGroupId, permissions: _permissions, version, ...preserved } = current;
+          const { version: previousVersion, ...original } = previous;
+          expect(preserved).toEqual(original);
+          expect(version).toBeGreaterThan(previousVersion);
+          expect(entities.state.accessGroups.find((group) => group.id === accessGroupId)?.systemRole).toBe(previous.role);
+        }
+        expect(entities.state.accessGroups).toHaveLength(9);
+        expect(entities.state.departments.map((department) => department.code).sort()).toEqual(["IT", "ULTRASOUND", "INPATIENT", "LABORATORY", "RADIOLOGY"].sort());
+        expect(entities.state.hospitalTaskTypes.map((type) => type.code).sort()).toEqual(["CARE", "ROUTINE"]);
+        for (const collection of ["examDefinitions", "hospitalServices", "hospitalTasks", "hospitalTaskDependencies", "hospitalIntakes", "savedPlannerViews", "hospitalResources", "hospitalPlans", "hospitalShifts", "hospitalHandoffs", "hospitalChecklistTemplates", "hospitalRecurrences", "hospitalDocuments", "hospitalTaskComments", "hospitalTaskAttachments", "workNotifications", "workNotificationPreferences", "workActivityPreferences", "hospitalReports", "hospitalReportJobs", "hospitalInstitutionSettings", "hospitalUserInvitations", "hospitalIntegrationCredentials", "hospitalIntegrationMessages", "hospitalAiSuggestions", "hospitalHisV4Deliveries"] as const) expect(entities.state[collection]).toEqual([]);
+        const auditIds = beforeAudits.rows.map((event) => String(event.id));
+        expect(await probe.query("SELECT * FROM audit_events WHERE id = ANY($1::text[]) ORDER BY id", [auditIds])).toEqual(beforeAudits);
+        const migrationEvents = await probe.query("SELECT event_type FROM audit_events WHERE NOT (id = ANY($1::text[])) ORDER BY event_type", [auditIds]);
+        expect(migrationEvents.rows.map((event) => event.event_type)).toEqual(["ExamDefinitionsEnabled", "HospitalAccessGroupsMigrated", "HospitalCollaborationEnabled", "HospitalDepartmentsMigrated", "HospitalExternalCapabilitiesEnabled", "HospitalHisV4ReceiptsEnabled", "HospitalPlannerTasksEnabled", "HospitalPlanningResourcesEnabled", "HospitalServicesEnabled"]);
 
         const adapter = new RelationalClinicalCoreAdapter();
         await expect(adapter.assertReady(probe.sql)).resolves.toBeUndefined();

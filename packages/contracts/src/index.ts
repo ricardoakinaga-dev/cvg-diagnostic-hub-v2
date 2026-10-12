@@ -1,69 +1,22 @@
-export const PRIORITIES = ["ROUTINE", "URGENT", "EMERGENCY"] as const;
-export type Priority = (typeof PRIORITIES)[number];
-
-export const WORKFLOW_TYPES = ["LABORATORY", "RADIOLOGY", "ULTRASOUND"] as const;
-export type WorkflowType = (typeof WORKFLOW_TYPES)[number];
-
-export const LABORATORY_VALUE_TYPES = ["NUMERIC", "QUALITATIVE", "TEXT"] as const;
-export type LaboratoryValueType = (typeof LABORATORY_VALUE_TYPES)[number];
-
-export const LABORATORY_PANEL_STATUSES = ["DRAFT", "ACTIVE", "RETIRED"] as const;
-export type LaboratoryPanelStatus = (typeof LABORATORY_PANEL_STATUSES)[number];
-
-export const LABORATORY_REFERENCE_RANGE_KINDS = ["NUMERIC", "PENDING_POLICY"] as const;
-export type LaboratoryReferenceRangeKind = (typeof LABORATORY_REFERENCE_RANGE_KINDS)[number];
-
-export const LABORATORY_REFERENCE_RANGE_SOURCES = ["HUMAN_APPROVED", "SYNTHETIC_FIXTURE", "PENDING_HUMAN_POLICY"] as const;
-export type LaboratoryReferenceRangeSource = (typeof LABORATORY_REFERENCE_RANGE_SOURCES)[number];
-
-export const LABORATORY_FLAGS = ["NORMAL", "LOW", "HIGH", "UNINTERPRETED"] as const;
-export type LaboratoryFlag = (typeof LABORATORY_FLAGS)[number];
-
-export interface LaboratoryReferenceRange {
-  kind: LaboratoryReferenceRangeKind;
-  unitCode: string;
-  low?: number;
-  high?: number;
-  source: LaboratoryReferenceRangeSource;
-  note?: string;
-}
-
-export interface LaboratoryAnalyteDefinition {
-  code: string;
-  label: string;
-  valueType: LaboratoryValueType;
-  unitCode: string;
-  required: boolean;
-  displayOrder: number;
-  referenceRange?: LaboratoryReferenceRange;
-  allowedValues?: string[];
-}
-
-/** Versioned panel definition. Thresholds are configuration, never inferred by the UI. */
-export interface LaboratoryPanelTemplate {
-  kind: "LABORATORY_PANEL";
-  code: string;
-  name: string;
-  version: number;
-  schemaVersion: string;
-  status: LaboratoryPanelStatus;
-  analytes: LaboratoryAnalyteDefinition[];
-}
-
-export interface LaboratoryObservation {
-  analyteCode: string;
-  value: number | string;
-  unitCode: string;
-  flag: LaboratoryFlag;
-  referenceRange: LaboratoryReferenceRange | null;
-}
-
-export interface StructuredLaboratoryResultContent {
-  kind: "LABORATORY_STRUCTURED";
-  panelCode: string;
-  panelVersion: number;
-  observations: LaboratoryObservation[];
-}
+export * from "./hospital-plans";
+export * from "./hospital-shifts";
+export * from "./hospital-checklists";
+export * from "./planner-views";
+export * from "./hospital-tasks";
+export * from "./hospital-services";
+import type { DiagnosticPlanning } from "./diagnostic-planning";
+export type { DiagnosticPlanning } from "./diagnostic-planning";
+export { ROLES } from "./identity-roles";
+export type { RoleCode } from "./identity-roles";
+import type { RoleCode } from "./identity-roles";
+export * from "./diagnostic-catalog";
+import type { Priority, WorkflowType, LaboratoryPanelTemplate } from "./diagnostic-catalog";
+export { DEPARTMENT_TYPES } from "./hospital-planner";
+export type { Department, DepartmentType, EffectiveAccessPreview, AccessGroupImpactPreview, AccessGroup, PatientGrant, ServiceAccessPolicy, ExamDefinition, ExamDefinitionVersion, ExamDefinitionSnapshot, ExamDefinitionProvenance } from "./hospital-planner";
+import type { ServiceAccessPolicy, ExamDefinitionProvenance, ExamDefinitionSnapshot } from "./hospital-planner";
+import type { Permission } from "./identity-permissions";
+export { PERMISSIONS, LEGACY_PERMISSION_ACTIONS } from "./identity-permissions";
+export type { Permission } from "./identity-permissions";
 
 export const OPERATIONAL_OWNER_CODES = [
   "REQUESTING_TEAM",
@@ -148,74 +101,7 @@ export const TERMINAL_ITEM_STATES = ["COMPLETED", "CANCELLED", "REJECTED"] as co
 export const RESULT_VERSION_STATES = ["DRAFT", "RELEASED", "SUPERSEDED", "VOIDED"] as const;
 export type ResultVersionState = (typeof RESULT_VERSION_STATES)[number];
 
-export const ROLES = [
-  "ADMIN",
-  "MANAGER",
-  "VETERINARIAN",
-  "INPATIENT_TEAM",
-  "LAB_TECH",
-  "RADIOLOGY_TEAM",
-  "ULTRASOUND_TEAM",
-  "VIEWER"
-] as const;
-export type RoleCode = (typeof ROLES)[number];
 
-export type Permission =
-  | "patient.view"
-  | "patient.create"
-  | "encounter.view"
-  | "encounter.manage"
-  | "admission.view"
-  | "admission.context.manage"
-  | "request.create"
-  | "request.view"
-  | "request.list"
-  | "request.cancel"
-  | "request.duplicate_override"
-  | "item.view"
-  | "item.cancel"
-  | "item.reject"
-  | "sample.receive"
-  | "sample.process"
-  | "sample.recollection.request"
-  | "sample.replacement.receive"
-  | "procedure.schedule"
-  | "procedure.reschedule"
-  | "procedure.start"
-  | "procedure.mark_performed"
-  | "result.draft.create"
-  | "result.draft.edit_own"
-  | "result.release"
-  | "result.amend"
-  | "result.void"
-  | "result.view"
-  | "result.history.view"
-  | "result.view.record"
-  | "result.review"
-  | "item.complete"
-  | "attachment.view"
-  | "attachment.upload_session"
-  | "attachment.finalize"
-  | "attachment.download"
-  | "notification.view"
-  | "notification.acknowledge"
-  | "service.catalog.view"
-  | "service.catalog.manage"
-  | "sla_policy.manage"
-  | "critical_result_policy.manage"
-  | "reason_code.manage"
-  | "user_role.manage"
-  | "patient.data_export"
-  | "queue.view"
-  | "dashboard.view"
-  | "diagnostic.timeline.view"
-  | "timeline.view"
-  | "audit.view"
-  | "search.execute"
-  | "health.liveness"
-  | "health.readiness"
-  | "outbox.manage"
-  | "realtime.connect";
 
 export interface ApiMeta {
   requestId: string;
@@ -255,6 +141,7 @@ export interface SessionUser {
   email: string;
   displayName: string;
   role: SessionRole;
+  permissions?: Permission[];
   departmentCode: string;
   managedDepartmentCodes?: string[];
   timezone: string;
@@ -359,24 +246,6 @@ export interface Admission {
   version?: number;
 }
 
-export interface DiagnosticService {
-  id: string;
-  code: string;
-  name: string;
-  category: "LABORATORY" | "IMAGING";
-  departmentCode: string;
-  workflowType: WorkflowType;
-  requiresSample: boolean;
-  sampleType?: string;
-  requiresSchedule: boolean;
-  allowsAttachment: boolean;
-  resultSchema: "NUMERIC_PANEL" | "NARRATIVE";
-  resultTemplate?: LaboratoryPanelTemplate;
-  active: boolean;
-  version: number;
-  slaHours: Record<Priority, number>;
-}
-
 export interface ReasonCode {
   id: string;
   type: "RECOLLECTION" | "CANCEL" | "REJECT" | "AMEND";
@@ -394,6 +263,8 @@ export interface ManagedUser {
   departmentCode: string;
   managedDepartmentCodes?: string[];
   serviceCodes?: string[];
+  serviceAccessPolicy?: ServiceAccessPolicy;
+  accessGroupId?: string;
   active: boolean;
   timezone: string;
   createdAt: string;
@@ -475,7 +346,7 @@ export interface DashboardService {
   requiresSchedule: boolean;
 }
 
-export interface QueueItem {
+export interface QueueItem extends DiagnosticPlanning {
   id: string;
   requestId: string;
   status: ItemState;
@@ -607,7 +478,7 @@ export interface DiagnosticRequestDetail {
   aggregateStatus: AggregateStatus;
   createdAt: string;
   patient: Patient;
-  items: Array<{
+  items: Array<DiagnosticPlanning & {
     id: string;
     status: ItemState;
     workflowType: WorkflowType;
@@ -722,6 +593,8 @@ export interface PatientDiagnosticsResult {
   admissions: Admission[];
   items: PatientWorkspaceRequest[];
   events: TimelineEvent[];
+  timelineNextCursor?: string;
+  timelineTotal?: number;
   nextActions: PatientNextAction[];
   workspace: PatientWorkspaceSummary;
   nextCursor?: string;
@@ -730,8 +603,10 @@ export interface PatientDiagnosticsResult {
 }
 
 export interface ResultView {
-  result: { id: string; lifecycleStatus: string; needsReReview: boolean; version: number };
-  version: { id: string; sequence: number; status: ResultVersionState; narrative: string; conclusion?: string; authorId: string; createdAt: string; releasedAt?: string; critical: boolean; needsReReview: boolean; version: number; content: Record<string, unknown> };
+  permissions?: Permission[];
+  definitionProvenance?: ExamDefinitionProvenance;
+  result: { id: string; lifecycleStatus: string; needsReReview: boolean; version: number; currentVersionId?: string };
+  version: { id: string; sequence: number; status: ResultVersionState; narrative: string; conclusion?: string; authorId: string; createdAt: string; releasedAt?: string; critical: boolean; needsReReview: boolean; version: number; content: Record<string, unknown>; definitionSnapshot?: ExamDefinitionSnapshot };
   item: { id: string; status: ItemState; version: number; serviceId: string };
   request: { id: string; requestCode: string };
   patient: { displayName: string; species: string; sex: string; externalId: string };
@@ -752,3 +627,13 @@ export interface AttachmentSession {
   uploadUrl: string;
   expiresAt: string;
 }
+export * from "./hospital-resources";
+export * from "./hospital-care";
+export * from "./hospital-documents";
+export * from "./hospital-analytics";
+export * from "./hospital-institution";
+export * from "./hospital-integrations";
+export * from "./hospital-his-v4";
+export * from "./hospital-ai";
+export * from "./hospital-collaboration";
+export * from "./work-activity";

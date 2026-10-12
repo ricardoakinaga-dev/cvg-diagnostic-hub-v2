@@ -1,18 +1,26 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { WorkflowAction } from "./workflow-action";
+import { WorkflowAction as ActualWorkflowAction } from "./workflow-action";
+import { rolePermissions } from "@/server/security/authorization";
 import * as apiClient from "./api-client";
+import { hospitalResource, hospitalUser, uiPage } from "./hospital-ui.test-helpers";
 
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a {...props}>{children}</a>
 }));
+
+// Clinical command fixtures explicitly receive the manager policy; omission is tested separately.
+function WorkflowAction(props: Parameters<typeof ActualWorkflowAction>[0]) {
+  return <ActualWorkflowAction role="MANAGER" permissions={rolePermissions.MANAGER} {...props} />;
+}
 
 const item = (overrides: Partial<Parameters<typeof WorkflowAction>[0]["item"]> = {}) => ({
   id: "item-1",
   status: "REQUESTED" as const,
   workflowType: "LABORATORY" as const,
   version: 3,
+  departmentCode: "US",
   ...overrides
 });
 
@@ -20,6 +28,7 @@ describe("WorkflowAction", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("receives a legacy sample with normalized typed accession data", async () => {
@@ -44,6 +53,38 @@ describe("WorkflowAction", () => {
   describe("pre-assigned sample (accession label)", () => {
     const expected = { sample: { id: "sample-9", accessionCode: "A261008-00015", sampleType: "Soro", status: "EXPECTED", version: 7 } };
     const withExpected = (receive: (path: string) => Promise<unknown>) => vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/samples/sample-9/label" ? Promise.resolve(expected) : receive(String(path))) as never);
+
+    it.each(["A definir", "Soro"])("preserves explicitly entered EDTA when the late label says %s", async (catalogType) => {
+      let resolveLabel!: (value: typeof expected) => void;
+      const label = new Promise<typeof expected>((resolve) => { resolveLabel = resolve; });
+      const onComplete = vi.fn();
+      const api = vi.spyOn(apiClient, "apiFetch").mockReturnValueOnce(label as never).mockResolvedValue({});
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} onComplete={onComplete} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      fireEvent.change(screen.getByLabelText("Tipo de amostra"), { target: { value: "" } });
+      fireEvent.change(screen.getByLabelText("Tipo de amostra"), { target: { value: "EDTA" } });
+
+      await act(async () => { resolveLabel({ sample: { ...expected.sample, sampleType: catalogType } }); });
+
+      expect(screen.getByLabelText("Tipo de amostra")).toHaveValue("EDTA");
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+      await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+      const call = api.mock.calls.find(([path]) => path === "/diagnostic-items/item-1/receive-sample");
+      expect(JSON.parse(call?.[1]?.body as string)).toEqual({ sampleType: "EDTA", expectedVersion: 3 });
+    });
+
+    it("preserves EDTA entered before the label even when it equals the initial field value", async () => {
+      let resolveLabel!: (value: typeof expected) => void;
+      const label = new Promise<typeof expected>((resolve) => { resolveLabel = resolve; });
+      vi.spyOn(apiClient, "apiFetch").mockReturnValueOnce(label as never);
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      fireEvent.input(screen.getByLabelText("Tipo de amostra"), { target: { value: "EDTA" } });
+
+      await act(async () => { resolveLabel({ sample: { ...expected.sample, sampleType: "A definir" } }); });
+
+      expect(screen.getByLabelText("Tipo de amostra")).toHaveValue("EDTA");
+    });
 
     it("shows the expected code, pre-fills the type and submits a blank scan field", async () => {
       const onComplete = vi.fn();
@@ -181,7 +222,7 @@ describe("WorkflowAction", () => {
   });
 
   it("schedules and reschedules imaging procedures through the versioned action boundary", async () => {
-    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockResolvedValue({});
+    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path) => path === "/session/me" ? { user: hospitalUser } as never : path.startsWith("/hospital-resources?") ? uiPage([hospitalResource({ id: "ultrasound-room", name: "Sala US", departmentCode: "US", availabilityWindows: [{ startsAt: "2026-08-25T08:00:00Z", endsAt: "2026-08-25T20:00:00Z" }] })]) as never : {} as never);
     const { unmount } = render(<WorkflowAction item={item({ status: "REQUESTED", workflowType: "ULTRASOUND" })} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Agendar exame" }));
@@ -189,19 +230,31 @@ describe("WorkflowAction", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Informe janela e recurso da agenda.");
     fireEvent.change(screen.getByLabelText("Início"), { target: { value: "2026-08-25T10:00" } });
     fireEvent.change(screen.getByLabelText("Fim"), { target: { value: "2026-08-25T11:00" } });
-    fireEvent.change(screen.getByLabelText("Recurso"), { target: { value: "US-01" } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Sala US/ }));
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/diagnostic-items/item-1/schedule", expect.objectContaining({ method: "POST" })));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/diagnostic-items/item-1/schedule", expect.objectContaining({ method: "POST", body: JSON.stringify({ startsAt: "2026-08-25T13:00:00.000Z", endsAt: "2026-08-25T14:00:00.000Z", resourceIds: ["ultrasound-room"], expectedVersion: 3 }) })));
 
     unmount();
     render(<WorkflowAction item={item({ status: "SCHEDULED", workflowType: "ULTRASOUND", procedureId: "procedure-1", procedureVersion: 4 })} />);
     fireEvent.click(screen.getByRole("button", { name: "Remarcar procedimento" }));
     fireEvent.change(screen.getByLabelText("Início"), { target: { value: "2026-08-25T12:00" } });
     fireEvent.change(screen.getByLabelText("Fim"), { target: { value: "2026-08-25T13:00" } });
-    fireEvent.change(screen.getByLabelText("Recurso"), { target: { value: "US-02" } });
+    fireEvent.click(await screen.findByRole("checkbox", { name: /Sala US/ }));
     fireEvent.change(screen.getByLabelText("Motivo"), { target: { value: "Conflito de agenda" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
     await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/procedures/procedure-1/reschedule", expect.objectContaining({ method: "POST" })));
+  });
+
+  it.each([["2026-03-08T02:30", "não existe"], ["2026-11-01T01:30", "ambíguo"]])("explains a hospital timezone transition for %s without sending a schedule", async (start, message) => {
+    vi.stubEnv("NEXT_PUBLIC_HOSPITAL_TIMEZONE", "America/New_York");
+    const api = vi.spyOn(apiClient, "apiFetch").mockResolvedValue({});
+    render(<WorkflowAction item={item({ workflowType: "ULTRASOUND" })} />);
+    fireEvent.click(screen.getByRole("button", { name: "Agendar exame" }));
+    fireEvent.change(screen.getByLabelText("Início"), { target: { value: start } });
+    fireEvent.change(screen.getByLabelText("Fim"), { target: { value: start.slice(0, 11) + "04:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(message);
+    expect(api.mock.calls.some(([, init]) => init?.method)).toBe(false);
   });
 
   it("supports recollection and a released imaging draft", async () => {
