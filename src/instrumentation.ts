@@ -13,6 +13,10 @@ export async function register(): Promise<void> {
     // Names only, never values.
     console.log(JSON.stringify({ event: "secrets.loaded", loaded, expanded }));
   }
+  // Without a session secret every request would answer 503; refuse to start so the deploy fails visibly instead.
+  if (process.env.NODE_ENV === "production" && (process.env.SESSION_SECRET?.trim().length ?? 0) < 32) {
+    throw new Error("SESSION_SECRET (ou SESSION_SECRET_FILE) é obrigatório em produção, com pelo menos 32 caracteres.");
+  }
   // The commit this process serves, so the logs prove which build ran when (D-060).
   const { startupEvent } = await import("./server/observability/build-info");
   console.log(startupEvent("app"));

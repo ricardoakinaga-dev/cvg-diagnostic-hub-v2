@@ -42,4 +42,17 @@ describe("Next instrumentation (PROD-302)", () => {
     await register();
     expect(log.mock.calls.map(([line]) => JSON.parse(String(line)))).toEqual([{ event: "app.start", revision: "0123456789abcdef0123456789abcdef01234567" }]);
   });
+
+  it("refuses to start in production without a session secret of at least 32 characters", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.stubEnv("NEXT_RUNTIME", "nodejs");
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("SESSION_SECRET", "");
+    await expect(register()).rejects.toThrow("SESSION_SECRET");
+    vi.stubEnv("SESSION_SECRET", "too-short");
+    await expect(register()).rejects.toThrow("SESSION_SECRET");
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining("app.start"));
+    vi.stubEnv("SESSION_SECRET", "a".repeat(32));
+    await expect(register()).resolves.toBeUndefined();
+  });
 });

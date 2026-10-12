@@ -5,7 +5,7 @@ import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivi
 import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
 import { findById, sessionForTokenHash } from "../domain/state-index";
-import { assertRateLimit } from "./rate-limit";
+import { assertRateLimit, consumeRateLimitCounter, readRateLimitCounter } from "./rate-limit";
 import { assertAcceptablePassword } from "./password-policy";
 import { withoutPendingReset } from "./password-reset";
 
@@ -172,6 +172,12 @@ export async function authenticateRequest(
 
 const PASSWORD_CHANGE_ATTEMPTS = 5;
 const PASSWORD_CHANGE_WINDOW_MS = 15 * 60 * 1000;
+// Password confirmation unlocks role changes, patient data export and
+// superadmin session management. Only wrong passwords count, per account, so
+// a held session cannot be used to guess the password; reaching the budget
+// also revokes the session that was guessing.
+const REAUTHENTICATION_FAILURE_LIMIT = 5;
+const REAUTHENTICATION_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * Stores the new hash, revokes every live session of the user and issues one
@@ -281,8 +287,16 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
   }
   await assertSessionIsActive(store, session);
   const user = activeUser(state, session.userId);
+  const failureKey = `reauth-failure:${session.userId}`;
+  if (await readRateLimitCounter(failureKey, REAUTHENTICATION_FAILURE_WINDOW_MS) >= REAUTHENTICATION_FAILURE_LIMIT) {
+    throw new ApiError("RATE_LIMITED", "Muitas tentativas. Aguarde antes de tentar novamente.", 429, { retryable: true });
+  }
   const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
   if (!user || !passwordValid) {
+    if (await consumeRateLimitCounter(failureKey, REAUTHENTICATION_FAILURE_WINDOW_MS) >= REAUTHENTICATION_FAILURE_LIMIT) {
+      await revokeSession(store, token);
+      throw new ApiError("SESSION_EXPIRED", "Muitas tentativas. Entre novamente.", 401);
+    }
     throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
   }
 
