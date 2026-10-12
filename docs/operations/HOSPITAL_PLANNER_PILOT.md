@@ -6,6 +6,8 @@
 
 ## 1. Identificar candidata, escopo e responsáveis
 
+**Responsável confirmado em 12/10/2026:** o solicitante do projeto assumiu a validação dos fluxos e o aceite do piloto. A [confirmação de responsabilidade](HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json) registra essa declaração. Execução, resultados, identificação formal na ficha assinada e decisão go/no-go continuam pendentes.
+
 Executar primeiro em ambiente de homologação segregado, com dados sintéticos ou dados expressamente autorizados pelo hospital. O piloto operacional depende do aceite desse ensaio e dos gates PROD-*; a duração e a contingência seguem PROD-703. Testes negativos, malware de ensaio, falhas provocadas e concorrência não são executados sobre atendimento real em produção.
 
 | Registro da execução | Valor a preencher |
@@ -17,6 +19,7 @@ Executar primeiro em ambiente de homologação segregado, com dados sintéticos 
 | Fuso institucional / APP_TIMEZONE / label das imagens / fuso compilado da UI | ________ |
 | Referências das evidências técnicas desta mesma candidata | ________ |
 | Setores, módulos e processos incluídos / excluídos | ________ |
+| Responsável pela validação dos fluxos e aceite do piloto | Solicitante do projeto; confirmado em 12/10/2026. Registrar identificação formal na ficha de execução/aceite. |
 | Responsável clínico, gestão, QA, TI/operação e substitutos | ________ |
 | Pessoas autorizadas a aceitar cada área e a decidir go/no-go | ________ |
 | Início/fim do UAT; datas propostas do piloto | ________ |
