@@ -94,28 +94,47 @@ function DepartmentRow({ user, department, users, permissions, usersUnavailable,
   const [name, setName] = useState(department.name); const [type, setType] = useState(department.type);
   const [members, setMembers] = useState(department.memberUserIds); const [responsible, setResponsible] = useState(department.responsibleUserId ?? "");
   const command = useDepartmentCommand(onSaved); const confirmation = useConfirm();
+  const [previewBusy, setPreviewBusy] = useState(false); const [previewError, setPreviewError] = useState("");
+  const previewRequest = useRef<AbortController | undefined>(undefined);
+  useEffect(() => () => previewRequest.current?.abort(), []);
+  const busy = command.busy || previewBusy;
   const update = permissions.includes("department.update"); const manageMembers = department.active && permissions.includes("department.members.manage");
   const eligible = users.filter((user) => user.active && user.departmentCode === department.code);
   const unavailable = members.filter((id) => !eligible.some((user) => user.id === id));
-  async function deactivate() { if (command.busy) return; if (await confirmation.confirm({ title: `Desativar ${department.name}?`, message: "Novos vínculos serão bloqueados. O histórico e os vínculos existentes serão preservados.", confirmLabel: "Desativar setor", tone: "danger" })) await command.execute(`/departments/${department.id}/deactivate`, "POST", { expectedVersion: department.version }); }
+  async function deactivate() {
+    if (command.busy || previewRequest.current) return;
+    const controller = new AbortController(); previewRequest.current = controller; setPreviewBusy(true); setPreviewError("");
+    try {
+      const current = await apiFetch<Department>(`/departments/${department.id}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (current.version !== department.version || !current.active) { setPreviewError("O setor mudou. Atualize os setores antes de desativar."); return; }
+      if (!current.pendingWork) { setPreviewError("Não foi possível consultar as pendências do setor."); return; }
+      const work = current.pendingWork;
+      const count = (value: number | null) => value === null ? "sem acesso" : String(value);
+      const message = `Pendências visíveis — exames: ${count(work.diagnosticItems)}; tarefas: ${count(work.hospitalTasks)}; demandas: ${count(work.intakes)}. Somente pendências dentro do seu acesso; os totais do setor podem ser maiores. Novos vínculos serão bloqueados. O histórico, os vínculos e o trabalho existente serão preservados.`;
+      if (await confirmation.confirm({ title: `Desativar ${current.name}?`, message, confirmLabel: "Desativar setor", tone: "danger" }) && !controller.signal.aborted) await command.execute(`/departments/${department.id}/deactivate`, "POST", { expectedVersion: current.version });
+    } catch (cause) { if (!controller.signal.aborted) setPreviewError(getSafeErrorMessage(cause, "Não foi possível consultar as pendências do setor.")); }
+    finally { if (previewRequest.current === controller) { previewRequest.current = undefined; setPreviewBusy(false); } }
+  }
   function toggleMember(id: string, checked: boolean) { setMembers((current) => checked ? [...current, id] : current.filter((member) => member !== id)); if (!checked && responsible === id) setResponsible(""); }
   return <article id={`department-${department.id}`} tabIndex={-1} className="admin-row" aria-label={`Setor ${department.name}`}>
     <div className="admin-row-heading"><strong>{department.name}</strong><span className={department.active ? "text-success" : "text-danger"}>{department.active ? "Ativo" : "Desativado"}</span></div><p><span className="mono">{department.code}</span> · {typeLabels[department.type]} · versão {department.version}</p>
     <form aria-label={`Editar setor ${department.code}`} onSubmit={(event) => { event.preventDefault(); void command.execute(`/departments/${department.id}`, "PATCH", { name: name.trim(), type, expectedVersion: department.version }); }}>
-      <label>Nome do setor<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required disabled={!update || command.busy} /></label><DepartmentTypeField value={type} onChange={setType} disabled={!update || command.busy} />
-      {update && <ActionButton type="submit" tone="ghost" state={command.busy ? "pending" : "idle"}>Salvar setor</ActionButton>}
+      <label>Nome do setor<input value={name} onChange={(event) => setName(event.target.value)} maxLength={120} required disabled={!update || busy} /></label><DepartmentTypeField value={type} onChange={setType} disabled={!update || busy} />
+      {update && <ActionButton type="submit" tone="ghost" state={busy ? "pending" : "idle"}>Salvar setor</ActionButton>}
     </form>
     <section aria-label={`Equipe ${department.code}`}><h3>Equipe e responsável</h3><p className="field-hint">Participação e responsabilidade não concedem acesso a pacientes.</p>
       {manageMembers ? <form aria-label={`Equipe do setor ${department.code}`} onSubmit={(event) => { event.preventDefault(); void command.execute(`/departments/${department.id}/members`, "PUT", { memberUserIds: members, responsibleUserId: responsible || null, expectedVersion: department.version }); }}>
-        <fieldset disabled={command.busy || usersUnavailable}><legend>Membros ativos vinculados ao setor</legend>{eligible.map((user) => <label className="admin-check" key={user.id}><input type="checkbox" checked={members.includes(user.id)} onChange={(event) => toggleMember(user.id, event.target.checked)} />{user.displayName}</label>)}{unavailable.map((id) => <label className="admin-check" key={id}><input type="checkbox" checked onChange={(event) => toggleMember(id, event.target.checked)} />Membro indisponível ({id})</label>)}{!eligible.length && !unavailable.length && <p>Nenhum colaborador ativo vinculado a este setor.</p>}
+        <fieldset disabled={busy || usersUnavailable}><legend>Membros ativos vinculados ao setor</legend>{eligible.map((user) => <label className="admin-check" key={user.id}><input type="checkbox" checked={members.includes(user.id)} onChange={(event) => toggleMember(user.id, event.target.checked)} />{user.displayName}</label>)}{unavailable.map((id) => <label className="admin-check" key={id}><input type="checkbox" checked onChange={(event) => toggleMember(id, event.target.checked)} />Membro indisponível ({id})</label>)}{!eligible.length && !unavailable.length && <p>Nenhum colaborador ativo vinculado a este setor.</p>}
           <label>Responsável<select value={responsible} onChange={(event) => setResponsible(event.target.value)}><option value="">Sem responsável</option>{eligible.filter((user) => members.includes(user.id)).map((user) => <option key={user.id} value={user.id}>{user.displayName}</option>)}{responsible && !eligible.some((user) => user.id === responsible) && <option value={responsible} disabled>Responsável indisponível</option>}</select></label>
           <ActionButton type="submit" tone="ghost" state={command.busy ? "pending" : "idle"}>Salvar equipe</ActionButton>
         </fieldset>
       </form> : <p>{members.length} membro(s) · {users.find((user) => user.id === responsible)?.displayName ?? (responsible ? "Responsável definido" : "Sem responsável")}</p>}
     </section>
     {command.error && <p className="form-alert" role="alert">{command.error}</p>}
-    {department.active && permissions.includes("department.deactivate") && <ActionButton type="button" tone="ghost" state={command.busy ? "pending" : "idle"} onClick={() => void deactivate()}>Desativar setor</ActionButton>}
+    {previewError && <p className="form-alert" role="alert">{previewError}</p>}
+    {department.active && permissions.includes("department.deactivate") && <ActionButton type="button" tone="ghost" state={busy ? "pending" : "idle"} onClick={() => void deactivate()}>Desativar setor</ActionButton>}
     {!department.active && update && <ActionButton type="button" tone="ghost" state={command.busy ? "pending" : "idle"} onClick={() => void command.execute(`/departments/${department.id}`, "PATCH", { active: true, expectedVersion: department.version })}>Reativar setor</ActionButton>}
     {confirmation.dialog}
-  <WorkActivityDisclosure user={user} targetType="DEPARTMENT" targetId={department.id} readOnly={command.busy} /></article>;
+  <WorkActivityDisclosure user={user} targetType="DEPARTMENT" targetId={department.id} readOnly={busy} /></article>;
 }

@@ -172,6 +172,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [canManageEncounters, setCanManageEncounters] = useState(false);
   const [encounterDialog, setEncounterDialog] = useState<"open" | "close" | null>(null);
+  const [scopeRequiresRevalidation, setScopeRequiresRevalidation] = useState(false);
   const loadVersion = useRef(0);
   const load = useCallback(async () => {
     const version = loadVersion.current + 1;
@@ -255,10 +256,30 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     };
   }, [load]);
   useEffect(() => {
-    void apiFetch<SessionResponse>("/session/me")
-      .then((session) => setCanManageEncounters(["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session?.user?.role)))
-      .catch(() => setCanManageEncounters(false));
-  }, []);
+    let active = true;
+    let version = 0;
+    const readIdentity = (revalidateScope = false) => {
+      const current = ++version;
+      void apiFetch<SessionResponse>("/session/me")
+        .then((session) => {
+          if (!active || current !== version) return;
+          setCanManageEncounters(Boolean(session.user.permissions?.includes("encounter.manage") && ["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session.user.role)));
+          if (!revalidateScope) return;
+          if (!session.user.permissions?.includes("patient.view")) { setCanManageEncounters(false); setError(getSafeErrorMessage(new ApiClientError(403, {}), "Não foi possível revalidar o paciente.")); setLoading(false); return; }
+          setScopeRequiresRevalidation(false);
+          void load();
+        })
+        .catch((cause) => {
+          if (!active || current !== version) return;
+          setCanManageEncounters(false);
+          if (revalidateScope) { setData(null); setError(getSafeErrorMessage(cause, "Não foi possível revalidar o paciente.")); setLoading(false); }
+        });
+    };
+    const refresh = () => { loadVersion.current += 1; setData(null); setError(""); setLoading(true); setCanManageEncounters(false); setEncounterDialog(null); setScopeRequiresRevalidation(true); readIdentity(true); };
+    readIdentity();
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => { active = false; version += 1; window.removeEventListener("cvg:realtime-resync", refresh); };
+  }, [load]);
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia("(max-width: 560px)");
@@ -274,7 +295,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     return <PatientWorkspaceSkeleton />;
   }
   if (!activeData) {
-    return <ErrorState page className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
+    return <ErrorState page className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={scopeRequiresRevalidation ? () => { window.dispatchEvent(new Event("cvg:realtime-resync")); } : load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
   }
 
   const context = activeData.workspace.currentContext;
@@ -397,8 +418,8 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
         {activeData.timelineNextCursor && <div className="workspace-pagination"><span>Carregados {activeData.events.length} de {timelineTotal} eventos</span><ActionButton tone="ghost" state={loadingTimeline ? "pending" : "idle"} disabled={loading} onClick={() => void loadMoreTimeline()}>{loadingTimeline ? "Carregando…" : "Carregar mais eventos"}</ActionButton></div>}
       </section>
     </div>
-    {encounterDialog === "open" && <EncounterOpenDialog patientId={patientId} onClose={() => setEncounterDialog(null)} onOpened={encounterChanged} />}
-    {encounterDialog === "close" && currentEncounter && <EncounterCloseDialog encounter={currentEncounter} onClose={() => setEncounterDialog(null)} onClosed={encounterChanged} />}
+    {canManageEncounters && encounterDialog === "open" && <EncounterOpenDialog patientId={patientId} onClose={() => setEncounterDialog(null)} onOpened={encounterChanged} />}
+    {canManageEncounters && encounterDialog === "close" && currentEncounter && <EncounterCloseDialog encounter={currentEncounter} onClose={() => setEncounterDialog(null)} onClosed={encounterChanged} />}
     <PatientArchive patientId={patientId} />
   </div>;
 }

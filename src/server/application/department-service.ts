@@ -1,11 +1,12 @@
-import type { DepartmentType } from "@cvg/contracts";
+import { TERMINAL_ITEM_STATES, type DepartmentType } from "@cvg/contracts";
 import type { Department, StoreState, User } from "../domain/models";
 import type { ApplicationServiceContext } from "./service-context";
 import type { CommandMeta } from "./service-types";
 import { ApiError } from "../http/envelope";
-import { canAccessResource } from "../security/authorization";
-import { createAudit, ensureExpectedVersion, findOrThrow, id, now, requireActiveUser, requireIdempotencyKey, requirePermission, requireText, saveIdempotency, withIdempotency } from "./service-common";
+import { canAccessResource, hasPermissionForUser } from "../security/authorization";
+import { canViewItem, createAudit, ensureExpectedVersion, findOrThrow, id, now, requireActiveUser, requireIdempotencyKey, requirePermission, requireText, saveIdempotency, withIdempotency } from "./service-common";
 import { normalizedDepartmentCode, validatedDepartmentType } from "./department-registry";
+import { canAccessHospitalTask } from "./hospital-task-policy";
 
 export type DepartmentCreateInput = CommandMeta & { code: string; name: string; type: DepartmentType };
 export type DepartmentPatchInput = CommandMeta & { name?: string; type?: DepartmentType; active?: true };
@@ -62,7 +63,13 @@ export function createDepartmentService({ store }: ApplicationServiceContext) {
       const current = requireActiveUser(state, actor);
       const department = findOrThrow(state.departments.find((entry) => entry.id === departmentId));
       requirePermission(current, "department.view", { departmentCode: department.code });
-      return department;
+      if (!canAccessResource(current, "department.deactivate", { departmentCode: department.code })) return department;
+      return { ...department, pendingWork: {
+        asOf: now(), scope: "AUTHORIZED_ONLY",
+        diagnosticItems: hasPermissionForUser(current, "item.view") ? state.items.filter((entry) => entry.departmentCode === department.code && !TERMINAL_ITEM_STATES.some((status) => status === entry.status) && canViewItem(state, current, entry)).length : null,
+        hospitalTasks: hasPermissionForUser(current, "hospital_task.view") ? state.hospitalTasks.filter((entry) => entry.departmentCode === department.code && !entry.archivedAt && !entry.draftCancelledAt && !["COMPLETED", "CANCELLED"].includes(entry.phase) && canAccessHospitalTask(state, current, "hospital_task.view", entry)).length : null,
+        intakes: hasPermissionForUser(current, "hospital_intake.view") ? state.hospitalIntakes.filter((entry) => entry.departmentCode === department.code && ["RECEIVED", "DEFERRED"].includes(entry.state) && canAccessHospitalTask(state, current, "hospital_intake.view", entry)).length : null
+      } };
     },
     async createDepartment(actor: User, input: DepartmentCreateInput): Promise<Department> {
       const scope = "POST:/departments";

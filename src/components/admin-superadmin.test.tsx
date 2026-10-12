@@ -6,7 +6,7 @@ import { AdminConsole } from "./admin-console";
 import * as apiClient from "./api-client";
 
 vi.mock("next/link", () => ({ default: ({ children, ...props }: { children: React.ReactNode; href: string }) => <a {...props}>{children}</a> }));
-const creator: SessionUser = { id: "super", email: "super@cvg.local", displayName: "Superadmin", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC" };
+const creator: SessionUser = { id: "super", email: "super@cvg.local", displayName: "Superadmin", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC", permissions: ["department.view", "service.catalog.manage", "reason_code.manage", "user_role.manage", "user.view"] };
 const target: ManagedUser = { id: "target", email: "target@cvg.local", displayName: "Colaborador", role: "VETERINARIAN", departmentCode: "INPATIENT", timezone: "UTC", active: true, version: 7, createdAt: "2026-10-11T00:00:00Z" };
 
 function mockApi(identity = creator, original = target) {

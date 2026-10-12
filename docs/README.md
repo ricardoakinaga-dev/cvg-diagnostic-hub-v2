@@ -33,7 +33,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## CI e revisão corrente do planner — 12/10/2026
+## Auditoria literal corrente do planner — 12/10/2026
+
+A [revisão literal e suas correções](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_FOLLOWUP_2026-10-12.md), a [matriz de evidências](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_FOLLOWUP_2026-10-12.json) e o [manifesto da fonte](build/HOSPITAL_PLANNER_LITERAL_ACCEPTANCE_SOURCE_MANIFEST_2026-10-12.json) cobrem as 51 entregas, 137 itens e 15 garantias. Foram corrigidos acesso à auditoria, comandos por grants específicos, preview de pendências na desativação de setores e o caminho de aprovação clínica de exames. A captura registra validação focada; nova CI e imagens são acompanhadas no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Aceite hospitalar, homologação HIS e revisão externa permanecem pendentes. O solicitante fará a validação e o aceite do piloto.
+
+## CI e revisão anterior do planner — captura de 12/10/2026
 
 O [registro corrente](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json) acompanham as correções da edição de amostra, da ação encoberta pela navegação e da preparação laboratorial sintética para PostgreSQL. A quarta CI passou 5.305 testes de backend, 195 cenários na matriz completa de navegador e a imagem, mas falhou em 9/48 jornadas PostgreSQL. A nova rodada completa será acompanhada no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78); capturas/falhas anteriores continuam preservadas.
 

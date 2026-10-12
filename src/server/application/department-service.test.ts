@@ -3,6 +3,7 @@ import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { createApplicationService } from "./service";
 import { requireActiveDepartment, reconcileDepartmentMembership } from "./department-registry";
+import { systemGroupId } from "../security/access-group-policy";
 
 function setup() {
   const store = new MemoryStore(createDemoState("hospital-department-tests"));
@@ -12,6 +13,39 @@ function setup() {
 }
 
 describe("persisted hospital department lifecycle", () => {
+  it("previews current authorized pending exams, tasks and demands without changing stored departments", async () => {
+    const state = createDemoState("department-pending-work-tests");
+    const superadmin = { ...state.users.find((user) => user.role === "VETERINARIAN")!, id: "super", role: "SUPERADMIN" as const, accessGroupId: systemGroupId("SUPERADMIN") };
+    state.users.push(superadmin);
+    const store = new MemoryStore(state); const service = createApplicationService(store);
+    const request = await service.createRequest(superadmin, { patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", items: [{ serviceId: "service-hemogram" }, { serviceId: "service-ultrasound" }] }, { idempotencyKey: "pending-exams" });
+    const task = await service.createHospitalTask(superadmin, { title: "Conferir estoque", typeId: "hospital-task-type-routine", departmentCode: "LABORATORY", priority: "ROUTINE", idempotencyKey: "pending-task" });
+    await service.createHospitalTask(superadmin, { title: "Cuidado reservado", typeId: "hospital-task-type-care", departmentCode: "LABORATORY", patientId: "patient-thor", encounterId: "encounter-thor", priority: "ROUTINE", idempotencyKey: "pending-care-task" });
+    await service.createHospitalIntake(superadmin, { title: "Conferir demanda", source: "MANUAL", typeId: "hospital-task-type-routine", departmentCode: "LABORATORY", priority: "ROUTINE", idempotencyKey: "pending-demand" });
+    const before = store.getState();
+    const preview = await service.getDepartment(superadmin, "department-LABORATORY");
+    expect(preview).toMatchObject({ pendingWork: { scope: "AUTHORIZED_ONLY", diagnosticItems: 1, hospitalTasks: 2, intakes: 1 } });
+    const reduced = { ...superadmin, permissions: ["department.view", "department.deactivate", "hospital_task.view", "hospital_intake.view"] as const };
+    expect((await service.getDepartment(reduced, preview.id)).pendingWork).toMatchObject({ diagnosticItems: null, hospitalTasks: 1, intakes: 1 });
+    expect(Date.parse(preview.pendingWork!.asOf)).not.toBeNaN();
+    expect(store.getState()).toEqual(before);
+    expect((await service.listDepartments(superadmin)).every((entry) => entry.pendingWork === undefined)).toBe(true);
+    await service.commandHospitalTask(superadmin, task.task.id, { command: "CANCEL", reason: "Demanda encerrada", expectedVersion: 1, idempotencyKey: "close-pending-task" });
+    expect((await service.getDepartment(superadmin, preview.id)).pendingWork?.hospitalTasks).toBe(1);
+    await service.cancelItem(superadmin, request.items[0].id, { reasonCode: "CLINICAL_DECISION", expectedVersion: 1, idempotencyKey: "close-pending-exam" });
+    expect((await service.getDepartment(superadmin, preview.id)).pendingWork?.diagnosticItems).toBe(0);
+  });
+
+  it("does not expose hidden counts or treat missing clinical authority as zero", async () => {
+    const { store, service, admin, manager, vet } = setup();
+    const technical = await service.getDepartment(admin, "department-LABORATORY");
+    expect(technical.pendingWork).toMatchObject({ diagnosticItems: null, hospitalTasks: null, intakes: null });
+    expect((await service.getDepartment(manager, "department-LABORATORY")).pendingWork).toBeUndefined();
+    await expect(service.getDepartment(vet, "department-LABORATORY")).rejects.toMatchObject({ status: 404 });
+    await store.transaction((state) => ({ state: { ...state, accessGroups: state.accessGroups.map((group) => group.id === admin.accessGroupId ? { ...group, permissions: group.permissions.filter((permission) => permission !== "department.deactivate") } : group) }, result: undefined }));
+    expect((await service.getDepartment(admin, "department-LABORATORY")).pendingWork).toBeUndefined();
+  });
+
   it("creates a normalized stable identity, replays exactly once and rejects reused codes", async () => {
     const { store, service, admin } = setup();
     const input = { code: " dentist ", name: "Odontologia", type: "CLINICAL" as const, idempotencyKey: "department-create" };

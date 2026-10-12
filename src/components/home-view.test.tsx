@@ -28,9 +28,13 @@ const dashboard = {
   ]
 };
 
+function clinicalPermissions(role: string) {
+  return ["request.list", "queue.view", "service.catalog.view", ...(["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(role) ? ["request.create"] : [])];
+}
+
 function mockSession(role: string, options: { dashboardFails?: boolean } = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-    if (path === "/session/me") return { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina Costa", role, departmentCode: "INPATIENT", timezone: "UTC" } } as never;
+    if (path === "/session/me") return { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina Costa", role, departmentCode: "INPATIENT", timezone: "UTC", permissions: clinicalPermissions(role) } } as never;
     if (path === "/dashboard") { if (options.dashboardFails) throw new Error("down"); return dashboard as never; }
     if (path === "/departments") return dashboard.departments.filter((department) => department.departmentCode !== "INPATIENT").map((department) => ({ id: department.departmentCode, code: department.departmentCode, name: department.label, type: "DIAGNOSTIC", active: true })) as never;
     return [] as never;
@@ -40,6 +44,31 @@ function mockSession(role: string, options: { dashboardFails?: boolean } = {}) {
 
 describe("Home", () => {
   afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+  it.each(["VETERINARIAN", "INPATIENT_TEAM", "MANAGER", "SUPERADMIN"])("keeps an authorized home feed without request creation for reduced %s", async (role) => {
+    mockSession(role);
+    const original = vi.mocked(apiFetch).getMockImplementation()!;
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => path === "/session/me" ? { user: { id: "home-reader", displayName: "Leitura clínica", role, departmentCode: "INPATIENT", permissions: ["request.list", "queue.view", "service.catalog.view"] } } as never : original(path, init));
+    render(<Home />); await screen.findByRole("link", { name: /Na minha fila\s*2/ });
+    expect(screen.queryByRole("link", { name: "Nova solicitação" })).not.toBeInTheDocument();
+  });
+
+  it("blocks creation while the existing feed hook revalidates and withdraws request.create", async () => {
+    mockSession("VETERINARIAN");
+    const original = vi.mocked(apiFetch).getMockImplementation()!;
+    let refreshing = false; let resolveIdentity!: (value: unknown) => void;
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => {
+      if (path === "/session/me") return refreshing ? new Promise((resolve) => { resolveIdentity = resolve; }) as never : { user: { id: "user-vet", displayName: "Dra. Marina Costa", role: "VETERINARIAN", departmentCode: "INPATIENT", permissions: ["request.list", "queue.view", "service.catalog.view", "request.create"] } } as never;
+      return original(path, init);
+    });
+    render(<Home />); await screen.findByRole("link", { name: /Na minha fila\s*2/ });
+    expect(screen.getByRole("link", { name: "Nova solicitação" })).toBeInTheDocument();
+    refreshing = true; fireEvent(window, new Event("cvg:realtime-resync"));
+    expect(screen.queryByRole("link", { name: "Nova solicitação" })).not.toBeInTheDocument();
+    await act(async () => { resolveIdentity({ user: { id: "user-vet", displayName: "Leitura clínica", role: "VETERINARIAN", departmentCode: "INPATIENT", permissions: ["request.list", "queue.view", "service.catalog.view"] } }); });
+    await screen.findByRole("link", { name: /Na minha fila\s*2/ });
+    expect(screen.queryByRole("link", { name: "Nova solicitação" })).not.toBeInTheDocument();
+  });
 
   it("greets the clinician and summarises work like Plane's home", async () => {
     mockSession("VETERINARIAN");
@@ -129,7 +158,7 @@ describe("Home", () => {
   ])("counts another professional's authorized active exam in %s's queue without turning routine work into attention", async (role, departmentCode, workflowType) => {
     mockSession(role);
     const prior = vi.mocked(apiFetch).getMockImplementation()!;
-    vi.mocked(apiFetch).mockImplementation(async (path, options) => path === "/session/me" ? { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Equipe Marina", role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined, timezone: "UTC" } } as never : prior(path, options));
+    vi.mocked(apiFetch).mockImplementation(async (path, options) => path === "/session/me" ? { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Equipe Marina", role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined, timezone: "UTC", permissions: clinicalPermissions(role) } } as never : prior(path, options));
     const exam = { ...request.items[0], priority: "ROUTINE", workflowType, departmentCode: workflowType };
     const own = { ...request, items: ["COMPLETED", "CANCELLED", "REJECTED"].map((status) => ({ ...exam, id: `terminal-${status}`, status })) };
     const other = { ...request, id: "other", requesterId: "someone-else", items: [{ ...exam, id: "authorized-routine" }] };

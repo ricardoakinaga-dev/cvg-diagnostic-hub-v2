@@ -45,7 +45,7 @@ interface QuickCard { label: string; value: number; hint: string; href: string; 
 function ClinicalHome({ user }: { user: SessionUser }) {
   const [dashboard, setDashboard] = useState<DashboardView | null>(null);
   const [dashboardError, setDashboardError] = useState("");
-  const { items, loading, refreshing, error: itemsError, partial, truncated, loadingMore, loadMore, paginationError, reload } = useWorkItems();
+  const { user: currentUser, items, loading, refreshing, error: itemsError, partial, truncated, loadingMore, loadMore, paginationError, reload } = useWorkItems();
   const [plannerFilters, setPlannerFilters] = useQueuePreferences(user.id, "/home:planner-filters", PLANNER_EMPTY_FILTERS, normalizePlannerFilters);
   const plannerScope = usePlannerDiagnosticFilters(user, plannerFilters);
   const scopedItems = useMemo(() => items.filter(plannerScope.matches), [items, plannerScope.matches]);
@@ -53,6 +53,7 @@ function ClinicalHome({ user }: { user: SessionUser }) {
   const directory = useDepartments(user.id, { catalog: true });
   const now = new Date();
   const firstName = user.displayName.replace(/^(Dra?\.|Técnica|Equipe)\s+/i, "").split(" ")[0];
+  const canCreateRequest = !loading && !refreshing && currentUser?.id === user.id && currentUser.permissions?.includes("request.create") && ["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(currentUser.role);
 
   const loadDashboard = useCallback(async () => {
     try { setDashboard(await apiFetch<DashboardView>("/dashboard")); setDashboardError(""); }
@@ -85,7 +86,7 @@ function ClinicalHome({ user }: { user: SessionUser }) {
   return <>
     <PageHeader crumbs={[{ label: "Início", icon: "home" }]} heading={false}>
       <Link href="/queues" className="header-button"><Icon name="layers" size={14} />Ver todos os exames</Link>
-      {["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(user.role) && <Link href="/queues?create=request" className="button-primary-sm home-create"><Icon name="add" size={14} />Nova solicitação</Link>}
+      {canCreateRequest && <Link href="/queues?create=request" className="button-primary-sm home-create"><Icon name="add" size={14} />Nova solicitação</Link>}
     </PageHeader>
     <div className="home">
       <div className="home-greeting">

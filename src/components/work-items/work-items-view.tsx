@@ -294,7 +294,7 @@ export function WorkItemsView() {
       {toasts.map((toast) => <div key={toast.id} className={`toast toast-${toast.tone}`} role={toast.tone === "error" ? "alert" : "status"}><Icon name={toast.tone === "success" ? "check" : "attention"} size={15} /><div><strong>{toast.title}</strong>{toast.message && <span>{toast.message}</span>}</div><button type="button" className="icon-button" onClick={() => setToasts((current) => current.filter((entry) => entry.id !== toast.id))} aria-label="Fechar aviso"><Icon name="close" size={12} /></button></div>)}
     </div>
 
-    {showCreate && canCreate && <QueueBoardRequestDialog departments={creationDepartments} canCreatePatient={["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowCreate(false)} onCreated={onCreated} />}
+    {showCreate && canCreate && <QueueBoardRequestDialog departments={creationDepartments} canCreatePatient={permissions.includes("patient.create") && ["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role)} onClose={() => setShowCreate(false)} onCreated={onCreated} />}
   </div></DepartmentLabelsProvider></WorkflowPermissionsProvider>;
 }
 

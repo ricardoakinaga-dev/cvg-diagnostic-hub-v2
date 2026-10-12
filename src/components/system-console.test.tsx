@@ -20,7 +20,7 @@ function mockApi(role = "ADMIN", respond?: Responder) {
   return vi.spyOn(apiClient, "apiFetch").mockImplementation(async <T,>(path: string, init?: RequestInit): Promise<T> => {
     const custom = respond?.(path, init);
     if (custom !== undefined) return await custom as T;
-    if (path === "/session/me") return { user: { role } } as T;
+    if (path === "/session/me") return { user: { role, permissions: ["ADMIN", "SUPERADMIN"].includes(role) ? ["user_role.manage", "outbox.manage", "audit.view", "critical_result_policy.manage"] : [] } } as T;
     if (path === "/sessions") return [currentSession] as T;
     if (path === "/outbox/dead-letters") return [currentMessage] as T;
     if (path === "/audit-events?limit=20") return [audit] as T;
@@ -38,6 +38,62 @@ async function answerConfirm(name: string) {
 }
 
 describe("SystemConsole", () => {
+  it.each(["MANAGER", "ADMIN", "SUPERADMIN"])("opens only the scoped audit for %s with audit.view alone", async (role) => {
+    const mock = mockApi(role, (path) => path === "/session/me" ? { user: { role, permissions: ["audit.view"] } } : undefined);
+    render(<SystemConsole />);
+    expect(await screen.findByRole("heading", { name: "Auditoria recente" })).toBeInTheDocument();
+    expect(screen.getByText("User Role Updated")).toBeInTheDocument();
+    expect(mock.mock.calls.map(([path]) => path)).toEqual(["/session/me", "/audit-events?limit=20"]);
+    for (const title of ["Dispositivos e acessos ativos", "Dead-letter do outbox", "Resultado crítico"]) expect(screen.queryByRole("heading", { name: title })).not.toBeInTheDocument();
+    for (const name of ["Revogar sessão", "Reprocessar", "Descartar"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+  });
+
+  it("lists sessions without offering revocation when ADMIN only has user.view", async () => {
+    const mock = mockApi("ADMIN", (path) => path === "/session/me" ? { user: { role: "ADMIN", permissions: ["user.view"] } } : undefined);
+    render(<SystemConsole />); await screen.findByText(session.userDisplayName);
+    expect(mock.mock.calls.map(([path]) => path)).toEqual(["/session/me", "/sessions"]);
+    expect(screen.queryByRole("button", { name: "Revogar sessão" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Auditoria recente" })).not.toBeInTheDocument();
+  });
+
+  it.each([undefined, []])("fails closed when the session has no effective permissions (%s)", async (permissions) => {
+    const mock = mockApi("ADMIN", (path) => path === "/session/me" ? { user: { role: "ADMIN", permissions } } : undefined);
+    render(<SystemConsole />); await screen.findByRole("alert");
+    expect(mock.mock.calls.map(([path]) => path)).toEqual(["/session/me"]);
+    expect(screen.queryByRole("heading", { name: "Auditoria recente" })).not.toBeInTheDocument();
+  });
+
+  it("withdraws the audit when its effective grant is removed from a valid identity", async () => {
+    let permissions = ["audit.view"];
+    const mock = mockApi("MANAGER", (path) => path === "/session/me" ? { user: { role: "MANAGER", permissions } } : undefined);
+    render(<SystemConsole />); await screen.findByText("User Role Updated");
+    const before = mock.mock.calls.length;
+    permissions = []; fireEvent(window, new Event("cvg:realtime-resync"));
+    await screen.findByRole("alert");
+    expect(screen.queryByText("User Role Updated")).not.toBeInTheDocument();
+    expect(mock.mock.calls.slice(before).map(([path]) => path)).toEqual(["/session/me"]);
+  });
+
+  it("does not fetch technical data for a MANAGER even with technical grants in an untrusted DTO", async () => {
+    const mock = mockApi("MANAGER", (path) => path === "/session/me" ? { user: { role: "MANAGER", permissions: ["user.view", "outbox.manage", "critical_result_policy.manage"] } } : undefined);
+    render(<SystemConsole />); await screen.findByRole("alert");
+    expect(mock.mock.calls.map(([path]) => path)).toEqual(["/session/me"]);
+  });
+
+  it.each([401, 403, 404])("removes the scoped audit after refresh denies access with %i", async (status) => {
+    let denied = false;
+    const mock = mockApi("MANAGER", (path) => {
+      if (path === "/session/me") return { user: { role: "MANAGER", permissions: ["audit.view"] } };
+      if (path.startsWith("/audit-events") && denied) return Promise.reject(new apiClient.ApiClientError(status, { error: { code: "SCOPE_DENIED" } }));
+    });
+    render(<SystemConsole />); await screen.findByText("User Role Updated");
+    denied = true; fireEvent.click(screen.getByRole("button", { name: "Atualizar" }));
+    await screen.findByRole("alert");
+    expect(screen.queryByText("User Role Updated")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Auditoria recente" })).not.toBeInTheDocument();
+    expect(mock.mock.calls.every(([path]) => ["/session/me", "/audit-events?limit=20"].includes(path))).toBe(true);
+  });
+
   it("opens technical system controls for SUPERADMIN", async () => {
     const mock = mockApi("SUPERADMIN"); render(<SystemConsole />);
     expect(await screen.findByRole("button", { name: "Revogar sessão" })).toBeInTheDocument();
@@ -129,13 +185,13 @@ describe("SystemConsole", () => {
 
   it("clears technical data if the identity loses ADMIN on refresh", async () => {
     let role = "ADMIN";
-    const mock = mockApi("ADMIN", (path) => path === "/session/me" ? { user: { role } } : undefined);
+    const mock = mockApi("ADMIN", (path) => path === "/session/me" ? { user: { role, permissions: ["user_role.manage", "outbox.manage", "audit.view", "critical_result_policy.manage"] } } : undefined);
     render(<SystemConsole />); await screen.findByText(session.userDisplayName);
     const callsBefore = mock.mock.calls.length;
     role = "MANAGER"; fireEvent.click(screen.getByRole("button", { name: "Atualizar" }));
-    await screen.findByRole("alert");
+    await screen.findByRole("heading", { name: "Auditoria recente" });
     expect(screen.queryByText(session.userDisplayName)).not.toBeInTheDocument();
-    expect(mock.mock.calls.slice(callsBefore).map(([path]) => path)).toEqual(["/session/me"]);
+    expect(mock.mock.calls.slice(callsBefore).map(([path]) => path)).toEqual(["/session/me", "/audit-events?limit=20"]);
   });
 
   it("handles identity and server permission failures without exposing actions", async () => {

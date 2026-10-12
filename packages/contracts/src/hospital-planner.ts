@@ -15,6 +15,14 @@ export interface Department {
   version: number;
   createdAt: string;
   updatedAt: string;
+  /** Read-only deactivation preview; counts include only work the current actor may read. */
+  pendingWork?: {
+    asOf: string;
+    scope: "AUTHORIZED_ONLY";
+    diagnosticItems: number | null;
+    hospitalTasks: number | null;
+    intakes: number | null;
+  };
 }
 
 export type ExamDefinition = Pick<DiagnosticService, "code" | "name" | "category" | "departmentCode" | "workflowType" | "requiresSample" | "sampleType" | "requiresSchedule" | "allowsAttachment" | "resultSchema" | "resultTemplate" | "slaHours">;

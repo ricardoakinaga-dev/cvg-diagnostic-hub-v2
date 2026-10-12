@@ -13,6 +13,7 @@ function mockApi(permissions = all, departments = [sector], command?: (path: str
   return vi.mocked(apiFetch).mockImplementation(async (path, init) => {
     if (path === "/session/me") return { user: { id: "super", role: "SUPERADMIN", permissions } } as never;
     if (path === "/departments?includeInactive=true") return departments as never;
+    if (path === `/departments/${sector.id}` && !init?.method) return { ...sector, pendingWork: { asOf: sector.updatedAt, scope: "AUTHORIZED_ONLY", diagnosticItems: 3, hospitalTasks: 2, intakes: 1 } } as never;
     if (path === "/users") return [member, { ...member, id: "foreign", displayName: "Outro setor", departmentCode: "LABORATORY" }, { ...member, id: "inactive", displayName: "Desativado", active: false }] as never;
     if (init?.method && command) return await command(path, init) as never;
     throw new Error(`Unexpected request ${path}`);
@@ -53,7 +54,7 @@ describe("DepartmentConsole", () => {
   it("cancels deactivation, edits the registered sector type with its revision and refreshes after a temporary directory error", async () => {
     const original = mockApi(all, [sector], async (_path, init) => ({ ...sector, ...JSON.parse(String(init.body)), version: 8 })).getMockImplementation()!; let denied = true;
     vi.mocked(apiFetch).mockImplementation(async (path, init) => { if (path === "/departments?includeInactive=true" && denied) throw new ApiClientError(503, { error: { code: "UNAVAILABLE" } }); return original(path, init); }); render(<DepartmentConsole />); await screen.findByRole("alert"); denied = false; fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Desativar setor" })); fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Cancelar" })); expect(vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+    fireEvent.click(await screen.findByRole("button", { name: "Desativar setor" })); fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Cancelar" })); await waitFor(() => expect(screen.getByRole("button", { name: "Salvar setor" })).toBeEnabled()); expect(vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
     const form = screen.getByRole("form", { name: "Editar setor ONCOLOGY" }); fireEvent.change(within(form).getByLabelText("Tipo de setor"), { target: { value: "CLINICAL" } }); fireEvent.click(within(form).getByRole("button", { name: "Salvar setor" })); await screen.findByText(`Setor ${sector.name} salvo.`); expect(apiFetch).toHaveBeenCalledWith(`/departments/${sector.id}`, expect.objectContaining({ body: JSON.stringify({ name: sector.name, type: "CLINICAL", expectedVersion: 7 }) }));
     fireEvent.click(screen.getByRole("button", { name: "Atualizar setores" })); await waitFor(() => expect(screen.getByRole("button", { name: "Atualizar setores" })).toBeEnabled());
   });
@@ -114,9 +115,66 @@ describe("DepartmentConsole", () => {
     mockApi(all, [sector], async () => ({ ...sector, active: false, version: 8 })); render(<DepartmentConsole />);
     fireEvent.click(await screen.findByRole("button", { name: "Desativar setor" }));
     const dialog = await screen.findByRole("dialog", { name: `Desativar ${sector.name}?` });
+    expect(within(dialog).getByText(/exames: 3; tarefas: 2; demandas: 1/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Somente pendências dentro do seu acesso/)).toBeInTheDocument();
     expect(apiFetch).not.toHaveBeenCalledWith(expect.stringContaining("/deactivate"), expect.anything());
     fireEvent.click(within(dialog).getByRole("button", { name: "Desativar setor" }));
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith(`/departments/${sector.id}/deactivate`, expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedVersion: 7 }) })));
+  });
+  it("does not offer deactivation when the fresh pending-work consultation fails, and recovers on retry", async () => {
+    const original = mockApi(all, [sector], async () => ({ ...sector, active: false, version: 8 })).getMockImplementation()!;
+    let failed = true;
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => {
+      if (path === `/departments/${sector.id}` && !init?.method && failed) throw new ApiClientError(503, { error: { code: "UNAVAILABLE" } });
+      return original(path, init);
+    });
+    render(<DepartmentConsole />);
+    fireEvent.click(await screen.findByRole("button", { name: "Desativar setor" }));
+    await screen.findByText("Não foi possível concluir a operação. Informe o código de correlação ao suporte.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+    failed = false;
+    fireEvent.click(screen.getByRole("button", { name: "Desativar setor" }));
+    const dialog = await screen.findByRole("dialog");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    expect(vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+  });
+  it("distinguishes unavailable clinical counts from zero and rejects a stale or revoked preview", async () => {
+    const original = mockApi().getMockImplementation()!;
+    let result: Department = { ...sector, pendingWork: { asOf: sector.updatedAt, scope: "AUTHORIZED_ONLY", diagnosticItems: null, hospitalTasks: 0, intakes: null } };
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => path === `/departments/${sector.id}` && !init?.method ? result as never : original(path, init));
+    render(<DepartmentConsole />);
+    fireEvent.click(await screen.findByRole("button", { name: "Desativar setor" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(/exames: sem acesso; tarefas: 0; demandas: sem acesso/)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Desativar setor" })).toBeEnabled());
+    result = { ...result, version: 8 };
+    fireEvent.click(screen.getByRole("button", { name: "Desativar setor" }));
+    await screen.findByText("O setor mudou. Atualize os setores antes de desativar.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    result = { ...sector };
+    fireEvent.click(screen.getByRole("button", { name: "Desativar setor" }));
+    await screen.findByText("Não foi possível consultar as pendências do setor.");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
+  });
+  it("keeps one pending consultation and cancels it when the sector row leaves the screen", async () => {
+    const original = mockApi().getMockImplementation()!;
+    let release!: (result: Department) => void;
+    const pending = new Promise<Department>((resolve) => { release = resolve; });
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => path === `/departments/${sector.id}` && !init?.method ? await pending as never : original(path, init));
+    const view = render(<DepartmentConsole />);
+    const button = await screen.findByRole("button", { name: "Desativar setor" });
+    fireEvent.click(button); fireEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(vi.mocked(apiFetch).mock.calls.filter(([path, init]) => path === `/departments/${sector.id}` && !init?.method)).toHaveLength(1);
+    const request = vi.mocked(apiFetch).mock.calls.find(([path]) => path === `/departments/${sector.id}`)!;
+    view.unmount();
+    expect(request[1]?.signal?.aborted).toBe(true);
+    await act(async () => { release({ ...sector, pendingWork: { asOf: sector.updatedAt, scope: "AUTHORIZED_ONLY", diagnosticItems: 0, hospitalTasks: 0, intakes: 0 } }); await pending; });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.filter(([, init]) => init?.method)).toHaveLength(0);
   });
   it("keeps a deactivated sector readable and allows only explicit reactivation", async () => {
     mockApi(all, [{ ...sector, active: false }], async () => sector); render(<DepartmentConsole />);

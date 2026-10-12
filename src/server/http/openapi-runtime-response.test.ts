@@ -54,6 +54,11 @@ describe("OpenAPI schemas against real route responses", () => {
     expectResponseMatches("/livez", "get", liveness.status, livenessBody);
 
     const admin = await login("admin@cvg.local");
+    const department = await GET(new Request("http://localhost/api/v1/departments/department-LABORATORY", { headers: { cookie: admin.cookie } }), params(["departments", "department-LABORATORY"]));
+    const departmentBody = await department.json();
+    expect(department.status).toBe(200);
+    expect(departmentBody.data.pendingWork).toMatchObject({ scope: "AUTHORIZED_ONLY", diagnosticItems: null, hospitalTasks: null, intakes: null });
+    expectResponseMatches("/departments/{departmentId}", "get", department.status, departmentBody);
     const audit = await GET(new Request("http://localhost/api/v1/audit-events?limit=10", {
       headers: { cookie: admin.cookie }
     }), params(["audit-events"]));

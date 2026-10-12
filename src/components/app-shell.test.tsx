@@ -2,7 +2,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppShell } from "./app-shell";
-import { apiFetch } from "./api-client";
+import { ApiClientError, apiFetch } from "./api-client";
 import type { Department } from "@cvg/contracts";
 
 const directory = vi.hoisted(() => ({ departments: [] as Department[], services: [] }));
@@ -55,6 +55,14 @@ class FakeEventSource {
 
 const originalEventSource = globalThis.EventSource;
 
+function pendingIdentity() {
+  let resolve!: (value: unknown) => void;
+  let reject!: (cause: Error) => void;
+  const promise = new Promise<unknown>((accept, refuse) => { resolve = accept; reject = refuse; });
+  return { promise, resolve, reject };
+}
+const revocableUser = { id: "revocable", email: "synthetic@example.invalid", displayName: "Conta sintética", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC", permissions: ["user.view", "service.catalog.view", "audit.view", "patient.create", "request.create"] };
+
 describe("AppShell", () => {
   beforeEach(() => {
     directory.departments = [department("LABORATORY", "Laboratório")];
@@ -105,6 +113,91 @@ describe("AppShell", () => {
     render(<AppShell><h1>Workspace</h1></AppShell>);
     const crumb = await screen.findByRole("navigation", { name: "Você está em" });
     expect(crumb).toHaveTextContent(label);
+  });
+
+  it.each(["manual-resync", "stream-error"])("withdraws menus and an open composer while %s revalidates native grants", async (trigger) => {
+    navigationState.pathname = "/admin/users";
+    const pending = pendingIdentity(); let reads = 0;
+    vi.mocked(apiFetch).mockImplementation(async (path) => path === "/session/me" ? ++reads === 1 ? { user: revocableUser } as never : pending.promise as never : [] as never);
+    render(<AppShell><div>Espaço autorizado</div></AppShell>);
+    await screen.findByRole("link", { name: "Acesso rápido: Acessos" });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = FakeEventSource.instances[0];
+    fireEvent.click(screen.getByRole("button", { name: /Buscar paciente ou exame/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Novo paciente/ }));
+    expect(screen.getByRole("dialog", { name: "Cadastrar paciente" })).toBeInTheDocument();
+    act(() => trigger === "stream-error" ? source.triggerError() : window.dispatchEvent(new Event("cvg:realtime-resync")));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.queryByRole("navigation", { name: "Navegação rápida" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Espaço autorizado")).not.toBeInTheDocument();
+    expect(reads).toBe(2);
+    await act(async () => { pending.resolve({ user: { ...revocableUser, permissions: [] } }); });
+    await screen.findByText("Espaço autorizado");
+    for (const name of ["Acessos", "Catálogos", "Sistema", "Administração"]) expect(screen.queryByRole("link", { name })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Acesso rápido: Acessos" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Buscar paciente ou exame/ }));
+    expect(screen.queryByRole("option", { name: /Novo paciente|Nova solicitação/ })).not.toBeInTheDocument();
+    expect(source.close).not.toHaveBeenCalled();
+  });
+
+  it("revalidates once when native SSE enters fallback without replacing its equivalent connection", async () => {
+    const pending = pendingIdentity(); let reads = 0;
+    vi.mocked(apiFetch).mockImplementation(async (path) => path === "/session/me" ? ++reads === 1 ? { user: revocableUser } as never : pending.promise as never : [] as never);
+    render(<AppShell><div>Espaço autorizado</div></AppShell>); await screen.findByText("Espaço autorizado");
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1)); const source = FakeEventSource.instances[0];
+    act(() => { source.triggerError(); source.triggerError(); source.triggerError(); });
+    expect(reads).toBe(2); expect(source.close).not.toHaveBeenCalled();
+    await act(async () => { pending.resolve({ user: { ...revocableUser } }); });
+    await screen.findByRole("button", { name: "Nova solicitação" });
+    expect(FakeEventSource.instances).toHaveLength(1); expect(source.close).not.toHaveBeenCalled();
+    act(() => source.triggerOpen());
+    expect(screen.queryByText(/Conexão em tempo real indisponível/)).not.toBeInTheDocument();
+  });
+
+  it("closes the stream and removes protected UI when SSE revalidation denies authentication", async () => {
+    let reads = 0;
+    vi.mocked(apiFetch).mockImplementation(async (path) => {
+      if (path !== "/session/me") return [] as never;
+      if (++reads === 1) return { user: revocableUser } as never;
+      throw new ApiClientError(401, {});
+    });
+    render(<AppShell><div>Espaço autorizado</div></AppShell>); await screen.findByText("Espaço autorizado");
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1)); const source = FakeEventSource.instances[0];
+    act(() => source.triggerError());
+    await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
+    expect(screen.queryByText("Espaço autorizado")).not.toBeInTheDocument(); expect(source.close).toHaveBeenCalledOnce();
+  });
+
+  it("keeps UI blocked after a 503 identity resync and recovers only through a fresh retry", async () => {
+    let reads = 0;
+    vi.mocked(apiFetch).mockImplementation(async (path) => {
+      if (path !== "/session/me") return [] as never;
+      if (++reads === 1) return { user: revocableUser } as never;
+      if (reads === 2) throw new ApiClientError(503, {});
+      return { user: { ...revocableUser, permissions: [] } } as never;
+    });
+    render(<AppShell><div>Espaço autorizado</div></AppShell>); await screen.findByText("Espaço autorizado");
+    act(() => window.dispatchEvent(new Event("cvg:realtime-resync")));
+    await screen.findByRole("heading", { name: "Identidade indisponível" });
+    expect(screen.queryByText("Espaço autorizado")).not.toBeInTheDocument(); expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
+    expect(replace).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    await screen.findByText("Espaço autorizado"); expect(reads).toBe(3);
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
+  });
+
+  it.each(["allow", "deny"])("does not let an obsolete resync %s overwrite the latest reduced identity", async (answer) => {
+    const stale = pendingIdentity(); let reads = 0;
+    vi.mocked(apiFetch).mockImplementation(async (path) => path !== "/session/me" ? [] as never : ++reads === 1 ? { user: revocableUser } as never : reads === 2 ? stale.promise as never : { user: { ...revocableUser, permissions: [] } } as never);
+    render(<AppShell><div>Espaço autorizado</div></AppShell>); await screen.findByText("Espaço autorizado");
+    act(() => window.dispatchEvent(new Event("cvg:realtime-resync")));
+    act(() => window.dispatchEvent(new Event("cvg:realtime-resync")));
+    await screen.findByText("Espaço autorizado"); expect(reads).toBe(3);
+    await act(async () => { if (answer === "allow") stale.resolve({ user: revocableUser }); else stale.reject(new ApiClientError(401, {})); });
+    expect(screen.getByText("Espaço autorizado")).toBeInTheDocument(); expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Acesso rápido: Acessos" })).not.toBeInTheDocument();
   });
 
   it("shows independent hospital destinations only for effective grants in desktop and mobile navigation", async () => {
@@ -215,7 +308,8 @@ describe("AppShell", () => {
     await waitFor(() => expect(dispatchSpy).toHaveBeenCalledWith(expect.objectContaining({ type: "cvg:realtime-updated" })));
     act(() => source.triggerError());
 
-    const banner = await screen.findByRole("status");
+    await screen.findByText(/Conexão em tempo real indisponível/);
+    const banner = screen.getByRole("status");
     expect(source.close).not.toHaveBeenCalled();
     expect(banner).toHaveTextContent("Uma reconciliação limitada ocorre periodicamente");
     expect(banner).toHaveTextContent("Conexão em tempo real indisponível");
@@ -266,7 +360,8 @@ describe("AppShell", () => {
 
     act(() => source.triggerError());
     expect(source.close).not.toHaveBeenCalled();
-    expect(await screen.findByRole("status")).toHaveTextContent("Conexão em tempo real indisponível");
+    await screen.findByText(/Conexão em tempo real indisponível/);
+    expect(screen.getByRole("status")).toHaveTextContent("Conexão em tempo real indisponível");
 
     // A real browser invokes onopen on this same EventSource after its native
     // retry. Keeping the instance alive is what preserves its last event ID.
@@ -313,6 +408,7 @@ describe("AppShell", () => {
         role: "MANAGER",
         departmentCode: "LABORATORY",
         timezone: "America/Sao_Paulo",
+        permissions: ["user.view", "service.catalog.create"],
       },
     });
 
@@ -366,6 +462,7 @@ describe("AppShell", () => {
         role: "ADMIN",
         departmentCode: "IT",
         timezone: "America/Sao_Paulo",
+        permissions: ["user_role.manage", "service.catalog.manage", "audit.view", "outbox.manage"],
       },
     });
 
@@ -386,7 +483,7 @@ describe("AppShell", () => {
 
   it("combines administrative, management and clinical navigation only for SUPERADMIN", async () => {
     directory.departments = [department("LABORATORY", "Laboratório"), department("RADIOLOGY", "Radiologia"), department("ULTRASOUND", "Ultrassom")];
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", email: "super@cvg.local", displayName: "Superadmin", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", email: "super@cvg.local", displayName: "Superadmin", role: "SUPERADMIN", departmentCode: "IT", timezone: "UTC", permissions: ["user_role.manage", "service.catalog.manage", "audit.view", "patient.create", "request.create"] } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     const nav = await screen.findByRole("navigation", { name: "Navegação principal" });
     for (const [name, href] of [["Pacientes", "/patients"], ["Todos os exames", "/queues"], ["Painel gerencial", "/management"], ["Indicadores", "/indicators"], ["Administração", "/admin"], ["Acessos", "/admin/users"], ["Catálogos", "/admin/catalog"], ["Sistema", "/system"]]) {
@@ -406,16 +503,122 @@ describe("AppShell", () => {
 
   it.each([["/admin/users", "Acessos"], ["/admin/catalog", "Catálogo"], ["/system", "Sistema"]])("keeps the SUPERADMIN mobile administrative destination active at %s", async (pathname, label) => {
     navigationState.pathname = pathname;
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", role: "SUPERADMIN", displayName: "Superadmin", departmentCode: "IT" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "super", role: "SUPERADMIN", displayName: "Superadmin", departmentCode: "IT", permissions: ["user_role.manage", "service.catalog.manage", "audit.view"] } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     const mobile = await screen.findByRole("navigation", { name: "Navegação rápida" });
     expect(within(mobile).getByRole("link", { name: `Acesso rápido: ${label}` })).toHaveAttribute("href", pathname);
     expect(within(mobile).getAllByRole("link").filter((link) => link.getAttribute("aria-current") === "page")).toHaveLength(1);
   });
 
+  it.each(["ADMIN", "SUPERADMIN"])("hides destinations without grants from a reduced privileged %s in both menus", async (role) => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "reduced", role, displayName: "Conta reduzida", departmentCode: "IT", permissions: [] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const main = await screen.findByRole("navigation", { name: "Navegação principal" });
+    const mobile = screen.getByRole("navigation", { name: "Navegação rápida" });
+    for (const name of ["Administração", "Acessos", "Catálogos", "Sistema"]) expect(within(main).queryByRole("link", { name })).not.toBeInTheDocument();
+    for (const name of ["Admin", "Acessos", "Catálogo", "Sistema"]) expect(within(mobile).queryByRole("link", { name: `Acesso rápido: ${name}` })).not.toBeInTheDocument();
+  });
+
+  it.each(["ADMIN", "SUPERADMIN"])("offers only the audit system destination to a reduced privileged %s", async (role) => {
+    navigationState.pathname = "/system";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "audit-only", role, displayName: "Auditor", departmentCode: "IT", permissions: ["audit.view"] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const main = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(main).getByRole("link", { name: "Sistema" })).toHaveAttribute("href", "/system");
+    for (const name of ["Administração", "Acessos", "Catálogos"]) expect(within(main).queryByRole("link", { name })).not.toBeInTheDocument();
+    const mobile = screen.getByRole("navigation", { name: "Navegação rápida" });
+    expect(within(mobile).getByRole("link", { name: "Acesso rápido: Sistema" })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Admin", "Acessos", "Catálogo"]) expect(within(mobile).queryByRole("link", { name: `Acesso rápido: ${name}` })).not.toBeInTheDocument();
+  });
+
+  it.each(["ADMIN", "SUPERADMIN"])("offers independently granted access management to a reduced privileged %s", async (role) => {
+    navigationState.pathname = "/admin/users";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "users-only", role, displayName: "Gestor de contas", departmentCode: "IT", permissions: ["user.create"] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const main = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(main).getByRole("link", { name: "Acessos" })).toHaveAttribute("href", "/admin/users");
+    expect(within(main).getByRole("link", { name: "Administração" })).toHaveAttribute("href", "/admin");
+    for (const name of ["Catálogos", "Sistema"]) expect(within(main).queryByRole("link", { name })).not.toBeInTheDocument();
+    const mobile = screen.getByRole("navigation", { name: "Navegação rápida" });
+    expect(within(mobile).getByRole("link", { name: "Acesso rápido: Acessos" })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Catálogo", "Sistema"]) expect(within(mobile).queryByRole("link", { name: `Acesso rápido: ${name}` })).not.toBeInTheDocument();
+  });
+
+  it.each(["VETERINARIAN", "MANAGER", "SUPERADMIN"])("hides creation commands for %s without effective create grants", async (role) => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "no-create", role, displayName: "Sem criação", departmentCode: "INPATIENT", permissions: [] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Novo paciente/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Novo exame/ })).not.toBeInTheDocument();
+  });
+
+  it.each(["VETERINARIAN", "MANAGER", "SUPERADMIN"])("offers only the independently granted request command for %s", async (role) => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "request-only", role, displayName: "Solicitante", departmentCode: "INPATIENT", permissions: ["request.create"] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    expect(await screen.findByRole("button", { name: "Nova solicitação" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Buscar paciente ou exame/ }));
+    expect(screen.getByRole("option", { name: /Novo exame/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Novo paciente/ })).not.toBeInTheDocument();
+  });
+
+  it("keeps patient creation independent from request creation for an authorized veterinarian", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "patient-only", role: "VETERINARIAN", displayName: "Cadastro", departmentCode: "INPATIENT", permissions: ["patient.create"] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
+    expect(screen.getByRole("option", { name: /Novo paciente/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Novo exame/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
+  });
+
+  it.each(["ADMIN", "VIEWER", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM"])("preserves the clinical role boundary for %s even with create grants in an untrusted DTO", async (role) => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "ineligible", role, displayName: "Limite de perfil", departmentCode: "LABORATORY", permissions: ["patient.create", "request.create"] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(screen.queryByRole("button", { name: "Nova solicitação" })).not.toBeInTheDocument();
+    const palette = screen.queryByRole("button", { name: /Buscar paciente ou exame/ });
+    if (palette) fireEvent.click(palette);
+    expect(screen.queryByRole("option", { name: /Novo paciente/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Novo exame/ })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { role: "VETERINARIAN", permissions: ["service.catalog.view", "exam_definition.approve"] },
+    { role: "VIEWER", permissions: ["service.catalog.view"] }
+  ])("offers the clinical catalogue to authorized $role without administrative destinations", async ({ role, permissions }) => {
+    navigationState.pathname = "/admin/catalog";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "clinical-catalogue", role, displayName: "Catálogo clínico", departmentCode: "INPATIENT", permissions } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const main = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(main).getByRole("link", { name: "Catálogo clínico" })).toHaveAttribute("href", "/admin/catalog");
+    expect(within(main).getByRole("link", { name: "Catálogo clínico" })).toHaveAttribute("aria-current", "page");
+    for (const name of ["Administração", "Acessos", "Sistema"]) expect(within(main).queryByRole("link", { name })).not.toBeInTheDocument();
+  });
+
+  it("does not offer the clinical catalogue without the native view grant", async () => {
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "no-catalogue", role: "VETERINARIAN", displayName: "Conta reduzida", departmentCode: "INPATIENT", permissions: [] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const main = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(main).queryByRole("link", { name: "Catálogo clínico" })).not.toBeInTheDocument();
+  });
+
+  it("offers a scoped audit destination to MANAGER in desktop and mobile navigation without technical controls", async () => {
+    navigationState.pathname = "/system";
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "manager-audit", role: "MANAGER", displayName: "Gestor", departmentCode: "IT", permissions: ["audit.view"] } });
+    render(<AppShell><div>Conteúdo</div></AppShell>);
+    const main = await screen.findByRole("navigation", { name: "Navegação principal" });
+    expect(within(main).getByRole("link", { name: "Auditoria" })).toHaveAttribute("href", "/system#audit");
+    expect(within(main).queryByRole("link", { name: "Sistema" })).not.toBeInTheDocument();
+    expect(within(main).queryByRole("link", { name: "Acessos" })).not.toBeInTheDocument();
+    expect(within(main).queryByRole("link", { name: "Catálogos" })).not.toBeInTheDocument();
+    const mobile = screen.getByRole("navigation", { name: "Navegação rápida" });
+    expect(within(mobile).getByRole("link", { name: "Acesso rápido: Auditoria" })).toHaveAttribute("href", "/system#audit");
+    expect(within(mobile).getByRole("link", { name: "Acesso rápido: Auditoria" })).toHaveAttribute("aria-current", "page");
+  });
+
   it.each(["ADMIN", "MANAGER", "VETERINARIAN", "LAB_TECH"])("shows Sistema only to ADMIN (%s)", async (role) => {
     navigationState.pathname = "/system";
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "user@cvg.local", displayName: "Equipe", role, departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "user@cvg.local", displayName: "Equipe", role, departmentCode: "LABORATORY", timezone: "UTC", permissions: role === "ADMIN" ? ["user_role.manage", "outbox.manage"] : role === "MANAGER" ? ["request.create"] : [] } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     await screen.findByRole("navigation", { name: "Navegação principal" });
     if (role === "ADMIN") {
@@ -448,7 +651,7 @@ describe("AppShell", () => {
   });
 
   it("opens the existing PatientDialog and returns to the palette when it is cancelled", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
     fireEvent.click(screen.getByRole("option", { name: /Novo paciente/ }));
@@ -464,7 +667,7 @@ describe("AppShell", () => {
   });
 
   it("refreshes clinical data after a patient is created from the global shortcut", async () => {
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
     fireEvent.click(screen.getByRole("option", { name: /Novo paciente/ }));
@@ -481,7 +684,7 @@ describe("AppShell", () => {
   });
 
   it.each(["MANAGER", "LAB_TECH", "VIEWER"])("preserves creation permissions in the palette (%s)", async (role) => {
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "user@cvg.local", displayName: "Equipe", role, departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "user@cvg.local", displayName: "Equipe", role, departmentCode: "LABORATORY", timezone: "UTC", permissions: role === "ADMIN" ? ["user_role.manage", "outbox.manage"] : role === "MANAGER" ? ["request.create"] : [] } });
     render(<AppShell><div>Conteúdo</div></AppShell>);
     fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
     expect(screen.queryByRole("option", { name: /Novo paciente/ })).not.toBeInTheDocument();
@@ -490,7 +693,7 @@ describe("AppShell", () => {
 
   it("dispatches request creation to the existing queue workflow", async () => {
     navigationState.pathname = "/queues";
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] } });
     const listener = vi.fn();
     window.addEventListener("cvg:create-request", listener);
     render(<AppShell><div>Fila</div></AppShell>);
@@ -504,7 +707,7 @@ describe("AppShell", () => {
 
   it("navigates to the queue creation workflow from other pages", async () => {
     navigationState.pathname = "/patients";
-    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockResolvedValue({ user: { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] } });
     render(<AppShell><div>Pacientes</div></AppShell>);
     fireEvent.click(await screen.findByRole("button", { name: /Buscar paciente ou exame/ }));
     fireEvent.click(screen.getByRole("option", { name: /Novo exame/ }));
@@ -535,7 +738,7 @@ describe("AppShell", () => {
 
   it("reloads session state after the password change when navigating away from account", async () => {
     navigationState.pathname = "/account";
-    const user = { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" };
+    const user = { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] };
     vi.mocked(apiFetch).mockResolvedValueOnce({ user: { ...user, mustChangePassword: true } }).mockResolvedValueOnce({ user: { ...user, mustChangePassword: false } });
     const { rerender } = render(<AppShell><div>Conta</div></AppShell>);
     await screen.findByRole("navigation", { name: "Navegação principal" });
@@ -549,7 +752,7 @@ describe("AppShell", () => {
   });
 
   it("redirects a failed session to login and aborts identity loading on unmount", async () => {
-    vi.mocked(apiFetch).mockRejectedValueOnce(new Error("unauthorized"));
+    vi.mocked(apiFetch).mockRejectedValueOnce(new ApiClientError(401, {}));
     const first = render(<AppShell><div>Conteúdo protegido</div></AppShell>);
     await waitFor(() => expect(replace).toHaveBeenCalledWith("/login"));
     expect(screen.queryByText("Conteúdo protegido")).not.toBeInTheDocument();
@@ -563,7 +766,7 @@ describe("AppShell", () => {
 
   it("waits for the current route identity before redirecting a cached password-required session", async () => {
     navigationState.pathname = "/account";
-    const user = { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" };
+    const user = { id: "user-1", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] };
     let resolveSession!: (value: { user: typeof user }) => void;
     const pendingSession = new Promise<{ user: typeof user }>((resolve) => { resolveSession = resolve; });
     vi.mocked(apiFetch).mockResolvedValueOnce({ user: { ...user, mustChangePassword: true } }).mockReturnValueOnce(pendingSession);
@@ -581,7 +784,7 @@ describe("AppShell", () => {
   it("ignores a late identity from the previous route", async () => {
     let resolveOld!: (value: unknown) => void;
     const oldSession = new Promise((resolve) => { resolveOld = resolve; });
-    vi.mocked(apiFetch).mockReturnValueOnce(oldSession).mockResolvedValueOnce({ user: { id: "user-2", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC" } });
+    vi.mocked(apiFetch).mockReturnValueOnce(oldSession).mockResolvedValueOnce({ user: { id: "user-2", email: "vet@cvg.local", displayName: "Ana", role: "VETERINARIAN", departmentCode: "LABORATORY", timezone: "UTC", permissions: ["patient.create", "request.create"] } });
     const { rerender } = render(<AppShell><div>Primeira página</div></AppShell>);
     const oldSignal = vi.mocked(apiFetch).mock.calls[0][1]?.signal;
     navigationState.pathname = "/patients";

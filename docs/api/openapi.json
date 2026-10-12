@@ -93262,6 +93262,60 @@
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          },
+          "pendingWork": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "asOf",
+              "scope",
+              "diagnosticItems",
+              "hospitalTasks",
+              "intakes"
+            ],
+            "properties": {
+              "asOf": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "scope": {
+                "type": "string",
+                "const": "AUTHORIZED_ONLY"
+              },
+              "diagnosticItems": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "hospitalTasks": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "intakes": {
+                "oneOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
           }
         }
       },

@@ -74,7 +74,7 @@ function mockDashboardResponses(override?: (path: string, init?: RequestInit) =>
     if (path === "/dashboard") return Promise.resolve(stats) as never;
     if (path.startsWith("/notifications")) return Promise.resolve(notifications) as never;
     if (path === "/diagnostic-services") return Promise.resolve(services) as never;
-    if (path === "/session/me") return Promise.resolve({ user: { displayName: "Ana Silva" } }) as never;
+    if (path === "/session/me") return Promise.resolve({ user: { displayName: "Ana Silva", role: "VETERINARIAN", permissions: ["request.create", "patient.create"] } }) as never;
     if (path === "/patients") return Promise.resolve(patients) as never;
     return Promise.reject(new Error("unexpected request")) as never;
   });
@@ -354,7 +354,7 @@ describe("Dashboard resilience", () => {
       }
       if (path.startsWith("/notifications")) return Promise.resolve(notifications) as never;
       if (path === "/diagnostic-services") return Promise.resolve(services) as never;
-      if (path === "/session/me") return Promise.resolve({ user: { displayName: "Ana Silva" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { displayName: "Ana Silva", role: "VETERINARIAN", permissions: ["request.create", "patient.create"] } }) as never;
       return Promise.reject(new Error("unexpected request")) as never;
     });
 
@@ -372,9 +372,54 @@ describe("Dashboard resilience", () => {
     expect(statsAttempts).toBe(2);
   });
 
+  it.each(["VETERINARIAN", "INPATIENT_TEAM", undefined])("keeps readable clinical blocks without request creation for reduced/missing %s", async (role) => {
+    const api = mockDashboardResponses((path) => path === "/session/me" ? Promise.resolve({ user: { displayName: "Leitura clínica", role, permissions: [] } }) : undefined);
+    render(<Dashboard />); await screen.findByText("Thor");
+    expect(screen.queryByRole("button", { name: /Nova solicitação/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Solicitar exames" })).not.toBeInTheDocument();
+    expect(api.mock.calls.some(([, init]) => init?.method)).toBe(false);
+  });
+
+  it.each(["VETERINARIAN", "INPATIENT_TEAM"])("offers a request but no nested patient creation to %s with request.create alone", async (role) => {
+    const api = mockDashboardResponses((path) => path === "/session/me" ? Promise.resolve({ user: { displayName: "Solicitante", role, permissions: ["request.create"] } }) : path === "/patients" ? Promise.resolve(patients) : undefined);
+    render(<Dashboard />); fireEvent.click(await screen.findByRole("button", { name: /Nova solicitação/ }));
+    expect(await screen.findByRole("dialog", { name: "Solicitar exames" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cadastrar paciente/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancelar" }));
+    expect(api.mock.calls.some(([, init]) => init?.method)).toBe(false);
+  });
+
+  it("offers audit alone on the technical landing when ADMIN has only audit.view", async () => {
+    const api = mockDashboardResponses((path) => path === "/session/me" ? Promise.resolve({ user: { displayName: "Auditor técnico", role: "ADMIN", permissions: ["audit.view"] } }) : undefined);
+    render(<Dashboard />); await screen.findByRole("heading", { name: /Administração técnica/ });
+    expect(screen.queryByRole("link", { name: /Abrir administração/ })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Abrir auditoria/ })).toHaveAttribute("href", "/system#audit");
+    expect(api.mock.calls.map(([path]) => path)).toEqual(["/session/me"]);
+  });
+
+  it("does not offer administrative destinations on the technical landing without effective grants", async () => {
+    const api = mockDashboardResponses((path) => path === "/session/me" ? Promise.resolve({ user: { displayName: "Conta reduzida", role: "ADMIN", permissions: [] } }) : undefined);
+    render(<Dashboard />); await screen.findByRole("heading", { name: /Administração técnica/ });
+    expect(screen.queryByRole("link", { name: /Abrir administração|Abrir auditoria/ })).not.toBeInTheDocument();
+    expect(api.mock.calls.map(([path]) => path)).toEqual(["/session/me"]);
+  });
+
+  it("removes an open request and nested patient composer while resync revalidates the identity", async () => {
+    let refreshing = false; const identity = deferred<unknown>();
+    mockDashboardResponses((path) => path === "/session/me" ? refreshing ? identity.promise : Promise.resolve({ user: { displayName: "Solicitante", role: "VETERINARIAN", permissions: ["request.create", "patient.create"] } }) : undefined);
+    render(<Dashboard />); fireEvent.click(await screen.findByRole("button", { name: /Nova solicitação/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Cadastrar paciente/ }));
+    expect(screen.getByRole("dialog", { name: "Cadastrar paciente" })).toBeInTheDocument();
+    refreshing = true; fireEvent(window, new Event("cvg:realtime-resync"));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await act(async () => { identity.resolve({ user: { displayName: "Leitura clínica", role: "VETERINARIAN", permissions: [] } }); });
+    await screen.findByText("Thor");
+    expect(screen.queryByRole("button", { name: /Nova solicitação/ })).not.toBeInTheDocument();
+  });
+
   it("shows the technical administration landing without requesting clinical resources for ADMIN", async () => {
     const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { displayName: "Administração Técnica", role: "ADMIN" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { displayName: "Administração Técnica", role: "ADMIN", permissions: ["user_role.manage"] } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
 
@@ -402,7 +447,7 @@ describe("Dashboard resilience", () => {
     fireEvent(window, new Event("cvg:realtime-resync"));
     await waitFor(() => expect(apiFetchMock.mock.calls.filter(([path]) => path === "/dashboard")).toHaveLength(2));
 
-    fireEvent.click(screen.getByRole("button", { name: /Nova solicitação/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /Nova solicitação/i }));
     const dialog = await screen.findByRole("dialog", { name: "Solicitar exames" });
     fireEvent.click(within(dialog).getByRole("button", { name: "Fechar" }));
     expect(screen.queryByRole("dialog", { name: "Solicitar exames" })).not.toBeInTheDocument();
@@ -446,7 +491,7 @@ describe("Dashboard resilience", () => {
       }
       if (path.startsWith("/notifications")) return Promise.resolve(notifications) as never;
       if (path === "/diagnostic-services") return Promise.resolve(services) as never;
-      if (path === "/session/me") return Promise.resolve({ user: { displayName: "Ana Silva" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { displayName: "Ana Silva", role: "VETERINARIAN", permissions: ["request.create", "patient.create"] } }) as never;
       return Promise.reject(new Error("unexpected request")) as never;
     });
 

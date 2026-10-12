@@ -1,8 +1,9 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PatientDiagnostics } from "./patient-diagnostics";
 import * as apiClient from "./api-client";
+import { ApiClientError } from "./api-client";
 
 vi.mock("next/link", () => ({
   default: ({ children, ...props }: { children: React.ReactNode; href: string; [key: string]: unknown }) => <a {...props}>{children}</a>
@@ -38,6 +39,46 @@ const workspace = {
 };
 
 describe("PatientDiagnostics workspace", () => {
+  it.each([401, 403, 404])("evicts an open patient workspace when resync identity is refused with %s", async (status) => {
+    let revoked = false;
+    vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path) => {
+      if (path === "/session/me") { if (revoked) throw new ApiClientError(status, {}); return { user: { role: "VETERINARIAN", permissions: ["patient.view", "encounter.manage"] } } as never; }
+      return workspace as never;
+    });
+    render(<PatientDiagnostics patientId="patient-thor" />); await screen.findByTestId("patient-workspace");
+    revoked = true; fireEvent(window, new Event("cvg:realtime-resync"));
+    expect(screen.queryByText("UTI 1 · Box 03")).not.toBeInTheDocument();
+    await screen.findByRole("alert"); expect(screen.queryByTestId("patient-workspace")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
+  });
+
+  it("does not let an old diagnostic read restore patient data after read permission is removed", async () => {
+    let stage = 0; let resolveOld!: (value: unknown) => void;
+    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path) => {
+      if (path === "/session/me") return { user: { role: "VETERINARIAN", permissions: stage === 2 ? [] : ["patient.view", "encounter.manage"] } } as never;
+      return stage === 1 ? new Promise((resolve) => { resolveOld = resolve; }) as never : workspace as never;
+    });
+    render(<PatientDiagnostics patientId="patient-thor" />); await screen.findByTestId("patient-workspace");
+    stage = 1; fireEvent(window, new Event("cvg:realtime-resync"));
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path.startsWith("/patients/patient-thor/diagnostics?"))).toHaveLength(2));
+    stage = 2; fireEvent(window, new Event("cvg:realtime-resync")); await screen.findByRole("alert");
+    await act(async () => { resolveOld(workspace); });
+    expect(screen.queryByTestId("patient-workspace")).not.toBeInTheDocument(); expect(screen.queryByText("UTI 1 · Box 03")).not.toBeInTheDocument();
+  });
+
+  it("does not restore the patient workspace after a 503 identity resync until a fresh retry succeeds", async () => {
+    let unavailable = false;
+    vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path) => {
+      if (path === "/session/me") { if (unavailable) throw new ApiClientError(503, {}); return { user: { role: "VETERINARIAN", permissions: ["patient.view"] } } as never; }
+      return workspace as never;
+    });
+    render(<PatientDiagnostics patientId="patient-thor" />); await screen.findByTestId("patient-workspace");
+    unavailable = true; fireEvent(window, new Event("cvg:realtime-resync")); await screen.findByRole("alert");
+    expect(screen.queryByTestId("patient-workspace")).not.toBeInTheDocument();
+    unavailable = false; fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" })); await screen.findByTestId("patient-workspace");
+    expect(screen.getByText("UTI 1 · Box 03")).toBeInTheDocument();
+  });
+
   it("continues the audited history beyond the preview and preserves events on a failed next page", async () => {
     vi.spyOn(apiClient, "apiFetch").mockResolvedValue({ ...workspace, timelineNextCursor: "older+/=", timelineTotal: 3 } as never);
     const page = vi.spyOn(apiClient, "apiFetchWithMeta").mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ data: [{ id: "older", eventType: "PatientCreated", occurredAt: "2026-08-18T12:00:00.000Z" }], meta: { total: 3 } } as never);
@@ -230,15 +271,15 @@ describe("PatientDiagnostics workspace", () => {
   it("does not let an obsolete patient response replace the active patient context", async () => {
     let resolveThor!: (value: typeof workspace) => void;
     let resolveMel!: (value: typeof workspace) => void;
-    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => new Promise((resolve) => {
-      if (path.includes("patient-thor")) resolveThor = resolve as typeof resolveThor;
-      else resolveMel = resolve as typeof resolveMel;
-    }) as never);
+    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
+      if (path === "/session/me") return Promise.resolve({ user: { role: "VIEWER", permissions: ["patient.view"] } }) as never;
+      return new Promise((resolve) => { if (path.includes("patient-thor")) resolveThor = resolve as typeof resolveThor; else resolveMel = resolve as typeof resolveMel; }) as never;
+    });
     const { rerender } = render(<PatientDiagnostics patientId="patient-thor" />);
 
-    await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path.includes("/diagnostics?"))).toHaveLength(1));
     rerender(<PatientDiagnostics patientId="patient-mel" />);
-    await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path.includes("/diagnostics?"))).toHaveLength(2));
 
     resolveThor(workspace);
     await waitFor(() => expect(screen.queryByRole("heading", { name: /Thor em acompanhamento/ })).not.toBeInTheDocument());
@@ -250,16 +291,17 @@ describe("PatientDiagnostics workspace", () => {
   it("shows a safe error when the active patient's load fails after a prior patient was rendered", async () => {
     let resolveThor!: (value: typeof workspace) => void;
     const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
+      if (path === "/session/me") return Promise.resolve({ user: { role: "VIEWER", permissions: ["patient.view"] } }) as never;
       if (path.includes("patient-thor")) return new Promise((resolve) => { resolveThor = resolve as typeof resolveThor; }) as never;
       return Promise.reject(new Error("active patient unavailable")) as never;
     });
     const { rerender } = render(<PatientDiagnostics patientId="patient-thor" />);
-    await waitFor(() => expect(api).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path.includes("/diagnostics?"))).toHaveLength(1));
     resolveThor(workspace);
     expect(await screen.findByTestId("patient-workspace")).toBeInTheDocument();
 
     rerender(<PatientDiagnostics patientId="patient-mel" />);
-    await waitFor(() => expect(api).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path.includes("/diagnostics?"))).toHaveLength(2));
     expect(await screen.findByRole("alert")).toHaveTextContent("Paciente indisponível");
     expect(screen.queryByText(/Thor em acompanhamento/)).not.toBeInTheDocument();
   });
@@ -311,6 +353,37 @@ describe("PatientDiagnostics encounter actions", () => {
       return Promise.resolve(data) as never;
     });
   }
+
+  it.each(["VETERINARIAN", "INPATIENT_TEAM", "MANAGER", "SUPERADMIN"])("hides encounter mutations while retaining authorized history for reduced %s", async (role) => {
+    const api = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/session/me" ? { user: { role, permissions: ["patient.view", "admission.view"] } } : workspace) as never);
+    const first = render(<PatientDiagnostics patientId="patient-thor" />);
+    await screen.findByText("Atendimento aberto");
+    expect(screen.queryByRole("button", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
+    first.unmount();
+    api.mockImplementation((path) => Promise.resolve(path === "/session/me" ? { user: { role, permissions: ["patient.view", "admission.view"] } } : closedWorkspace) as never);
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    await screen.findByText("Sem atendimento aberto");
+    expect(screen.getByRole("list", { name: "Histórico de atendimentos" })).toHaveTextContent(/Encerrado em/);
+    expect(screen.queryByRole("button", { name: "Novo atendimento" })).not.toBeInTheDocument();
+    expect(api.mock.calls.some(([, init]) => init?.method)).toBe(false);
+  });
+
+  it("closes a pending discharge confirmation and revalidates encounter.manage on resync", async () => {
+    let refreshing = false; let resolveIdentity!: (value: unknown) => void;
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
+      if (path === "/session/me") return refreshing ? new Promise((resolve) => { resolveIdentity = resolve; }) as never : Promise.resolve({ user: { role: "VETERINARIAN", permissions: ["patient.view", "encounter.manage"] } }) as never;
+      return Promise.resolve(workspace) as never;
+    });
+    render(<PatientDiagnostics patientId="patient-thor" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Encerrar atendimento" }));
+    expect(screen.getByRole("dialog", { name: "Encerrar atendimento" })).toBeInTheDocument();
+    refreshing = true; fireEvent(window, new Event("cvg:realtime-resync"));
+    expect(screen.queryByRole("dialog", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
+    await act(async () => { resolveIdentity({ user: { role: "VETERINARIAN", permissions: ["patient.view"] } }); });
+    await screen.findByText("Atendimento aberto");
+    expect(screen.queryByRole("button", { name: "Encerrar atendimento" })).not.toBeInTheDocument();
+  });
 
   it("closes the open encounter after a confirmation that keeps pending exams with the requester", async () => {
     const api = mockApi(workspace);

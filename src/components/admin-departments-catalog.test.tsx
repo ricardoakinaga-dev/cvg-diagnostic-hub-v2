@@ -12,7 +12,7 @@ const legacy: DiagnosticService = { id: "legacy", code: "HISTORICAL", name: "Exa
 function setup() {
   let current = department;
   vi.mocked(apiFetch).mockImplementation(async (path, init) => {
-    if (path === "/session/me") return { user: { id: "super", displayName: "Superadmin", departmentCode: "IT", role: "SUPERADMIN", permissions: ["service.catalog.manage"] } } as never;
+    if (path === "/session/me") return { user: { id: "super", displayName: "Superadmin", departmentCode: "IT", role: "SUPERADMIN", permissions: ["department.view", "service.catalog.manage"] } } as never;
     if (path === "/departments?includeInactive=true") return [current, { ...department, id: "old-dept", code: "OLD_SECTOR", name: "Setor anterior", active: false }] as never;
     if (path === "/diagnostic-services?includeInactive=true") return [legacy] as never;
     if (path === "/reason-codes" || path === "/users") return [] as never;

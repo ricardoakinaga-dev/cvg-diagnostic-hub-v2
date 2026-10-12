@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import type { Notification, SessionResponse } from "@cvg/contracts";
-import { apiFetch } from "./api-client";
-import { LoadingState } from "./feedback-states";
+import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
+import { ErrorState, LoadingState } from "./feedback-states";
 import { Icon, type IconName } from "./ui-icons";
 import { CommandPalette } from "./command-palette";
 import { PatientDialog } from "./patient-dialog";
@@ -102,6 +102,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   const [user, setUser] = useState<SessionResponse["user"] | null>(null);
   const [sessionPath, setSessionPath] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [sessionError, setSessionError] = useState("");
   const [live, setLive] = useState<LiveStatus>("connecting");
   const [reconnectToken, setReconnectToken] = useState(0);
   const [hash, setHash] = useState("");
@@ -116,9 +117,9 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   const requiresPasswordChange = user?.mustChangePassword === true;
   const departmentDirectory = useDepartments(requiresPasswordChange ? undefined : user?.id, { catalog: user?.role !== "ADMIN" });
   const sessionLoading = loading || sessionPath !== pathname;
-  const canUsePalette = Boolean(user && user.role !== "ADMIN" && !requiresPasswordChange && !sessionLoading);
-  const canCreatePatient = user?.role === "SUPERADMIN" || user?.role === "VETERINARIAN" || user?.role === "INPATIENT_TEAM";
-  const canCreateRequest = canCreatePatient || user?.role === "MANAGER";
+  const canUsePalette = Boolean(user && user.role !== "ADMIN" && !requiresPasswordChange && !sessionLoading && !sessionError);
+  const canCreatePatient = Boolean(user?.permissions?.includes("patient.create") && ["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM"].includes(user.role));
+  const canCreateRequest = Boolean(user?.permissions?.includes("request.create") && ["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(user.role));
   const modalOpen = canUsePalette && (showPalette || showPatient);
 
   useEffect(() => {
@@ -143,17 +144,32 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
-    apiFetch<SessionResponse>("/session/me", { signal: controller.signal })
-      .then((result) => { if (!controller.signal.aborted) { setUser(result.user); setSessionPath(pathname); setShowPalette(false); setShowPatient(false); setShowUserMenu(false); setMobileOpen(false); } })
-      .catch(() => { if (!controller.signal.aborted) { setUser(null); setSessionPath(pathname); router.replace("/login"); } })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
+    let controller: AbortController | undefined;
+    let version = 0;
+    const readIdentity = () => {
+      const current = ++version;
+      controller?.abort();
+      const request = new AbortController();
+      controller = request;
+      void apiFetch<SessionResponse>("/session/me", { signal: request.signal })
+        .then((result) => { if (!request.signal.aborted && current === version) { setUser(result.user); setSessionError(""); setSessionPath(pathname); setShowPalette(false); setShowPatient(false); setShowUserMenu(false); setMobileOpen(false); } })
+        .catch((cause) => {
+          if (request.signal.aborted || current !== version) return;
+          setSessionPath(pathname);
+          if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) { setUser(null); router.replace("/login"); }
+          else setSessionError(getSafeErrorMessage(cause, "Não foi possível revalidar a identificação da equipe."));
+        })
+        .finally(() => { if (!request.signal.aborted && current === version) setLoading(false); });
+    };
+    const refresh = () => { setLoading(true); setSessionError(""); setShowPalette(false); setShowPatient(false); setShowUserMenu(false); setMobileOpen(false); readIdentity(); };
+    readIdentity();
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => { version += 1; controller?.abort(); window.removeEventListener("cvg:realtime-resync", refresh); };
   }, [pathname, router]);
 
   useEffect(() => {
-    if (!loading && sessionPath === pathname && requiresPasswordChange && pathname !== "/account" && pathname !== "/login") router.replace("/account?password=required");
-  }, [loading, pathname, requiresPasswordChange, router, sessionPath]);
+    if (!loading && !sessionError && sessionPath === pathname && requiresPasswordChange && pathname !== "/account" && pathname !== "/login") router.replace("/account?password=required");
+  }, [loading, pathname, requiresPasswordChange, router, sessionError, sessionPath]);
 
   useEffect(() => {
     if (!canUsePalette) return;
@@ -181,7 +197,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   }, [requiresPasswordChange, user]);
 
   useEffect(() => {
-    if (!user || requiresPasswordChange) return;
+    if (!user?.id || requiresPasswordChange) return;
     let source: EventSource | undefined;
     let fallbackTimer: ReturnType<typeof setInterval> | undefined;
     let updateTimer: ReturnType<typeof setTimeout> | undefined;
@@ -205,6 +221,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
     };
     const startFallback = () => {
       if (fallbackTimer !== undefined) return;
+      window.dispatchEvent(new Event("cvg:realtime-resync"));
       window.dispatchEvent(new Event("cvg:realtime-updated"));
       fallbackTimer = setInterval(() => window.dispatchEvent(new Event("cvg:realtime-updated")), REALTIME_FALLBACK_INTERVAL_MS);
     };
@@ -230,7 +247,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
     };
     connect();
     return () => { stopped = true; source?.close(); stopFallback(); clearTimeout(updateTimer); };
-  }, [reconnectToken, requiresPasswordChange, user]);
+  }, [reconnectToken, requiresPasswordChange, user?.id]);
 
   function reconcile() {
     setLive("connecting");
@@ -253,12 +270,18 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   }
 
   if (sessionLoading) return <ShellLoadingState />;
+  if (sessionError) return <ErrorState page title="Identidade indisponível" message={sessionError} onRetry={() => { window.dispatchEvent(new Event("cvg:realtime-resync")); }} />;
   if (!user) return null;
   const isTechnicalAdmin = user.role === "ADMIN";
   const isSuperadmin = user.role === "SUPERADMIN";
   const isManager = user.role === "MANAGER";
   const canAccessManagement = isManager || isSuperadmin;
   const canAccessClinicalOperations = !isTechnicalAdmin;
+  const canAccessUsers = user.permissions?.some((permission) => ["user_role.manage", "user.view", "user.create", "user.update", "user.deactivate"].includes(permission));
+  const canAccessCatalog = user.permissions?.some((permission) => ["service.catalog.manage", "service.catalog.view", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"].includes(permission));
+  const canAccessAudit = user.permissions?.includes("audit.view") ?? false;
+  const canAccessAdmin = (isTechnicalAdmin || isSuperadmin || isManager) && Boolean(canAccessUsers || canAccessCatalog || user.permissions?.some((permission) => ["reason_code.manage", "patient.data_export"].includes(permission)));
+  const canAccessSystem = canAccessAudit || ((isTechnicalAdmin || isSuperadmin) && Boolean(user.permissions?.some((permission) => ["user_role.manage", "user.view", "outbox.manage", "critical_result_policy.manage"].includes(permission))));
   const managementView = searchParams.get("view");
   const dept = searchParams.get("dept");
   const preset = searchParams.get("preset");
@@ -273,7 +296,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
   };
 
   const content = requiresPasswordChange && pathname !== "/account" && pathname !== "/login" ? <ShellLoadingState /> : flush ? children : <>
-    <PageHeader crumbs={legacyCrumbs(pathname, managementView, hash)} heading={false} />
+    <PageHeader crumbs={legacyCrumbs(pathname, managementView, hash).map((crumb) => crumb.href === "/admin" && !canAccessAdmin ? { ...crumb, href: undefined } : crumb)} heading={false} />
     <div className="page-body">{children}</div>
   </>;
 
@@ -315,6 +338,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
               <span className="nav-group-label">Workspace</span>
               <NavLink href="/queues" active={onQueues && !dept && !managementView} icon="layers">Todos os exames</NavLink>
               {user.permissions?.includes("hospital_task.view") && <NavLink href="/planner" active={pathname === "/planner" || pathname.startsWith("/planner/tasks/")} icon="board">Planner hospitalar</NavLink>}
+              {!canAccessManagement && user.permissions?.includes("service.catalog.view") && <NavLink href="/admin/catalog" active={pathname === "/admin/catalog"} icon="catalog">Catálogo clínico</NavLink>}
               {canAccessManagement && <NavLink href="/indicators" active={pathname.startsWith("/indicators")} icon="analytics">Indicadores</NavLink>}
             </div>}
             {canAccessManagement && <div className="nav-group">
@@ -323,21 +347,22 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
               <NavLink href="/management?view=requests" active={pathname === "/management" && managementView === "requests"} icon="requests">Solicitações</NavLink>
               <NavLink href="/management?view=pending" active={pathname === "/management" && managementView === "pending"} icon="attention">Pendências</NavLink>
               <NavLink href="/management?view=stats" active={pathname === "/management" && managementView === "stats"} icon="analytics">Estatísticas</NavLink>
-              {!isSuperadmin && <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>}
-              {!isSuperadmin && <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>}
+              {!isSuperadmin && canAccessUsers && <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>}
+              {!isSuperadmin && canAccessCatalog && <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>}
               {!isSuperadmin && user.permissions?.includes("service.catalog.view") && <NavLink href="/admin/hospital-services" active={pathname === "/admin/hospital-services"} icon="catalog">Serviços hospitalares</NavLink>}
               {!isSuperadmin && user.permissions?.includes("department.view") && <NavLink href="/admin/departments" active={pathname === "/admin/departments"} icon="building">Setores</NavLink>}
               {!isSuperadmin && user.permissions?.includes("access_group.view") && <NavLink href="/admin/access-groups" active={pathname === "/admin/access-groups"} icon="users">Grupos de acesso</NavLink>}
             </div>}
+            {!isTechnicalAdmin && !isSuperadmin && canAccessAudit && <div className="nav-group"><NavLink href="/system#audit" active={pathname.startsWith("/system")} icon="activity">Auditoria</NavLink></div>}
             {(isTechnicalAdmin || isSuperadmin) && <div className="nav-group">
               <span className="nav-group-label">Workspace</span>
-              <NavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings">Administração</NavLink>
-              <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>
-              <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>
+              {canAccessAdmin && <NavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings">Administração</NavLink>}
+              {canAccessUsers && <NavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users">Acessos</NavLink>}
+              {canAccessCatalog && <NavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog">Catálogos</NavLink>}
               {user.permissions?.includes("service.catalog.view") && <NavLink href="/admin/hospital-services" active={pathname === "/admin/hospital-services"} icon="catalog">Serviços hospitalares</NavLink>}
               {user.permissions?.includes("department.view") && <NavLink href="/admin/departments" active={pathname === "/admin/departments"} icon="building">Setores</NavLink>}
               {user.permissions?.includes("access_group.view") && <NavLink href="/admin/access-groups" active={pathname === "/admin/access-groups"} icon="users">Grupos de acesso</NavLink>}
-              <NavLink href="/system" active={pathname.startsWith("/system")} icon="activity">Sistema</NavLink>
+              {canAccessSystem && <NavLink href="/system" active={pathname.startsWith("/system")} icon="activity">Sistema</NavLink>}
             </div>}
             {user.permissions?.some((permission) => ["plan.view", "shift.view", "handoff.offer", "handoff.accept", "hospital_resource.view", "hospital_calendar.view", "hospital_capacity.view", "admission.view", "checklist_template.view", "recurrence.view", "hospital_document.view", "work_notification.view", "work_activity.preference.manage", "hospital_metric.view", "hospital_report.view", "institution.manage", "user_invite.manage", "hospital_task.view", "integration.manage", "integration.exchange"].includes(permission)) && <div className="nav-group">
               <span className="nav-group-label">Hospital</span>
@@ -393,7 +418,7 @@ function AppShellContent({ children, flush }: Readonly<{ children: React.ReactNo
           <WorkflowPermissionsProvider permissions={user.permissions}><DepartmentLabelsProvider names={Object.fromEntries(sectorNames)}>{content}</DepartmentLabelsProvider></WorkflowPermissionsProvider>
         </div>
       </main>
-      {requiresPasswordChange ? <nav className={`mobile-nav ${styles.accountNav}`} aria-label="Navegação rápida"><MobileNavLink href="/account?password=required" active={pathname === "/account"} icon="account" label="Conta" /></nav> : <MobileNav inert={modalOpen || peekOpen} isTechnicalAdmin={isTechnicalAdmin} isSuperadmin={isSuperadmin} isManager={isManager} pathname={pathname} hash={hash} view={managementView} unread={unread} />}
+      {requiresPasswordChange ? <nav className={`mobile-nav ${styles.accountNav}`} aria-label="Navegação rápida"><MobileNavLink href="/account?password=required" active={pathname === "/account"} icon="account" label="Conta" /></nav> : <MobileNav inert={modalOpen || peekOpen} isTechnicalAdmin={isTechnicalAdmin} isSuperadmin={isSuperadmin} isManager={isManager} canAccessAudit={canAccessAudit} canAccessAdmin={canAccessAdmin} canAccessUsers={Boolean(canAccessUsers)} canAccessCatalog={Boolean(canAccessCatalog)} canAccessSystem={canAccessSystem} pathname={pathname} hash={hash} view={managementView} unread={unread} />}
       {canUsePalette && showPalette && <div inert={showPatient} aria-hidden={showPatient || undefined}><CommandPalette canCreatePatient={canCreatePatient} canCreateRequest={canCreateRequest} onClose={() => setShowPalette(false)} onNewPatient={() => setShowPatient(true)} onNewRequest={newRequest} onNavigate={(href) => { setShowPalette(false); router.push(href); }} /></div>}
       {canUsePalette && showPatient && canCreatePatient && <PatientDialog nested onClose={() => setShowPatient(false)} onCreated={() => { setShowPatient(false); setShowPalette(false); window.dispatchEvent(new Event("cvg:realtime-updated")); router.refresh(); }} />}
     </div>
@@ -437,41 +462,45 @@ function NavLink({ href, active, icon, children, badge, nested = false }: { href
   return <Link href={href} className={`nav-link${active ? " active" : ""}${nested ? " nav-link-nested" : ""}`} aria-label={label} title={label} aria-current={active ? "page" : undefined}><span className="nav-icon" aria-hidden="true"><Icon name={icon} size={nested ? 14 : 16} /></span><span className="nav-label">{children}</span>{badge ? <span className="nav-badge" aria-hidden="true">{badge > 99 ? "99+" : badge}</span> : null}</Link>;
 }
 
-function MobileNav({ inert, isTechnicalAdmin, isSuperadmin, isManager, pathname, hash, view, unread }: { inert: boolean; isTechnicalAdmin: boolean; isSuperadmin: boolean; isManager: boolean; pathname: string; hash: string; view: string | null; unread: number }) {
+function MobileNav({ inert, isTechnicalAdmin, isSuperadmin, isManager, canAccessAudit, canAccessAdmin, canAccessUsers, canAccessCatalog, canAccessSystem, pathname, hash, view, unread }: { inert: boolean; isTechnicalAdmin: boolean; isSuperadmin: boolean; isManager: boolean; canAccessAudit: boolean; canAccessAdmin: boolean; canAccessUsers: boolean; canAccessCatalog: boolean; canAccessSystem: boolean; pathname: string; hash: string; view: string | null; unread: number }) {
   if (isSuperadmin) {
-    const adminFocus = pathname.startsWith("/system") ? { href: "/system", icon: "activity" as const, label: "Sistema" }
-      : pathname === "/admin/users" ? { href: "/admin/users", icon: "users" as const, label: "Acessos" }
-        : pathname === "/admin/catalog" ? { href: "/admin/catalog", icon: "catalog" as const, label: "Catálogo" }
-          : { href: "/admin", icon: "settings" as const, label: "Admin" };
+    const destinations = [
+      ...(canAccessSystem ? [{ href: "/system", icon: "activity" as const, label: "Sistema" }] : []),
+      ...(canAccessUsers ? [{ href: "/admin/users", icon: "users" as const, label: "Acessos" }] : []),
+      ...(canAccessCatalog ? [{ href: "/admin/catalog", icon: "catalog" as const, label: "Catálogo" }] : []),
+      ...(canAccessAdmin ? [{ href: "/admin", icon: "settings" as const, label: "Admin" }] : [])
+    ];
+    const adminFocus = destinations.find((destination) => pathname === destination.href)
+      ?? destinations.find((destination) => destination.href === "/admin") ?? destinations[0];
     return <nav className={`mobile-nav ${styles.adminNav}`} aria-label="Navegação rápida" inert={inert}>
       <MobileNavLink href="/" active={pathname === "/"} icon="home" label="Início" />
       <MobileNavLink href="/queues" active={pathname.startsWith("/queues")} icon="layers" label="Exames" />
       <MobileNavLink href="/patients" active={pathname.startsWith("/patients")} icon="paw" label="Pacientes" />
       <MobileNavLink href="/management" active={pathname === "/management" || pathname === "/indicators"} icon="analytics" label="Gestão" />
-      <MobileNavLink href={adminFocus.href} active={pathname.startsWith("/admin") || pathname.startsWith("/system")} icon={adminFocus.icon} label={adminFocus.label} />
+      {adminFocus && <MobileNavLink href={adminFocus.href} active={pathname === adminFocus.href} icon={adminFocus.icon} label={adminFocus.label} />}
       <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
     </nav>;
   }
   if (isTechnicalAdmin) {
     return <nav className={`mobile-nav ${styles.adminNav}`} aria-label="Navegação rápida" inert={inert}>
       <MobileNavLink href="/" active={pathname === "/"} icon="home" label="Início" />
-      <MobileNavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings" label="Admin" />
-      <MobileNavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users" label="Acessos" />
-      <MobileNavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog" label="Catálogo" />
-      <MobileNavLink href="/system" active={pathname.startsWith("/system")} icon="activity" label="Sistema" />
+      {canAccessAdmin && <MobileNavLink href="/admin" active={pathname === "/admin" && !hash} icon="settings" label="Admin" />}
+      {canAccessUsers && <MobileNavLink href="/admin/users" active={pathname === "/admin/users" || (pathname === "/admin" && hash === "#users")} icon="users" label="Acessos" />}
+      {canAccessCatalog && <MobileNavLink href="/admin/catalog" active={pathname === "/admin/catalog" || (pathname === "/admin" && hash === "#catalog")} icon="catalog" label="Catálogo" />}
+      {canAccessSystem && <MobileNavLink href="/system" active={pathname.startsWith("/system")} icon="activity" label="Sistema" />}
       <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
     </nav>;
   }
   if (isManager) {
     // Managers keep one management destination, the one they are on or "Atenção".
     const onManagement = pathname === "/management";
-    const focus = view === "requests" ? { href: "/management?view=requests", icon: "requests" as const, label: "Solicitações" }
+    const focus = canAccessAudit && pathname.startsWith("/system") ? { href: "/system#audit", icon: "activity" as const, label: "Auditoria" } : view === "requests" ? { href: "/management?view=requests", icon: "requests" as const, label: "Solicitações" }
       : view === "stats" ? { href: "/management?view=stats", icon: "analytics" as const, label: "Estatísticas" }
         : { href: "/management?view=pending", icon: "attention" as const, label: "Atenção" };
     return <nav className="mobile-nav" aria-label="Navegação rápida" inert={inert}>
       <MobileNavLink href="/" active={pathname === "/"} icon="home" label="Início" />
       <MobileNavLink href="/queues" active={pathname.startsWith("/queues")} icon="layers" label="Exames" />
-      <MobileNavLink href={focus.href} active={onManagement && Boolean(view)} icon={focus.icon} label={focus.label} />
+      <MobileNavLink href={focus.href} active={(onManagement && Boolean(view)) || (canAccessAudit && pathname.startsWith("/system"))} icon={focus.icon} label={focus.label} />
       <MobileNavLink href="/notifications" active={pathname.startsWith("/notifications")} icon="inbox" label="Entrada" badge={unread} />
       <MobileNavLink href="/account" active={pathname.startsWith("/account")} icon="account" label="Conta" />
     </nav>;

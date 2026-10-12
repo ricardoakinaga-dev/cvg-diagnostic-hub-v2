@@ -86,6 +86,16 @@ describe("WorkItemsView", () => {
   });
   afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); vi.clearAllMocks(); window.history.replaceState(null, "", "/"); });
 
+  it.each(["VETERINARIAN", "INPATIENT_TEAM", "SUPERADMIN"] as const)("does not offer nested patient creation to %s with request.create alone", async (role) => {
+    mockApi({ ...vet, role, permissions: ["request.list", "queue.view", "service.catalog.view", "request.create"] });
+    await renderView();
+    fireEvent.click(screen.getAllByRole("button", { name: "Nova solicitação" })[0]);
+    const dialog = await screen.findByRole("dialog", { name: "Solicitar exames" });
+    expect(within(dialog).queryByRole("button", { name: /Cadastrar paciente/ })).not.toBeInTheDocument();
+    expect(vi.mocked(apiFetch).mock.calls.some(([, init]) => init?.method)).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
+  });
+
   it("lists scoped exams grouped by state with Plane properties and a count", async () => {
     await renderView();
     expect(screen.getByRole("navigation", { name: "Você está em" })).toHaveTextContent("Todos os exames");
