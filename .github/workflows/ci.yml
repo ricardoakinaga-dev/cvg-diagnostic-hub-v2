@@ -316,6 +316,8 @@ jobs:
           --health-retries 5
     env:
       E2E_DATABASE_NAME: "cvg_test_e2e_${{ github.run_id }}"
+      # Only this disposable lane prepares a native synthetic reference approval before any request.
+      E2E_APPROVED_SYNTHETIC_LABORATORY: "true"
       POSTGRES_TEST_ADMIN_URL: "postgresql://cvg:cvg_ci@127.0.0.1:5432/postgres"
       DATABASE_URL: "postgresql://cvg:cvg_ci@127.0.0.1:5432/cvg_test_e2e_${{ github.run_id }}"
       APP_DATA_MODE: postgres

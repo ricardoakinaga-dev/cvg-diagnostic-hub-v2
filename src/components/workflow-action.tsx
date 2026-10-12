@@ -156,6 +156,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
   const [notice, setNotice] = useState("");
   const [accessionCode, setAccessionCode] = useState("");
   const [sampleType, setSampleType] = useState("EDTA");
+  const sampleTypeEditedRef = useRef(false);
   const [sampleLabel, setSampleLabel] = useState<SampleLabel["sample"] | null>(null);
   const [narrative, setNarrative] = useState("");
   const [startsAt, setStartsAt] = useState("");
@@ -187,8 +188,8 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
       if (!active) return;
       setSampleLabel(label.sample);
       if (label.sample.status !== "EXPECTED") return;
-      // Keep what the user already typed; the catalog type replaces only the untouched default.
-      setSampleType((current) => current !== "EDTA" ? current : label.sample.sampleType === "A definir" ? "" : label.sample.sampleType);
+      // An explicit EDTA entry is also an edit, even though it matches the initial default.
+      if (!sampleTypeEditedRef.current) setSampleType((current) => current !== "EDTA" ? current : label.sample.sampleType === "A definir" ? "" : label.sample.sampleType);
     }).catch(() => { /* the expected code is a convenience; the server still validates the receipt */ });
     return () => { active = false; };
   }, [open, expectedSampleId, selectedAction, role, item, permissions]);
@@ -336,7 +337,7 @@ export function WorkflowAction({ item, onComplete, onDraftCreated, initialAction
         {selectedAction === "RECEIVE_SAMPLE" || selectedAction === "RECEIVE_REPLACEMENT" ? <>
           {expectedSample && <p className="workflow-expected-sample">Amostra esperada: <strong className="mono">{expectedSample.accessionCode}</strong></p>}
           <label>Accession<input ref={setFirstFieldRef} value={accessionCode} onChange={(event) => setAccessionCode(event.target.value)} autoComplete="off" placeholder={expectedSample ? "Leia o código de barras ou deixe em branco" : "Leia o código de barras ou digite o accession"} /></label>
-          <label>Tipo de amostra<input value={sampleType} onChange={(event) => setSampleType(event.target.value)} placeholder="EDTA" /></label>
+          <label>Tipo de amostra<input value={sampleType} onInput={() => { sampleTypeEditedRef.current = true; }} onChange={(event) => { sampleTypeEditedRef.current = true; setSampleType(event.target.value); }} placeholder="EDTA" /></label>
         </> : null}
         {selectedAction === "SCHEDULE" || selectedAction === "RESCHEDULE" ? <>
           <label>Início<input ref={setFirstFieldRef} type="datetime-local" aria-describedby={`${formId}-hospital-time`} value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>

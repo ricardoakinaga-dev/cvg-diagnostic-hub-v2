@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { WorkflowAction as ActualWorkflowAction } from "./workflow-action";
 import { rolePermissions } from "@/server/security/authorization";
@@ -53,6 +53,38 @@ describe("WorkflowAction", () => {
   describe("pre-assigned sample (accession label)", () => {
     const expected = { sample: { id: "sample-9", accessionCode: "A261008-00015", sampleType: "Soro", status: "EXPECTED", version: 7 } };
     const withExpected = (receive: (path: string) => Promise<unknown>) => vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => (path === "/samples/sample-9/label" ? Promise.resolve(expected) : receive(String(path))) as never);
+
+    it.each(["A definir", "Soro"])("preserves explicitly entered EDTA when the late label says %s", async (catalogType) => {
+      let resolveLabel!: (value: typeof expected) => void;
+      const label = new Promise<typeof expected>((resolve) => { resolveLabel = resolve; });
+      const onComplete = vi.fn();
+      const api = vi.spyOn(apiClient, "apiFetch").mockReturnValueOnce(label as never).mockResolvedValue({});
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} onComplete={onComplete} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      fireEvent.change(screen.getByLabelText("Tipo de amostra"), { target: { value: "" } });
+      fireEvent.change(screen.getByLabelText("Tipo de amostra"), { target: { value: "EDTA" } });
+
+      await act(async () => { resolveLabel({ sample: { ...expected.sample, sampleType: catalogType } }); });
+
+      expect(screen.getByLabelText("Tipo de amostra")).toHaveValue("EDTA");
+      fireEvent.click(screen.getByRole("button", { name: "Confirmar" }));
+      await waitFor(() => expect(onComplete).toHaveBeenCalledOnce());
+      const call = api.mock.calls.find(([path]) => path === "/diagnostic-items/item-1/receive-sample");
+      expect(JSON.parse(call?.[1]?.body as string)).toEqual({ sampleType: "EDTA", expectedVersion: 3 });
+    });
+
+    it("preserves EDTA entered before the label even when it equals the initial field value", async () => {
+      let resolveLabel!: (value: typeof expected) => void;
+      const label = new Promise<typeof expected>((resolve) => { resolveLabel = resolve; });
+      vi.spyOn(apiClient, "apiFetch").mockReturnValueOnce(label as never);
+      render(<WorkflowAction item={item({ currentSampleId: "sample-9" })} />);
+      fireEvent.click(screen.getByRole("button", { name: "Receber amostra" }));
+      fireEvent.input(screen.getByLabelText("Tipo de amostra"), { target: { value: "EDTA" } });
+
+      await act(async () => { resolveLabel({ sample: { ...expected.sample, sampleType: "A definir" } }); });
+
+      expect(screen.getByLabelText("Tipo de amostra")).toHaveValue("EDTA");
+    });
 
     it("shows the expected code, pre-fills the type and submits a blank scan field", async () => {
       const onComplete = vi.fn();

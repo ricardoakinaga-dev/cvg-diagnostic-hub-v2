@@ -1,0 +1,447 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-12T03:04:19.772941Z",
+  "status": "FOCUSED_BROWSER_REPAIRS_PASS_FOURTH_CI_FAILURE_PRESERVED_FRESH_CI_PENDING",
+  "candidate": {
+    "manifest": "HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json",
+    "fileCount": 1090,
+    "fingerprintSha256": "782359aea3ca7f051b1f1bfd0532905ad76e332632e787712886718d36c2073e",
+    "baseCommit": "e224a23bdf2d97f4eb61b23d356881bb842f260c",
+    "branch": "feat/hospital-planner-20261012",
+    "committedAtCapture": false,
+    "deployed": false
+  },
+  "sourceDelta": {
+    "changed": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "beforeSha256": "9c6c9512b920bb82aa6b6634fc14d0455ae67c16a3540f3841dc4cc55b5ee552",
+        "afterSha256": "fe34ff43a68afb0748b32b2041bb26f75e47b47ce0d6e569b41110f8ea13f285"
+      },
+      {
+        "path": "scripts/seed.ts",
+        "beforeSha256": "0e3db971d8e9df941630d353af019ed35cf27d58bc7f6b03a0d8702ac1fe8189",
+        "afterSha256": "8a565f10b9dd4db5807b52060a2440f64b30621f0326d67c2ae25531a7c1a87f"
+      },
+      {
+        "path": "src/app/plane.css",
+        "beforeSha256": "05d7f69cdd37cbdc8eb5f72652cc01fa3415f0e4893c38864e17a6c4ff2db147",
+        "afterSha256": "e1a081dff55046ee699355aed77bc1d63335f78eeab9e0aa338b26ca6def98f4"
+      },
+      {
+        "path": "src/components/workflow-action.test.tsx",
+        "beforeSha256": "2be1e8e491d681716c0f1fa08d18c394452c6d6508541de6b4f686b11603a92e",
+        "afterSha256": "8a2c1cf1d273d03889c0bfd015e11ffb05d470e10d5e52cc16df6841eddb5c62"
+      },
+      {
+        "path": "src/components/workflow-action.tsx",
+        "beforeSha256": "30ad96d0a014e57482a7fa22da8cc4a4a99e40ed0c2c0a800bb7e11b39b36623",
+        "afterSha256": "fc094912783ba353d975c8dd5135a8b640d2f08b3af09bc8227697d1fa21b1fe"
+      },
+      {
+        "path": "tests/e2e/clinical-lifecycle.spec.ts",
+        "beforeSha256": "fe36d992cbb5b7aa402a44f47d37db3e98473413fb220785483759686c0c8ec1",
+        "afterSha256": "f78866d2aa8d3d6c6c569862a96b9c981e5f011feb6a35206e54f3c945cd6eae"
+      }
+    ],
+    "added": [
+      {
+        "path": "src/test/e2e-laboratory-policy.test.ts",
+        "sha256": "c27b1e67b086f6cf71304b432644f8baed73a4a4786a52dc2c1edf8c8cf84cbd"
+      },
+      {
+        "path": "src/test/e2e-laboratory-policy.ts",
+        "sha256": "166039299c00fd94ac2312e6115c6ae2000a38457ae512dec014243098e9d483"
+      }
+    ],
+    "removed": [],
+    "unchangedPreviousInputs": 1082,
+    "productChanged": true
+  },
+  "previousSnapshot": {
+    "fingerprintSha256": "c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5",
+    "reportsBeforeApplicabilityNotice": [
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json",
+        "bytes": 173972,
+        "sha256": "890ece0c6cc14a59dda4faf71ef0348908e0d24294eaa63aae2194a8ee0b80ef"
+      },
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json",
+        "bytes": 90018,
+        "sha256": "a5e0075ae3dbfbfe91ec6862faa766eeb1c03d662bf4cd6db908f6ae7717628c"
+      }
+    ],
+    "originalFieldsPreserved": true
+  },
+  "priorCI": {
+    "first": {
+      "runId": 38188835705,
+      "head": "5111a50",
+      "status": "FAIL_DATE_FIXTURE",
+      "record": "HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json"
+    },
+    "second": {
+      "runId": 38190584294,
+      "head": "007b8c4",
+      "status": "FAIL_MUTATION_TARGET_AFTER_G4_PASS",
+      "record": "HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json"
+    },
+    "third": {
+      "runId": 38193747566,
+      "head": "ced60a6",
+      "status": "CANCELLED_BY_NORMAL_DOC_PUSH_CONCURRENCY",
+      "evidence": {
+        "verify": {
+          "path": "/tmp/cvg-hpl-pr78-ci-third-cancelled-evidence-20261012.json",
+          "bytes": 997,
+          "sha256": "21ef6f622b2974d124a39c32a3b21b95f27673862e95e4787af1185870561f1f"
+        },
+        "image": {
+          "path": "/tmp/cvg-hpl-ci-image-third-cancelled-20261012.json",
+          "bytes": 2466,
+          "sha256": "bd68e14fb5e5dc1d071af10dd2a584b9b742dca0d03e0b3416d3f27e35bc6ebc"
+        }
+      }
+    },
+    "fourth": {
+      "runId": 38194246475,
+      "head": "e224a23bdf2d97f4eb61b23d356881bb842f260c",
+      "wholeWorkflowConclusion": "FAIL",
+      "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38194246475",
+      "verify": {
+        "tests": 5305,
+        "files": 361,
+        "unit": 5164,
+        "postgres": 141,
+        "standalonePostgresRepetitionCountedAgain": false,
+        "lines": 98.41,
+        "statements": 95.93,
+        "functions": 97.16,
+        "branches": 92.53,
+        "coverageExistingExceptions": 20,
+        "coverageUncovered": 0,
+        "coverageStale": 0,
+        "mutationDetected": 7,
+        "mutationBaselineTests": 197,
+        "mutationRealAssertionFailures": 9
+      },
+      "demoBrowsers": {
+        "fullProjectCases": {
+          "chromium": 65,
+          "tablet": 65,
+          "mobile": 65
+        },
+        "totalFullMatrix": 195,
+        "focusedHomeRepetitions": 3,
+        "focusedRepetitionsAddedToDistinctTotal": false,
+        "retry": 0,
+        "flaky": 0,
+        "skipped": 0
+      },
+      "postgresBrowser": {
+        "passed": 39,
+        "failed": 9,
+        "total": 48,
+        "retry": 0,
+        "flaky": 0,
+        "skipped": 0,
+        "tracesAvailable": 0
+      },
+      "imageBenchmarkDependencyReview": "SUCCESS, restricted to this candidate and synthetic CI environment",
+      "nativeCodeQL": {
+        "originalConclusion": "FAIL_TWO_HIGH_ALERTS",
+        "subsequentConclusion": "SUCCESS_AFTER_TWO_VERIFIED_FALSE_POSITIVE_DISMISSALS",
+        "alerts": [
+          23,
+          24
+        ],
+        "passwordHashesQueriesAndGatePolicyChanged": false
+      }
+    }
+  },
+  "repair": {
+    "sampleInput": "Explicit onInput/onChange edit marker prevents late label from overwriting typed EDTA, including a value equal to the initial default. RED preserved and focused regression checks recorded.",
+    "mobileNavigation": "Reserve existing 68px+safe-area below the grid-parent content, so the actual scroll viewport ends above fixed navigation; final action remains reachable. Three-viewport RED/GREEN is isolated static DOM with exact stylesheet bytes, not the app runtime.",
+    "postgresLaboratoryFixture": "Only the disposable CI lane opts in. Before any DB connection/reset require CI, synthetic-seed opt-ins, nonproduction NODE_ENV, loopback PostgreSQL URL and exact cvg_test_e2e_<digits> matching E2E_DATABASE_NAME. Fresh standard seed is verified semantically. Native ADMIN preparation and VET publication create a labelled artificial reference policy, before requests/snapshots; actual hospital policy and default PENDING fixture are unchanged.",
+    "referenceMeaning": "Artificial 0..1000000 ranges exist solely to exercise the approval/release contract in isolated E2E; they are not veterinary clinical references or institutional acceptance.",
+    "codeql": "Each SARIF flow reviewed independently: random token versus password and catalog ID versus password; passwords remain scrypt, production token HMAC. Alerts 23/24 dismissed individually with audit comments. Original native failure/SARIF retained.",
+    "proxyLogObservation": "23 proxy_untrusted 503 GETs correlated with navigation; 19 in passing cases. Immediate trusted-proxy rejection precedes storage. Header-loss mechanism UNKNOWN; no proof it caused 9 clinical failures, no guard weakened."
+  },
+  "proofReferences": {
+    "fourthCI": {
+      "path": "/tmp/cvg-hpl-ci-fourth-completed-failure-20261012/proof.json",
+      "bytes": 3556,
+      "sha256": "d76a79ece5cfd5f809bc71fec1db171d5c282bd7c19b90be5107777eb7944eb7"
+    },
+    "verify": {
+      "path": "/tmp/cvg-hpl-pr78-ci-fourth-verify-proof-20261012.json",
+      "bytes": 37785,
+      "sha256": "a41471514685fa9a2b4e015aaf0553d4ed06df6763b7965887ead5078d64a723"
+    },
+    "codeqlResolution": {
+      "path": "/tmp/cvg-hpl-codeql-specific-dismissal-20261012/proof.json",
+      "bytes": 7809,
+      "sha256": "37a87a5f62fbe020857fa02cd5d41584f38948758fc78e1b9c1b970ec17cd317"
+    },
+    "browser": {
+      "path": "/tmp/cvg-pr78-browser-ci-38194246475-20261012T020931Z/browser-final-proof.json",
+      "bytes": 14179,
+      "sha256": "63a06b92fe4fbfc90c527810da33310d7accc2549b8d1eea04f471f7ab1ca7ac"
+    },
+    "image": {
+      "path": "/tmp/cvg-hpl-ci-image-acceptance-docs-proof-20261012.json",
+      "bytes": 19397,
+      "sha256": "8639591289f35c13d982760ff1c5a6e4184911f0ad6a52a428d6d5ed39a49e22"
+    },
+    "benchmark": {
+      "path": "/tmp/cvg-hpl-ci-owner-benchmark-20261012/proof.json",
+      "bytes": 4574,
+      "sha256": "7388b456283a38cd498565ab4733107b7c733effd1e66e4576957ac755f7047b"
+    },
+    "EDTA": {
+      "path": "/tmp/cvg-pr78-browser-ci-38194246475-20261012T020931Z/workflow-sample-late-label-frozen-proof.json",
+      "bytes": 5703,
+      "sha256": "358773514489dec7355ce725393fc6b6a657319633f0c2c62e886fe2967c9b46"
+    },
+    "CSS": {
+      "path": "/tmp/cvg-hpl-mobile-nav-layout-proof-20261012.json",
+      "bytes": 5748,
+      "sha256": "ef668c4d50e20b3d3aa23f7f079e3dfae2fb1d761ff5381483bb67fa72e06581"
+    },
+    "CSSpeer": {
+      "path": "/tmp/cvg-hpl-mobile-nav-layout-peer-review-20261012.json",
+      "bytes": 2319,
+      "sha256": "1ac0a560bd6ddfceb2422bc9d076ada4ed1db4227ab873fbd1931e90ec16a24e"
+    },
+    "clinicalPolicy": {
+      "path": "/tmp/cvg-hpl-pg-laboratory-policy-final-proof-20261012.json",
+      "bytes": 9663,
+      "sha256": "b042498d05ede5ce761a17c1db32df0cbfff9272ac018efc009973625f478e84"
+    },
+    "clinicalPeer": {
+      "path": "/tmp/cvg-hpl-pr78-e2e-laboratory-policy-peer-final-20261012.json",
+      "bytes": 9268,
+      "sha256": "fc0d2ae956487ac762e75c5dd0a152d4aaeea0377cb9424300f756820b3505c5"
+    },
+    "codeqlTriage": {
+      "path": "/tmp/cvg-hpl-pr78-codeql-native-triage-proof-20261012.json",
+      "bytes": 36755,
+      "sha256": "c930709d7382033612df04f30eb1623dc7e3120f7bccb66534754ca862f8cb5a"
+    },
+    "codeqlPeer": {
+      "path": "/tmp/cvg-hpl-pr78-codeql-native-independent-review-20261012.json",
+      "bytes": 16954,
+      "sha256": "faf7530dd8f085992ab3af8db935f07f224f504de26232fc9f1529179151c6c3"
+    },
+    "proxyCorrelation": {
+      "path": "/tmp/cvg-hpl-pr78-postgres-rate-limit-correlation-20261012.json",
+      "bytes": 30614,
+      "sha256": "956708d9a2313262ef31d28e028d1822d7ed4b3bcfbb81df3863f620b5d664f2"
+    },
+    "clinicalPrivacyFollowup": {
+      "path": "/tmp/cvg-hpl-pg-laboratory-policy-privacy-followup-proof-20261012.json",
+      "bytes": 2569,
+      "sha256": "5f593f453e54327f1b3b8972539d71d3721f6f3d0a1213589e85ad0614a23592"
+    }
+  },
+  "localSummaries": {
+    "sampleInput": {
+      "regressionRed": 3,
+      "focusedFormsPassed": 25,
+      "consumerRegressionsPassed": 173,
+      "typecheckAndFocusedLint": "PASS",
+      "focusedCoverageCommand": "FAIL_GLOBAL_STATEMENTS_87.32_BELOW_90_ON_PARTIAL_SELECTION",
+      "globalCoverageCertified": false,
+      "proof": "EDTA"
+    },
+    "mobileNavigation": {
+      "staticDOMViewports": 3,
+      "redClickInterception": 3,
+      "greenNativeClicks": 3,
+      "actualApplicationTest": false,
+      "peer": "CSSpeer"
+    },
+    "syntheticLaboratory": {
+      "nativeMissingApprovalRed": 2,
+      "jsonbKeyOrderRed": 1,
+      "finalFocusedTestsPassed": 63,
+      "files": 4,
+      "newHelperTests": 24,
+      "focusedTypesAndLint": "PASS",
+      "browserCollectionOnly": 9,
+      "postgresExecuted": false,
+      "proof": "clinicalPolicy",
+      "peer": "clinicalPeer",
+      "helperFollowupPassed": 24,
+      "finalFixtureProof": "clinicalPrivacyFollowup"
+    }
+  },
+  "finalReportingChecks": {
+    "status": "PASS_BEFORE_CORRECTIVE_PUBLICATION",
+    "capturedAt": "2026-10-12T03:05:33.587343+00:00",
+    "checks": {
+      "configuration": {
+        "command": "npm run test:config",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-config-20261011.log",
+          "bytes": 48284,
+          "sha256": "72bcd9ff41c772c8233dcf6f58103e4394f07654a78ecaeda5e7a4dc37b65a43"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-config-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "types": {
+        "command": "npm run typecheck",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-types-20261011.log",
+          "bytes": 55,
+          "sha256": "5080378d705f3648a28305af7ae58f86d2b0e6026ee421f94d86ad6b64516c23"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-types-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "lint": {
+        "command": "npm run lint",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-lint-20261011.log",
+          "bytes": 46,
+          "sha256": "74fe0026686129279d897921f5d00272ef3352a26675ba1947714a44e84f466c"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-lint-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "documentation": {
+        "command": "npm run validate:docs",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-docs-20261011.log",
+          "bytes": 207,
+          "sha256": "37e5555270a622f2d0c1449d9d5be5aa70c0fec911b74b12a7c7fd8638e31102"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-docs-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "secrets": {
+        "command": "npm run security:scan",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-secrets-20261011.log",
+          "bytes": 205,
+          "sha256": "01e4220a4ae212c4d17d708b7bfb6dc55d13bde287e0e1ad7f9f61ff769afb9d"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-secrets-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "privacy": {
+        "command": "npm run privacy:scan",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-privacy-20261011.log",
+          "bytes": 122,
+          "sha256": "d81be111866871d1a4aad3002dbf1becb7f7ec88e816732cd2fc6f82c5d2fa3e"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-final-privacy-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "stagedWhitespace": {
+        "command": "git diff --cached --check",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-whitespace-20261011.log",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-whitespace-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      }
+    },
+    "sourceBindings": {
+      "selectedFiles": 1090,
+      "stagedEqualsWorkingTree": true,
+      "allHashesMatchManifest": true,
+      "canonicalFingerprint": "782359aea3ca7f051b1f1bfd0532905ad76e332632e787712886718d36c2073e"
+    },
+    "privacyScope": "git ls-files includes staged new files; 1276 source files, zero findings. The first failed scan is preserved in privacyRepair.",
+    "scopeQualification": "Configuration and secret scanning preceded the credential-removal amendment in one negative test URL; final typecheck, lint, docs and privacy scans include the amended test. Source code, guards and configuration did not change afterward. Final evidence metadata is outside the source fingerprint.",
+    "completeCI": "PENDING_PUBLICATION_AND_ACTIONS",
+    "productionAccepted": false
+  },
+  "freshCI": {
+    "statusAtCapture": "NOT_EXECUTED_PENDING_CORRECTIVE_COMMIT",
+    "pullRequest": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78",
+    "actions": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions?query=branch%3Afeat%2Fhospital-planner-20261012",
+    "meaning": "Source capture predates publication; Git and live Actions/PR give the subsequent SHA and actual complete checks."
+  },
+  "pilotOwner": {
+    "confirmed": "Solicitante do projeto, usuário desta sessão",
+    "record": "../operations/HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json",
+    "execution": "NOT_STARTED",
+    "signedAcceptance": false
+  },
+  "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+  "BLD-HPL-051": "OPEN",
+  "done": false,
+  "release": "NOT_APPLIED",
+  "limits": [
+    "Old G4/image/browser results belong to e224a23/c78ea1. This corrected product and test fixture require a fresh full workflow; focused checks do not substitute it.",
+    "No running hospital service/database/credential/port was changed; only source and isolated synthetic proofs.",
+    "CI image checkout is bound by Git tree; observed runtime revision unknown, not proof of a stamped OCI revision or image SBOM.",
+    "Proxy-header loss in the direct-Next test harness remains UNKNOWN; failure closure preserved. Real proxy/header journeys still belong to target UAT.",
+    "HIS external mapping/endpoints, installed provenance and delivery, institution clinical content, target workload/restore/alerts and user-executed UAT/go-no-go remain open; LIS/PACS unknown."
+  ],
+  "privacyRepair": {
+    "originalCheck": {
+      "path": "/tmp/cvg-hpl-functional-followup-pgbrowser12-privacy-20261011.log",
+      "bytes": 224,
+      "sha256": "5a2bf41ef3b3d84a599f1bdc95fd21f0ae895c6ca0b38e2404b4d6e01e1e1164"
+    },
+    "originalExit": 1,
+    "originalFinding": "Synthetic credentials in a negative TEST-NET host fixture were flagged by the existing source scanner.",
+    "change": "Remove credentials from that single negative URL; retain remote hostname rejection. No scanner or policy changes.",
+    "originalClinicalProof": "clinicalPolicy is preserved before this test-literal amendment; clinicalPrivacyFollowup identifies final test bytes and the 24-case follow-up.",
+    "preAmendmentCaptures": [
+      {
+        "path": "/tmp/cvg-hpl-pre-privacy-fix-HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json",
+        "bytes": 174143,
+        "sha256": "61d34235b750f0c49cb21c24dacc5bcd681138dee2a1a79cbb773cec5df38aaa"
+      },
+      {
+        "path": "/tmp/cvg-hpl-pre-privacy-fix-HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json",
+        "bytes": 13102,
+        "sha256": "b1ff803c71599b2e135ceb228d95dca352cf43f7b118f3c8827db02a3e7bba40"
+      },
+      {
+        "path": "/tmp/cvg-hpl-pre-privacy-fix-HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.md",
+        "bytes": 4274,
+        "sha256": "cea41b0a63cb32228534ff932df38db27cd1e73f91debabe9cf78932e03fad76"
+      }
+    ],
+    "precedingFingerprint": "cb9636a65184eb1cc254edf4a86b7ebb4bf3cbec7f8d40db87facbaba35daaaf",
+    "currentFingerprint": "782359aea3ca7f051b1f1bfd0532905ad76e332632e787712886718d36c2073e"
+  }
+}

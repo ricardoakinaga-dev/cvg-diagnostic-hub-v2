@@ -1,5 +1,7 @@
 # Controle de mutações e nova rodada de CI do planner
 
+> Captura histórica anterior às correções de UI e preparação PostgreSQL. A quarta CI passou verify e falhou nas jornadas PostgreSQL; ver o [registro posterior](HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.md). Os campos abaixo preservam a captura original.
+
 **Data:** 12/10/2026 · **Estado na captura:** sete controles locais aprovados; CI global pendente do commit corretivo · **042:** PARTIAL · **051:** OPEN · **Release:** não aplicada.
 
 O [registro estruturado](HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json) e o [manifesto](HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json) identificam **1088 arquivos**, fonte `c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5`. A diferença contra `007b8c4` altera três inputs de validação e acrescenta 3 scripts; **1082 inputs anteriores continuam byte a byte idênticos**, incluindo o produto e os testes unitários/PostgreSQL/navegador existentes.

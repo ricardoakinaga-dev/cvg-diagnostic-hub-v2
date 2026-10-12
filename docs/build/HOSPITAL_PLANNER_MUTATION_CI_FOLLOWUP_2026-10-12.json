@@ -2077,5 +2077,13 @@
     "No installed hospital service, port, database, credential or configuration was changed.",
     "HIS source compatibility and disposable synthetic tests do not certify installed-image provenance or adopted clinical delivery.",
     "Institutional content, approved mappings/endpoints, target workload/restore/alerts, named validators and real hospital UAT/go-no-go remain external gates. LIS/PACS are unknown."
-  ]
+  ],
+  "snapshotApplicability": {
+    "status": "SUPERSEDED_BY_BROWSER_PRODUCT_AND_SYNTHETIC_PG_FIXTURE_REPAIR",
+    "validOnlyForSnapshotFingerprint": "c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5",
+    "currentCandidateCertified": false,
+    "supersededBy": "HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json",
+    "currentSourceManifest": "HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json",
+    "meaning": "Original capture and validations retain their old input scope. Fourth CI passed verify/image/demo browsers but failed PostgreSQL browsers. Corrected product and fixture require a new complete CI."
+  }
 }

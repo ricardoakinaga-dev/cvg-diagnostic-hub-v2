@@ -35,11 +35,11 @@ Uma decisão documental não transforma uma hipótese operacional em fato. Pergu
 
 ## CI e revisão corrente do planner — 12/10/2026
 
-O [registro corrente](build/HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json) acompanham o reparo e a validação dos sete controles de mutação em cópias seguras. A segunda CI passou 5.305 testes de unidade/PostgreSQL, mas falhou no sentinel antigo; as duas CI com falha foram preservadas. Produto e testes existentes permanecem idênticos ao commit `007b8c4`. Os sete checks completos da nova rodada são acompanhados no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Homologação HIS e piloto continuam abertos.
+O [registro corrente](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json) acompanham as correções da edição de amostra, da ação encoberta pela navegação e da preparação laboratorial sintética para PostgreSQL. A quarta CI passou 5.305 testes de backend, 195 cenários na matriz completa de navegador e a imagem, mas falhou em 9/48 jornadas PostgreSQL. A nova rodada completa será acompanhada no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78); capturas/falhas anteriores continuam preservadas.
 
-O solicitante confirmou que fará a validação dos fluxos e o aceite do piloto, conforme o [registro de responsabilidade](operations/HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json). O [pacote de UAT](operations/HOSPITAL_PLANNER_PILOT.md) conserva os cenários e as fichas de resultado; execução e aceite continuam pendentes.
+O solicitante confirmou que fará a validação dos fluxos e o aceite do piloto, conforme o [registro de responsabilidade](operations/HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json). O [pacote de UAT](operations/HOSPITAL_PLANNER_PILOT.md) conserva cenários e fichas; execução, resultados e aceite continuam pendentes. Homologação HIS permanece parcial.
 
-O [registro do relógio dos testes](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.md) conserva RED/GREEN em UTC e Honolulu e a captura anterior de inputs; seus resultados não certificam o novo runner.
+O [registro do sentinel](build/HOSPITAL_PLANNER_MUTATION_CI_FOLLOWUP_2026-10-12.md) e o [registro do relógio](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.md) conservam as provas e os erros das candidatas anteriores. Seus resultados não certificam os novos inputs de produto/teste.
 
 ## Compatibilidade HIS — captura anterior de 12/10/2026
 
