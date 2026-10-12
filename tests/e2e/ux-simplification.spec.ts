@@ -185,8 +185,17 @@ test("registers a patient with three fields through the global shortcut and sear
   await patient.getByLabel("Nome do paciente").fill(`Amora UX ${testInfo.project.name}`);
   await patient.getByLabel("Espécie", { exact: true }).fill("Canino");
   await patient.getByLabel("Tutor ou responsável").fill("Tutor UX");
+  const registered = page.waitForResponse((response) => response.url().endsWith("/api/v1/patients") && response.request().method() === "POST");
   await patient.getByRole("button", { name: "Confirmar cadastro de paciente" }).click();
+  expect((await registered).status()).toBe(201);
   await expect(patient).toBeHidden();
+  // Registration changes the clinician's care scope. Load the authoritative
+  // identity and a fresh SSE stream before exercising the global shortcut.
+  await page.reload();
+  await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
+  const globalSearch = page.getByRole("button", { name: "Buscar paciente ou exame (Ctrl+K ou ⌘K)", exact: true });
+  await expect(globalSearch).toBeVisible();
+  await expect(globalSearch).toBeEnabled();
   await page.keyboard.press("Control+k");
   await expect(palette).toBeVisible();
   await palette.getByRole("combobox").fill("Thor");
@@ -194,13 +203,8 @@ test("registers a patient with three fields through the global shortcut and sear
   await page.screenshot({ path: `.data/ux-simplification/palette-${testInfo.project.name}.png`, fullPage: false });
   await page.keyboard.press("Escape");
   await expect(palette).toBeHidden();
-  await page.keyboard.press("Control+k");
-  await palette.getByRole("option", { name: /Novo exame/ }).click();
-  await expect(page).toHaveURL(/\/queues/);
-  const request = page.getByRole("dialog", { name: "Solicitar exames" });
-  await expect(request).toBeVisible();
-  await expect(request.getByText("Hemograma", { exact: true })).toBeVisible();
-  await page.screenshot({ path: `.data/ux-simplification/new-exam-${testInfo.project.name}.png`, fullPage: false });
+  // Prepare the search fixture before opening the request composer: each API
+  // registration changes this user's scope and invalidates its old SSE snapshot.
   const csrf = (await page.context().cookies()).find((cookie) => cookie.name === "cvg_csrf")?.value;
   expect(csrf).toBeTruthy();
   const targetName = `Paciente além da lista ${Date.now()} ${testInfo.project.name}`;
@@ -218,6 +222,17 @@ test("registers a patient with three fields through the global shortcut and sear
   const initialPatients = (await firstPage.json() as { data: Array<{ id: string }> }).data;
   expect(initialPatients).toHaveLength(100);
   expect(initialPatients.some((patient) => patient.id === targetId)).toBe(false);
+  await page.reload();
+  await expect(page.getByRole("heading", { name: GREETING })).toBeVisible();
+  await expect(globalSearch).toBeVisible();
+  await expect(globalSearch).toBeEnabled();
+  await page.keyboard.press("Control+k");
+  await palette.getByRole("option", { name: /Novo exame/ }).click();
+  await expect(page).toHaveURL(/\/queues/);
+  const request = page.getByRole("dialog", { name: "Solicitar exames" });
+  await expect(request).toBeVisible();
+  await expect(request.getByText("Hemograma", { exact: true })).toBeVisible();
+  await page.screenshot({ path: `.data/ux-simplification/new-exam-${testInfo.project.name}.png`, fullPage: false });
   await request.getByLabel("Buscar pacientes", { exact: true }).fill(targetName);
   await expect(request.getByRole("option", { name: new RegExp(targetName) })).toHaveCount(1);
   await request.getByLabel("Paciente", { exact: true }).selectOption(targetId);
@@ -241,7 +256,7 @@ test("registers a patient with three fields through the global shortcut and sear
   await expect(page).toHaveURL(new RegExp(`/requests/${createdId}`));
 });
 
-test("keeps technical data in ADMIN System and revokes a real session with one click and confirmation", async ({ page, playwright }, testInfo) => {
+test("keeps technical data in ADMIN System, revokes a real session and exposes authorized MANAGER audit", async ({ page, playwright }, testInfo) => {
   const peer = await playwright.request.newContext({ baseURL: testInfo.project.use.baseURL, extraHTTPHeaders: testInfo.project.use.extraHTTPHeaders });
   try {
     const login = await peer.post("/api/v1/session/login", { data: { email: "vet@cvg.local", password: "e2e-local-password-2026" } });
@@ -281,8 +296,15 @@ test("keeps technical data in ADMIN System and revokes a real session with one c
     await signOut(page);
     await signInAs(page, "manager@cvg.local", GREETING);
     await page.goto("/system");
-    await expect(page.getByRole("heading", { name: "Sistema restrito à administração técnica" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Auditoria recente" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Auditoria recente", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dispositivos e acessos ativos", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Dead-letter do outbox", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Resultado crítico", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Revogar sessão", exact: true })).toHaveCount(0);
+    expect((await page.request.get("/api/v1/audit-events?limit=20")).status()).toBe(200);
+    for (const path of ["/api/v1/sessions", "/api/v1/outbox/dead-letters", "/api/v1/critical-results/readiness"]) {
+      expect((await page.request.get(path)).status()).toBe(404);
+    }
   } finally { await peer.dispose(); }
 });
 

@@ -33,7 +33,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Correção corrente da política de cobertura — 12/10/2026
+## Validação corrente da fixture de UX — 12/10/2026
+
+A [correção da sequência e das expectativas de acesso](build/HOSPITAL_PLANNER_UX_FIXTURE_FOLLOWUP_2026-10-12.md) preserva o cadastro, busca de paciente além dos primeiros 100, criação do exame e revogação de sessão. Seis casos de UX e três checks da Home passaram no executor canônico, sem retries. Só o teste de UX mudou no [manifesto atual](build/HOSPITAL_PLANNER_UX_FIXTURE_SOURCE_MANIFEST_2026-10-12.json); produto e guards permanecem iguais. A CI 38209256914 continua FAIL, e a nova rodada e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Capturas anteriores e aceite hospitalar são preservados.
+
+## Correção anterior da política de cobertura — captura de 12/10/2026
 
 O [ajuste das exceções](build/HOSPITAL_PLANNER_COVERAGE_POLICY_FOLLOWUP_2026-10-12.md) remove uma entrada obsoleta após 5.460 testes aprovados na rodada 38207033632, sem alterar pisos ou produto. O [novo manifesto](build/HOSPITAL_PLANNER_COVERAGE_POLICY_SOURCE_MANIFEST_2026-10-12.json) muda apenas esse input normativo. A CI anterior permanece FAIL e a nova validação completa será ligada ao SHA do [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). As provas literais anteriores e os gates hospitalares são preservados.
 
