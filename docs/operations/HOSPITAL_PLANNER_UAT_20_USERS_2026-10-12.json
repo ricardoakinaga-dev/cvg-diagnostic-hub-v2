@@ -1,0 +1,193 @@
+{
+  "date": "2026-10-12",
+  "status": "SHORT_SYNTHETIC_20_USER_HTTP_AND_TWO_BROWSER_JOURNEYS_PASS_HOSPITAL_ACCEPTANCE_PENDING",
+  "requestedPeakUsers": 20,
+  "confirmedBy": "Solicitante",
+  "testEnvironment": {
+    "project": "cvg-hpl-uat-9abb6-159a24d4b1",
+    "url": "https://192.168.15.8:18444",
+    "runtimeCommit": "9abb6b7e67d15a6793bc44d9ef3865effac4479e",
+    "sourceFingerprintSha256": "dd327ec62f513918e32d76018c71be93b200e2d31a755bf362c61a5bb73eb516",
+    "caCertificateFile": "/home/rmakinaga/.local/share/cvg-hpl-uat-9abb6-159a24d4b1/material/certs/ca.crt",
+    "credentialsFile": "/home/rmakinaga/.local/share/cvg-hpl-uat-9abb6-159a24d4b1/access.json",
+    "credentialValuesIncluded": false,
+    "persistentMemoryCeilingMiB": 3712
+  },
+  "httpLoad": {
+    "status": "PASS_SYNTHETIC_UAT20_DISTINCT_USERS_BOUNDED_HTTP_ONLY_NOT_HOSPITAL_ACCEPTANCE",
+    "model": "Closed-loop:20 barrier-released distinct user journeys,4 sequential requests each,at most20 in flight; no retries.",
+    "startedAt": "2026-10-12T12:35:11.428912+00:00",
+    "finishedAt": "2026-10-12T12:35:20.492153+00:00",
+    "distinctAuthenticatedUsers": 20,
+    "peakRequestsInFlight": 20,
+    "statistics": {
+      "measuredRequests": 80,
+      "reads": 60,
+      "writes": 20,
+      "errors": 0,
+      "errorRatePercent": 0.0,
+      "readP95Ms": 119.97769,
+      "writeP95Ms": 228.06323,
+      "percentileMethod": "Nearest rank ceil(.95*n),actual measured samples; includes failed attempts; no warmup/retries/trim.",
+      "eachRequestTimeoutSeconds": 30
+    },
+    "thresholds": {
+      "readP95Ms": 500,
+      "writeP95Ms": 800,
+      "errorRatePercent": 1
+    },
+    "checks": [
+      {
+        "name": "host has at least1.5GiB available before this bounded client",
+        "status": "PASS"
+      },
+      {
+        "name": "20distinct native accounts each with one current ACTIVE rotated session",
+        "status": "PASS"
+      },
+      {
+        "name": "normal denied other patient and technical user administration without affecting budget",
+        "status": "PASS"
+      },
+      {
+        "name": "measured exact80attempts:60reads20nativewrites and20participants",
+        "status": "PASS"
+      },
+      {
+        "name": "all20sessions remain ACTIVE and identical throughout measured phase",
+        "status": "PASS"
+      },
+      {
+        "name": "20unique pending version1 task IDs and distinct native authors exactly match accounts",
+        "status": "PASS"
+      },
+      {
+        "name": "no native diagnostic state change in authorized Thor projection",
+        "status": "PASS"
+      },
+      {
+        "name": "readp95<=500ms",
+        "status": "PASS"
+      },
+      {
+        "name": "writep95<=800ms",
+        "status": "PASS"
+      },
+      {
+        "name": "unexpected errors<=1percent",
+        "status": "PASS"
+      }
+    ],
+    "proof": {
+      "path": "/home/rmakinaga/.local/share/cvg-hpl-uat-9abb6-159a24d4b1/benchmark-20-users-30e1a83c081f/proof.json",
+      "sha256": "621e918ecdc5c2b48e4b9e184064430b2b7bde120f8ef5ef16ed3d490516753e"
+    },
+    "existingContainerChanges": {},
+    "additionalContainerIds": [],
+    "nativeLogoutFailures": []
+  },
+  "malwareScanner": {
+    "status": "PASS_REAL_CLAMAV_ADAPTER_ONLY_NOT_FULL_ATTACHMENT_PIPELINE",
+    "nativeEngineVersion": "ClamAV 1.5.4/28151/Mon Oct 12 06:24:02 2026",
+    "checks": [
+      {
+        "name": "harmless-clean-control",
+        "bytes": 45,
+        "contentSha256": "5e37fda6d3cb99ff2f33207331cb2b3f5721c7a250abc316fb105282a857ce2c",
+        "statusCode": 200,
+        "scannerStatus": "CLEAN",
+        "expectedCode": 200,
+        "expectedStatus": "CLEAN"
+      },
+      {
+        "name": "standard-EICAR-antivirus-test-fixture",
+        "bytes": 68,
+        "contentSha256": "275a021bbfb6489e54d471899f7db9d1663fc695ec2fe2a2c4538aabf651fd0f",
+        "statusCode": 200,
+        "scannerStatus": "QUARANTINED",
+        "expectedCode": 200,
+        "expectedStatus": "QUARANTINED"
+      },
+      {
+        "name": "missing-scanner-authorization",
+        "bytes": 45,
+        "contentSha256": "5e37fda6d3cb99ff2f33207331cb2b3f5721c7a250abc316fb105282a857ce2c",
+        "statusCode": 401,
+        "scannerStatus": "FAILED",
+        "expectedCode": 401,
+        "expectedStatus": "FAILED"
+      }
+    ],
+    "proof": {
+      "path": "/home/rmakinaga/.local/share/cvg-hpl-uat-9abb6-159a24d4b1/real-clamav-adapter-proof.json",
+      "sha256": "802dc97d73bba6e75289eea90a4503642d248537d01d25a0cc1dc5ab9b0f9f17"
+    },
+    "fullAttachmentPipelineTested": false
+  },
+  "browserUI": {
+    "status": "PASS_ACTUAL_UI_NORMAL_EXAM_PERSISTENCE_DUPLICATE_AND_SUPERADMIN_NAVIGATION_SYNTHETIC_ONLY",
+    "completedJourneys": 2,
+    "checksPassed": 28,
+    "pageErrors": 0,
+    "normalExamCreatePersistReloadAndDuplicateWarningPassed": true,
+    "superadminOperationAndAdministrationPassed": true,
+    "distinctAccessAndCatalogScreensPassed": true,
+    "proof": {
+      "path": "/tmp/cvg-hpl-uat-browser-execution-9abb6b7e-j_rrb4vk/browser-proof.json",
+      "sha256": "8df7723d7d9611e2aec1d217fe277f7c8ac6ca308eaffb898a8b15cbe06812c2"
+    },
+    "containerProof": {
+      "path": "/tmp/cvg-hpl-uat-browser-execution-9abb6b7e-j_rrb4vk/container-proof.json",
+      "sha256": "a3283937754e38a0e91b50abaf3113e4f94950f7b41a04a23867fb2d76a6ac3c"
+    },
+    "handover": {
+      "normalMustChangePassword": true,
+      "normalNativeReset": true,
+      "superInitialGuardTested": true,
+      "superMustChangePassword": false,
+      "superCurrentOwnPassword": true,
+      "superResetByAdminAttempted": false,
+      "reason": "ADMIN cannot manage SUPERADMIN and a user cannot regenerate their own password; matrix preserved. SUPERADMIN own current password remains in private access.json."
+    },
+    "networkMode": "host",
+    "networkScope": "Owned bounded browser only; shares host listeners, targets own HTTPS UI; no firewall or global trust changes",
+    "existingContainerChanges": {},
+    "existingNetworkChanges": {},
+    "browserContainerRemoved": true,
+    "priorBootstrapFailuresPreserved": [
+      {
+        "path": "/tmp/cvg-hpl-uat-browser-execution-9abb6b7e-tv9pyeip/browser-proof.json",
+        "failurePhase": "TLS-native-identity",
+        "checksPassed": 0
+      },
+      {
+        "path": "/tmp/cvg-hpl-uat-browser-execution-9abb6b7e-vngsh6wi/browser-proof.json",
+        "failurePhase": "browser-launch",
+        "checksPassed": 2,
+        "cause": "Chrome Crashpad requires writable HOME/XDG config directory"
+      }
+    ]
+  },
+  "securityFollowup": {
+    "description": "Atomic password reauthentication slot reservation before password verification; session revocation at fifth confirmed wrong password",
+    "unitTestsPassed": 59,
+    "postgresTestsPassed": 2,
+    "typesPassed": true,
+    "lintPassed": true,
+    "presentInTestedRuntimeImage": false,
+    "proofSha256": "0de62e68611e2e6e8558313b525562f19b56e6d330244e6a27452a96a384a1b5"
+  },
+  "preservedUnexecutedMeasurementFailure": {
+    "path": "/home/rmakinaga/.local/share/cvg-hpl-uat-9abb6-159a24d4b1/benchmark-20-users-7a8a0e88d28a/proof.json",
+    "sha256": "f0bea285e514e531d0c02eb0eef13287ad7749389f38e5bfc4dd8dc31c570e04",
+    "measuredRequests": 0,
+    "cause": "Private ownership gate rejected newly auto-created backup PGDATA anonymous volume before HTTP; corrected with native creation-time and exclusive owned CID checks"
+  },
+  "limitations": [
+    "One short synthetic closed-loop burst; sustained capacity is not certified.",
+    "The 12-month CI profile still misses four proposed latency targets; this smaller dataset does not close those findings.",
+    "The hospital owner must validate real workflows and sign the pilot acceptance.",
+    "HIS real integration and credentials/mapping/endpoint validation remain pending; LIS/PACS are unknown and disabled.",
+    "No production go-live, offsite recovery, RPO/RTO or external clinical acceptance is claimed."
+  ]
+}

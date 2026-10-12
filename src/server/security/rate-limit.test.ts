@@ -31,6 +31,9 @@ import {
   rateLimitBucketRetentionMs,
   registerLoginFailure,
   registerLoginSuccess,
+  readRateLimitCounter,
+  releaseRateLimitSlot,
+  reserveRateLimitSlot,
   resetRateLimits
 } from "./rate-limit";
 import { runtimePoolTimeouts } from "../domain/database-timeouts";
@@ -115,6 +118,47 @@ describe("API rate limiter", () => {
       status: 503
     });
     expect(pool.query).toHaveBeenCalledTimes(2);
+  });
+
+  it("bounds occupied verification slots and only releases the matching memory window", async () => {
+    const old = await reserveRateLimitSlot("confirmation", 2, 1_000, 100);
+    await reserveRateLimitSlot("confirmation", 2, 1_000, 100);
+    await expect(reserveRateLimitSlot("confirmation", 2, 1_000, 100)).rejects.toMatchObject({ code: "RATE_LIMITED" });
+    expect(await readRateLimitCounter("confirmation", 1_000, 100)).toBe(2);
+    await releaseRateLimitSlot(old);
+    expect(await readRateLimitCounter("confirmation", 1_000, 100)).toBe(1);
+    const current = await reserveRateLimitSlot("confirmation", 2, 1_000, 1_100);
+    await releaseRateLimitSlot(old);
+    expect(await readRateLimitCounter("confirmation", 1_000, 1_100)).toBe(1);
+    await releaseRateLimitSlot(current);
+    expect(await readRateLimitCounter("confirmation", 1_000, 1_100)).toBe(0);
+    await releaseRateLimitSlot(current);
+    expect(await readRateLimitCounter("confirmation", 1_000, 1_100)).toBe(0);
+  });
+
+  it("requires atomic bounded PostgreSQL admission and releases by exact generation", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "postgres"); vi.stubEnv("DATABASE_URL", "postgresql://rate-limit.test/cvg");
+    pool.query.mockResolvedValueOnce({ rows: [{ request_count: 5, window_started_ms: 100 }] });
+    const admitted = await reserveRateLimitSlot("confirmation", 5, 1_000, 101);
+    expect(admitted).toEqual({ key: "confirmation", count: 5, windowStartedAt: 100 });
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringMatching(/WHERE[\s\S]*request_count < \$4[\s\S]*RETURNING request_count/), ["confirmation", new Date(101), 1_000, 5]);
+    pool.query.mockResolvedValueOnce({ rows: [] });
+    await expect(reserveRateLimitSlot("confirmation", 5, 1_000, 101)).rejects.toMatchObject({ code: "RATE_LIMITED", status: 429 });
+    pool.query.mockResolvedValueOnce({ rows: [] });
+    await releaseRateLimitSlot(admitted);
+    expect(pool.query).toHaveBeenLastCalledWith(expect.stringMatching(/GREATEST\(request_count - 1, 0\)[\s\S]*bucket_key = \$1 AND window_started_at = \$2/), ["confirmation", new Date(100)]);
+  });
+
+  it("fails closed on invalid PostgreSQL reservations or backend errors without a memory fallback", async () => {
+    vi.stubEnv("RATE_LIMIT_MODE", "postgres"); vi.stubEnv("DATABASE_URL", "postgresql://rate-limit.test/cvg");
+    for (const row of [{ request_count: 0, window_started_ms: 100 }, { request_count: 6, window_started_ms: 100 }, { request_count: 1, window_started_ms: "invalid" }]) {
+      pool.query.mockResolvedValueOnce({ rows: [row] });
+      await expect(reserveRateLimitSlot("confirmation", 5, 1_000, 100)).rejects.toMatchObject({ code: "DEPENDENCY_UNAVAILABLE", status: 503 });
+    }
+    pool.query.mockRejectedValueOnce(new Error("synthetic backend unavailable"));
+    await expect(reserveRateLimitSlot("confirmation", 5, 1_000, 100)).rejects.toMatchObject({ status: 503 });
+    pool.query.mockRejectedValueOnce(new Error("synthetic release unavailable"));
+    await expect(releaseRateLimitSlot({ key: "confirmation", count: 1, windowStartedAt: 100 })).rejects.toMatchObject({ status: 503 });
   });
 
   it("scopes the login budget to the credential pair, not to the account", async () => {

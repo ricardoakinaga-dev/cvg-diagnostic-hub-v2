@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "recordedAt": "2026-10-12T10:24:50.489014+00:00",
-  "status": "TEST_VPS_SELECTED_PREPARATION_AND_UAT_PENDING",
+  "status": "INITIAL_TEST_VPS_SELECTION_WITH_SUBSEQUENT_SYNTHETIC_UAT_RECORD",
   "selection": {
     "target": "Esta VPS, ambiente já utilizado para testes pelo solicitante",
     "confirmedBy": "Solicitante do projeto, usuário desta sessão",
@@ -39,9 +39,12 @@
   },
   "pendingInputs": {
     "peakConcurrentUsers": {
-      "value": null,
-      "status": "UNKNOWN",
-      "requiredFor": "Perfil de carga e metas representativas no alvo"
+      "value": 20,
+      "status": "CONFIRMED_BY_REQUESTER",
+      "confirmation": "20 usuários",
+      "confirmationDate": "2026-10-12",
+      "requiredFor": "Concorrência do ensaio no alvo; duração e distribuição das jornadas ainda precisam de registro",
+      "measuredCapacity": false
     },
     "HIS": {
       "system": "cvg-his-v4 instalado nesta VPS, informado pelo solicitante",
@@ -77,11 +80,21 @@
     "HOSPITAL_PLANNER_PILOT.md",
     "HOSPITAL_PLANNER_PILOT_OWNER_2026-10-12.json",
     "DEPLOYMENT.md#131-dois-ambientes-nada-em-comum-prod-301",
-    "HOSPITAL_PLANNER_CUTOVER.md"
+    "HOSPITAL_PLANNER_CUTOVER.md",
+    "HOSPITAL_PLANNER_UAT_20_USERS_2026-10-12.md"
   ],
   "recordLimits": [
-    "Este trabalho alterou apenas estes dois documentos; não consultou Docker, bancos, ambientes reais ou portas em execução.",
+    "Os campos de seleção, portas e aceite preservam a confirmação documental inicial; executionFollowup aponta a execução técnica posterior, com escopo próprio.",
     "A escolha da VPS não substitui resultados de UAT, homologação de integrações ou aceite nominal.",
     "Não contém credenciais, contatos pessoais ou dados de pacientes."
-  ]
+  ],
+  "executionFollowup": {
+    "record": "HOSPITAL_PLANNER_UAT_20_USERS_2026-10-12.json",
+    "environmentStarted": true,
+    "url": "https://192.168.15.8:18444",
+    "shortSynthetic20UserHttpBurst": "PASS",
+    "sustainedCapacityCertified": false,
+    "hospitalAcceptanceRecorded": false,
+    "productionApproved": false
+  }
 }

@@ -13,6 +13,7 @@ Executar primeiro em ambiente de homologação segregado, com dados sintéticos 
 | Registro da execução | Valor a preencher |
 | --- | --- |
 | Identificador do UAT e ambiente/URL aprovada | ________ |
+| Pico de usuários simultâneos a testar | 20, confirmado pelo solicitante em 12/10/2026; registrar duração, jornadas e resultados do ensaio. |
 | Commit e estado da árvore utilizada | ________ |
 | Digests/revisões das imagens app e ops/worker | ________ |
 | Schema e migrações aplicadas | ________ |

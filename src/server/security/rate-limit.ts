@@ -217,6 +217,106 @@ export async function consumeRateLimitCounter(key: string, windowMs: number, tim
   return assertPostgresRateLimitCounter(key, LOGIN_FAILURE_COUNTER_CEILING, windowMs, timestamp);
 }
 
+export interface RateLimitReservation {
+  readonly key: string;
+  readonly count: number;
+  readonly windowStartedAt: number;
+}
+
+function confirmedFailureKey(key: string, windowStartedAt: number): string {
+  return `${key}:confirmed:${windowStartedAt}`;
+}
+
+/** Occupies a bounded slot before costly verification; a denial never increments it. */
+export async function reserveRateLimitSlot(key: string, limit: number, windowMs: number, timestamp = Date.now()): Promise<RateLimitReservation> {
+  if (assertRateLimitConfiguration() === "memory") {
+    const current = buckets.get(key);
+    const bucket = !current || current.resetAt <= timestamp ? { count: 0, resetAt: timestamp + windowMs, windowStartedAt: timestamp } : current;
+    if (bucket.count >= limit) throw new ApiError("RATE_LIMITED", "Muitas tentativas. Aguarde antes de tentar novamente.", 429, { retryable: true });
+    const confirmedKey = confirmedFailureKey(key, bucket.windowStartedAt);
+    // Initialize once while admitting: a pre-upgrade bucket contains confirmed failures only.
+    if (!buckets.has(confirmedKey)) buckets.set(confirmedKey, { ...bucket });
+    const next = { ...bucket, count: bucket.count + 1 };
+    buckets.set(key, next);
+    return { key, count: next.count, windowStartedAt: next.windowStartedAt };
+  }
+  try {
+    const result = await rateLimitPool().query<{ request_count: number | string; window_started_ms: number | string }>(
+      `WITH admission AS (
+       INSERT INTO rate_limit_buckets (bucket_key, window_started_at, request_count)
+       VALUES ($1, $2, 1)
+       ON CONFLICT (bucket_key) DO UPDATE SET
+         window_started_at = CASE WHEN rate_limit_buckets.window_started_at + ($3 * interval '1 millisecond') <= $2
+           THEN $2 ELSE rate_limit_buckets.window_started_at END,
+         request_count = CASE WHEN rate_limit_buckets.window_started_at + ($3 * interval '1 millisecond') <= $2
+           THEN 1 ELSE rate_limit_buckets.request_count + 1 END
+       WHERE rate_limit_buckets.window_started_at + ($3 * interval '1 millisecond') <= $2
+         OR rate_limit_buckets.request_count < $4
+       RETURNING request_count, window_started_at
+       ), initialized_failures AS (
+         INSERT INTO rate_limit_buckets (bucket_key, window_started_at, request_count)
+         SELECT $1 || ':confirmed:' || ((EXTRACT(EPOCH FROM window_started_at) * 1000)::bigint)::text,
+           window_started_at, request_count - 1 FROM admission
+         ON CONFLICT (bucket_key) DO NOTHING
+       )
+       SELECT request_count, (EXTRACT(EPOCH FROM window_started_at) * 1000)::bigint AS window_started_ms FROM admission`,
+      [key, new Date(timestamp), windowMs, limit]
+    );
+    const row = result.rows[0];
+    if (!row) throw new ApiError("RATE_LIMITED", "Muitas tentativas. Aguarde antes de tentar novamente.", 429, { retryable: true });
+    const count = Number(row.request_count); const windowStartedAt = Number(row.window_started_ms);
+    if (!Number.isSafeInteger(count) || count < 1 || count > limit || !Number.isSafeInteger(windowStartedAt)) throw new Error("RATE_LIMIT_RESERVATION_INVALID");
+    return { key, count, windowStartedAt };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
+/** Finalizes a wrong password separately from occupied slots, in its original window. */
+export async function confirmRateLimitSlotFailure(reservation: RateLimitReservation, limit: number): Promise<number> {
+  const key = confirmedFailureKey(reservation.key, reservation.windowStartedAt);
+  if (assertRateLimitConfiguration() === "memory") {
+    const current = buckets.get(key);
+    if (!current || current.windowStartedAt !== reservation.windowStartedAt || current.count < 0 || current.count >= limit) {
+      throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+    }
+    const count = current.count + 1;
+    buckets.set(key, { ...current, count });
+    return count;
+  }
+  try {
+    const result = await rateLimitPool().query<{ request_count: number | string }>(
+      `UPDATE rate_limit_buckets SET request_count = request_count + 1
+       WHERE bucket_key = $1 AND window_started_at = $2 AND request_count < $3 RETURNING request_count`,
+      [key, new Date(reservation.windowStartedAt), limit]
+    );
+    const count = Number(result.rows[0]?.request_count);
+    if (!Number.isSafeInteger(count) || count < 1 || count > limit) throw new Error("RATE_LIMIT_FAILURE_CONFIRMATION_INVALID");
+    return count;
+  } catch {
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
+/** Returns only this window's occupied slot; an old completion cannot reduce a new window. */
+export async function releaseRateLimitSlot(reservation: RateLimitReservation): Promise<void> {
+  if (assertRateLimitConfiguration() === "memory") {
+    const current = buckets.get(reservation.key);
+    if (current?.windowStartedAt === reservation.windowStartedAt) buckets.set(reservation.key, { ...current, count: Math.max(0, current.count - 1) });
+    return;
+  }
+  try {
+    await rateLimitPool().query(
+      `UPDATE rate_limit_buckets SET request_count = GREATEST(request_count - 1, 0)
+       WHERE bucket_key = $1 AND window_started_at = $2`,
+      [reservation.key, new Date(reservation.windowStartedAt)]
+    );
+  } catch {
+    throw new ApiError("DEPENDENCY_UNAVAILABLE", "O controle de abuso não está disponível.", 503, { retryable: true });
+  }
+}
+
 export function resetRateLimits(): void {
   buckets.clear();
 }

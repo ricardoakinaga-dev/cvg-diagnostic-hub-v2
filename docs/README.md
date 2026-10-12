@@ -33,7 +33,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Teste de período e ambiente de homologação — candidata de 12/10/2026
+## Homologação com 20 usuários — execução de 12/10/2026
+
+O [ensaio na VPS](operations/HOSPITAL_PLANNER_UAT_20_USERS_2026-10-12.md) registra 20 contas distintas, pico de 20 requisições simultâneas e 80 tentativas sem erros: p95 de leitura 119,98 ms e de escrita 228,06 ms. Duas jornadas reais de navegador passaram em 28 verificações: exame criado e visível após recarga, aviso de duplicidade e menus/telas do SUPERADMIN. O ambiente isolado usa HTTPS no IP privado e o ClamAV real passou em três controles. A [evidência estruturada](operations/HOSPITAL_PLANNER_UAT_20_USERS_2026-10-12.json) distingue a imagem 9abb da correção posterior de reautenticação, validada em 59 testes unitários e dois PostgreSQL. A onda curta não certifica capacidade sustentada; aceite hospitalar e integração HIS permanecem pendentes.
+
+## Teste de período e seleção inicial de homologação — captura anterior de 12/10/2026
 
 A [correção do relógio do teste](build/HOSPITAL_PLANNER_TASK_PERIOD_TEST_FOLLOWUP_2026-10-12.md) conserva os filtros de tarefas e passou nos 18 casos do arquivo. A CI 38233377860 permanece FAIL e a validação completa será ligada à [nova fonte](build/HOSPITAL_PLANNER_TASK_PERIOD_TEST_SOURCE_MANIFEST_2026-10-12.json) no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). O solicitante escolheu [esta VPS para homologação](operations/HOSPITAL_PLANNER_TEST_ENVIRONMENT_2026-10-12.md) e fará o aceite; execução hospitalar, carga aprovada e integrações continuam pendentes.
 
