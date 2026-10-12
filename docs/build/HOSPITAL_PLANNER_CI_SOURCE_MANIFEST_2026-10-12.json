@@ -1,0 +1,4438 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-12T01:01:58.450013+00:00",
+  "repository": "/home/rmakinaga/cvg-diagnostic-hub-v2",
+  "git": {
+    "baseCommit": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+    "branch": "feat/hospital-planner-20261012",
+    "workingTreeCommitted": false,
+    "workingTreeClean": false,
+    "baseMeaning": "Capture of the uncommitted test-clock and CI-time-budget correction over the first PR commit. GitHub remains the authority for the subsequent committed SHA and checks."
+  },
+  "candidateEvidence": {
+    "validationRecord": "HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json",
+    "scopeMeaning": "Only two selected validation inputs change: the analytics test clock and the verify timeout. All 1083 other selected raw sources, including runtime product and normative contracts, equal the first PR snapshot.",
+    "globalGateMeaning": "Source identity is not full CI success or hospital acceptance."
+  },
+  "scope": {
+    "includedPrefixes": [
+      "src/",
+      "packages/",
+      "scripts/",
+      "migrations/",
+      "db/",
+      "vendor/",
+      ".github/workflows/",
+      "docker/",
+      "deploy/",
+      "tests/"
+    ],
+    "rootConfigurationPolicy": "Explicit package/lock/environment example/ignore/node-version files; root Dockerfile*, docker-compose*.yml|yaml, *.config.* and tsconfig*.json.",
+    "explicitRootFiles": [
+      ".dockerignore",
+      ".env.example",
+      ".env.monitoring.example",
+      ".env.production.example",
+      ".gitignore",
+      ".nvmrc",
+      "package-lock.json",
+      "package.json"
+    ],
+    "testInputPolicy": "Include nonignored tests/ validation inputs, including browser tests and versioned visual baselines; PostgreSQL and unit test inputs under src/ are already covered. Runtime datasets and generated test-results/playwright-report remain excluded.",
+    "planningAndReportingPolicy": "Documentation is restricted to the eight exact normative paths in normativeDocs. Planning docs, build/audit reports, temporary evidence and this manifest/script are outside the fingerprint to avoid self-reference.",
+    "dockerfilePolicy": "All nonignored repository-relative regular files whose basename begins with Dockerfile.",
+    "deploymentPolicy": "Include the nonignored deploy scripts/configuration, including release guards, backup/WAL/offsite, local bootstrap/scanner, MinIO IAM, Caddy, firewall example and observability configuration. rclone.conf.example contains only explicit CHANGE_ME placeholders; real rclone.conf is excluded even if tracked or not ignored.",
+    "normativeDocs": [
+      "docs/api/openapi.json",
+      "docs/architecture/ARCHITECTURE.md",
+      "docs/build/COVERAGE_EXCEPTIONS.json",
+      "docs/build/PERF_BASELINE.json",
+      "docs/spec/API_USAGE.md",
+      "docs/spec/DATA_MODEL.md",
+      "docs/spec/DOMAIN_MODEL.md",
+      "docs/spec/PERMISSIONS.md"
+    ],
+    "gitSelection": "Union of git ls-files --cached --others --exclude-standard, deduplicated; git check-ignore --no-index --stdin -z removes ignored tracked or untracked paths before the explicit scope and exclusions are applied.",
+    "exclusions": [
+      "No real .env files; only the three exact root example templates are eligible.",
+      "No data, builds, artifacts, logs, secret directories, credential filenames/configuration or secret-container/key/certificate file types. The exact two normative docs/build JSON files are included as requested.",
+      "No symlink files or files with symlink ancestors; only regular repository-relative files are read.",
+      "No external repository, runtime database, environment content, network lookup, container inspection or credential access."
+    ],
+    "notClaimed": [
+      "This scope does not include mutable data or generated build output.",
+      "It does not include all documentation or browser reports, and does not represent a committed tree."
+    ],
+    "auxiliaryPublicationControls": [
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/.gitattributes",
+        "sha256": "f0222278d50120fbb6a6e1bc9d2d100746232c2d94036639bb4a8f0b3b93e28c",
+        "bytes": 505
+      }
+    ],
+    "auxiliaryPublicationMeaning": "Exact CSV whitespace attributes are recorded separately; they do not change runtime sources or spreadsheet bytes and are outside the existing source fingerprint selector."
+  },
+  "algorithm": {
+    "fileHash": "SHA-256 over exact raw file bytes.",
+    "ordering": "Unique repository-relative POSIX paths, sorted ascending by Unicode code point.",
+    "canonicalRepresentation": "UTF-8 encoding of JSON files array with each record ordered as path then sha256, ensure_ascii=False, compact separators comma/colon, followed by exactly one LF byte. Metadata is not part of the fingerprint.",
+    "pythonEquivalent": "hashlib.sha256((json.dumps(files, ensure_ascii=False, separators=(',', ':')) + '\\n').encode('utf-8')).hexdigest()"
+  },
+  "fileCount": 1085,
+  "countsByScope": {
+    ".github/workflows/": 2,
+    "db/": 27,
+    "deploy/": 36,
+    "normative_docs": 8,
+    "packages/": 39,
+    "root_configuration": 28,
+    "scripts/": 106,
+    "src/": 776,
+    "tests/": 61,
+    "vendor/": 2
+  },
+  "skippedSelectedPathCounts": {},
+  "fingerprintSha256": "cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8",
+  "files": [
+    {
+      "path": ".dockerignore",
+      "sha256": "7728cf18303dde531ce5c3efbd3b37916fc034d284e745f060967c61933acfb8"
+    },
+    {
+      "path": ".env.example",
+      "sha256": "a98932edb2f4ded503b709060c0026aab2d24d46e3c36d5b50f2dc73da108f19"
+    },
+    {
+      "path": ".env.monitoring.example",
+      "sha256": "810a8d98acdd5e6217fce5487d931b3219076b5832aa1b0ae2a9125a9c3b0321"
+    },
+    {
+      "path": ".env.production.example",
+      "sha256": "fc1e4cfb10b78eae4893545d8a660634880beb6a919f9aced09644434d730cb9"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "ee5eb963b35e79715df2a2b14c9cbec4bcbe114e3b636fa03d5ed841333e3a0b"
+    },
+    {
+      "path": ".github/workflows/release.yml",
+      "sha256": "014a11833dd605530a35f648443c5533bebbe3b02af74faf1e9d2aec3b38220c"
+    },
+    {
+      "path": ".gitignore",
+      "sha256": "720ff9c169e6bf3a7dd1a07cc0301ce9d0088840678cd4018bc555572bfeb51e"
+    },
+    {
+      "path": ".nvmrc",
+      "sha256": "f14b4987904bcb5814e4459a057ed4d20f58a633152288a761214dcd28780b56"
+    },
+    {
+      "path": "Dockerfile",
+      "sha256": "386c35dc50c99321525090f83364d008b0cd5ff7d75e42dbb061e965d50e6f68"
+    },
+    {
+      "path": "db/migrations/001_initial.sql",
+      "sha256": "b60bb12dcbbb4fbabdcdd0e1f93644baa9de2997f96174d1997576c2fbdfab76"
+    },
+    {
+      "path": "db/migrations/002_outbox_processing.sql",
+      "sha256": "7f1d2cd32bcde518cc810a111d059b8da72ba468ea4ba8b73a94ffc07bce0e6b"
+    },
+    {
+      "path": "db/migrations/003_runtime_integrity.sql",
+      "sha256": "da4e13aad775a23a583d9162752767ed3890d2cfe76300356caeca9b9ada396f"
+    },
+    {
+      "path": "db/migrations/004_outbox_claim_ownership.sql",
+      "sha256": "664ddfd7abd2a68368e3bd41bfd5f8b7cf85470190dfaf1b9d5f2b374760428a"
+    },
+    {
+      "path": "db/migrations/005_rate_limit_buckets.sql",
+      "sha256": "01bb59f2df6c27be7802061b7a81dea92aa50b65210e0eae4b895f59d54b6f57"
+    },
+    {
+      "path": "db/migrations/006_transitional_snapshot_boundary.sql",
+      "sha256": "6ff5c971e30a7306673f692d2f53d16d0756a97055a18aa9f1e8c1efd7665057"
+    },
+    {
+      "path": "db/migrations/007_relational_clinical_core.sql",
+      "sha256": "59799c7880140036e500160bae84bd21bceb83894b7a98c6568e6577c5d29767"
+    },
+    {
+      "path": "db/migrations/008_outbox_routing.sql",
+      "sha256": "3bf712b2b2bcccb1a51a1a03fd22a4a349c9e4362b75a4e0e42f70eca1a08eff"
+    },
+    {
+      "path": "db/migrations/009_relational_sample_lineage.sql",
+      "sha256": "06e13b2d4f40c7e7cad5f46a87dd529e695154a247ebf63bbf3432509a32644c"
+    },
+    {
+      "path": "db/migrations/010_relational_backfill_control.sql",
+      "sha256": "ff9cac6a830291e189f2997cfb9d95415eef5141fd36aaa4c56ffc331ddb6d1f"
+    },
+    {
+      "path": "db/migrations/011_outbox_dead_letter.sql",
+      "sha256": "893e8238af26721ae74f66c8e3ef2d1241931932fac7a9a533bfd349b44bd073"
+    },
+    {
+      "path": "db/migrations/012_session_activity.sql",
+      "sha256": "ae7dc1c8636a5ca6d194408d9aa2e1c9d82981aa25c61b3fd1faa860eb1b67e5"
+    },
+    {
+      "path": "db/migrations/013_audit_read_authority.sql",
+      "sha256": "9b5ca0a5b3107e4cbe5770081bea50c6b1de3ff1f9fc44cc878a794dea463d98"
+    },
+    {
+      "path": "db/migrations/014_outbox_read_authority.sql",
+      "sha256": "99c04ba9760e17ef0b6eb3563c1f559700ac5ea826ace33894d985a9d6045031"
+    },
+    {
+      "path": "db/migrations/015_runtime_entity_rows.sql",
+      "sha256": "8eccfa054f0ed1d98cbe13ffdc453b13c5ea92800b7ec52d2f2b521c3a12929f"
+    },
+    {
+      "path": "db/migrations/016_outbox_whatsapp_route.sql",
+      "sha256": "c63d12c24dd13482eae00d9ed87aac9fba53fbbc7609df23b78e81a3603fa77c"
+    },
+    {
+      "path": "db/migrations/017_clinical_archive.sql",
+      "sha256": "43aeca4eaea8b4724fd49edfa824644e4a4ea874b67570b8191d386147dae6cf"
+    },
+    {
+      "path": "db/migrations/018_archive_object_deletions.sql",
+      "sha256": "8321c107f6532481b0cf375ce6c47d0848a0dcb1582abecd432c1a790ae6c110"
+    },
+    {
+      "path": "db/migrations/019_hospital_departments.sql",
+      "sha256": "c8ccc5d9a36adbb44a60146ef0b298c8b46aa4cd67df599b3a482bb94be9c025"
+    },
+    {
+      "path": "db/migrations/020_hospital_access_groups.sql",
+      "sha256": "102da18b06517303b97cf3f8be75cb974e32568568afd0b9b9c99373a62cec01"
+    },
+    {
+      "path": "db/migrations/021_exam_definitions.sql",
+      "sha256": "b5127624cafc1206983eecc4987284abff479cae307c7f23555bbfe572250126"
+    },
+    {
+      "path": "db/migrations/022_hospital_services.sql",
+      "sha256": "7960fe66144ec8ce305ecbc3a4d82f798b821c9d5188678d9805feb542045b92"
+    },
+    {
+      "path": "db/migrations/023_hospital_tasks.sql",
+      "sha256": "7679b66fe2ffc9dd82787b8f3c5154513b907856cf08439ab61117cce0dc9730"
+    },
+    {
+      "path": "db/migrations/024_hospital_planning_resources.sql",
+      "sha256": "58a59399bdea97a86766bbc9a10ab8b5da890fd8d2b48c6d10591ec897218f5e"
+    },
+    {
+      "path": "db/migrations/025_hospital_collaboration.sql",
+      "sha256": "526c991610df5c0224904dfb005c8b9508fc5356b81c1689b4ab4965a2a374f4"
+    },
+    {
+      "path": "db/migrations/026_hospital_external_capabilities.sql",
+      "sha256": "e1cc299c0a17873bcc7541b4ef766d1180ac62706f4d9c536336119db2b941d7"
+    },
+    {
+      "path": "db/migrations/027_hospital_his_v4_deliveries.sql",
+      "sha256": "41a4d8bbcb790588254fc2937694a1a9f19807290975c6f8bb18556b7d0c3054"
+    },
+    {
+      "path": "deploy/Caddyfile",
+      "sha256": "c3dfd9a0e1d788bc0e3fef170b69d206dc3603f37cb6f6e4d43a86dacc6dadf1"
+    },
+    {
+      "path": "deploy/Caddyfile.internal-tls",
+      "sha256": "f29b12dc8f8f4b55d1da0d4f4ba07b0f39377b1fffd975dbb89e4b5487e47c3a"
+    },
+    {
+      "path": "deploy/backup/archive-wal.sh",
+      "sha256": "22d084b423e699b7cc0480ae93f83757efafcc8a1009f8628f9e174a57d49275"
+    },
+    {
+      "path": "deploy/backup/backup-loop.sh",
+      "sha256": "dfd19cb5bc2d302421e45c898cb84ce528cb5fbaf07c05648555123ccb5233f7"
+    },
+    {
+      "path": "deploy/backup/check-offsite.sh",
+      "sha256": "51a2da06533fcba75ea1febe2c4971cae4ed101bf4390f3c7caf926e4d231f2c"
+    },
+    {
+      "path": "deploy/backup/pg_hba.conf",
+      "sha256": "b299e1ace0b2a189caf5c7f88f12476c86dcc4a40bff1c3619bc6628c15fa122"
+    },
+    {
+      "path": "deploy/backup/postgres-entrypoint.sh",
+      "sha256": "60d9a5d31a086cd9d02257ea212e75b8834d21a448121dbaeaccf5fa87a481b0"
+    },
+    {
+      "path": "deploy/backup/rclone-with-secrets.sh",
+      "sha256": "49a8f083cf6011cab61333eca163b354a812e482bd78a3e8653123595f7b966e"
+    },
+    {
+      "path": "deploy/backup/rclone.conf.example",
+      "sha256": "32eeb84f4fd995a2b7308baea40053bb6b2dab77970303e37fe7f3f620e1d495"
+    },
+    {
+      "path": "deploy/backup/secrets-env.sh",
+      "sha256": "5d50965934e3cfeda9bce6f5e9c3a120e21bcb3faba0e26b09a91861847f0fba"
+    },
+    {
+      "path": "deploy/backup/ship-offsite.sh",
+      "sha256": "733fa4374f96eaf77bb9a9e8e193846ff6534697f45dc9173990a0217df9bc71"
+    },
+    {
+      "path": "deploy/firewall/nftables.conf.example",
+      "sha256": "3a79de3875a7b0a75db036d9aa1ad29b7dd83fc7d77e400235388971d8496da1"
+    },
+    {
+      "path": "deploy/local/Caddyfile",
+      "sha256": "743b9fe1cc37e7103afb20e996157b5a1bc2bfb4712a6065196fe3352701feed"
+    },
+    {
+      "path": "deploy/local/init-db.sh",
+      "sha256": "156f85f78fb457ffa4bee74f31d301be7198aa2935799f4b6dff6e4afcf05efb"
+    },
+    {
+      "path": "deploy/local/scanner.mjs",
+      "sha256": "09c92144f15f1b704142d85c507c5acd7f8913685300693fe577c5cd5c5ce3fe"
+    },
+    {
+      "path": "deploy/local/smoke.py",
+      "sha256": "cc41d5d5d3c5e9a1d4fa85d711357fb1909ec77dd26f690c29be836fda111e34"
+    },
+    {
+      "path": "deploy/minio/Dockerfile",
+      "sha256": "f2127cc68bee0647e89d124d17a62a09c79edae88f9ad737bea5244bf38ddf26"
+    },
+    {
+      "path": "deploy/minio/Dockerfile.mc",
+      "sha256": "c5ab69479acf5f6b706d9ed25e3809424e6568fe01345da04313eef5e4439111"
+    },
+    {
+      "path": "deploy/minio/iam-verify.sh",
+      "sha256": "1eea04936e407996f2cba735f4f6ee2d5865a22e8387f487e2813738b1b0d2fa"
+    },
+    {
+      "path": "deploy/minio/iam.sh",
+      "sha256": "bd79c928cfc8e3c77a682717170d01d63f81e4a3f1d0844fb15d75d7b1cac5cc"
+    },
+    {
+      "path": "deploy/monitoring/postgres-role.sql",
+      "sha256": "b9d59470cd399743782c3a4976ac3b669f1e5513e295da05d58439e81d65e654"
+    },
+    {
+      "path": "deploy/observability/alerts.test.yml",
+      "sha256": "cb46cfe5ae2aa2b4e160410286b1634349cfa6a4f6700f40ff12962c97b2b0c8"
+    },
+    {
+      "path": "deploy/observability/alerts.yml",
+      "sha256": "6d712994b9784fa63316b98b10320bb2c0064e80836c114a97647a8f46369a58"
+    },
+    {
+      "path": "deploy/observability/alloy.alloy",
+      "sha256": "4642c32018aa30f63e15447cae30c2eb440956ce4e89053264bfdd9d08d72a45"
+    },
+    {
+      "path": "deploy/observability/cvg-host-collector.service",
+      "sha256": "4b447cf2f9aa9c5f91f44440c459459db831a69185a2731b5266ae988babe6d9"
+    },
+    {
+      "path": "deploy/observability/cvg-host-collector.timer",
+      "sha256": "022b69f381c951011bb5a4bf10946dd8b2e46e299241485dcf9cf1844a2d8555"
+    },
+    {
+      "path": "deploy/observability/grafana-dashboard.json",
+      "sha256": "cf2971fa285d4ffa49313533d9fcbf24be082b1c069e277a182d2352fd3b310a"
+    },
+    {
+      "path": "deploy/observability/grafana/datasources.yml",
+      "sha256": "d94022b9eca4b5e39b780b009da36d6230fc6b806c61ad74ee9e51e819e23af2"
+    },
+    {
+      "path": "deploy/observability/infrastructure-alerts.test.yml",
+      "sha256": "59f889aa71dbae4ef92268baabb293a0ee98ada6dcffbe9869921595e42ed92d"
+    },
+    {
+      "path": "deploy/observability/infrastructure-alerts.yml",
+      "sha256": "a6cd588ad37c5b0aa97eaf28fa283229707f6792d43a186f06b5c7d424a16163"
+    },
+    {
+      "path": "deploy/observability/loki.yml",
+      "sha256": "80b708ce5c47e994664315b965542d9f5ccc43107ef0aae0d8aa650efad96fc8"
+    },
+    {
+      "path": "deploy/observability/prometheus.yml",
+      "sha256": "f6f831a5417fa26a701b4821f7f9ef0161b0d29dd4c7dfb86539db925cffceb8"
+    },
+    {
+      "path": "deploy/release/deploy.sh",
+      "sha256": "b2b301b09ffcd4d10e1b29b5a871c965eb74c58a14343f06c91f83edc409385e"
+    },
+    {
+      "path": "deploy/release/installation-provenance.sh",
+      "sha256": "afd02319224ed791cb7daaf8ef86155a8ba21dfbff826c71d1e2a4ba9bdd2c93"
+    },
+    {
+      "path": "deploy/release/pull-release.sh",
+      "sha256": "1a447714b716cecfa3043972c6c02db136f512ecdcf194d3531ab6e03cd596d2"
+    },
+    {
+      "path": "deploy/release/verify-ci.sh",
+      "sha256": "5ec207fcd4461bc32a31682adc768c3bbd2d635d833afd9325aae86bde453a0f"
+    },
+    {
+      "path": "docker-compose.internal-tls.yml",
+      "sha256": "694b6784e7acf8e6bf7dfca952608ee02e598f04dc5650a8f97c430cb25e5902"
+    },
+    {
+      "path": "docker-compose.local.yml",
+      "sha256": "87a69dc2ac1d5f6470248c1e1905ae8fec97ea4d4f878f968635acfdca2b3ba8"
+    },
+    {
+      "path": "docker-compose.monitoring-agent.yml",
+      "sha256": "8df0a391f9a2c938b61cf7a055816cd84250c6ce7369fb1900fdce20ffe2929a"
+    },
+    {
+      "path": "docker-compose.monitoring-postgres.yml",
+      "sha256": "9cceb34801e1335ac5d7cd451dc4e16e560e430ac345a058bd0577c40e235c68"
+    },
+    {
+      "path": "docker-compose.monitoring.yml",
+      "sha256": "5a842e3b0dcbd659d6287d877dece50dca5fa3bbe195cf3d641b2b3f3f5622e3"
+    },
+    {
+      "path": "docker-compose.observability.yml",
+      "sha256": "4f595415870e6471eff9848b554182e3b7ac8a036d72480a55b2c040cec29f4c"
+    },
+    {
+      "path": "docker-compose.onprem.yml",
+      "sha256": "815b60187f7aaf89b1b96544a0f2e227e52b9db693b98090207548111b8966b6"
+    },
+    {
+      "path": "docker-compose.outage-drill.yml",
+      "sha256": "43c4362ae8fb836d79f58c29adf4c0ca3f39ea239574b3440903fc9de0810f45"
+    },
+    {
+      "path": "docker-compose.pitr-drill.yml",
+      "sha256": "97dac9221366e35446e4d99cf4827742aa4de0c870b49c8221fd16a9667fda44"
+    },
+    {
+      "path": "docker-compose.prod.yml",
+      "sha256": "f7edea74a5bc3a490c8a9b5685a530ce5c15413d3aa700e3dd7b3a2ef48d20b8"
+    },
+    {
+      "path": "docker-compose.secrets.yml",
+      "sha256": "3fa8ce16362ff5c8233b267dc3aa5402dedce8cfff84928ead694ec556f2aef9"
+    },
+    {
+      "path": "docker-compose.storage-drill.yml",
+      "sha256": "9c8d66e76004acfdf73d532314dae5e6bf45a3168a5f6facf30032e22801e556"
+    },
+    {
+      "path": "docker-compose.yml",
+      "sha256": "56cabf6fc643d5ed74bcb975407b15d8fb3c41f759e3dd7126f89b197db0691f"
+    },
+    {
+      "path": "docs/api/openapi.json",
+      "sha256": "fe64899adf7562760bec5ff51357e95184d320b16871e2ec8f876afb71e02648"
+    },
+    {
+      "path": "docs/architecture/ARCHITECTURE.md",
+      "sha256": "ef53ce2518cce10c3acd8bb58c0c9567c965365f5a322cf6d3e76a6a9be4476f"
+    },
+    {
+      "path": "docs/build/COVERAGE_EXCEPTIONS.json",
+      "sha256": "8ba2e91f7d2cf395d0432f156dcf7e4180874c09f2d6a4826abf402ddb5df972"
+    },
+    {
+      "path": "docs/build/PERF_BASELINE.json",
+      "sha256": "dce6027d7ab691ce440440b75610d6ab79a7f565494c3ec47c99570539cd51cf"
+    },
+    {
+      "path": "docs/spec/API_USAGE.md",
+      "sha256": "103d86687ebb2452b14923034db442b42e1c9a7b9a64ea7894413b2848a06acd"
+    },
+    {
+      "path": "docs/spec/DATA_MODEL.md",
+      "sha256": "44c2695f25cc00148e7b203078d007f8b8e760e2e5e40813e4fdd6cd4eeb294e"
+    },
+    {
+      "path": "docs/spec/DOMAIN_MODEL.md",
+      "sha256": "79c2bd25e52da0edf4a2677ca28937bbd60f0646d668380bf3c87194e078de36"
+    },
+    {
+      "path": "docs/spec/PERMISSIONS.md",
+      "sha256": "2308b5fa7605d34610079f4ef2b33de7e65c9d4bed85b9b00d93e8b664e57028"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "sha256": "3af8e6dd8d4a2bce9c05c93e2a659795f010cfd6c75dc2b839423ba7e66c4255"
+    },
+    {
+      "path": "next.config.mjs",
+      "sha256": "52f3f1bc809e744eaaf7e6544da438b940ce0c0347dd429cbb686a6f5eb17413"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "f09f91a6789b7ff210f2b3285c488057fa71a51d301503df1688b05d0210fc0b"
+    },
+    {
+      "path": "package.json",
+      "sha256": "14d8bc3fff49bdecf0c1b9ffed69374eb4b3ee000550316fd28da06929475a14"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "sha256": "c3f0d3844aff9ac0c7f3a037eafdc494c8c5e144200f5e72e4b75c4a1fb1c613"
+    },
+    {
+      "path": "packages/contracts/src/diagnostic-catalog.ts",
+      "sha256": "16dd6f3c3e1722835a27efc20850d78dc17ef3976bfaac341fc1804cb7109670"
+    },
+    {
+      "path": "packages/contracts/src/diagnostic-planning.ts",
+      "sha256": "9c0a4c374c0789c4caedf02ab282326b6e28c96b725ceeb9e5dccaa177e6d4e4"
+    },
+    {
+      "path": "packages/contracts/src/hospital-ai.ts",
+      "sha256": "54b8a3718dbec2a4dde52586ce4e05866e600b104943e65c62b8421a12d51381"
+    },
+    {
+      "path": "packages/contracts/src/hospital-analytics.ts",
+      "sha256": "e396d74fb3bc6476ac651464d011f28c4e61f665cf5b9aed55280cb98354a51f"
+    },
+    {
+      "path": "packages/contracts/src/hospital-care.ts",
+      "sha256": "7d4210967848513ebbdf97370b9f320ba9b588bfbeb895aa94e8e8d69fd8819a"
+    },
+    {
+      "path": "packages/contracts/src/hospital-checklists.ts",
+      "sha256": "62a8c3b60198b9de4daefd2f00e00fb30ef84df7e37ad929a887255667c45521"
+    },
+    {
+      "path": "packages/contracts/src/hospital-collaboration.ts",
+      "sha256": "9a859d0523bb2e9e6391d075cb0c81e63a9af9742352435aa490e03c6a9325a7"
+    },
+    {
+      "path": "packages/contracts/src/hospital-documents.ts",
+      "sha256": "bb24d558222547007e91a5b33d7aad560568d2f32245e0b25817d1fe6bdd3a30"
+    },
+    {
+      "path": "packages/contracts/src/hospital-his-v4.ts",
+      "sha256": "67856d767fce3fe4a01564220b583dea541c345bba6bc64f7c3ef5853adfc4de"
+    },
+    {
+      "path": "packages/contracts/src/hospital-institution.ts",
+      "sha256": "60562e5346a62afc02e49d3e7fd4b0a1af845c74bf73dea68c0aa479915850cb"
+    },
+    {
+      "path": "packages/contracts/src/hospital-integrations.ts",
+      "sha256": "86b064a7097e367e7517d4b68e14e133bdd891e64bb8c53c5be3925132d1f5bf"
+    },
+    {
+      "path": "packages/contracts/src/hospital-planner.ts",
+      "sha256": "1e8cd1b344967d02ee851aa892d7d32b6c1315cef59c1c231b3f0ff1a0e7b4a3"
+    },
+    {
+      "path": "packages/contracts/src/hospital-plans.ts",
+      "sha256": "dfada561e5c6b69cf376aa5274e99309f7600b3210b597b99b6a0e4100f89dd7"
+    },
+    {
+      "path": "packages/contracts/src/hospital-resources.ts",
+      "sha256": "7a0de5a75407c84a2a1e0080adf777acdc5860fd9da3ed26af2cc30baf89e2ef"
+    },
+    {
+      "path": "packages/contracts/src/hospital-services.ts",
+      "sha256": "4f66e70dbeb1aae86d4637e84ec691ed81617bb0faf78dae0d48644db1bd67d5"
+    },
+    {
+      "path": "packages/contracts/src/hospital-shifts.ts",
+      "sha256": "dd24b9152e3b6fa64ad2ac3d6de1f41c2ed93604f4fd2d9ed4098283320f7a8b"
+    },
+    {
+      "path": "packages/contracts/src/hospital-tasks.ts",
+      "sha256": "187eb9819a4909e75e97b80cac23796cacb82ad463da2ac41f44ed316cccf900"
+    },
+    {
+      "path": "packages/contracts/src/identity-permissions.ts",
+      "sha256": "0c3dc024113d840f27140655af76d8fcf63a77a14ad6b54873cd9b60b8b70bf7"
+    },
+    {
+      "path": "packages/contracts/src/identity-roles.ts",
+      "sha256": "3e6f1c6e72221d912e0febf03f25bcb9fef32c998514bd26e7bfa6e5b1299a46"
+    },
+    {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "30845c3b462409145fdcec2ea59f9ef878ebad27f414d83bbe7a54e20e70104a"
+    },
+    {
+      "path": "packages/contracts/src/planner-views.ts",
+      "sha256": "6a210e579d75184a4bf77c4859f7562d049d78cd876ebfe75362184d93b58218"
+    },
+    {
+      "path": "packages/contracts/src/work-activity.ts",
+      "sha256": "1eb2bac151e29d93d748caaaa9633e16e3be558d9da816591185e1ac5523c7b8"
+    },
+    {
+      "path": "packages/domain/package.json",
+      "sha256": "3b31047fac5284027b4ff18ffc7967702acb43f7e2563309fcfeb0d14e267e2b"
+    },
+    {
+      "path": "packages/domain/src/diagnostic-planner-filters.ts",
+      "sha256": "bc5cc29929a4153137ead6adaadf73326917cb828500f8ba732a5b86dbcc7295"
+    },
+    {
+      "path": "packages/domain/src/index.ts",
+      "sha256": "a24bb1a861fa5dd5ce2aca64dec9b5367b9d555c66573f93ad574a649c7fa7a7"
+    },
+    {
+      "path": "packages/domain/src/laboratory-result.test.ts",
+      "sha256": "a125c3b73a6e1ce8a44b6ce730329347d2824d1e0bef75c8b7a5985bbd7f040c"
+    },
+    {
+      "path": "packages/domain/src/laboratory-result.ts",
+      "sha256": "56ad1b286708c6d72114fa7f90b1430068e2d566df4641ac7aab210fc1aaea54"
+    },
+    {
+      "path": "packages/domain/src/operational-context.test.ts",
+      "sha256": "9681d5e79deb90c9495704cf9f60b8a7fe65d0d52e3e8803d9f26c17b486a04f"
+    },
+    {
+      "path": "packages/services/package.json",
+      "sha256": "cfb75a0bd34d960609c19cbc700e7a3eb387d02a108688c45f2b50b335d8f496"
+    },
+    {
+      "path": "packages/services/src/index.test.ts",
+      "sha256": "8e75bc030d3daec275007d055db7d3d28a7c3d16a87d2cfe0db9c5333f812e56"
+    },
+    {
+      "path": "packages/services/src/index.ts",
+      "sha256": "81c5145b5998197c3a34f7da5ec1960045fcea9c04f16907493200c68201c4d5"
+    },
+    {
+      "path": "packages/shared-state/package.json",
+      "sha256": "db36ff77c4fa0b33d7815476f995e528b0e2b922295ef5f06ddaf82e3e1b7d68"
+    },
+    {
+      "path": "packages/shared-state/src/index.test.ts",
+      "sha256": "8d8beaf5a5468d32ef7b9f249aa2ef14818360f8100ffeaefa0d0a6c7370ecb5"
+    },
+    {
+      "path": "packages/shared-state/src/index.ts",
+      "sha256": "f9487aab3ca5fddb563e6963247ba9527dd6a775c3715b0d8f4f5afc5a4930a6"
+    },
+    {
+      "path": "packages/shared-state/src/planner-filters.test.ts",
+      "sha256": "4dc0d0a419d7670bd0ffa2c0a3090a7b7c18b126aef53868ce1fee0933d0e374"
+    },
+    {
+      "path": "packages/ui/package.json",
+      "sha256": "716aaf04387268dc8906a337346db1b19c7002354f59c43fff48646b47f61ce0"
+    },
+    {
+      "path": "packages/ui/src/index.test.tsx",
+      "sha256": "90f25dd4677274681c29eeec142220ff11b073fc74bc118b84680b840f870ce8"
+    },
+    {
+      "path": "packages/ui/src/index.tsx",
+      "sha256": "7e465bb71c3476b0c9641600233871377923261ed4afa411a391e3ac045062ed"
+    },
+    {
+      "path": "playwright.config.ts",
+      "sha256": "174cf50f7422a54fe1bd619ef71295894d96416a4766b1fcb3f7746d79345766"
+    },
+    {
+      "path": "scripts/attachment-bytes.test.ts",
+      "sha256": "6a43a93c86a661b77bfc1d04ab594ab878c909c406d23f954befe86eef0581f9"
+    },
+    {
+      "path": "scripts/attachment-bytes.ts",
+      "sha256": "ed483954ffe2c9cfd2bc357a3141767d9f7bd1f73a57ebcafbff4623e5b8b0fb"
+    },
+    {
+      "path": "scripts/attachment-references.ts",
+      "sha256": "c65e1eec8339c2ccc34dd61c17a7f8f4be4b930068a70153fb0a83ef678fe432"
+    },
+    {
+      "path": "scripts/attachments-reconcile.ts",
+      "sha256": "cb0afb2c0f918ade43d3ddd4b4c32d338769da7c2e14b71d59c73d74cd94d356"
+    },
+    {
+      "path": "scripts/attachments-restore-plan.ts",
+      "sha256": "b550873086770d786b960eee60a8a2c0d83223f7c58a548dad33e101b484285f"
+    },
+    {
+      "path": "scripts/backup-db.sh",
+      "sha256": "fe16406b57e78b4498855dcfbd668574084be8e860ce5d2a5f00770dd5310590"
+    },
+    {
+      "path": "scripts/backup-drill.sh",
+      "sha256": "8fd430590a2802d4d26c821d28a4139c4d5a3d1b98ca2dacc02a0f7ee1e82c83"
+    },
+    {
+      "path": "scripts/backup-restore-smoke.sh",
+      "sha256": "2bb2ed6b05d9030eed531146d7bee0b505c635c331f1e3dc3a0d473bd2bff18a"
+    },
+    {
+      "path": "scripts/backup-restore.test.mjs",
+      "sha256": "d305a4dc39870a21b3a1a913d3affccb6cd64f8afe5a07ef0a933945decca697"
+    },
+    {
+      "path": "scripts/backup-wal.test.mjs",
+      "sha256": "9160898abd4c103b788803c6c76925e98192f0bde505ad81e18a73c49be1c460"
+    },
+    {
+      "path": "scripts/bootstrap-admin.ts",
+      "sha256": "2e5f0bcb59b7660cbdaed707950bc440819a7b1aeaf851ce3894205b4e46a6aa"
+    },
+    {
+      "path": "scripts/bootstrap-superadmin.ts",
+      "sha256": "aedd9e01d2f27bea176557c2707f20bce3a226e5782d2002b49deac7d545da41"
+    },
+    {
+      "path": "scripts/catalog-import.test.ts",
+      "sha256": "918060408c558e95d6ecaadb9231f05e4d6aebd41b72923395da554e30254742"
+    },
+    {
+      "path": "scripts/catalog-import.ts",
+      "sha256": "19e38c61350a2383e7ddcd8168a624a777ee45c049e6a3e9747aab8f5c46522b"
+    },
+    {
+      "path": "scripts/check-log-aggregation.sh",
+      "sha256": "6ef95343a6fe9b091c4a54714978b1841e721dde4ddb953a791c76b99812ac9a"
+    },
+    {
+      "path": "scripts/check-observability.sh",
+      "sha256": "8b979fda24c823b7b9bf5e1cd6b9c6ef4688ce52a45ccfd4d2874b50ba00c180"
+    },
+    {
+      "path": "scripts/ci-docker-build.sh",
+      "sha256": "878351774d3fcd224f3eeaf35880c0298fcc154f30cfe020048f04601a86e383"
+    },
+    {
+      "path": "scripts/ci-storage-services.mjs",
+      "sha256": "9c6443ff48f2d40d5aaa60fd4426a0f2828e0d9ade4d1d28a7a9d1e0d56871fa"
+    },
+    {
+      "path": "scripts/cleanup-builds.sh",
+      "sha256": "4d57bd03b4933dcea99f2a7e95d51f85a0c875231944ca5cae10a9068a10add7"
+    },
+    {
+      "path": "scripts/clinical-archive.ts",
+      "sha256": "c3cf02069d70d75ce359d0de522b7f8e411e50a3ba448f30ac113e8346a61b50"
+    },
+    {
+      "path": "scripts/coverage-report.mjs",
+      "sha256": "1856caae941900695029b9a94209fc8d12563728f646db195a8e917b524c07a7"
+    },
+    {
+      "path": "scripts/coverage-report.test.mjs",
+      "sha256": "104679ba6c9ffb664885491a2c08f207c600a3cf6166259d75d51a06dcb3481f"
+    },
+    {
+      "path": "scripts/db-roles.ts",
+      "sha256": "5558922adefdca9853ef20deeb3e39fcc74bebfbcba1951aa99748ca00943b56"
+    },
+    {
+      "path": "scripts/db-smoke.ts",
+      "sha256": "43e3a53ff703dfe1cdedbd6634c311b265a1447d5abf8a5f9bfd80b83205ddce"
+    },
+    {
+      "path": "scripts/demo-workload.test.ts",
+      "sha256": "46cc873a27c5c10b875dab43807f9504ad019fb90336ab1dd931f0fafb35a097"
+    },
+    {
+      "path": "scripts/demo-workload.ts",
+      "sha256": "fbf238bb581d10c2ae86235dc1c8fff880ec05b2e94e59ce4eb49900860c008a"
+    },
+    {
+      "path": "scripts/drill-delete-attachment.ts",
+      "sha256": "6d21e93380f56e70d5ab0c5dd8270be209196e72c5761c7e9139f53d9a4bf90a"
+    },
+    {
+      "path": "scripts/drill-seed-attachments.ts",
+      "sha256": "abf29a1f36ea57d0f1946a7a31f48529d47d6280015013654e25a38639ab0e65"
+    },
+    {
+      "path": "scripts/drill-seed-outbox.ts",
+      "sha256": "c61dc714c657ec370d50e68c5ced5167a8b91f9c0f4356fce64dabee3729db86"
+    },
+    {
+      "path": "scripts/e2e-canonical.test.mjs",
+      "sha256": "f95ca81cba7300055a400de91d655babd5260299982a591d3693b734b88f22b9"
+    },
+    {
+      "path": "scripts/e2e-runtime-telemetry.mjs",
+      "sha256": "782a1b4789328bc18f499193782731af62cfd8ce23aab842012e853a5d94b19e"
+    },
+    {
+      "path": "scripts/environments-drill.sh",
+      "sha256": "877cb35f741f5530e3a062967feead9a692675bf96ec39aa2182395575c1d6a5"
+    },
+    {
+      "path": "scripts/eslint-glob.test.mjs",
+      "sha256": "0c3a27287e6cf4748f16bd606055a085a1930d63b7d1f09d27ae9ecf7e64f151"
+    },
+    {
+      "path": "scripts/fast-glob-brace-limits.cjs",
+      "sha256": "13e84fcf3b15ba3fda103123cd279611b7c3e179421eb04f29cb6837f5519a0a"
+    },
+    {
+      "path": "scripts/fast-glob-safe-pattern.cjs",
+      "sha256": "266cc37d07433af8a5f944b62722a9bd884999438c69bdea3e7372554e9a5bb5"
+    },
+    {
+      "path": "scripts/fixtures/eslint-glob-parity.json",
+      "sha256": "999ea999530e3c76abbffa8fe877f1b11e3556a2829d5041048db80452a3fef5"
+    },
+    {
+      "path": "scripts/full-restore-drill.sh",
+      "sha256": "5ad3cda4d8ea5c4c1479edecbf650b66055d4a892278b0e29099ab9fedd3f9b4"
+    },
+    {
+      "path": "scripts/full-restore-drill.test.mjs",
+      "sha256": "41962c9ffe8ce707ae5de82ac1d84a8f88ed555eac5fb669c18ff8c9419e48be"
+    },
+    {
+      "path": "scripts/init-storage.ts",
+      "sha256": "e72b00e91178bc07bd7cddd692a553ae15ab91afea3971d420f2cea6ad4e0397"
+    },
+    {
+      "path": "scripts/installation-provenance.test.mjs",
+      "sha256": "de8112ea3782673790c9f5a83615f90c7921d34bd5dccdeb2e9c9ca40d236dd1"
+    },
+    {
+      "path": "scripts/load-file-secrets.ts",
+      "sha256": "e25826de202eae461ade59b1a6b692b6d779469cd8676c4c846f332b88f36722"
+    },
+    {
+      "path": "scripts/migrate-control-plane-v2.mjs",
+      "sha256": "d1780df3f7727f909bea3ea144ece2a39adfb9839d0cb2b6467ab678af5a8e4a"
+    },
+    {
+      "path": "scripts/migrate.ts",
+      "sha256": "5f847eaacdc66f179cae975d3c93974d194008adbf72091847058784e6a68b55"
+    },
+    {
+      "path": "scripts/monitoring-config.mjs",
+      "sha256": "0e8083aa9242464def28b6e63f3ada5a67413f2d68fc37188cf04284501293c9"
+    },
+    {
+      "path": "scripts/monitoring-host-collector.mjs",
+      "sha256": "b75b42926cf728baea642c0b894ec1afff5bf4a2ace1f07eb32bfa483d320600"
+    },
+    {
+      "path": "scripts/monitoring.test.mjs",
+      "sha256": "0711a379a73d1d303463ef903d1109a2573a99589144a5ec600cb08a87561a54"
+    },
+    {
+      "path": "scripts/mutation-controls.mjs",
+      "sha256": "016d1d1385e9089fc6c56f0060121c6cb7b84104a9bbf9ac4261376d69f085e3"
+    },
+    {
+      "path": "scripts/next-config.test.mjs",
+      "sha256": "dd6323fc5c16e385702f4c812309516a8cde654e40290dabf4c388d7c8fe4d50"
+    },
+    {
+      "path": "scripts/onprem-init.sh",
+      "sha256": "6ce44139b8befe2a8b52c0aa81f58772ae2c275205fce0777274b937041e1143"
+    },
+    {
+      "path": "scripts/openapi-hospital-collaboration.mjs",
+      "sha256": "7a48f099c6a043050587c77580564140a8073d089dc40a2ded1785b00d7348b0"
+    },
+    {
+      "path": "scripts/openapi-hospital-external.mjs",
+      "sha256": "04b3750e7d332f3dc7d8a29145d3e0b42c572841cf6cd281838198cff96505c6"
+    },
+    {
+      "path": "scripts/openapi-hospital-planning.mjs",
+      "sha256": "937db2318c07a0b7be9d63f3fac6b17137bda888447f036725acb5c6f119869a"
+    },
+    {
+      "path": "scripts/openapi-hospital-work.mjs",
+      "sha256": "4514e493c7c0d9b5cea3fa99e42b1040fe126ee247ec3f48cfb5728b597e2250"
+    },
+    {
+      "path": "scripts/outage-drill.sh",
+      "sha256": "8a5c5302922e126a56bfd3f97ac0ad44f94b66c1ae07afe32cef4ce3c755cbee"
+    },
+    {
+      "path": "scripts/outbox-healthcheck.mjs",
+      "sha256": "61d4ad8b8b88c4644aa05f0fa6e813c8fb84d34b372d837befe8b27c644ab4cf"
+    },
+    {
+      "path": "scripts/outbox-worker-boot.test.mjs",
+      "sha256": "976bf4e08eb51cdf6f68a25c1aefd85be44cdb50fcb65c86b02c02ea327b4f4a"
+    },
+    {
+      "path": "scripts/outbox-worker.ts",
+      "sha256": "0e8606082b19e78a983f2ff98b2a3f8fdcfb43b45d526acc8c7dc751fddde11a"
+    },
+    {
+      "path": "scripts/password-reset-link.ts",
+      "sha256": "5db4e1822866a1423d57f5f51819ac6e2ad80977df9ffb6dbae328a7cb742882"
+    },
+    {
+      "path": "scripts/perf-clinical-volume.test.ts",
+      "sha256": "f5cc8ef64927b84f1c4f1f471396843937baefb1ca6bcf625072f72e165ac255"
+    },
+    {
+      "path": "scripts/perf-clinical-volume.ts",
+      "sha256": "252a52afe417df40063b5576063084b5919ff14a421fd44e15d044bc36dc5dad"
+    },
+    {
+      "path": "scripts/perf-hospital-model.test.ts",
+      "sha256": "93a6b797b081ea6c9fb37fbe1852a5f752feafa949bb561a6d4499204c52fb61"
+    },
+    {
+      "path": "scripts/perf-hospital-model.ts",
+      "sha256": "ac2c1289b7346ef5bb009befbd1513b68fb899c1cd9f434bd20e7c30fba0ed01"
+    },
+    {
+      "path": "scripts/perf-hospital-planner-model.ts",
+      "sha256": "aed39385046a214006fa6f4bf2412980fcf556eaaca597beb9fc469ba04985b2"
+    },
+    {
+      "path": "scripts/perf-hospital-planner.ts",
+      "sha256": "bb62bb9fe02ad7e4abcbbd239ea3cb44425939ebcb350f827f58725a920d9c2f"
+    },
+    {
+      "path": "scripts/perf-hospital.ts",
+      "sha256": "c83301b47769f3c44bc6a5003282f239f509b8116d4442a7c27f37108fe29660"
+    },
+    {
+      "path": "scripts/perf-postgres-report.test.ts",
+      "sha256": "ca2414b0021685bf01522297e22a808e7d5f675d63bd11169b81b654abd9fc41"
+    },
+    {
+      "path": "scripts/perf-postgres-report.ts",
+      "sha256": "7606fc75c7ca5e7c5790c2c8246e55194becfdab29bd450c25553d4b9e14df85"
+    },
+    {
+      "path": "scripts/perf-postgres-sse.test.ts",
+      "sha256": "0024a058b9bd13f207e39aa4244cf6f8f1c92dd20589057ac6f0b5530719ca99"
+    },
+    {
+      "path": "scripts/perf-postgres-sse.ts",
+      "sha256": "0b8f773938408cc276073e7bf6a8b7e3a0fdca1b546b404f97d20a551afa1fe8"
+    },
+    {
+      "path": "scripts/perf-postgres.test.ts",
+      "sha256": "a93680c53af770dff2b4fb81740af9d14864e83b36fc10b99dfbc45bf3e393e6"
+    },
+    {
+      "path": "scripts/perf-postgres.ts",
+      "sha256": "291da91256cd6b724e8f68234374d06ec551873e0d8ba2d1bf4d729b45c12a65"
+    },
+    {
+      "path": "scripts/perf-realtime-budget.test.ts",
+      "sha256": "f315c62bd9a583f77cf21bf1d0d8e55d1dc64b9fefd025be0809ae16a56f2e81"
+    },
+    {
+      "path": "scripts/perf-realtime-budget.ts",
+      "sha256": "22ba1b70b9676f6168b61ad3dba3827a6c13da715c11693b02dd702cd7a09e5e"
+    },
+    {
+      "path": "scripts/perf-report.test.ts",
+      "sha256": "34e1bb4b501da2302142818ace8f6da7ad2c08c742b3f99312200ea0259844b7"
+    },
+    {
+      "path": "scripts/perf-report.ts",
+      "sha256": "be7fdce1a8a887e855f9a5dba5c8683fb0238a8c1b07c6f1754891c114b96f6c"
+    },
+    {
+      "path": "scripts/perf-smoke.ts",
+      "sha256": "210f84eaafd4a7545257ceafd903e58d23e5eb98dda185b824b4ff02622a274e"
+    },
+    {
+      "path": "scripts/perf-snapshot.test.ts",
+      "sha256": "158564a6df27fecae72f2d1fed1420629dfae797fd068fe38c0a518642bc3bb4"
+    },
+    {
+      "path": "scripts/perf-snapshot.ts",
+      "sha256": "f6c745f32bb09faae4db98f58dc4f6e38f401c234a32e4a9b22271b87bfbd00f"
+    },
+    {
+      "path": "scripts/perf-workload.test.ts",
+      "sha256": "32a406ce8193bbd25dd0a73525a01141adbe2d7819a91ae61c6c905d06cbb14b"
+    },
+    {
+      "path": "scripts/perf-workload.ts",
+      "sha256": "a4860c1a69f63765999ea271e22ac304e66be753c05ce7caa19080e8836f3b93"
+    },
+    {
+      "path": "scripts/privacy-scan.mjs",
+      "sha256": "ded4326a0ce62915f7c715717cf557f3a886ce2c2c95e3a91b1d4c7857baa1b0"
+    },
+    {
+      "path": "scripts/privacy-scan.test.mjs",
+      "sha256": "813dfc38d523336eb4c74c1a50ca6172c7135f3be94113fc5a2a4004f3d1a0f8"
+    },
+    {
+      "path": "scripts/recovery-manifest.ts",
+      "sha256": "6e86d9277c96a7e168be035a0f55839a25582d2856355dbb03e644b4073bd6a9"
+    },
+    {
+      "path": "scripts/relational-backfill.ts",
+      "sha256": "f7e73716aa2ecc1c7d3b31e4a88da845819793922f3bfc499285e10bbd6dd079"
+    },
+    {
+      "path": "scripts/release-deploy.test.mjs",
+      "sha256": "81d3a54c95560f6c9a2fda22f157de315b6b0e332df24214a3df0ded03ddb7a2"
+    },
+    {
+      "path": "scripts/restore-db.sh",
+      "sha256": "3f2f63e25bdea9999a266cae3e63cdf862039e5cf5362ed184fa49b4de615cdd"
+    },
+    {
+      "path": "scripts/restore-pitr.sh",
+      "sha256": "ee6e2f809672682913ea8ccf191e2190480cfc7bae11b1847c865a018f3c5c3b"
+    },
+    {
+      "path": "scripts/runtime-retention.ts",
+      "sha256": "fc64a5bcbf85f55ce3f30b6f39a8976a1913dec7f54521c457e5e778f815fe5a"
+    },
+    {
+      "path": "scripts/scanner-drill.sh",
+      "sha256": "41805c13357ad8349ce178de87b29370a6e150f691fe6b6162c33d5bd7a90ee0"
+    },
+    {
+      "path": "scripts/scanner.test.mjs",
+      "sha256": "f4175da0f02f022d0f26d615c0041cf49eddefa5b026790db185877f6319a9d6"
+    },
+    {
+      "path": "scripts/scratch-tsconfig.ts",
+      "sha256": "178c56071ff0f35e350c5c940d894efc655ea001a990cae8d17c7e3f1872278d"
+    },
+    {
+      "path": "scripts/secret-scan.sh",
+      "sha256": "f36015036779a762b8fd1f434a5b57bee3d6fdd901e7acb5261183fcdc98a076"
+    },
+    {
+      "path": "scripts/secrets-init.sh",
+      "sha256": "ff8e30e7edde909b6752333cc3a47ae7ab6668b7550538470a2941304c22b760"
+    },
+    {
+      "path": "scripts/seed.ts",
+      "sha256": "0e3db971d8e9df941630d353af019ed35cf27d58bc7f6b03a0d8702ac1fe8189"
+    },
+    {
+      "path": "scripts/storage-backup-drill.sh",
+      "sha256": "055b5f22cfaa882e010778de4d1645c48320d7a83fff1ff30035c713d1086288"
+    },
+    {
+      "path": "scripts/test-coverage.mjs",
+      "sha256": "8f5dfc558f73d8d005efa7e35d6331698193c33d7e4edbe932722f8a4090fc59"
+    },
+    {
+      "path": "scripts/test-e2e-canonical.sh",
+      "sha256": "cf6663335d321f6bd8cc135c60eb404cac69e64b2ca62d29c80ce23c26448790"
+    },
+    {
+      "path": "scripts/test-helpers/secrets-env-probe.sh",
+      "sha256": "33c0228925104149ff5300f031ac9a3c6cbb690191aa3783eef439022eeed18d"
+    },
+    {
+      "path": "scripts/update-visual-baselines.sh",
+      "sha256": "a0983074e6dfe421ef88359bce2e4b89f548a006eec7679bc813b92f9352f667"
+    },
+    {
+      "path": "scripts/validate-aaa3-evidence.mjs",
+      "sha256": "9fd264524d70a6a70211f6c4d70b67ff0855be3af39eaeafb8e98801b539dc15"
+    },
+    {
+      "path": "scripts/validate-docs.sh",
+      "sha256": "f12e68e754290dfa2da3b65c5e74e8f0df280bea272f770643391b1cbe96f5f7"
+    },
+    {
+      "path": "scripts/validate-migrations.ts",
+      "sha256": "6c152b52ea908a5ea5574dddbdfbf9bbe3b2c9180c453ad6ae2e395f2819cee0"
+    },
+    {
+      "path": "scripts/validate-openapi.mjs",
+      "sha256": "7f2cce4d66165c6ec048012c59e4966a9d4cb553f6bb0395cbedb5bb60e824e7"
+    },
+    {
+      "path": "scripts/validate-traceability.mjs",
+      "sha256": "82901c5348cbea465bc5a7eb5aa2bf05c82f16b907ef3f90d16fe9f822e40ead"
+    },
+    {
+      "path": "scripts/validate-traceability.test.mjs",
+      "sha256": "4f2aaaeee94ee4b720db52e266ec75e2d72202723378a1efd31f77bf43b023e1"
+    },
+    {
+      "path": "scripts/vendor-fast-glob.mjs",
+      "sha256": "ca878b8d7b2ed5fdf6153719342693a743285e963e29562b7af90f7ed5dc997b"
+    },
+    {
+      "path": "src/app/account/page.tsx",
+      "sha256": "9fa31757b9ee25f8a21e6dc2e663510e2cb4067825eab085f4dad794b0f583e3"
+    },
+    {
+      "path": "src/app/admin/access-groups/page.tsx",
+      "sha256": "c830612393c58bd96b6edc6426588973dc5ebc5aea1bd521824529d87ef47e3a"
+    },
+    {
+      "path": "src/app/admin/catalog/page.tsx",
+      "sha256": "4c266bcbdef71d60b58d28594fbad6d55fceec441093c183ead76eec1f2b771a"
+    },
+    {
+      "path": "src/app/admin/departments/page.tsx",
+      "sha256": "0996b7b5989fd766b6ef3add8ec2350a59a317b24ceafe439785d54bf9cd0d15"
+    },
+    {
+      "path": "src/app/admin/hospital-services/page.tsx",
+      "sha256": "d4ee1669c373d2b5719a1c27409fb3dbd67ca791b8360b8d0241fe4433ac48ed"
+    },
+    {
+      "path": "src/app/admin/institution/page.tsx",
+      "sha256": "6be4d8519102e843a52bc12e56b1dfc4344aecf4782e275069fdb503fab17273"
+    },
+    {
+      "path": "src/app/admin/integrations/page.tsx",
+      "sha256": "2ac6ce366cac08a9bd42007f8ee57677c731a620a6dbd17fb435b6536da1d747"
+    },
+    {
+      "path": "src/app/admin/invitations/page.tsx",
+      "sha256": "7dab087cdc45d5c1eadc879d673ab61317b7ccf59dbd3eae3b1638943aafc95c"
+    },
+    {
+      "path": "src/app/admin/page.tsx",
+      "sha256": "5465405ed0c80424ba88a4943c6c2d6979e01a9da7e2a4acb67489f3332bab69"
+    },
+    {
+      "path": "src/app/admin/resources/page.tsx",
+      "sha256": "85c02ecfd9d7103af7e9b116fc7d6b8051dad2a990be8a144a543c342902f52f"
+    },
+    {
+      "path": "src/app/admin/users/page.tsx",
+      "sha256": "629cfe45267c2c6afd8a4593ff1bb53dd60cef4900d64e3f7602f62dedf4b259"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/access-group-handlers.ts",
+      "sha256": "909eabe17854930325fa0b1aa1619f4b2d52e20f79759e7b02e01135aaadce8f"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/administration-handlers.ts",
+      "sha256": "d92ad5b273bfe62c3ea97ed300ccf930a16081a3d6d2fc9650ef7aa892e501f5"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/clinical-handlers.ts",
+      "sha256": "e612cb27053af9fa5462f4e604fad3f06655a15bdecb4c5f0e87c91615cf824d"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/department-handlers.ts",
+      "sha256": "fe76d7555504ec7e1b0b079014a99e388670eac7fe0a76a5f2eb3a531c9144b7"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/diagnostic-planning-handlers.ts",
+      "sha256": "714a8ffdafc36be8fbf1dbf3b21f3c7e1cbc89333ff0d7df71ab08b076662d40"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/exam-definition-handlers.ts",
+      "sha256": "17e59f006c520bc568ee63e6dd3919e1ab76dddb88fa4f86570acb8ee7b8c7ab"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-analytics-handlers.ts",
+      "sha256": "b339cb3d61d0d22ecc34e188c5b52feef65a94106e6980907448ffa4706e814c"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-checklist-handlers.ts",
+      "sha256": "b6b7384ef6aa2bbf395abc1d995d6175b89da2674ebba91df96ce33b43857d57"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-document-handlers.ts",
+      "sha256": "e3577e063b80e3da26dce32ae1b86813505fd6ac070066e48b365db9d79ae175"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-external-handlers.ts",
+      "sha256": "65f3cad79c27a28f61a038db00bf07979fb35b22067e020848c03cde462126e9"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-institution-handlers.ts",
+      "sha256": "4bd1f7c99f7b7babadef5276b08ad9124718fc2a468820e85171e1175c97912d"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-plan-handlers.ts",
+      "sha256": "8e7ed888cbd45924fb997cad2a4feb73a31dc49631a137d8d176a99eea0d2561"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-planning-handler-support.ts",
+      "sha256": "2e7aa62eae8b5c23ef94acb014be16778e529b618044167e28165e66ed57f635"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-resource-handlers.ts",
+      "sha256": "b14fa1e222b0f32a512462359c5e73f0ed5960c417a25928dd455275162973b5"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-service-handlers.ts",
+      "sha256": "cbd837cae30fd946f972b6a4a136e8d2415b202faaad14558f1ceb15ade4b02b"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-shift-handlers.ts",
+      "sha256": "d8738f69b24bbe0c6941b98ff8ae23cea1ec493daac058baf61df72ac00772ba"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-task-collaboration-handlers.ts",
+      "sha256": "7a93e96b86fba42530fa057120920c9c06c3fa8f44b628100d6d7c40924a6c1d"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/hospital-task-handlers.ts",
+      "sha256": "6e57e5ece32a8013b76ec8c8c8dce6c0c5c18e0cee2763282f7dbfd716e52e09"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/operation-handlers.ts",
+      "sha256": "e2ff9459e5e227abce602559b213a6bcd8dda16f806ffaf282c82de918ad5986"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/operations-handlers.ts",
+      "sha256": "988d5f2a5229c463c880f32c18f7a58ba43d4c2d31be7c59451f74d14f2429f1"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/planner-view-handlers.ts",
+      "sha256": "071585fd917d2db8830f175fa864ac1ac35a8037c3f24ddcbbda5c8b7597e5f0"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/public-handlers.ts",
+      "sha256": "9d038267c103269ffe9859c352d6a2a9f5896abe3fd0d07eca6d30bfbb6f5d2e"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/route-support.test.ts",
+      "sha256": "1ba9efb21569bf60271b3941da08b75952c50e2daf333176b6eae1470325ca32"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/route-support.ts",
+      "sha256": "888d3ba70e01258f51a95747f42a990961749b3609688d7fa0a9e8232e216706"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/route.test.ts",
+      "sha256": "64d13598d5c5d4679f23fa73d0b4120816102a444878e1d8d836bb9a6109be9b"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/route.ts",
+      "sha256": "26a9097b3e7904130a389420885dd1bc6ab3d5d0d0775779713de10823d06412"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/webhook-handlers.ts",
+      "sha256": "a9c9915203465ec3f2e5ffed629c4d9eec2cbd176d519f93df360d560feac71e"
+    },
+    {
+      "path": "src/app/api/v1/[...path]/work-activity-handlers.ts",
+      "sha256": "80b841b667a58da59e9444936ee3a16a67e4c41773926ddd32720bd8a059ac6b"
+    },
+    {
+      "path": "src/app/app-boundaries.test.tsx",
+      "sha256": "2365d9a08d7a5cb8da6d88fd6e58e07fca3662da782d51839620e4ff62fb4680"
+    },
+    {
+      "path": "src/app/app-pages.test.tsx",
+      "sha256": "c6cc6bf15cf760a97e3f66a9968a399a12bed37a25d1d3cd99654b5a3ee34a49"
+    },
+    {
+      "path": "src/app/archive/[id]/page.tsx",
+      "sha256": "fe8090241fd36a29c31af4e85b8a1089548dfe997329d696fc78159ce8db2e04"
+    },
+    {
+      "path": "src/app/error.tsx",
+      "sha256": "57f4e3a68c6308ad49440e3db2777a5fead97cd14132445fec37e27d15f2d5ac"
+    },
+    {
+      "path": "src/app/globals.css",
+      "sha256": "82d62173a6be8e9b4f77b129c261354cb2f3f87031586d20286d2ba9e987723b"
+    },
+    {
+      "path": "src/app/icon.svg",
+      "sha256": "4497acf33a7095fc9ad45f141a1349591fdf2a13ab537b601e65ad87e0970311"
+    },
+    {
+      "path": "src/app/indicators/page.tsx",
+      "sha256": "900af018941a6345c4ca9f2d07976d6756f9d3fa1c8e461781406c288194b042"
+    },
+    {
+      "path": "src/app/invite/page.tsx",
+      "sha256": "3c1894a6896a0a4c659496e1db6a5baa31b85a92e40b86ad279069630b1b986e"
+    },
+    {
+      "path": "src/app/layout.tsx",
+      "sha256": "1c8849ac49f63c79bde7661c02f880aef659747032fc56eece70a93028cc6b9a"
+    },
+    {
+      "path": "src/app/loading.tsx",
+      "sha256": "b5dea17d53df7cb75ecdf580d3c58c0087dda0a54bb60d7c4211af6a7fc9820c"
+    },
+    {
+      "path": "src/app/login/page.tsx",
+      "sha256": "d33f10bb674a6c1e4f65168646c862f525d917488bd2a195beec40ebc895cf47"
+    },
+    {
+      "path": "src/app/management/page.tsx",
+      "sha256": "ba46dfbecb6018d50757d40c9ef609b2b263f0e2e85a6282a03449604ae67668"
+    },
+    {
+      "path": "src/app/next-config.test.ts",
+      "sha256": "cb3c57c4484ff6104e369dee711aae7e652387449acd4363283a5c377a960a91"
+    },
+    {
+      "path": "src/app/not-found.tsx",
+      "sha256": "66dc39a79fd44ab843789dae8449c310fa1c1c7327fcd1b53989da108e2fe058"
+    },
+    {
+      "path": "src/app/notifications/page.tsx",
+      "sha256": "5207f0bd3877389c2311ca4159bb8dcc20aacfcbdb5b72bdd7b374aa06b9169c"
+    },
+    {
+      "path": "src/app/page.tsx",
+      "sha256": "6f17c72cd3252336addff1be2b61919982e6700c92ccc7c0fc4b49972cd2c0c0"
+    },
+    {
+      "path": "src/app/patients/[id]/diagnostics/page.tsx",
+      "sha256": "f61b695905bc76ec155cbb5f5750dd27237ed65df921cb34e8780dfbf63c3857"
+    },
+    {
+      "path": "src/app/patients/page.tsx",
+      "sha256": "ff939ae43c2ee35f61ecd2fcfb8bfe519a44c3a2b747ade0b0d8810490b987ca"
+    },
+    {
+      "path": "src/app/plane.css",
+      "sha256": "05d7f69cdd37cbdc8eb5f72652cc01fa3415f0e4893c38864e17a6c4ff2db147"
+    },
+    {
+      "path": "src/app/planner/agenda/page.tsx",
+      "sha256": "95d953210b3f5311e12f687265b290b8e4f8e048f0a054153bc1a673912b7105"
+    },
+    {
+      "path": "src/app/planner/beds/page.tsx",
+      "sha256": "b81d599e60d90d3938236a6d4da1a83a21d52730fd02aac1b6b8c9e7aefa3f7c"
+    },
+    {
+      "path": "src/app/planner/capacity/page.tsx",
+      "sha256": "6381186a45c08c286b92585b7c18de0b91615aff43faf63760b41b75d2aa74a5"
+    },
+    {
+      "path": "src/app/planner/checklists/page.tsx",
+      "sha256": "3f9e1fdd53a0ba1c6719815c33d41a46a451a4400bf62003d1aabf7e198a9c8d"
+    },
+    {
+      "path": "src/app/planner/documents/[documentId]/page.tsx",
+      "sha256": "d2f5370a2818552807d83c39589b54c3688eb89d6bdef58694eeb212674ec761"
+    },
+    {
+      "path": "src/app/planner/documents/page.tsx",
+      "sha256": "a6edc4f7636fcae903b9fb26cef155c89c7b3ecc59c0c844a4a4bb7a3914bc61"
+    },
+    {
+      "path": "src/app/planner/following/page.tsx",
+      "sha256": "2925eb4b5631fee3535241863db0c6b32764f8e887c4f3d1b4a9bec34a80811c"
+    },
+    {
+      "path": "src/app/planner/handoffs/page.tsx",
+      "sha256": "a6fcedfc7ee31fd3531d0e3523d301de1895770d9a3731d2231b5e46f90fcf8f"
+    },
+    {
+      "path": "src/app/planner/inbox/page.tsx",
+      "sha256": "5a877c1de1b245922151fc04a9f439597e2f52435e056699a006e06da2fd76d5"
+    },
+    {
+      "path": "src/app/planner/intake/page.tsx",
+      "sha256": "bfaa202fad6c1da391aa0e3bda1ae1919b6aecf53508d683f4d597c8f0a8f07c"
+    },
+    {
+      "path": "src/app/planner/metrics/page.tsx",
+      "sha256": "f1003332df80497d2b70d30b491aa144911c935f2cfd0b868cdea28daebc6965"
+    },
+    {
+      "path": "src/app/planner/page.tsx",
+      "sha256": "2abbee776d730f0d5a458fca89ad6d16997ddd57d33a891d0793ee9430a81a92"
+    },
+    {
+      "path": "src/app/planner/plans/[planId]/page.tsx",
+      "sha256": "d88e6fad7e454eeab0db402778cfc9c353b9ffc3d13ab3fec5cb13fc999f18d3"
+    },
+    {
+      "path": "src/app/planner/plans/page.tsx",
+      "sha256": "539fc73a8ae3a722b977b7426d9a4fb00666ed6bbbe1bbeb5c7c18734e61a941"
+    },
+    {
+      "path": "src/app/planner/recurrences/page.tsx",
+      "sha256": "15317ce98c7588fab0112fb2de4f25fa6c2cd886a9c8551a960ca9b8c11d1986"
+    },
+    {
+      "path": "src/app/planner/reports/page.tsx",
+      "sha256": "fb5bec55e9a70e72c11586c258aeb39174c18cbdcf1bd27afe8365ab9f937435"
+    },
+    {
+      "path": "src/app/planner/search/page.tsx",
+      "sha256": "2580e95592269f0f6a40207c5934ae1d48f1cf3d5d9bf71f9b9461f820dafbb9"
+    },
+    {
+      "path": "src/app/planner/shifts/[shiftId]/page.tsx",
+      "sha256": "4d2559c06a0c4aa7365fd83e3d6a350f80f5b64a85316518ed824ae04a9aa092"
+    },
+    {
+      "path": "src/app/planner/shifts/page.tsx",
+      "sha256": "0c05c3bce7c949414ac9b5c8d0a6a22e82004ff2e0a4d5c609956705f78cccf1"
+    },
+    {
+      "path": "src/app/planner/tasks/[taskId]/page.tsx",
+      "sha256": "fba54f874835e3e21457c667391cd0f7490beefb2ee430a62a49ffc4c3831fbb"
+    },
+    {
+      "path": "src/app/planner/timeline/page.tsx",
+      "sha256": "6a2663fd5889b34ebcc6cfb84c09674a7f45e31e0b882120c46e43f589043caf"
+    },
+    {
+      "path": "src/app/planner/types/page.tsx",
+      "sha256": "55c907c24f178cebbdf143e41fd541a4b52cb148f7c6c01fde27e429857a4b68"
+    },
+    {
+      "path": "src/app/queues/page.tsx",
+      "sha256": "d4fbd9373cc90b056941df8efc317bcff678887f410efee782dc664021869695"
+    },
+    {
+      "path": "src/app/requests/[id]/page.tsx",
+      "sha256": "ffceacd3a172c9b3d2a6db075691e66bced3fa091ed06b262812fa8d2d738fa3"
+    },
+    {
+      "path": "src/app/reset-password/page.tsx",
+      "sha256": "977c5ed409e72eecf51e19613119b1ea893bcca216f1025b832a2cace8cec3f7"
+    },
+    {
+      "path": "src/app/results/[id]/page.tsx",
+      "sha256": "f99a6a12c94a9754ed845de556ff02f43c7165f9c5f925cb850a7228519296a2"
+    },
+    {
+      "path": "src/app/samples/[id]/label/page.tsx",
+      "sha256": "94f02240e124ccae374f3986785017f983867bec2a1de12bfc963337483fa96e"
+    },
+    {
+      "path": "src/app/system/page.tsx",
+      "sha256": "493e5f5a330eb941afdf00fb4762dbc20e6ae68b0669764e66561733fdf93590"
+    },
+    {
+      "path": "src/components/account-view.test.tsx",
+      "sha256": "bf5866bcd2d61104028b553fc056b67d6d3e83c7ca096389d2045a7110079acc"
+    },
+    {
+      "path": "src/components/account-view.tsx",
+      "sha256": "c0bc83fca81daf78f144adda45cd9a4a94160658274bc6a971160cefd4bc7ebb"
+    },
+    {
+      "path": "src/components/admin-access-groups-authority.test.tsx",
+      "sha256": "440e6382d599185ddfc4bb73f127c39483a9456b7019c67968196ed2c524bec4"
+    },
+    {
+      "path": "src/components/admin-access-groups.test.tsx",
+      "sha256": "386abe2650d70d69eec787ab245fafc76718340d757370a291667c9a653b3fce"
+    },
+    {
+      "path": "src/components/admin-access-groups.tsx",
+      "sha256": "5f4c82ec1e7ef7e37909b9156e10de5fdcd57016f8a071ba7b09371a354a3f20"
+    },
+    {
+      "path": "src/components/admin-capabilities.ts",
+      "sha256": "94f59d4f4b1487fed0ff038e683f590e5e9faa820b114d714db4dedb57389118"
+    },
+    {
+      "path": "src/components/admin-catalog-import.test.tsx",
+      "sha256": "bb8ce8c13598e7580c84f2fd15463cbeb616147c6582645b13b01b6a5f038046"
+    },
+    {
+      "path": "src/components/admin-catalog-import.tsx",
+      "sha256": "30d857495509b57cf24f0e67ca8d3713b112ed7d1d40fb19c8f661b9ff199dbb"
+    },
+    {
+      "path": "src/components/admin-console.test.tsx",
+      "sha256": "e1cb93dc4ff648b9d8fbee8e27f6c5fcc7fd170ce1c7dfc6587f758e32bee5c5"
+    },
+    {
+      "path": "src/components/admin-console.tsx",
+      "sha256": "a8d91dfa3e91cdd24d18970dca729ea2742c4246c55c59dc8cadae0b8e4806fa"
+    },
+    {
+      "path": "src/components/admin-data-subject-export.test.tsx",
+      "sha256": "df0a0fddc66748046d8f02f53062757e1d3b702bf197baea45bfb73cbc72df0f"
+    },
+    {
+      "path": "src/components/admin-data-subject-export.tsx",
+      "sha256": "ed42ef47b1470d37dd8cd182f6cfb5ae60585c68bb9e86c3f8de22c5046d2aae"
+    },
+    {
+      "path": "src/components/admin-departments-catalog.test.tsx",
+      "sha256": "dc6238743646f30a61f04b012d0b06bfb1d2cfd7978058f9d62cb2d732398b48"
+    },
+    {
+      "path": "src/components/admin-permission-labels.ts",
+      "sha256": "867b624ed4c55fa38e641e66685e148443481eb58cf15c013e4eb10ec2333223"
+    },
+    {
+      "path": "src/components/admin-service-access.test.tsx",
+      "sha256": "6049e0ae2d3027d972d6f452c0187c0263109d81df1faca906a3ddce979c4df9"
+    },
+    {
+      "path": "src/components/admin-superadmin.test.tsx",
+      "sha256": "cf0b9c633d74e81194f1ffa09211d402176d1ec11416fca5667bb02fa08ad715"
+    },
+    {
+      "path": "src/components/admin-users.tsx",
+      "sha256": "bcf6b2ad6bca11bb61b660124d5d49bbb7e90386b9aed1e38fdba55a9ee00c97"
+    },
+    {
+      "path": "src/components/api-client.test.ts",
+      "sha256": "64c8871054539d2d96661996dea37e74955f9cdce72b31a88bf0d27ac39474dc"
+    },
+    {
+      "path": "src/components/api-client.ts",
+      "sha256": "2829b00efcd0559b2bb89f4f8d1cfefafe370b77c2d2f184839aa8fbdffe790d"
+    },
+    {
+      "path": "src/components/app-shell-departments.test.tsx",
+      "sha256": "9e796d6da938c54ebc26300c47a5fe4a52ebcdc4a69ef72f0ec84e24d79b5905"
+    },
+    {
+      "path": "src/components/app-shell.module.css",
+      "sha256": "2215121a094072630c96877ae08e4f16a63690e3cd39d4fe228140d0d4a6bd75"
+    },
+    {
+      "path": "src/components/app-shell.test.tsx",
+      "sha256": "0541d2d96eca33ecc09349b4a4d149985ce3600a674222bf75d92902c343316e"
+    },
+    {
+      "path": "src/components/app-shell.tsx",
+      "sha256": "d654a8cf4317321cfb81888613fee9863237ca7c237df74382f9f9ea50aebc77"
+    },
+    {
+      "path": "src/components/archived-request.test.tsx",
+      "sha256": "10e0d084b019366c5d7fda37c97f9ac5d4b9fc12cc7d769e688c719f56b907b7"
+    },
+    {
+      "path": "src/components/archived-request.tsx",
+      "sha256": "b047af75d0f25fa311be569c3bb6a88f7b11a8ec7249b7f26a653b6771ea96ef"
+    },
+    {
+      "path": "src/components/command-palette.module.css",
+      "sha256": "c50a59cfc06c27bec713ea557cdf3d808b1047915f52390fa20955afef117829"
+    },
+    {
+      "path": "src/components/command-palette.test.tsx",
+      "sha256": "7cfd679e4149816bfa4fd0fb19cb71e2801167fa3fc657466a9eee566bc566b9"
+    },
+    {
+      "path": "src/components/command-palette.tsx",
+      "sha256": "a576522a33e3c48fe929260f487eb9b1dcd01f05e3043677f517426ea96ce4a4"
+    },
+    {
+      "path": "src/components/confirm-dialog.test.tsx",
+      "sha256": "88a62a727643cc4e834bf3c6bdc83d6ea746ca5798899f374cdad0337f2d0ad6"
+    },
+    {
+      "path": "src/components/confirm-dialog.tsx",
+      "sha256": "86185d7f820cdf18d19087a32f0a0d61de95fe53a7a20a9ddd67e1bcd3ba0b39"
+    },
+    {
+      "path": "src/components/dashboard.test.tsx",
+      "sha256": "bab37beaa0a3250cbb4869ea5dc137a6e7d7d3139328a4d0014a6ca60cfa1730"
+    },
+    {
+      "path": "src/components/dashboard.tsx",
+      "sha256": "202c6eb659e81e9fe49723a4dc0658bb6c1194429c7323817e3485a6c824671d"
+    },
+    {
+      "path": "src/components/department-console.test.tsx",
+      "sha256": "1f508014aebb7a36a42dc8849159c666cd53203bd7a10660947f69a4e633faac"
+    },
+    {
+      "path": "src/components/department-console.tsx",
+      "sha256": "c4a1adc3994e69a08631f6d79b4243ee965bf66cedd384a48d7cf894dc64410b"
+    },
+    {
+      "path": "src/components/department-labels.tsx",
+      "sha256": "56948dd987ca65f22a70bf52e3353a83ebb6ecc03b82650ef73d7143daf6b8ed"
+    },
+    {
+      "path": "src/components/diagnostic-display.test.tsx",
+      "sha256": "feeb1e8f1ee3b3d9c0cc66c63d284526a5838989a5b4ed6896bd8d54984e28cb"
+    },
+    {
+      "path": "src/components/diagnostic-planning.test.tsx",
+      "sha256": "c91c6c9efc436f71c1c78e6944f232d5aaeb2ae6219413847ce1c489d8d430f7"
+    },
+    {
+      "path": "src/components/diagnostic-planning.tsx",
+      "sha256": "99b437fee7e14ab476d898dccd06119bd5f276da046f9f1ad36f4bfb67993323"
+    },
+    {
+      "path": "src/components/encounter-actions.test.tsx",
+      "sha256": "6de935d840b62f372292c3bad0af1704f3348b6788bfa20276cc92fb787b376a"
+    },
+    {
+      "path": "src/components/encounter-actions.tsx",
+      "sha256": "0582313a211a58e6a56ff53d27fc94bd818fc0937434da4a6ba069767adc0a96"
+    },
+    {
+      "path": "src/components/exam-definition-editor.test.tsx",
+      "sha256": "69680c8b093687a275212c1a20f95165902ae70ffa5b212d573fdd7a440c24f9"
+    },
+    {
+      "path": "src/components/exam-definition-editor.tsx",
+      "sha256": "21f9aff4f41b216ae89134a3a6a58363465fd0aa3e49be9dc3336f5250bb85ba"
+    },
+    {
+      "path": "src/components/feedback-states.test.tsx",
+      "sha256": "680090c7783569121130c3f67aca7a9311cd62574d6c655c0ad43bad847be7dd"
+    },
+    {
+      "path": "src/components/feedback-states.tsx",
+      "sha256": "0feeaae33a617166c977856dbb212efed1cfd8973a8f666fab00a40f4374b3a4"
+    },
+    {
+      "path": "src/components/frontend-contracts.test.ts",
+      "sha256": "14ca538bedbf2ce71ae47e194e3f5facdb3ccd2bc7ae526b5376f950efa02c1a"
+    },
+    {
+      "path": "src/components/home-view.test.tsx",
+      "sha256": "e020d71fbf9ebc225008e790dd7217734e373817e5d150f58d1712b0a05624ff"
+    },
+    {
+      "path": "src/components/home-view.tsx",
+      "sha256": "b2be15f34c8d68350429bbf31b6730051f18a600fcc9094aaac62a76062289e9"
+    },
+    {
+      "path": "src/components/hospital-bed-census.tsx",
+      "sha256": "3acfa919af836f72d014598a1b3a890db2e19bc0fc08a3002e2aad23b7cf51bd"
+    },
+    {
+      "path": "src/components/hospital-bed-picker.tsx",
+      "sha256": "d1de1e7bacdd9943215c1019ceca2d296a4c0bba4fe7fba78c27dd6fa402ea03"
+    },
+    {
+      "path": "src/components/hospital-calendar-view.tsx",
+      "sha256": "912f5baa70c63108f0adfd27aae428fd2ecb272d8f28f3236e5d64237ace835e"
+    },
+    {
+      "path": "src/components/hospital-capacity-panel.test.tsx",
+      "sha256": "efada5eb287b220c8a42543ba15de11c455072cd7ef4b703d04160d0a6c9e55d"
+    },
+    {
+      "path": "src/components/hospital-capacity-panel.tsx",
+      "sha256": "b8a66a61c69442aa76f53cf0bedfe44b2d984d59f561a472be85bd79fbc4b263"
+    },
+    {
+      "path": "src/components/hospital-capacity-view.tsx",
+      "sha256": "66545fbd8d5e6835a4d90973b8c07bf6357dc380132fab40a8b6d009ad4b1c27"
+    },
+    {
+      "path": "src/components/hospital-comment-workflows.test.tsx",
+      "sha256": "ff579deca14cac9ad3a2f1974f5081dfaf5694e99dba70bde2e7b80be3d290c8"
+    },
+    {
+      "path": "src/components/hospital-document-assistance.tsx",
+      "sha256": "f1b8871e83784408b5bf8509cd1307b0ceb05ea7613473ba3c0e7f5135a7c7fd"
+    },
+    {
+      "path": "src/components/hospital-document-bindings.tsx",
+      "sha256": "cbe0dabdbd0d6d1e6860da6a9b493ed9039642ae6c2a147401bc32a25d9189d4"
+    },
+    {
+      "path": "src/components/hospital-document-content.tsx",
+      "sha256": "b970849cb737573fd180a606c75e232933143700e80955afc2c56446e1ad9c39"
+    },
+    {
+      "path": "src/components/hospital-document-detail.tsx",
+      "sha256": "6fb6fbdb8e22f78a6425d4080efcac3a1752556573809ab59d12e9d0767cfa20"
+    },
+    {
+      "path": "src/components/hospital-document-library.tsx",
+      "sha256": "c10c7c1679a6390427532d90e52a0fdfeac8b2814f6ddadace5e9e508b5d8a1e"
+    },
+    {
+      "path": "src/components/hospital-document-surfaces.test.tsx",
+      "sha256": "7176df9d1e2a2269e332675408ad597b11cc0fc58e18135ceafd003ec7f17261"
+    },
+    {
+      "path": "src/components/hospital-evidence-workflows.test.tsx",
+      "sha256": "2ee1732683823e692d965115634af8798fdf9300e950d2bf269dff2c573b6a05"
+    },
+    {
+      "path": "src/components/hospital-external-surfaces.test.tsx",
+      "sha256": "ed50a94a05afced94ed613164836fad1736342b62a0657913624762b785af74d"
+    },
+    {
+      "path": "src/components/hospital-his-v4-discovery.tsx",
+      "sha256": "02aff91d1989f95367e1866e2079b80bc4b1a2797fbbf6cf6d6217039e7bcca5"
+    },
+    {
+      "path": "src/components/hospital-institution-console.test.tsx",
+      "sha256": "33c5de06163c5ddad6e8c207a71ad4e59512208499624d9b849190c7992b5c70"
+    },
+    {
+      "path": "src/components/hospital-institution-console.tsx",
+      "sha256": "8b9284b5bb680140a0f2c1bc274190f13987ff18024c847691f0ee4e5be87a35"
+    },
+    {
+      "path": "src/components/hospital-integration-console.tsx",
+      "sha256": "cf741e47e7104873b405ea5aafafa20663879ac22426d5cfb5e01051e53acf05"
+    },
+    {
+      "path": "src/components/hospital-invitation-accept.tsx",
+      "sha256": "b700d238829a8af43e684953adf10da272068992fba68a41ac56512324eae2e8"
+    },
+    {
+      "path": "src/components/hospital-invitations.test.tsx",
+      "sha256": "2af2503c8cd22d42d1ac9beb5c365ed1781a2bb28b24d3bc302b6c9fe57f7afe"
+    },
+    {
+      "path": "src/components/hospital-invitations.tsx",
+      "sha256": "780c8ac43168c94c987df47cfad05e266c820e5866953fd68f4d3e9c45bd51c1"
+    },
+    {
+      "path": "src/components/hospital-library-workflows.test.tsx",
+      "sha256": "0cd8e31cfdce068364553195a47aded51876cdbfd28acc7fbfd4a671c8f6c8e9"
+    },
+    {
+      "path": "src/components/hospital-metrics-capacity.test.tsx",
+      "sha256": "69c5fbef3330cf83a48ab6cee1ac3a44fcaff4b45911ce7febae118c5c95503b"
+    },
+    {
+      "path": "src/components/hospital-metrics-view.tsx",
+      "sha256": "f0d27d4893153c2841b51a1f8c18e782168e12054f45fc862ae65a276440a161"
+    },
+    {
+      "path": "src/components/hospital-metrics-workflows.test.tsx",
+      "sha256": "c527192ef21df4f0d1a16b4f1611e966c56a79271df2dd9546fc3f2a4adb24db"
+    },
+    {
+      "path": "src/components/hospital-planner-options.ts",
+      "sha256": "89ac56da9cc08f2bd1791efa00ea5e19af2a0aa341d2d2d54a9e7b7bd9737551"
+    },
+    {
+      "path": "src/components/hospital-planner-pickers.test.tsx",
+      "sha256": "59c4de04ad4ba1aad2dd94e138c916ed85586f10c3930efe9aa9bcfe13527056"
+    },
+    {
+      "path": "src/components/hospital-planner-workflows.test.tsx",
+      "sha256": "301266b7755937de0aaae02bde94fe07bbdcf888cef73a3164b6f40847f0e13e"
+    },
+    {
+      "path": "src/components/hospital-protocol-planning.test.tsx",
+      "sha256": "b67eb40cf5d4a3cf4ea7db6605f8fe43abd74fe73f792c43a668790913de2a6c"
+    },
+    {
+      "path": "src/components/hospital-report-view.tsx",
+      "sha256": "edbd66e999bfa133e0a154005281738bb7a8c15826a7c5fc7228e509b965bec3"
+    },
+    {
+      "path": "src/components/hospital-report-workflows.test.tsx",
+      "sha256": "bb9dd6c5b33f402e318d95420469a01a65b3fa0ae5ca9ba7287dfffffaed31ea"
+    },
+    {
+      "path": "src/components/hospital-reservation-controls.test.tsx",
+      "sha256": "fb2968df941194e6349bd721f50312b01f30bb81675f564f5993d59a0eee6086"
+    },
+    {
+      "path": "src/components/hospital-reservation-controls.tsx",
+      "sha256": "d5159470f830110ed0bda20fd2c027e5115aed502e3628bfc3a93a5a6bb5fe68"
+    },
+    {
+      "path": "src/components/hospital-resource-console.tsx",
+      "sha256": "e025d847aab2bd155373e8619a02a469d63c0edeaa59b81361d59f54703535a8"
+    },
+    {
+      "path": "src/components/hospital-resource-picker.tsx",
+      "sha256": "e12e9ee7138c72f0e6ab51159172e9243b5ced4e1f3d2c1b4e8d7fbdf59daf30"
+    },
+    {
+      "path": "src/components/hospital-resource-surfaces.test.tsx",
+      "sha256": "e5c10960408fef19f59adbece25102ddf413b6c7db7ce0828cd3097c36b4ddf8"
+    },
+    {
+      "path": "src/components/hospital-service-console.test.tsx",
+      "sha256": "0fe95b0b34b765166bfc5d2c76c88871229a53fa55500fdad59592e47a5dba15"
+    },
+    {
+      "path": "src/components/hospital-service-console.tsx",
+      "sha256": "d77e08046192e44b20b8dcec0942b8ff143fdb3fd223c46c1432458e1ab57b96"
+    },
+    {
+      "path": "src/components/hospital-service-forms.tsx",
+      "sha256": "264ae21ed8d64218eb4d722b33ff106da327e01235c9d4da723b808e34cdba93"
+    },
+    {
+      "path": "src/components/hospital-service-import.tsx",
+      "sha256": "0fbec0e5c37d9403cedd6d04593c96d2c93894179d59c312d6d5f592a0ea4f11"
+    },
+    {
+      "path": "src/components/hospital-task-attachments.tsx",
+      "sha256": "372899c8e70e880c7e531db2bc83fa7d5cc6cb79c01fd8c1130a567aeac9af83"
+    },
+    {
+      "path": "src/components/hospital-task-comments.tsx",
+      "sha256": "74dacaf08398089269565568cc32ef6a49d06e87bd88dea10e7d9e7486aa9441"
+    },
+    {
+      "path": "src/components/hospital-task-execution.test.tsx",
+      "sha256": "70c179bc358b6ecb66381a5a141ce0575d1423f2d0179e30885f6c0cafd43b4e"
+    },
+    {
+      "path": "src/components/hospital-task-execution.tsx",
+      "sha256": "1f10e90deb9f11a3cbdd984009dd8b8a0ce31d959b92b978f6e9a7a311cd5dea"
+    },
+    {
+      "path": "src/components/hospital-task-reactions.tsx",
+      "sha256": "82d25ba6219a8b73c505f2d2a88e4922055bcd4c7e8405e38112bfde29c501f6"
+    },
+    {
+      "path": "src/components/hospital-ui.test-helpers.ts",
+      "sha256": "44892e7e8d54d01e24f5bf97ce9ed023c8bc5dba71f402719821dce2df9aa657"
+    },
+    {
+      "path": "src/components/indicators-view.tsx",
+      "sha256": "07644914dbf684c92fc831301ac8ef820ee447de23e64b4f8b5d62148dc67f4b"
+    },
+    {
+      "path": "src/components/indicators.test.tsx",
+      "sha256": "91763edaa5cdea131a6fc41da7fac9937450e2506e21d3b016488897c54ef423"
+    },
+    {
+      "path": "src/components/laboratory-result-panels.tsx",
+      "sha256": "9a451f818acf8252931c52a4b1aa69aac93cb4465365184b16dd6a90bb06f475"
+    },
+    {
+      "path": "src/components/login-form.test.tsx",
+      "sha256": "b8cadf4afb05c8a142f965fdb820d37686497e1482740ce2dc58960b35b804dc"
+    },
+    {
+      "path": "src/components/login-form.tsx",
+      "sha256": "fb1deffbfc3945497e69a5859b3baa551355bc8c1088af450728c64e430592a9"
+    },
+    {
+      "path": "src/components/management-dashboard.test.tsx",
+      "sha256": "9715367b2f060478318e205992fe5c191850a630eb91f7c662b4be058affbec6"
+    },
+    {
+      "path": "src/components/management-dashboard.tsx",
+      "sha256": "a292e723a81b6d573a68ab681ad1580612a82b3d121f9652c7f0f4da7f1d68ef"
+    },
+    {
+      "path": "src/components/notifications-view.test.tsx",
+      "sha256": "3c878ac88411e557a9b7171f45ad1d6ad966d10633e80fab112b6b1d43a0ac00"
+    },
+    {
+      "path": "src/components/notifications-view.tsx",
+      "sha256": "a8368eb981165fbe6991f3f5c57d75283e03188348efc697fda3511204442aa4"
+    },
+    {
+      "path": "src/components/page-header.tsx",
+      "sha256": "66bf9a379512a8bdc940aeb2134d56d1dfc55b6f3bcb7427dab198f7e5aeafb5"
+    },
+    {
+      "path": "src/components/password-reset-form.test.tsx",
+      "sha256": "9413d49af696080c86d3e529c456ae59a81ca1f8196cae8820291567295f57de"
+    },
+    {
+      "path": "src/components/password-reset-form.tsx",
+      "sha256": "7a8f291ee44191d2e717292416a6a749cdff467b7ac586d2866f0110a202277b"
+    },
+    {
+      "path": "src/components/patient-archive.test.tsx",
+      "sha256": "6110af53ea48600b8e0c76b46761a857fd0e6b59512d70404c60eb291dda2b0f"
+    },
+    {
+      "path": "src/components/patient-archive.tsx",
+      "sha256": "196931b8d213b30e8613716ca180cc994d23e7c2f3e744d4f178578438f51460"
+    },
+    {
+      "path": "src/components/patient-diagnostics.test.tsx",
+      "sha256": "3c43552cc82feb80936a38e02a81a56e48f11d2ed350d9ca4ae547a7418832e5"
+    },
+    {
+      "path": "src/components/patient-diagnostics.tsx",
+      "sha256": "0aaf29c33c21d1cd096d5ce91e8e037110c64dd30addbcced553341acaa4254a"
+    },
+    {
+      "path": "src/components/patient-dialog.test.tsx",
+      "sha256": "328c837358cdc5ee968ebf0ec448a2663975aad8f28ab9752fe32299ae047b25"
+    },
+    {
+      "path": "src/components/patient-dialog.tsx",
+      "sha256": "081aef5793642858708878f15cc92646d4fdcabfd1bd19858f629a9148d1f06d"
+    },
+    {
+      "path": "src/components/patient-list.test.tsx",
+      "sha256": "320c7ed589a8796f214287e2383014b50331e0c32fa3deecdeb7a0046faa6b5c"
+    },
+    {
+      "path": "src/components/patient-list.tsx",
+      "sha256": "903b8ffa05d0e15edaa268cd4709302ae84e187d50e16496b0d98f98987f7a64"
+    },
+    {
+      "path": "src/components/planner-access.test.tsx",
+      "sha256": "6937a503c7c149a91feace9b0de5d34bd3916b9cce7c02520ca60bfe2a7b6064"
+    },
+    {
+      "path": "src/components/planner-activity-picker.tsx",
+      "sha256": "bfeb8a9d85b800ac2866f340e9c5035be7bc2d962f61ad2fb2bec8a50da77e97"
+    },
+    {
+      "path": "src/components/planner-calendar.tsx",
+      "sha256": "c703e3a0d27e2bee14614fc09f19733e1654ae6a4cf40f83d648e37265e5a833"
+    },
+    {
+      "path": "src/components/planner-checklists.tsx",
+      "sha256": "a733cb87cbe0102c52cfea72a0e72ffd7c5af7cc9e9d9314ab5438f405c5933a"
+    },
+    {
+      "path": "src/components/planner-command.ts",
+      "sha256": "45bf37fe01be9c78f07084d5671c6515323875d8e104d2b06b29d62c65932595"
+    },
+    {
+      "path": "src/components/planner-configuration-batch.test.tsx",
+      "sha256": "39b37f392182925ae2eaa7ee00d62dd61fd1edcd00c7c9c299eb880a8724918a"
+    },
+    {
+      "path": "src/components/planner-context-fields.tsx",
+      "sha256": "fef2f28b5a0f003f1d3938d2b0bb3c9676c216f1d01cc13766908fc3761ab7dc"
+    },
+    {
+      "path": "src/components/planner-diagnostic-board.test.tsx",
+      "sha256": "4a5b2863292aa147384e9e809a177e238744d977cd26f4f1482e72005d1a7ff2"
+    },
+    {
+      "path": "src/components/planner-diagnostic-board.tsx",
+      "sha256": "16b0694b36e07bea8bc86b17d41dcf2928bf3a08c2147483291f46e32b1b909a"
+    },
+    {
+      "path": "src/components/planner-diagnostic-filters.ts",
+      "sha256": "538d28b9586009c90b70abae28fbf28b2c5e84c75683e0ed202ab8087be5b215"
+    },
+    {
+      "path": "src/components/planner-f4-integrations.test.tsx",
+      "sha256": "50290fee70d8c4e5b132422bc8354cd64c6d0b3bbd1ec437f0d63b7d5af8c52a"
+    },
+    {
+      "path": "src/components/planner-find-journeys.test.tsx",
+      "sha256": "8ec0c8f75538dbebb82205b5ab892b3fda69c8345360be8fe8d94de22558a5d0"
+    },
+    {
+      "path": "src/components/planner-handoffs.tsx",
+      "sha256": "a418e2cb6ab4a311139f5f50cf7c126ad5260f9556f0cf06093de3684cb5152a"
+    },
+    {
+      "path": "src/components/planner-hospital-management.test.tsx",
+      "sha256": "6f828bf8b45647785fa671edb0e00f63ce6543afda51508d21689453c180db0f"
+    },
+    {
+      "path": "src/components/planner-inline-edit.tsx",
+      "sha256": "5c50c8d7a371665b76fe4db101aed7146adcd3e9c88cf0dc09474382aef6fdb3"
+    },
+    {
+      "path": "src/components/planner-intake-rejection.test.tsx",
+      "sha256": "1382be12edb580eb9e11d50bea272efba3d4f4faa488e2e175a0200c19101a4d"
+    },
+    {
+      "path": "src/components/planner-intake.tsx",
+      "sha256": "e03e3f975d03cbfc0cf8f1682238dc751f0a982972b68433dc4fdc40a7970761"
+    },
+    {
+      "path": "src/components/planner-layout-history.test.tsx",
+      "sha256": "7766436df6be40e9b1341eda725e059f6efa8c97475ed291ac2ede385efa1c3d"
+    },
+    {
+      "path": "src/components/planner-model-period.test.tsx",
+      "sha256": "768c3096da42d3d0f11b6cbb829605512e640799e5a02893305be78947c4d6bb"
+    },
+    {
+      "path": "src/components/planner-model.ts",
+      "sha256": "0d1c732bae778abd6d6143a656832480eb3571814a4327bfcbc6dede737b482d"
+    },
+    {
+      "path": "src/components/planner-organization-journeys.test.tsx",
+      "sha256": "04adfb3802d8fec0157e1918e927cbfa1020e8d5113e07753887932e8178fd41"
+    },
+    {
+      "path": "src/components/planner-period.tsx",
+      "sha256": "3ff5f88e43ad5a2cd4f3f87fdf73820dd16b8d72deac728d40846c3e31defc2f"
+    },
+    {
+      "path": "src/components/planner-plan-view.tsx",
+      "sha256": "033879f4a5b419fa959faff7d49109c4291232eef6fcea1321a0f7fdceed1110"
+    },
+    {
+      "path": "src/components/planner-recurrences.tsx",
+      "sha256": "a278de56848aec069e06320f839819a26c475a364043e0c7bba21e31f7185dd7"
+    },
+    {
+      "path": "src/components/planner-saved-surface-journeys.test.tsx",
+      "sha256": "378d62664324a702e0c8d9fb7b5e1c7c0c4c44ff084593b2f48b1e9ae7e49b45"
+    },
+    {
+      "path": "src/components/planner-saved-views.tsx",
+      "sha256": "9f9f50fbcdd0be449559abb80dac7b71ac75698c778432f28ba319ade3568f5b"
+    },
+    {
+      "path": "src/components/planner-scope-filters.test.tsx",
+      "sha256": "25bec1d4e4aaa9042d0601c9251bb67e0c46049ff3952bcb6a6605dc967b645a"
+    },
+    {
+      "path": "src/components/planner-scope-filters.tsx",
+      "sha256": "7d4fba945668f6e20d897779159ea1c6836320ad22ae73c73d6bec2582d63322"
+    },
+    {
+      "path": "src/components/planner-search.tsx",
+      "sha256": "29fa8357d38248f8ebc4b5f5b037e44fe329a1a3a49f3b4559224c9d20d24967"
+    },
+    {
+      "path": "src/components/planner-shift-view.tsx",
+      "sha256": "7859dcadf8d2d2fb0fdf3e5c237194874a6ec99602a53a6ba99a0f3205fcd3e5"
+    },
+    {
+      "path": "src/components/planner-surfaces.test.tsx",
+      "sha256": "f1adf4343cd3270ab2ea932e45e702998f56dfc4ebd4da3f27ba4b855826449e"
+    },
+    {
+      "path": "src/components/planner-target-reference.test.tsx",
+      "sha256": "6d4f04deb7c0896ceed6f492829a66001f25fbaff2c699645d8dba56bc51c76b"
+    },
+    {
+      "path": "src/components/planner-target-reference.tsx",
+      "sha256": "cd49d7a189308bac4dcf6a429fc5746c0e2abf8fa8c6094e8ef96fc19f67c7b9"
+    },
+    {
+      "path": "src/components/planner-task-advanced.tsx",
+      "sha256": "ba930854fd4e6840910a7cbb11469b5125d61bf1dd055fe64a4f59c95f704645"
+    },
+    {
+      "path": "src/components/planner-task-batch.tsx",
+      "sha256": "60647d9809a4e5013d2310bd7368ea7e930280ab65a2cf2151ff6d033528baab"
+    },
+    {
+      "path": "src/components/planner-task-creation-journeys.test.tsx",
+      "sha256": "4f16ff7877ad2a1e943b72a872258db20a51c16aceeec25a5464c9009a428bc1"
+    },
+    {
+      "path": "src/components/planner-task-detail.test.tsx",
+      "sha256": "2fc696fadf19442ba92d56c73bf7a180c8896f29398d8adc804d7259d625248b"
+    },
+    {
+      "path": "src/components/planner-task-detail.tsx",
+      "sha256": "c0a3d4cd9bbdfa1c90de3a94f8112655c2cee040b8c77c32433f8956166b4784"
+    },
+    {
+      "path": "src/components/planner-task-form.tsx",
+      "sha256": "b3dad247f8c7dbbcbf30f5cd227dcd9c4e9d15588c2fb5e25eb7961e8b21ded0"
+    },
+    {
+      "path": "src/components/planner-task-history.tsx",
+      "sha256": "e49a6dc50241cecb50ac748bdd8cc723ed81a2a817b9689209be549765f2f103"
+    },
+    {
+      "path": "src/components/planner-task-layouts.tsx",
+      "sha256": "ec31cca8d95ec7f6dbfefa2c4baf34ff0990f96c529ecaca07b33a3e08279bef"
+    },
+    {
+      "path": "src/components/planner-task-types.tsx",
+      "sha256": "8fcae4fcf44058074ce4daf7d0c7d9b506c8547e1468316979c7be6cff8f4abc"
+    },
+    {
+      "path": "src/components/planner-timeline-filters.test.tsx",
+      "sha256": "284c565ad56e4c4e8ead83ac40686dcbc57bc0d3af089eeeba64cea061361e80"
+    },
+    {
+      "path": "src/components/planner-timeline.module.css",
+      "sha256": "a57b19b2443e2bd0d36faac689395bd4003e4bb9f98d1745f795c7b1aff7cba9"
+    },
+    {
+      "path": "src/components/planner-timeline.tsx",
+      "sha256": "b8d4a17ac95e5ce101ab30978ad0654c4ca0d64e160a8aefc41337800a7dfd4c"
+    },
+    {
+      "path": "src/components/planner-view-picker.tsx",
+      "sha256": "73fe7dc8f93eff3c70d35065f7d787ebac8048f8d219bf9b8c0dc04fac1e938c"
+    },
+    {
+      "path": "src/components/planner-view.test.tsx",
+      "sha256": "0a7ff69ce6356b8987eb56d679338e5e629718ddcb97b527adf6cf736a7f5752"
+    },
+    {
+      "path": "src/components/planner-view.tsx",
+      "sha256": "06a532bc36b5a211f724974fa6bad2217b7135ddb704b63d8e5689dc26560a47"
+    },
+    {
+      "path": "src/components/planner.test-helpers.ts",
+      "sha256": "1112f6a4b554e0fa3531fee2bf4133bc977bde9bba2cdcabbfb64b4f1f7f4a54"
+    },
+    {
+      "path": "src/components/queue-board-quick-add.test.tsx",
+      "sha256": "9e818691ca9c20334237ce42db9a203d85967764394020be174ea2db6d1551ad"
+    },
+    {
+      "path": "src/components/queue-board-quick-add.tsx",
+      "sha256": "b4659d5509402d7b0e7f2307dba746fc0500b9eb4bc63d0ab45431f9944fa034"
+    },
+    {
+      "path": "src/components/queue-board-request-dialog.test.tsx",
+      "sha256": "3849a3b761f35501c14bef93d64a61fe2a6a9e2a7d3a5c2b4f5ee96de0f9d0fb"
+    },
+    {
+      "path": "src/components/queue-board-request-dialog.tsx",
+      "sha256": "b5f2465d43ab41de0f6413d004b6b6ac4da4d704f45458b47dfe714eff66f392"
+    },
+    {
+      "path": "src/components/queue-board.test.tsx",
+      "sha256": "b6e0d1b8d1ddebb46f4d155444b8248ac1e4f63991d82f7fdd78705ffd239303"
+    },
+    {
+      "path": "src/components/queue-board.tsx",
+      "sha256": "db5f663e6b03e930cbd95d0aa1ae54cf56f26a292ad681a568f0d84468e9e824"
+    },
+    {
+      "path": "src/components/queue-view.test.tsx",
+      "sha256": "7669db928d2867045d13774e89d3ab43c51e410f8832b6e8b5850b92fa684501"
+    },
+    {
+      "path": "src/components/queue-view.tsx",
+      "sha256": "c601736f6d76943727360efdda0c081b7d8a45c012ec9c5763a59a00ff600aad"
+    },
+    {
+      "path": "src/components/request-created-notice.tsx",
+      "sha256": "260e31a2618e24f8447773b50483ad4bc742fc566d610e171a4c220a55587b41"
+    },
+    {
+      "path": "src/components/request-detail.test.tsx",
+      "sha256": "35a8403a7b0b6e94f12b78be35351815c0c08af61ee7ab4c3e49a543d1ee495e"
+    },
+    {
+      "path": "src/components/request-detail.tsx",
+      "sha256": "91d68de0419429b139ece4fa3ac5a2c2ade607432cf8a281985f758c354f7f32"
+    },
+    {
+      "path": "src/components/result-view.test.tsx",
+      "sha256": "88b02eff799104c5cff73f742ae419e45b8b84e19ec419576a41a450b1774e48"
+    },
+    {
+      "path": "src/components/result-view.tsx",
+      "sha256": "f1520905dc53f01e860f50dc797e5ed8b61101945b8721b2a144267387515152"
+    },
+    {
+      "path": "src/components/sample-label.test.tsx",
+      "sha256": "a211de315cecda3625b4290dd80f414a0362e6bf6bfbfc0fd2965a09426f5cf1"
+    },
+    {
+      "path": "src/components/sample-label.tsx",
+      "sha256": "35edc2e899a5c64f345393aeaca123788c95c802a45a60f6fffd8e7ca092d467"
+    },
+    {
+      "path": "src/components/status-badge.test.tsx",
+      "sha256": "f99c04f990cde0d834b42238456cbdf0116f27bd72e627d4e192bb4cdc22f678"
+    },
+    {
+      "path": "src/components/status-badge.tsx",
+      "sha256": "f930765b389beb2b59fadc0250ae13b20a1f0aa25e1d00c117b852d9caaf6e3e"
+    },
+    {
+      "path": "src/components/system-console.test.tsx",
+      "sha256": "7923972d59d0b1a38ad19255ce32026c0a2dc55589c1e41c0ea5458218537969"
+    },
+    {
+      "path": "src/components/system-console.tsx",
+      "sha256": "a6f1b44d094d6668031f31f591a72cc5c64e2b030ceb183d6720d23b148f107c"
+    },
+    {
+      "path": "src/components/task-upload-recovery-acceptance.test.tsx",
+      "sha256": "f5c79b9698872c16c8d92480a78999b73e8869ee69382b2610c1d9022bac447e"
+    },
+    {
+      "path": "src/components/ui-icons.test.tsx",
+      "sha256": "fa7c7b0db1a7801a088965807ebe96a4f8ca41d6a00eb279d56e4b384fb06e5e"
+    },
+    {
+      "path": "src/components/ui-icons.tsx",
+      "sha256": "b7f2cd63d8b0ddde3b1fd90b335bfb4173e2a0c0f6246cd54131455dfb5e032a"
+    },
+    {
+      "path": "src/components/use-departments.test.tsx",
+      "sha256": "cd942829f2dac690132b12f70c7a2d6e676668a5405b03fd59f5a0ce327576a0"
+    },
+    {
+      "path": "src/components/use-departments.ts",
+      "sha256": "89a26a9858fe94db09d1cb804c2f66a88ac697ed46b00fcfba5cdb0fadd79508"
+    },
+    {
+      "path": "src/components/use-dialog-focus.test.tsx",
+      "sha256": "0379151d27756a4ea9f3974205312c5817851c5911ed83b0ff4600e0a219fe7d"
+    },
+    {
+      "path": "src/components/use-dialog-focus.ts",
+      "sha256": "6f899a0e326d5da8fb9be9d4a0822d9e173d9ceb56f13bacfa9022ad01f23376"
+    },
+    {
+      "path": "src/components/use-planner-resource.ts",
+      "sha256": "1f395656093cb223aa9d5326ee9dfd70b47a917ee09d77f17f5db387edafb7fe"
+    },
+    {
+      "path": "src/components/use-planner.ts",
+      "sha256": "32f2c2ac4a7a88abc71cf7053b860a1ec5398426c96e045b61b41e5d776871b6"
+    },
+    {
+      "path": "src/components/use-queue-preferences.test.tsx",
+      "sha256": "3ffb25fabf05160c3b255da516b74b3ad7f1e66474fcfeefb07cb5e686aa1648"
+    },
+    {
+      "path": "src/components/use-queue-preferences.ts",
+      "sha256": "6ab80220bf6bcacc7174e3a6cf9e9787ec410a854809188b11feecac03fd7fb1"
+    },
+    {
+      "path": "src/components/work-activity-controls-race.test.tsx",
+      "sha256": "ee82a93bc4a9249991fb8d4056b33ee9a43cd66a90900d920ebab62b26c14a54"
+    },
+    {
+      "path": "src/components/work-activity-controls.tsx",
+      "sha256": "b49ff761a82a92bf423fe8201a7d9ba5756e1d2d063d4bb8d89c5e8805d729b1"
+    },
+    {
+      "path": "src/components/work-activity-library.tsx",
+      "sha256": "09f1d9418d2685b3267ef56d70be21a29c4d150c8ece75c19e11829102136b1d"
+    },
+    {
+      "path": "src/components/work-activity-opening-race.test.tsx",
+      "sha256": "3ffd2e99c626e16713c2809c9b07c1968c8b2717ae014df94ee461c8d76f8b71"
+    },
+    {
+      "path": "src/components/work-collaboration-surfaces.test.tsx",
+      "sha256": "8a9609d4cebc050ede0c2000001b336e9420e7e57ca3f1cadb57cb2066208c04"
+    },
+    {
+      "path": "src/components/work-inbox-counters.test.tsx",
+      "sha256": "4888bd4266c95f839190ca3293799a5c54a94d3fd19e8cab8ee76df715a0afdc"
+    },
+    {
+      "path": "src/components/work-inbox-workflows.test.tsx",
+      "sha256": "d50e3332bdecbd425f2a589be9ad1678a60837ce6bb3a996701f684c36a65bf4"
+    },
+    {
+      "path": "src/components/work-inbox.tsx",
+      "sha256": "0b4f58597080abbd83229b076070737fbbb97bf6409cc915b8f7b844831d48aa"
+    },
+    {
+      "path": "src/components/work-items/dropdowns.test.tsx",
+      "sha256": "78bfb96164663f233396475583c672bee7c1d20324cc69a812f54caa156b6043"
+    },
+    {
+      "path": "src/components/work-items/dropdowns.tsx",
+      "sha256": "e325c33846b652a84396d7ca41409aaf6b612f8755e77566d8b2d3135d769f1c"
+    },
+    {
+      "path": "src/components/work-items/icons.tsx",
+      "sha256": "03403d698bdd2ee5a4f41244b25826139af72caff84c5e9a303384da2a9cbc27"
+    },
+    {
+      "path": "src/components/work-items/layouts.test.tsx",
+      "sha256": "934c269baf6baac66f973b52d3384fe921b14f14b933f68fcb7101787a4a80b7"
+    },
+    {
+      "path": "src/components/work-items/layouts.tsx",
+      "sha256": "dda7ddd58ae4f2f99b95cac639bf3245a52b2abb0715bc16cc0e5f47b3ed986e"
+    },
+    {
+      "path": "src/components/work-items/model.test.ts",
+      "sha256": "ad9e7bcb0f0e08d24f78d0f3969b88c891f7759e786db0ae0c0dbdbe65582669"
+    },
+    {
+      "path": "src/components/work-items/model.ts",
+      "sha256": "cae31283ec16bd489402b1c69fc42d3a8e54da1af46a368aec19f37e8afeace0"
+    },
+    {
+      "path": "src/components/work-items/peek-overview.test.tsx",
+      "sha256": "0b65a0661c862e6648ccabdfe25ae5a8648c9d26987b0bc3a806e625132643ba"
+    },
+    {
+      "path": "src/components/work-items/peek-overview.tsx",
+      "sha256": "32d37c961984da84c97b1681607a2300c79d71f0b737e1abd4ef749f5b43430f"
+    },
+    {
+      "path": "src/components/work-items/properties.test.tsx",
+      "sha256": "db7d234e1fce913ea11aeb90f4e6f9bd40f45e5715d819e6e55a9446f538d4d1"
+    },
+    {
+      "path": "src/components/work-items/properties.tsx",
+      "sha256": "a02b28f1f4a2162230f3a5685f4fc9e65d615c32ed7ad074f1e482758fc6959a"
+    },
+    {
+      "path": "src/components/work-items/use-work-items.test.tsx",
+      "sha256": "a20f9c7167d2c88ad1a6401810d8911a68af6d24bfaae9a7196369ae9d301320"
+    },
+    {
+      "path": "src/components/work-items/use-work-items.ts",
+      "sha256": "6a93dd46b0f1a2cc82b652deb474159079d4e2e51b4d93f2279d4b705e6c8c28"
+    },
+    {
+      "path": "src/components/work-items/work-items-view.test.tsx",
+      "sha256": "d7124721bfc2eaf434968ef78318e54f96867df44e445792c8960d6101919e1e"
+    },
+    {
+      "path": "src/components/work-items/work-items-view.tsx",
+      "sha256": "20d5fdd5a66611498454428ef4522d0804b8e1cf3cf928b063921a4a061b0a88"
+    },
+    {
+      "path": "src/components/workflow-action.test.ts",
+      "sha256": "a919e9684cb676d7695ab40d5fc54da05351bd81a3526a722f0ee37b9a4043a7"
+    },
+    {
+      "path": "src/components/workflow-action.test.tsx",
+      "sha256": "2be1e8e491d681716c0f1fa08d18c394452c6d6508541de6b4f686b11603a92e"
+    },
+    {
+      "path": "src/components/workflow-action.tsx",
+      "sha256": "30ad96d0a014e57482a7fa22da8cc4a4a99e40ed0c2c0a800bb7e11b39b36623"
+    },
+    {
+      "path": "src/components/workflow-permissions.test.tsx",
+      "sha256": "5a78434fac39e6aac2fbca74a7bfab1de5e31d0969423a79b416e43f5821ffa2"
+    },
+    {
+      "path": "src/components/workflow-permissions.tsx",
+      "sha256": "d72206abe69bb62d9e29c1310594f00ced8d547b6210442b129641ba32cb9086"
+    },
+    {
+      "path": "src/features/command-center/command-center-panel.test.tsx",
+      "sha256": "3e3ac5778eb380de218110e68a2d24e620899ccfa55fbe478f6a4c84338c6200"
+    },
+    {
+      "path": "src/features/command-center/command-center-panel.tsx",
+      "sha256": "539631ae9d4ab9ae570991337cfce4a6c2fcf715c08342a097a3be5eadd13896"
+    },
+    {
+      "path": "src/features/diagnostics/exam-queue.test.tsx",
+      "sha256": "5da0b37c846f7bd73002da1f8b69ed478d8a4f08ae588d4ac55d38dd380d7653"
+    },
+    {
+      "path": "src/features/diagnostics/exam-queue.tsx",
+      "sha256": "235608c197f81991fa949985bacd8eed19643865424485e248b5d0d6744478c0"
+    },
+    {
+      "path": "src/instrumentation.test.ts",
+      "sha256": "e389e2b74ccd93b483fb0f15790a73d256b70708a4b292db74f5c95cbbb39115"
+    },
+    {
+      "path": "src/instrumentation.ts",
+      "sha256": "1cb9d65971c2103bea5b239c78536748832832bbaa4a4d7541f96e14dd66225a"
+    },
+    {
+      "path": "src/lib/hospital-time.test.ts",
+      "sha256": "c7ffe37dd3f03235294bafe81137ab17188fb2fb4fac22f4051385bb7ed5de09"
+    },
+    {
+      "path": "src/lib/hospital-time.ts",
+      "sha256": "3c1f538c437bdadd59022dd724a6fa035e61431ce282bd164dd932390eaa715d"
+    },
+    {
+      "path": "src/proxy.test.ts",
+      "sha256": "7149a0dedac7ab24521143f87aa0bd7f0d572018cb6127ec0f8ea881984684c4"
+    },
+    {
+      "path": "src/proxy.ts",
+      "sha256": "a7bc75d0d3c4f3102aeb83f1f845eb392ae8ad137468ab9ca2b1760f71950a4b"
+    },
+    {
+      "path": "src/server/application/access-group-impact.test.ts",
+      "sha256": "9c4627d37e858cb0a54f576f8201afe73f87b876069b8831cb332ee93857dd20"
+    },
+    {
+      "path": "src/server/application/access-group-realtime.test.ts",
+      "sha256": "135317b8b14913f7cafcdec35dcc199267052ea292feb20ed28a977cdf4f4985"
+    },
+    {
+      "path": "src/server/application/access-group-service.test.ts",
+      "sha256": "996abb017a6d77d703a90290849c860fdf9daa9452c999a1305161208aefe09d"
+    },
+    {
+      "path": "src/server/application/access-group-service.ts",
+      "sha256": "939e132ac729a8052b5e7b6ae5c1aea67f387d1a52c72a5c56eb1dbf849137f4"
+    },
+    {
+      "path": "src/server/application/admission-context-invariants.test.ts",
+      "sha256": "ca6ff9187637ef1189d6b06857bf8297712e1e42062b652f066597ef2d2f458b"
+    },
+    {
+      "path": "src/server/application/admission-context-service.test.ts",
+      "sha256": "f55e56fb9d084418d43bc5c0dcc2631ae2380c00f2f47c77c66c5bf11b201f8e"
+    },
+    {
+      "path": "src/server/application/admission-context-service.ts",
+      "sha256": "1b3719cc37af4bec4a7a431bcac61a05e69e41d0a73b339436478ceb8fe2713b"
+    },
+    {
+      "path": "src/server/application/alert-contact.test.ts",
+      "sha256": "2dc5d78a02af028b8562c1e5ec078160c40e1b8db51234888bdadc1911ebae20"
+    },
+    {
+      "path": "src/server/application/alert-contact.ts",
+      "sha256": "638cd44910aa5532d8608d03141f876ee4fd494aa5d2566dace2c67db3974a01"
+    },
+    {
+      "path": "src/server/application/archive-access.test.ts",
+      "sha256": "634af84e29d95dd3d3a9e90019ba719c3736f9272e129853a70e9ceb4361ce36"
+    },
+    {
+      "path": "src/server/application/archive-service.test.ts",
+      "sha256": "01ddeb9f1643228d7ca98aa834b4fbf13cd4eba2344c4beac6593f1088c12a88"
+    },
+    {
+      "path": "src/server/application/archive-service.ts",
+      "sha256": "ae9a5a5c6ace6b49a94864393b7307824f6967744aa6b6a193bbb63fcb91c8e9"
+    },
+    {
+      "path": "src/server/application/attachment-command-boundaries.test.ts",
+      "sha256": "41323542bce75c3f94af988ee33f2f58fa3c951f5e49817066071e7c9a7fdc70"
+    },
+    {
+      "path": "src/server/application/attachment-service.ts",
+      "sha256": "db8abfc676ab5a64e1065f1512737d2d28d782224b357d109e82c34b42d7c343"
+    },
+    {
+      "path": "src/server/application/attachments.test.ts",
+      "sha256": "d5b942f2e3bc783690ab30bf913e8595beb5ce6a5a89a8bca876b346aa84c5de"
+    },
+    {
+      "path": "src/server/application/audit-read.test.ts",
+      "sha256": "1bfcbe01f26ac69e7e60190ea788d86e34de22b574db7de412d2c5cf6c261cfa"
+    },
+    {
+      "path": "src/server/application/audit-read.ts",
+      "sha256": "6816792f7352a4e61b8a37ae998b74059d50ee2bfbcbebb3789dfaa10af242b3"
+    },
+    {
+      "path": "src/server/application/catalog-definition-validation.ts",
+      "sha256": "71772a3e74d9cad59bb75935c8f33f21f4a63402606878b41357472f44d11121"
+    },
+    {
+      "path": "src/server/application/catalog-import-service.test.ts",
+      "sha256": "edaaf51d68dc099dd39ed96118a283cce34167a0df79d7ee308f42e51187c9ca"
+    },
+    {
+      "path": "src/server/application/catalog-import.test.ts",
+      "sha256": "53b2ef1d2d6dc7c10640633736a82ba2734451209b1e7087b0c2afd4cc47ac69"
+    },
+    {
+      "path": "src/server/application/catalog-import.ts",
+      "sha256": "c71f4ac23613e25d4bc834daec26899bf679f757c74c1e2e1dc93348909abd4d"
+    },
+    {
+      "path": "src/server/application/catalog.test.ts",
+      "sha256": "6582c0f432a9588599fa7cb0b407710111154bc284258742af769734877cbd04"
+    },
+    {
+      "path": "src/server/application/clinical-integrity-regression.test.ts",
+      "sha256": "5446355b3c9f3c2cddde1353963d6a28146495ce4ae5a14a5a8c150ed61086a9"
+    },
+    {
+      "path": "src/server/application/clinical-reasons.test.ts",
+      "sha256": "f2a62f45875d4857de780f869d3879e9b6fcd2d8dccde49b5804e45b9a29478b"
+    },
+    {
+      "path": "src/server/application/clinical-reasons.ts",
+      "sha256": "2cfc04b9ab4a94de26d1d5ed5d1b35fbe8a1406cd1fe88fafe866bcff0fc304a"
+    },
+    {
+      "path": "src/server/application/clinical-work-visibility.test.ts",
+      "sha256": "f63693267febc164c023a33a85ec13d0ef4e22d83416669686265af7974f87c3"
+    },
+    {
+      "path": "src/server/application/critical-alert-channel.test.ts",
+      "sha256": "6ddf060da5c17c2581653647eee3c3aa649b0377118ff78f59860c49336e876c"
+    },
+    {
+      "path": "src/server/application/critical-alert-channel.ts",
+      "sha256": "e4d3dd844363b61a57361f672348614dcc73b882512e2c1f6ba1e9fb725588eb"
+    },
+    {
+      "path": "src/server/application/critical-escalation.test.ts",
+      "sha256": "28304b1ed4a9afbfe6029ea4aadac46237e85950a413eec486433c4c295012df"
+    },
+    {
+      "path": "src/server/application/critical-escalation.ts",
+      "sha256": "e8d577bff42afd2cdfd00e519587d128e97ec7033052d4d4b2b7e7b53d1cb299"
+    },
+    {
+      "path": "src/server/application/critical-readiness.test.ts",
+      "sha256": "52071b5b332b9d6c5c9b57291ec67be07efe8e17ac9d9db705d03c2ede29d711"
+    },
+    {
+      "path": "src/server/application/critical-readiness.ts",
+      "sha256": "6cfb3752e663e41b81efaff3dae633bdc6f4fc8d08f194f6781c356061e3a0e2"
+    },
+    {
+      "path": "src/server/application/critical-result-policy.test.ts",
+      "sha256": "e1668da835d01615d999d6102db3eb9d603a19d2b2c7c8c00b07f25a538aabed"
+    },
+    {
+      "path": "src/server/application/critical-result-policy.ts",
+      "sha256": "6f7e781932167fd57595ec06128d3ff663468e18ce5734a45e9d806337a7f531"
+    },
+    {
+      "path": "src/server/application/critical-whatsapp-flow.test.ts",
+      "sha256": "4eaf1427105aa61e8e78fedd7e3477f5a80a9ed68034e835444e0fc67305174b"
+    },
+    {
+      "path": "src/server/application/data-subject-service.test.ts",
+      "sha256": "55245763fa5180b292a3c4205a4055bdff1d9158cb80cb93eee8b8fe97c3b679"
+    },
+    {
+      "path": "src/server/application/data-subject-service.ts",
+      "sha256": "5fb764ac5c5ca08343699128530ec7b27b95221a2ed9983490638328f544548c"
+    },
+    {
+      "path": "src/server/application/department-registry.ts",
+      "sha256": "b160bc2f5ce25977999af0c5a0b699d4d9b75d99035cedb64f8fc26f72d422f1"
+    },
+    {
+      "path": "src/server/application/department-service.test.ts",
+      "sha256": "ee35f503d9d0a4d80ee5e3aedf2f61b3cc31b8ffe48479f9fbcbb80cdda3f1a8"
+    },
+    {
+      "path": "src/server/application/department-service.ts",
+      "sha256": "5f824b8b2c492766bff7d4a35b05c1445c5cb03ae3933644b43eab74aa9aebe9"
+    },
+    {
+      "path": "src/server/application/diagnostic-planning-service.test.ts",
+      "sha256": "f129479aa9b9ade07967f5d45577452535cd44bfba508a4a17090549713e9146"
+    },
+    {
+      "path": "src/server/application/diagnostic-planning-service.ts",
+      "sha256": "95aed38b6c2a6985e256f9094e144272f9ef6cc602f8a1f4390c466c23eb5947"
+    },
+    {
+      "path": "src/server/application/diagnostic-reservation-policy.ts",
+      "sha256": "64711b4e0e45f9531ea14c8e6af4acc05f73d77a2e6d4e96c5d57c676cc8324e"
+    },
+    {
+      "path": "src/server/application/encounter-service.test.ts",
+      "sha256": "ad38c18098f6a7ab0abf01f426873f20e0527986cda0d860326fd2f14f6d3371"
+    },
+    {
+      "path": "src/server/application/error-branches.test.ts",
+      "sha256": "292a80f8839738e3a71c004be53559de597a431341c65c57f6f2ba5f19b2d0f3"
+    },
+    {
+      "path": "src/server/application/exam-definition-service.ts",
+      "sha256": "180934a6de0a5f28d58ad009e0366bd8ad9a21edcd9a2df1d3674a98cc209262"
+    },
+    {
+      "path": "src/server/application/exam-definition.test.ts",
+      "sha256": "2937977f2d77b9825ac633235b7f2401290105899215b9abef9ebd3c316102fb"
+    },
+    {
+      "path": "src/server/application/exam-definition.ts",
+      "sha256": "f1593ea457353c081737a66ceb4987f2979922a6eed0912ea65897d203f39756"
+    },
+    {
+      "path": "src/server/application/executor-service-access.test.ts",
+      "sha256": "55d5d49999a81092a7386562b3acf721f18030755f794fc6c686c01ed2e08952"
+    },
+    {
+      "path": "src/server/application/executor-service-access.ts",
+      "sha256": "c9944ee13fedf8e2a73f0ca13be506b59cf8ca0f94a98d89b33c0b15984160b5"
+    },
+    {
+      "path": "src/server/application/hospital-ai-http.ts",
+      "sha256": "a5c8eea9930719fe77b6dced852039110b6caea6c9e24dcd91767770e615acab"
+    },
+    {
+      "path": "src/server/application/hospital-ai-service.test.ts",
+      "sha256": "bbe4480f80dd1551d67917721b0b98ce6bdaaf376fb4f8d232d7ff8b82e32a51"
+    },
+    {
+      "path": "src/server/application/hospital-ai-service.ts",
+      "sha256": "791a56989056225cc9de7eb3c0b0ef46451dd2b78b278a498341e40dbc7df2d1"
+    },
+    {
+      "path": "src/server/application/hospital-analytics-reference.test.ts",
+      "sha256": "67e0d93126af66f623e5608050401a6e415c8bf5246a7843cb486815af849d49"
+    },
+    {
+      "path": "src/server/application/hospital-analytics-service.test.ts",
+      "sha256": "6004a4229a5ea55ce556908a3bc58685960598e9dee65c694aeae89cf8725385"
+    },
+    {
+      "path": "src/server/application/hospital-bed-census-service.test.ts",
+      "sha256": "8e9a9505345e2394f46068a617150e5254dfc93c136d91ea037e90bbc5bbe676"
+    },
+    {
+      "path": "src/server/application/hospital-bed-census-service.ts",
+      "sha256": "ca7a8bb7e62590e588baa83048eff4953fa5e128edd0d0b619d6ec57a0e9d0b5"
+    },
+    {
+      "path": "src/server/application/hospital-bed-policy.ts",
+      "sha256": "a8c08cda1c4d91b780a5d2ea2e4f5ce4d929f0bc2a73db3b5fe7a1d656228731"
+    },
+    {
+      "path": "src/server/application/hospital-calendar-capacity.test.ts",
+      "sha256": "adfd1a7bf3d65bfd4f1d35c669c4c100d711aa97659cd3b83925ae01e8a7b283"
+    },
+    {
+      "path": "src/server/application/hospital-calendar-command-service.ts",
+      "sha256": "9cee79425435da957ff21f15c599d350369b15f69a1fa7604d3556e112003f04"
+    },
+    {
+      "path": "src/server/application/hospital-calendar-open-execution.test.ts",
+      "sha256": "e45f7a652da98e330ae2804a2660bcf53385f14cce214861bc14597fa3388f30"
+    },
+    {
+      "path": "src/server/application/hospital-calendar-read-service.ts",
+      "sha256": "1460344336d71ee7a44af2bfdd7c67cc56e59a49d63ede3e2407db58ccda1f02"
+    },
+    {
+      "path": "src/server/application/hospital-capacity-effort.test.ts",
+      "sha256": "7fbb601f5dd2bd2572124bef70a8ac28ea01c46835196ff81cc49ed6c8d3c47e"
+    },
+    {
+      "path": "src/server/application/hospital-capacity-service.ts",
+      "sha256": "f52e008c0603a30ac309ce6bb6c48aaba839fe8b346499c4796baa20f9ff2bf5"
+    },
+    {
+      "path": "src/server/application/hospital-care-service.test.ts",
+      "sha256": "440c31ca6e3df9b559d9e2595be0ba6470c3fdb84e6d737a05446c809d077134"
+    },
+    {
+      "path": "src/server/application/hospital-care-service.ts",
+      "sha256": "694e2457f2b36b863d58278d6847f7dca555a1db259f0e6ff0a2d8ab04e6727c"
+    },
+    {
+      "path": "src/server/application/hospital-checklist-policy.ts",
+      "sha256": "2b03dbd4861709fdccc71aff3b7b68f63f306aeb1c8a74ae7f3165975b9ab4d8"
+    },
+    {
+      "path": "src/server/application/hospital-checklist-service.test.ts",
+      "sha256": "1e8ec2d7d2683b084a698204650df8d870c16ed995ff6339289835a6a25816e3"
+    },
+    {
+      "path": "src/server/application/hospital-checklist-service.ts",
+      "sha256": "1891c2c28abc9c3469be759552d7fa5d0a4c07f8d731b9c93eb6e369370039bb"
+    },
+    {
+      "path": "src/server/application/hospital-checklist-types.ts",
+      "sha256": "5a86d2a6e82ff29cec0f897e1d5811fb9703929122d1940a02f7439844e2e207"
+    },
+    {
+      "path": "src/server/application/hospital-collaboration.test.ts",
+      "sha256": "09bf4d0da7e15660def4f3eed99f8354af8346430c3701dff24157554d6b1d57"
+    },
+    {
+      "path": "src/server/application/hospital-critical-shift-boundary.test.ts",
+      "sha256": "f7542b8713a1c81df64e12d6d9a6628131d3932a892ae621d436c3236742e3e4"
+    },
+    {
+      "path": "src/server/application/hospital-document-common.ts",
+      "sha256": "8be4ee95e758c4cf6d468c0c40a31852860afaf55febd744a79806ca942212e5"
+    },
+    {
+      "path": "src/server/application/hospital-document-draft-service.ts",
+      "sha256": "6fba7dda79bbe0de5697bf04478d2acd9246aad82a581deb9ddabc613baa7cd0"
+    },
+    {
+      "path": "src/server/application/hospital-document-policy.ts",
+      "sha256": "b8d824f5ff8c6f9af8bab6da4018d4535a811eb39bdd1d5a89102aeafda6e1f5"
+    },
+    {
+      "path": "src/server/application/hospital-document-publication-service.ts",
+      "sha256": "62736a0dbf840fcb7498bbb3a7ae028a467d787e166d2eb9f2fb33fe91f90fce"
+    },
+    {
+      "path": "src/server/application/hospital-document-service.test.ts",
+      "sha256": "3c51a46cfd2f7bcb68e2ec1cd13c96c6e3c8ec441a5c131ff2fa278586ea8568"
+    },
+    {
+      "path": "src/server/application/hospital-document-service.ts",
+      "sha256": "a85f10201e2773ecd549b164f8e47f4fac2295ec3f853674c95e489982b30138"
+    },
+    {
+      "path": "src/server/application/hospital-external-configuration.test.ts",
+      "sha256": "482963baddb2c23d7f9f9a030aa63f1b5ac5e9732790b4d59e91253ecf914043"
+    },
+    {
+      "path": "src/server/application/hospital-governance-authority.test.ts",
+      "sha256": "2a78c7fca5dca8419a24d2eae2b939983b8856f9bb88c90bbd98c7f24b2aec07"
+    },
+    {
+      "path": "src/server/application/hospital-his-v4-config.ts",
+      "sha256": "1a270d576beef44c48b4733173efd8446ee0d97935aef9aad2df8a786b67560f"
+    },
+    {
+      "path": "src/server/application/hospital-his-v4-http.test.ts",
+      "sha256": "9c91745bbcfd6692acfc2fae78981e5c726c8b68f5046b0da0c36f04652f6d36"
+    },
+    {
+      "path": "src/server/application/hospital-his-v4-http.ts",
+      "sha256": "21cb9901e63c440d0553b76e11a851906bbb28c964eee564a5bc83fad7ef6d3e"
+    },
+    {
+      "path": "src/server/application/hospital-his-v4-producer-metadata.test.ts",
+      "sha256": "531e58c9ea3de00d8b67f0bf5d9e1afee7a4d66ecc8fe65f69c8fba2dd413331"
+    },
+    {
+      "path": "src/server/application/hospital-his-v4-service.test.ts",
+      "sha256": "47e9e6454ae01c941ad620391eb32cd482beed9f558a0f6c25c1dcc39f2fae27"
+    },
+    {
+      "path": "src/server/application/hospital-his-v4-service.ts",
+      "sha256": "d027c54911ef9d4460d341b9b9edff0839de2582df91b6db24a6531345732747"
+    },
+    {
+      "path": "src/server/application/hospital-institution-policy.ts",
+      "sha256": "f1785c802a3689fe5aed317fde0f997266b34883fcb0221425e859de71e55856"
+    },
+    {
+      "path": "src/server/application/hospital-institution-service.test.ts",
+      "sha256": "5325ab4b712d39fd7942738d18b6cee753ee219126fd6ceabae2b195432e227d"
+    },
+    {
+      "path": "src/server/application/hospital-institution-service.ts",
+      "sha256": "3da3bc44657daa1fcb315483f1749b56000f9b1d8dd6f3ae910822a794f0db93"
+    },
+    {
+      "path": "src/server/application/hospital-intake-rejection-policy.test.ts",
+      "sha256": "24309cc0ad06571eab386004969578ee116a789e9cec00875d422091a81e87ed"
+    },
+    {
+      "path": "src/server/application/hospital-intake-rejection-policy.ts",
+      "sha256": "d890302dd0c1fe352ee3b5afe3497eeb819f3d000c60e29ac696f9f344dd8b49"
+    },
+    {
+      "path": "src/server/application/hospital-intake-service.test.ts",
+      "sha256": "7db942642e73db9e6fdee55c1c6a74aeee9e4465ad1dbf79eea4bc4d3e2b088f"
+    },
+    {
+      "path": "src/server/application/hospital-intake-service.ts",
+      "sha256": "76005cb48937a7742d6fa233f45c28fece1fe288a75b9d89a0ce7ab8c61a42f6"
+    },
+    {
+      "path": "src/server/application/hospital-integration-credential-journey.test.ts",
+      "sha256": "1e2feb10ada91f26ef0aac8a00f202b6b4b0d0318da8cf016b58015411835729"
+    },
+    {
+      "path": "src/server/application/hospital-integration-credential-service.ts",
+      "sha256": "09e1fa00b79e4848842c56a277645d3ad130bee5f6856153d7b8b5fe8607017a"
+    },
+    {
+      "path": "src/server/application/hospital-integration-exchange-journey.test.ts",
+      "sha256": "8492bbca6141235788fdb8992acf0daf7dc47cf0f7c06f677423ba35cc4cbc23"
+    },
+    {
+      "path": "src/server/application/hospital-integration-exchange-service.ts",
+      "sha256": "4cc9e8d6400906f557bf9095f4a46cae511e824b415a820abc5f966b5c028e50"
+    },
+    {
+      "path": "src/server/application/hospital-integration-http.test.ts",
+      "sha256": "f1b9f0c887091dbef47d8b22f485e4f72958bacb5222a3f42a581e46b191bff9"
+    },
+    {
+      "path": "src/server/application/hospital-integration-http.ts",
+      "sha256": "ccead43da8efaa70fee607fbc8595a0667f5ef51962c9a3288c717b9fddf1fbf"
+    },
+    {
+      "path": "src/server/application/hospital-integration-ingress-service.ts",
+      "sha256": "8ef77fa0af4b84902196e065de26d045ef8c0c150d51f21eaf9fa3e0ed4df0a6"
+    },
+    {
+      "path": "src/server/application/hospital-integration-policy.ts",
+      "sha256": "36ba7b184a9526bda0e1c6df486ec38f673d79a9850ed852ab4d1caffb2ccc83"
+    },
+    {
+      "path": "src/server/application/hospital-integration-service.test.ts",
+      "sha256": "9a818dc511ce6cf5f2a7b19f373711fbea4f4a5018f13465ccd0cce6bcd3fd6d"
+    },
+    {
+      "path": "src/server/application/hospital-integration-service.ts",
+      "sha256": "8fba42a022ef740235452d340a494134b1c38eee086a34fb859085a95d30c698"
+    },
+    {
+      "path": "src/server/application/hospital-invitation-service.ts",
+      "sha256": "7cf35ca9df78705bf909cda95b3f8f8bfed9e4cfd050a9f3c0853e8b8fcba00f"
+    },
+    {
+      "path": "src/server/application/hospital-metric-definitions.ts",
+      "sha256": "28088da3ee466aa2da71cc9f9b51bfa60215959d08527ed58b15a3830e3605ff"
+    },
+    {
+      "path": "src/server/application/hospital-metrics-delegation.test.ts",
+      "sha256": "7b8b36671169e1f9eb191f7544ce30f7d1225f114bdf79b979fc019c4d9932a4"
+    },
+    {
+      "path": "src/server/application/hospital-metrics-service.ts",
+      "sha256": "729ea256da2bf197554b59f2deb80e9229aef8246c66974ddbb2991b4eae33c2"
+    },
+    {
+      "path": "src/server/application/hospital-plan-policy.ts",
+      "sha256": "8c260eb81322be7f01ad87736c15205e1c665d457cadee439f75f9f33cb9c5b9"
+    },
+    {
+      "path": "src/server/application/hospital-plan-service.test.ts",
+      "sha256": "8cde78d9c7601497d2cfa171efe91580ebefaf52e533f25b40340da9fbb9c08c"
+    },
+    {
+      "path": "src/server/application/hospital-plan-service.ts",
+      "sha256": "65f878dc7f107252864547985d99f7a38b4933a403f7f2b47eca93e5c51ef204"
+    },
+    {
+      "path": "src/server/application/hospital-plan-types.ts",
+      "sha256": "ef396b276258375c79492d0d66a106fb69cd114fa7f573af6694421becfc6986"
+    },
+    {
+      "path": "src/server/application/hospital-planner-filter.ts",
+      "sha256": "c987a967c636ab74866a9c14a50331614c270490a804b771f18a44f9038a1f6c"
+    },
+    {
+      "path": "src/server/application/hospital-planner-options-policy.test.ts",
+      "sha256": "b34c1f72a19291662825ffe2170f9b65c8cf7248cce21482686a1e3bec21fcd4"
+    },
+    {
+      "path": "src/server/application/hospital-planner-options-service.ts",
+      "sha256": "56651784142395d6ee0819e6803fc04967091e0aefa0455a33ac1e36fd1968de"
+    },
+    {
+      "path": "src/server/application/hospital-recurrence-job.ts",
+      "sha256": "d3545854de42038eef5d331f33fb1e16931d3995b2220ff06ebc922f4fee82e8"
+    },
+    {
+      "path": "src/server/application/hospital-recurrence-recovery.test.ts",
+      "sha256": "4f63e8b0cbc3d4d0c415643a6feb18c33a457b88cc3158749ccdf65f17b1bec4"
+    },
+    {
+      "path": "src/server/application/hospital-recurrence-service.ts",
+      "sha256": "a21824a1e1c0c503c5ca523cff44609049a715663a5b0fc8ac28f8faab38979a"
+    },
+    {
+      "path": "src/server/application/hospital-report-job.ts",
+      "sha256": "69757fae6d1497d1a080a5f42de7117859e5931436edcdc5f9de2489f22337a9"
+    },
+    {
+      "path": "src/server/application/hospital-report-lifecycle.test.ts",
+      "sha256": "9b3bc31d996b92da0479e41bdef01ae153639f6607a40ea7b7c2914400c8c3f6"
+    },
+    {
+      "path": "src/server/application/hospital-report-policy.ts",
+      "sha256": "5ec209732795a6a21500fd81bc4a6cd05858a918ca9379578e9bd63d754196e7"
+    },
+    {
+      "path": "src/server/application/hospital-report-rows.ts",
+      "sha256": "cdca5696f7850754a562da844164a171a66d0ea91aaa42041388d324fcb3033f"
+    },
+    {
+      "path": "src/server/application/hospital-report-service.ts",
+      "sha256": "ca83708a519656de483712518a0ad7066388acecc4d1eead141f08cfdd77b309"
+    },
+    {
+      "path": "src/server/application/hospital-report-visibility.test.ts",
+      "sha256": "b13573aa24cac94f5fcc9d9c54873febb131ea751aead4ace90fa4e56d779724"
+    },
+    {
+      "path": "src/server/application/hospital-resource-policy.ts",
+      "sha256": "337a516e0abba482839c6f218715afc2687a97ab080007e8f05f2f68e6d7bd31"
+    },
+    {
+      "path": "src/server/application/hospital-resource-safety.test.ts",
+      "sha256": "9bfd41b9f12a48697aa65061f3d11f289c43d4c48bc6f1dc4c9a763b1871c149"
+    },
+    {
+      "path": "src/server/application/hospital-resource-service.test.ts",
+      "sha256": "50e4e901a20f05182f5ffc6ab34c6048af2d441a30119c5827c2d9dd49f1efdc"
+    },
+    {
+      "path": "src/server/application/hospital-resource-service.ts",
+      "sha256": "4bad47ba823b84b1f9082683c1d367e01edb0276cde29338ef2929f3fdc998c9"
+    },
+    {
+      "path": "src/server/application/hospital-service-import.ts",
+      "sha256": "c0fc859b53f0e7f5942f5e81deee1c88c08f4f2f0ab6601dd39088ad04de9dc7"
+    },
+    {
+      "path": "src/server/application/hospital-service-policy.ts",
+      "sha256": "40d9cecfb4f1e6aa2ace1962b47148ac2639e7837bb780f845a4ab32d4c2894d"
+    },
+    {
+      "path": "src/server/application/hospital-service-registry.ts",
+      "sha256": "a32bb2be0e4d7b4de660f47bf7431ceb58d0418266c53cf7f28126ba681cf866"
+    },
+    {
+      "path": "src/server/application/hospital-service-service.ts",
+      "sha256": "ba31f5a1c2e129b46671c836aaca38a57285081c71cf9befad0ee261b872c81a"
+    },
+    {
+      "path": "src/server/application/hospital-service.test.ts",
+      "sha256": "8d343ff40fd6f0d22b992b8a60e6537feae9ae4031fc24230fd86a44b3b991d9"
+    },
+    {
+      "path": "src/server/application/hospital-shift-policy.ts",
+      "sha256": "1c25188e45138461f5347759a5843b1071462547db41475727b84e00778d9017"
+    },
+    {
+      "path": "src/server/application/hospital-shift-service.test.ts",
+      "sha256": "b9d52b6849f7183ee6f23ef2a600fd713b43e61e2a43bbb6d53a658b80935362"
+    },
+    {
+      "path": "src/server/application/hospital-shift-service.ts",
+      "sha256": "f31eda14fa8cfc0f6228e36a8763fbe896fd3472dae4e76c545772a48dbeb1ac"
+    },
+    {
+      "path": "src/server/application/hospital-shift-types.ts",
+      "sha256": "efe979968387463cc2c28bd736e0b56ca49e42dcac5e06009ab7cd8076088268"
+    },
+    {
+      "path": "src/server/application/hospital-task-archive-service.ts",
+      "sha256": "0feb1978c8cb2e056ae0ff448af9ccfcce9ba25140b21454f1c97d61631a2fe5"
+    },
+    {
+      "path": "src/server/application/hospital-task-attachment-lifecycle.test.ts",
+      "sha256": "aaedac6e58807759b1afc39e09e1f6b24b250c453ad865afbc2c0b5660537836"
+    },
+    {
+      "path": "src/server/application/hospital-task-attachment-policy.ts",
+      "sha256": "58eb41f337522f6eaa5d76c62a9cccf2badce1dcc31ffc9694b4f0315177f7a8"
+    },
+    {
+      "path": "src/server/application/hospital-task-attachment-service.ts",
+      "sha256": "8089bc1465c191617e4984ac3bfa3f11114207da55d11330ad616335496c07a3"
+    },
+    {
+      "path": "src/server/application/hospital-task-attachment-types.ts",
+      "sha256": "6a7959de80f6020d080bed15c0adb8e0b1e536cb057bfdd94c07fc3e3117e23f"
+    },
+    {
+      "path": "src/server/application/hospital-task-attachment-upload.ts",
+      "sha256": "96650f2647b5b25b88ab3326a9f7c6bd9b4a12179d798762d05de235a8d7f9cc"
+    },
+    {
+      "path": "src/server/application/hospital-task-boundary-journey.test.ts",
+      "sha256": "c4f9b3116c87888f0552c9a97bd75dee116dd459c0b1173a9d0b2e58f59e4ee3"
+    },
+    {
+      "path": "src/server/application/hospital-task-calendar-permissions.test.ts",
+      "sha256": "ee18002d33f76fb456ec4ce6eeea8aa65f95b96fc677f880a85c2430bac6531e"
+    },
+    {
+      "path": "src/server/application/hospital-task-comment-service.ts",
+      "sha256": "0a35e15c892da2ade3b63e79de7e4beeef3785e62d64264b5a15a915916c3b34"
+    },
+    {
+      "path": "src/server/application/hospital-task-comment-types.ts",
+      "sha256": "be013650dba096364c454b0e4685e65ec52e5e551d085588fac11280172aab77"
+    },
+    {
+      "path": "src/server/application/hospital-task-common.ts",
+      "sha256": "ecf6b188078f7559eab078bdad08295b0bbe9ca0adb58f9870839bc754520878"
+    },
+    {
+      "path": "src/server/application/hospital-task-dependencies.test.ts",
+      "sha256": "933c12ac9fd6a3785f972f689acb67beda1b06c4c6dbae58efaa5a52a9bbc291"
+    },
+    {
+      "path": "src/server/application/hospital-task-draft-service.ts",
+      "sha256": "fc10235089b7fc0785e6269c0c83f16add54ff5df226058c7d9098ee9f9788e3"
+    },
+    {
+      "path": "src/server/application/hospital-task-drafts-archive.test.ts",
+      "sha256": "af9a6f0dede75fe7669346a12368c362a3650c1b076b857ab989161516190564"
+    },
+    {
+      "path": "src/server/application/hospital-task-ordering-journey.test.ts",
+      "sha256": "ed8cdb25e8798fcb560166fc5e201b5ff1d96c6c0c15c41113584a09eed57bfb"
+    },
+    {
+      "path": "src/server/application/hospital-task-pagination.ts",
+      "sha256": "52cc012cc162ce172d8abf2bda6a08af18d877723b307d6aa90f1df56f7005c5"
+    },
+    {
+      "path": "src/server/application/hospital-task-policy.ts",
+      "sha256": "84b70580d20ecdc0bbef80fa9aae2735e18a9574697f9aafd287584c7ea07b03"
+    },
+    {
+      "path": "src/server/application/hospital-task-reaction-service.ts",
+      "sha256": "e8fbea66198a012d8a3a5120f0849001438d1695c016e90e67c8392b3164de93"
+    },
+    {
+      "path": "src/server/application/hospital-task-service.test.ts",
+      "sha256": "eca52eb8ce1acf4f1ed0fc4939b09f35a4a544e695f45e59151a346c72c5c350"
+    },
+    {
+      "path": "src/server/application/hospital-task-service.ts",
+      "sha256": "4aa811d91ea8afb563ebb952f8ffb85f623a2356cccf6ddbb586f693060599f7"
+    },
+    {
+      "path": "src/server/application/hospital-task-types.ts",
+      "sha256": "869f2d478bdf9c64d7670dd1159d44128b6a013b7ab95f68661ff0f8a2061e3d"
+    },
+    {
+      "path": "src/server/application/hospital-work-authority.test.ts",
+      "sha256": "34cf23a708ae5f9a5a5c148ee0fffa13222fa115df83fcfa1d84349f746d20ee"
+    },
+    {
+      "path": "src/server/application/laboratory-reference-boundaries.test.ts",
+      "sha256": "e97c2c0b84bbe7a6c0f67f4c4a648488566e3541f5efcda07991ee2c6aa72225"
+    },
+    {
+      "path": "src/server/application/laboratory-reference-policy.ts",
+      "sha256": "724d229778a740ad0b66065d8053bdc6ff5d0eca2a6064ee2f8c180ffe4c6139"
+    },
+    {
+      "path": "src/server/application/management-assignments.test.ts",
+      "sha256": "014e505364325f5ce4fd3fd86520e922efe4014050eead24fba73237c721897e"
+    },
+    {
+      "path": "src/server/application/management-service.ts",
+      "sha256": "f00a989ae03a8e8a139734e73a36ad78e22a0386363f7ff37227ea9d077b5aee"
+    },
+    {
+      "path": "src/server/application/management-superadmin.test.ts",
+      "sha256": "5793dfc68dcf34836a925b891fb612672868f788e2816805c3023759a17b26c8"
+    },
+    {
+      "path": "src/server/application/management.test.ts",
+      "sha256": "14eb44c5ffa464088ba7a7b72112a7b392c8d15dbbc3f4f51a3b60b1a77b2ba9"
+    },
+    {
+      "path": "src/server/application/manager-admission-scope.test.ts",
+      "sha256": "a33bb39ae7eb0aa68c8863b4e7605094cdac948f1f58c16206a035bc768dad1f"
+    },
+    {
+      "path": "src/server/application/notification-visibility.test.ts",
+      "sha256": "4e6afe24bbba3aab9308e68972750bc54df69b50a35e80de17a01851716614c3"
+    },
+    {
+      "path": "src/server/application/notification-visibility.ts",
+      "sha256": "c6655321052325739be3a870ecc931305f12887c456707e01dd444858d1f15d2"
+    },
+    {
+      "path": "src/server/application/operational-context.ts",
+      "sha256": "9ae9d663706f5975ec2c473c5d2b2192cc7f615073e34f2bf8363a701d4511a8"
+    },
+    {
+      "path": "src/server/application/password-reset-link.test.ts",
+      "sha256": "db94dc905729fe0c379c2d107d9ae4fe620929a399df94ced5f4b61d805fa6bc"
+    },
+    {
+      "path": "src/server/application/patient-timeline.test.ts",
+      "sha256": "c9853f1d6fd44b5e559bc0c95b1b21a0e60d3334db204e624c3350a4dc207428"
+    },
+    {
+      "path": "src/server/application/patient-timeline.ts",
+      "sha256": "7eb1fced72595ac1bd726991eead0e7e12eba8b512fed44745c519061412e553"
+    },
+    {
+      "path": "src/server/application/patient-workspace.test.ts",
+      "sha256": "082c0e231c1e2a16c49f3153058e980ac5414be37c76efdb4b08d5d96eab5120"
+    },
+    {
+      "path": "src/server/application/planner-configuration-journey.test.ts",
+      "sha256": "906a3cdca00df7e3838d0ba04cde3399e8d17838d1ecfee048fa63f00e826cf2"
+    },
+    {
+      "path": "src/server/application/planner-search-journey.test.ts",
+      "sha256": "e424e7e79a2aa18fb7c8ff91d51d74d4aa2594f7840952a87e1fd01bf94bfc8c"
+    },
+    {
+      "path": "src/server/application/planner-search-metadata.test.ts",
+      "sha256": "c0143b3ad50d579c8f5f2541cad4710d8bb5e2616a13e152484476ea71625aac"
+    },
+    {
+      "path": "src/server/application/planner-search-service.test.ts",
+      "sha256": "4b707ac5a37362e6b1d48b75ebde4fa61dac8906618b77aa964801f00f9aef20"
+    },
+    {
+      "path": "src/server/application/planner-search-service.ts",
+      "sha256": "b6f8487bc869a1d04dc566f0367fa4410a97991228979f0241349e1490c4bb01"
+    },
+    {
+      "path": "src/server/application/planner-view-diagnostic-context.test.ts",
+      "sha256": "3998eac66943d6d621d432bfe9358268f491c0ca1b1b14cf30c2cc347aae4ff2"
+    },
+    {
+      "path": "src/server/application/planner-view-service.test.ts",
+      "sha256": "221bbc15d0330f3d8a9fe1f43635d17e3515b916616dd49f4a286c1ce24f4b86"
+    },
+    {
+      "path": "src/server/application/planner-view-service.ts",
+      "sha256": "7f2a8703928e9f88d99b10e1c897176b4eb0509099d4e3fdccec4deb639059e0"
+    },
+    {
+      "path": "src/server/application/queue-pagination.ts",
+      "sha256": "5b8fd7b7f680d030d7b1972c13d7e8571e46c3a20bc966d6844d913521af73e5"
+    },
+    {
+      "path": "src/server/application/read-context-boundaries.test.ts",
+      "sha256": "86a1c203002c23b7e73f20b099c544882ce184a8d32f86ac3004b07f379110fa"
+    },
+    {
+      "path": "src/server/application/read-models.test.ts",
+      "sha256": "a6a65a5404123cfaf4057d8db5962ad53d001dbd35224b6316dc690b946cbde2"
+    },
+    {
+      "path": "src/server/application/read-service.ts",
+      "sha256": "a798fcb9794bb1d19ad76833d7010dde1e8b263fb6fd757cb601f67eb614d3ec"
+    },
+    {
+      "path": "src/server/application/realtime-visibility.test.ts",
+      "sha256": "39fe81d943dcef49c1b76f2b9a305bfd3d09ca8b3a3d72e1d8c371378ba126e4"
+    },
+    {
+      "path": "src/server/application/realtime-visibility.ts",
+      "sha256": "97c3fce9e9aeca36e684892f93ca9f1e8db6329d81e11dc63c1a1047726d2e73"
+    },
+    {
+      "path": "src/server/application/registry-service.test.ts",
+      "sha256": "3cfc797e383bc3f8c200a19464c7639495a37e626cd2c63de82e57714c335b86"
+    },
+    {
+      "path": "src/server/application/registry-service.ts",
+      "sha256": "742f36553b3974eec0481cd50b919b649d98eadb99d046a19a760a6975e140a7"
+    },
+    {
+      "path": "src/server/application/request-projection.ts",
+      "sha256": "4f57ffe176189900282e3d4d4db08ae0d739375f03c651455d89e71fb70b32fb"
+    },
+    {
+      "path": "src/server/application/request-service.ts",
+      "sha256": "8b1d62528993d3dbeada803e775f99229019ef753beb4a11ef3093c3c185628f"
+    },
+    {
+      "path": "src/server/application/result-access-security.test.ts",
+      "sha256": "1772acdcb8665f963b63dd6cd54332f1c6f5fabb33fc48eb65a8ba4fdfdbd301"
+    },
+    {
+      "path": "src/server/application/result-capabilities.test.ts",
+      "sha256": "272ad30abd34456db837bbae4f4a4d8440ee504332e7c269001f77c3629852a6"
+    },
+    {
+      "path": "src/server/application/result-capabilities.ts",
+      "sha256": "fda60951b7bd3f6fa79d97829c34d3c993e1068460d36e28636abbfcf3a76b62"
+    },
+    {
+      "path": "src/server/application/result-correction-notices.test.ts",
+      "sha256": "d1cb8a3d18f1549e3835f4bf145b6c9a50c609e2f436816f389797693b2e4b95"
+    },
+    {
+      "path": "src/server/application/result-service.ts",
+      "sha256": "bfc1a0e76591713d3ed56ca317e4f802053a9214e6c2a59d63d93c5f9b920a3c"
+    },
+    {
+      "path": "src/server/application/sample-accession.test.ts",
+      "sha256": "40460956f992ff93a60b4100537397380a840909b82719330ecff3c7c26a0318"
+    },
+    {
+      "path": "src/server/application/service-common.test.ts",
+      "sha256": "777ea77fa067280e1c8dcb764131d37523a3137c952868470173a376a5b0f9b4"
+    },
+    {
+      "path": "src/server/application/service-common.ts",
+      "sha256": "a51a1c0240cd15d735604225d048fe8b05ad6536f11f0b600369bff5b1ff1015"
+    },
+    {
+      "path": "src/server/application/service-context.ts",
+      "sha256": "d607fd9221b35fbf4cf3ba2d9ba3ca8fa5500c1123eefbbbd5a6b80855925361"
+    },
+    {
+      "path": "src/server/application/service-pagination.ts",
+      "sha256": "798ec2d4ac90f0d206024aba234f7b7beb7e261120ce6853fd10b8f66a5b7071"
+    },
+    {
+      "path": "src/server/application/service-types.ts",
+      "sha256": "b8022a5d4ba7dae66ac145ca7ab3037035c481d8427acfb6660baff9277d6b47"
+    },
+    {
+      "path": "src/server/application/service.test.ts",
+      "sha256": "584b7a740b8f7b819caf21a49e2af0b08a46834fb980eeda5eca031c57ac0499"
+    },
+    {
+      "path": "src/server/application/service.ts",
+      "sha256": "ad729a9eda34bb86508463abe3bcbce3e76f7cfe9341d706dc9294438512aca5"
+    },
+    {
+      "path": "src/server/application/sla-policy.test.ts",
+      "sha256": "1c7db7c6dc58832113c3a6c9d8debab53845698217246d43b5177224e0971d59"
+    },
+    {
+      "path": "src/server/application/sla-policy.ts",
+      "sha256": "0f26078a6fe5f658f729fefe3811231feeace710dea21af616354e9855ca76f7"
+    },
+    {
+      "path": "src/server/application/superadmin-access.test.ts",
+      "sha256": "9b367087043433dfe53f4a857ed720c390245e8e804f0a2f9d184bc34158eb72"
+    },
+    {
+      "path": "src/server/application/transactional-service-context.test.ts",
+      "sha256": "1b65c6aa254688365924e3529f791717a5ec2f4f2642e9ebef15a0772f747a5d"
+    },
+    {
+      "path": "src/server/application/transactional-service-context.ts",
+      "sha256": "d95a2383a53bfe784ef8ccbb6f78d3c830def8cb22d5bc19d8e8c1416bd2dcc4"
+    },
+    {
+      "path": "src/server/application/whatsapp-delivery-status.test.ts",
+      "sha256": "a185adb5bfccc359e00ad48294323bc8ae0b5dfb9a1ca15455a9b36b1b68026b"
+    },
+    {
+      "path": "src/server/application/whatsapp-delivery-status.ts",
+      "sha256": "05d5ea67b3584ca91bf0376afa00fba3055d9f2466ebd8622ac4ac98eb36d40f"
+    },
+    {
+      "path": "src/server/application/work-activity-policy.ts",
+      "sha256": "01bef3c80f825f6f0543c3aa4cfab1185626ef4aa232e09f8280451050c46964"
+    },
+    {
+      "path": "src/server/application/work-activity-preference.test.ts",
+      "sha256": "c408ee72cfae601b184e0a7af9a4c35350ef01cc0385f1fd52f2347541726abc"
+    },
+    {
+      "path": "src/server/application/work-activity-service.ts",
+      "sha256": "7474f55ce6b3ea02a298d27797b5be2c761a263b1446ac207789b20ac5733143"
+    },
+    {
+      "path": "src/server/application/work-activity-types.ts",
+      "sha256": "44e90580906c553b88588da6f962a0cdb68ec7a00a80b1f9e1f3863f917d3253"
+    },
+    {
+      "path": "src/server/application/work-notification-job.test.ts",
+      "sha256": "b73212969b379ceba64f461da901ee06ad9e5ea99d5383a827dc1af8d10952ea"
+    },
+    {
+      "path": "src/server/application/work-notification-job.ts",
+      "sha256": "2a1577b82432b166c85242ad31f2e9db438b4a75ccc8856f873c4e5be96385dd"
+    },
+    {
+      "path": "src/server/application/work-notification-obligations.test.ts",
+      "sha256": "41827f1a4edc912e827b929b7f3098bb4e1cd7d0d8b3fa864bc8f97c0809da89"
+    },
+    {
+      "path": "src/server/application/work-notification-policy.ts",
+      "sha256": "bdb09a52c551170c18e4bc193521f385d800c6e78a4c61a32d31648c7d2fe1d0"
+    },
+    {
+      "path": "src/server/application/work-notification-service.ts",
+      "sha256": "c150642e8aebf85f894c30de392fb6bec80f9fc1f3b160ba5179e5ec3366ab10"
+    },
+    {
+      "path": "src/server/application/workflow-commands.test.ts",
+      "sha256": "ccb26b3322bdbdc106729e5e65fb9b2de2d90b4f5f7bd30cd9a708e1e562b9c2"
+    },
+    {
+      "path": "src/server/application/workflow-isolation.test.ts",
+      "sha256": "8741884eaf84cb9c029709259259aab939e629686781b41c93e7c4cd097c8d18"
+    },
+    {
+      "path": "src/server/application/workflow-service.ts",
+      "sha256": "a1677b2de2a59ce29d7d4c43825189d9752c73d0e369fdce580cc3e80988eeb5"
+    },
+    {
+      "path": "src/server/architecture-fitness.test.ts",
+      "sha256": "dab9ee975cd4cb56f57d0ec2c3b0018363db3ee027edec30c27a30e5ef30a491"
+    },
+    {
+      "path": "src/server/domain/accession.test.ts",
+      "sha256": "34c43e9412de006a4b853efed4cf422d6031b9bc4433ddc40e48a178fa0dadd9"
+    },
+    {
+      "path": "src/server/domain/accession.ts",
+      "sha256": "6a4181b092df4c42721fcca2feb8b45273d624d229866f9cf88ced326ee82e88"
+    },
+    {
+      "path": "src/server/domain/audit-metrics.ts",
+      "sha256": "eb1fcd7a4a3d9b984c25deee39d690710c9c1e616b71aa8d28b786668c257731"
+    },
+    {
+      "path": "src/server/domain/barcode-code128.test.ts",
+      "sha256": "fa4237ec33642176796d79ee74c8e77d12db7ac877feeb0f03e0cf8c3378b0c6"
+    },
+    {
+      "path": "src/server/domain/barcode-code128.ts",
+      "sha256": "0b325f4ef42786f0f9f41e7dfa2619bfc48e66f5bd6c680de273b5fd5e7408f6"
+    },
+    {
+      "path": "src/server/domain/clinical-archive-policy.test.ts",
+      "sha256": "9e593b19bfe587ca0d4b6d8e79c453a238ad1adead558c3ef0b56ff275d8fff2"
+    },
+    {
+      "path": "src/server/domain/clinical-archive-policy.ts",
+      "sha256": "b53b63dcb6d56288a7e8c1a277491c18c2d0b632ccf90695c045170e193c3191"
+    },
+    {
+      "path": "src/server/domain/clinical-archive.test.ts",
+      "sha256": "e1ba9ba89a5abdb8048b4c1a0686725f6da22df02e8c6ce127839d5c2ebd46d2"
+    },
+    {
+      "path": "src/server/domain/clinical-archive.ts",
+      "sha256": "c6495a779e5a82ddd536f7a9f17b559ca84f5f6b80eb4947a44a23caf6c5cc6b"
+    },
+    {
+      "path": "src/server/domain/database-timeouts.test.ts",
+      "sha256": "0812910ccd4e0839f76ffac21d87ec8f2cbd480d5fddc73f5cb4bccfb257bf7d"
+    },
+    {
+      "path": "src/server/domain/database-timeouts.ts",
+      "sha256": "00d559dc66af451b11233024bea80323b3bb753fdc965f24f4b4466db1ce0659"
+    },
+    {
+      "path": "src/server/domain/hospital-task-types.ts",
+      "sha256": "9a01d827c3c3e6372bb9fa04ab0dd33a19b783df7628a4bb691ccdf9c9f63d10"
+    },
+    {
+      "path": "src/server/domain/models.test.ts",
+      "sha256": "ad84b89f82614fca38e53286954a9a1fb3177cfd76bc0288a6cc054e43a42117"
+    },
+    {
+      "path": "src/server/domain/models.ts",
+      "sha256": "150093842a418f4f054dd9f85748c77d6cef8f4b4f36996b70a0c2d1fe991f75"
+    },
+    {
+      "path": "src/server/domain/outbox-read.ts",
+      "sha256": "5e39003e5d731dc0dcbb65d4a78a65a15ec0999b5feee484f7f1af25d8b4cbeb"
+    },
+    {
+      "path": "src/server/domain/patient-identity.test.ts",
+      "sha256": "96cc6d840bb19c100fd9c1b2fbb9e4c0e67178f498c6359ffbae6b39a0c9a6e4"
+    },
+    {
+      "path": "src/server/domain/patient-identity.ts",
+      "sha256": "db4060f3b0693cec40c098cd658ac18fa9886346bd0a4a931be070bd19ea8aca"
+    },
+    {
+      "path": "src/server/domain/realtime-configuration.ts",
+      "sha256": "7b57f3f6b6fca5c369cf1044712faa4e4acec25e97fe4721d7dc6d64682fd978"
+    },
+    {
+      "path": "src/server/domain/sample-label.test.ts",
+      "sha256": "2c93f68465dd130a009926a7f91f827b1c65ab95c67868a8ed3ec63835073e52"
+    },
+    {
+      "path": "src/server/domain/sample-label.ts",
+      "sha256": "efb3abd28a2d50ad4fad1d648b72296784de37cfccacc201b49245920587151d"
+    },
+    {
+      "path": "src/server/domain/session-activity.test.ts",
+      "sha256": "07e46b6b6fff733d31c2c08184afd02287cf7c02c1eba14a629a8b5b19baea2d"
+    },
+    {
+      "path": "src/server/domain/session-activity.ts",
+      "sha256": "d6046c0db27493eb1c4a62bf7befb83ec46782851a8e3e81d01c28e2305bfd0f"
+    },
+    {
+      "path": "src/server/domain/state-index.test.ts",
+      "sha256": "f50a39e8e8415a9a4f61f26825181e4294f035cfeaae401fd26b1ae1c21af11e"
+    },
+    {
+      "path": "src/server/domain/state-index.ts",
+      "sha256": "0dc5852cbe0591bd75030ad8005c214db4780063b6acd3b8b80b7e25dcf3dae1"
+    },
+    {
+      "path": "src/server/domain/state-machine.test.ts",
+      "sha256": "72cc87743dc4a65faf04365a38e1a46cf272f083ed83d4cd5a0fe0cf1033c838"
+    },
+    {
+      "path": "src/server/domain/state-machine.ts",
+      "sha256": "60a16b8ce841dff9a13eb8877b232f4d6562c5d51e7d01329e3124277ecd9791"
+    },
+    {
+      "path": "src/server/http/access-group-impact-route.test.ts",
+      "sha256": "2c75123cca948121ff3479fd495750b24ddb20e45a492cca67d47cb463d43bb9"
+    },
+    {
+      "path": "src/server/http/access-group-schemas.ts",
+      "sha256": "b1abb1434dc4e51e24c96cb50fa95a530bd01667d752a0f827e4d50760ba077a"
+    },
+    {
+      "path": "src/server/http/admin-schemas.ts",
+      "sha256": "37613da719fde9ad9c9399a77db88f8a3fdaf2b5642c6c693ec7028f51406bdd"
+    },
+    {
+      "path": "src/server/http/admission-context-route.test.ts",
+      "sha256": "b788ec5394b0070b7cb0d5f5a4a18c9eee83899e575ee06281c363304c529c47"
+    },
+    {
+      "path": "src/server/http/api-contract.test.ts",
+      "sha256": "9713717fdaa8afe2e56c20cce39d7573b2cd84a5d66825f23d83ef466e7b6c73"
+    },
+    {
+      "path": "src/server/http/api-handler-registry.test.ts",
+      "sha256": "3c8f5b3ee614fd51e63bc5d2cbb6617b62431b0d6b985aac1d5a7d7ef5dd68f4"
+    },
+    {
+      "path": "src/server/http/api-handler-registry.ts",
+      "sha256": "7da4fa8bfd20e93d5cfa516b4b5cdb6bdded5daef9bd496561fa8fae12388eb3"
+    },
+    {
+      "path": "src/server/http/api-hospital-collaboration-manifest.ts",
+      "sha256": "6b7a9cee7d100e8a43c6941397cc85eb38dc7220ef428f6636f63ca59b6e9a1a"
+    },
+    {
+      "path": "src/server/http/api-hospital-external-manifest.ts",
+      "sha256": "cd22b6041abd39249fb3cb2cc3ef72d4b0e9e041c13f9a97d075c7cb10776034"
+    },
+    {
+      "path": "src/server/http/api-hospital-external-success.ts",
+      "sha256": "9ae6e8e3ca3b3f5e60cb02b5d6b4bd4b2e36e508bf1e1bcd2a8c7e1d411c14f0"
+    },
+    {
+      "path": "src/server/http/api-hospital-work-manifest.ts",
+      "sha256": "450bc78c667dd2bcafeb38867e36a41489510b0ca02458f2d002635846d2daf1"
+    },
+    {
+      "path": "src/server/http/api-hospital-work-success.ts",
+      "sha256": "abd0463e82211bf69ac8796175c4ee44bc767c24434b0afcd192447c91d5a637"
+    },
+    {
+      "path": "src/server/http/api-operation-builders.ts",
+      "sha256": "4b48018de673f4f07872d9cf6732520817115d7d9a2ab3b2254285172a888d4a"
+    },
+    {
+      "path": "src/server/http/api-operation-manifest.ts",
+      "sha256": "c0b6267f046e519dfe2e1fd08732850425ccc3b608a5f7e19183a8480faf2092"
+    },
+    {
+      "path": "src/server/http/api-operation-model.ts",
+      "sha256": "37802eba3b7533a2935af53ffd32cdd410ebb34979d5dc257a4608bad70209b2"
+    },
+    {
+      "path": "src/server/http/cancellation-policy.test.ts",
+      "sha256": "1669e635aa0b4b2e668e40d4dae812ed5db0a5403189e978eaa9575859e609ae"
+    },
+    {
+      "path": "src/server/http/command-schemas.test.ts",
+      "sha256": "405f258d35770f551dba9d99a226b9c370bc20e09b938bc213a6acfb4d7d9683"
+    },
+    {
+      "path": "src/server/http/command-schemas.ts",
+      "sha256": "67c3ec6bbe022ffd00211638402a20cd84aeb6ac5f88872b38bbc37e384637ed"
+    },
+    {
+      "path": "src/server/http/dead-letter-concurrency-route.test.ts",
+      "sha256": "7267751ff9381de844eca36e5600b9d5d7aa9ceab2d3808f0353d752a196e28a"
+    },
+    {
+      "path": "src/server/http/department-schemas.ts",
+      "sha256": "f2cda2d0ccaadb3b4afeeceec3112a90dfe97b3ad6f0ac07692684a483f44741"
+    },
+    {
+      "path": "src/server/http/diagnostic-planning-schemas.ts",
+      "sha256": "d6a292cf9b7c67d8e51ffbfb3138b96a6c160fc056cb50fd3fd4284f341fe7e8"
+    },
+    {
+      "path": "src/server/http/envelope.test.ts",
+      "sha256": "55defbeff367a6fa3a05599733577880c90f2bdd01d889e5291bcce951d35dd6"
+    },
+    {
+      "path": "src/server/http/envelope.ts",
+      "sha256": "b91e680b305bdf6cdf7cab1bd59d663ac3430d452e3434f2614a4946e5a4c804"
+    },
+    {
+      "path": "src/server/http/exam-definition-schemas.ts",
+      "sha256": "eead1681ebd91f5a36929781a93867a71d54adb8fd641cd016a76667c226f786"
+    },
+    {
+      "path": "src/server/http/hospital-administration-journey-route.test.ts",
+      "sha256": "941635227f789eb2f336ce43a9b33f3d4ad418d5c4d8831a362672eb94108db3"
+    },
+    {
+      "path": "src/server/http/hospital-ai-schemas.ts",
+      "sha256": "a81e382cae88f6ae1666f4c3d711f468f2423c220df1ab235dd35f8dc6b6feae"
+    },
+    {
+      "path": "src/server/http/hospital-analytics-route.test.ts",
+      "sha256": "9cc13590dbf57c2fb1c5f59a22fab83ccea0b56ab959e1dbf252cce4dc7b132a"
+    },
+    {
+      "path": "src/server/http/hospital-analytics-schemas.ts",
+      "sha256": "cee2b1f54396832a7f2895105ca0ea68639be519cdc90598151624c299ff3c90"
+    },
+    {
+      "path": "src/server/http/hospital-care-schemas.ts",
+      "sha256": "5fbd40a379b40af4ba701028baf29b41490ce223de58f45fe3b041e81d376ca5"
+    },
+    {
+      "path": "src/server/http/hospital-checklist-schemas.ts",
+      "sha256": "77b9021bb54dc140552cfa39aa826ea67e96506703add7757628ded4e745938f"
+    },
+    {
+      "path": "src/server/http/hospital-collaboration-journey-route.test.ts",
+      "sha256": "11ede66e19a29014fa299458c3947a6568c9549ff9a1ff917e7ce41f679807ed"
+    },
+    {
+      "path": "src/server/http/hospital-collaboration-route.test.ts",
+      "sha256": "2c1bdb460733e728afbca327db80582f97e7f0fc62c06d03ddafbeaa3bd0f832"
+    },
+    {
+      "path": "src/server/http/hospital-document-route.test.ts",
+      "sha256": "0dff54ad0fc28f2ba21bb30eb8226fdc2c99503128616a7ced5c3a2f43f1e379"
+    },
+    {
+      "path": "src/server/http/hospital-document-schemas.ts",
+      "sha256": "1950e77650d9226d435b7b5a2c6641fbab5df5dd5c601d371e1f872f62cd97f3"
+    },
+    {
+      "path": "src/server/http/hospital-external-route.test.ts",
+      "sha256": "cc113613d1d0da7b8254822d978e3de3c88114824f47712ad3babde4071004da"
+    },
+    {
+      "path": "src/server/http/hospital-governance-journey-route.test.ts",
+      "sha256": "d14b31d93782c3914131507429a16a3bcf4153816c6643363d3a28db94db2142"
+    },
+    {
+      "path": "src/server/http/hospital-his-v4-route.test.ts",
+      "sha256": "46d052ed29d479b7f1af4128152db6cdf7844dd30c5f660bd9d68137565e7ad0"
+    },
+    {
+      "path": "src/server/http/hospital-his-v4-schemas.ts",
+      "sha256": "37e29a43bdfa0f9e291bc07be27749caac3b096196d648d7771051de1a297751"
+    },
+    {
+      "path": "src/server/http/hospital-institution-schemas.ts",
+      "sha256": "af3892a0bffab7c0ba2987c01eb84d87cfc46374f93ecaa9395df1c47c810c0b"
+    },
+    {
+      "path": "src/server/http/hospital-intake-rejection-route.test.ts",
+      "sha256": "d6ca712f12c728e0c284945536be4ee4921a343984cd2b5f6189702d4181ec82"
+    },
+    {
+      "path": "src/server/http/hospital-integration-schemas.ts",
+      "sha256": "85120a865700191e06b45208b6385f6169a4e4def885b47c807290b7cd198078"
+    },
+    {
+      "path": "src/server/http/hospital-plan-schemas.ts",
+      "sha256": "9248cccf508969ad308e1b461fab7fc57a9faaf3521b7e0a3d585001ab20fbeb"
+    },
+    {
+      "path": "src/server/http/hospital-planner-route.test.ts",
+      "sha256": "a9b1289c450c920882e38dd509ed6afba14fd9c6cffdeaccbb3c962be297ddec"
+    },
+    {
+      "path": "src/server/http/hospital-planning-journey-route.test.ts",
+      "sha256": "236a1f941e5afc827888010d4af8e7901c95877b46afba7e4599a28b69733bd3"
+    },
+    {
+      "path": "src/server/http/hospital-resource-route.test.ts",
+      "sha256": "00864a9a124ce5c01e4e29336fdd38dd773a0a24eb0b1875561556a8c4922181"
+    },
+    {
+      "path": "src/server/http/hospital-resource-schemas.ts",
+      "sha256": "97c462c8b7c06ed2ed53a1b829ebcb925eb95f91f94b1dadeaae3a482866aef4"
+    },
+    {
+      "path": "src/server/http/hospital-service-route.test.ts",
+      "sha256": "cb8f2d7f2dd4e29f406e9ecb0955add5c46f48b42cfecbd532a8c60dad9c2492"
+    },
+    {
+      "path": "src/server/http/hospital-service-schemas.ts",
+      "sha256": "c58fad001a8adf774c02dae8ed748237237b5343dc653e0538e113edb95f6a13"
+    },
+    {
+      "path": "src/server/http/hospital-shift-schemas.ts",
+      "sha256": "0d0ba00d708d17f9d6faeea25eb4722d056fca4ba6763ebe81877b2f91d14465"
+    },
+    {
+      "path": "src/server/http/hospital-task-archive-schemas.ts",
+      "sha256": "043e7f2aaf8802fbebcca792ad71ce8372127eaaab15030ee9032d3388f36f7a"
+    },
+    {
+      "path": "src/server/http/hospital-task-attachment-schemas.ts",
+      "sha256": "0eb8bcf6d1e9406ef8425a445bc0de39b2c7b641941adc8d0fb0091d1ab00f3b"
+    },
+    {
+      "path": "src/server/http/hospital-task-comment-schemas.ts",
+      "sha256": "1ae591fc9c6b3c11d3b60da56bc4b3d2ee7669ece2a58a113768eed8092e9cce"
+    },
+    {
+      "path": "src/server/http/hospital-task-draft-schemas.ts",
+      "sha256": "eef4446a4bd14b7058d20502ee40a4d4683f34c87d6da141953ba2d174beed11"
+    },
+    {
+      "path": "src/server/http/hospital-task-reaction-schemas.ts",
+      "sha256": "0b1b76aee62e19795e758d8fcbc1bcf83032638a2172ba0dd560371420cdf750"
+    },
+    {
+      "path": "src/server/http/hospital-task-route.test.ts",
+      "sha256": "440684a4a37d95824f58b373605cf8ef6b1da23ead47b27c39a87b7a029e798e"
+    },
+    {
+      "path": "src/server/http/hospital-task-schemas.ts",
+      "sha256": "e395092194510937935e96c81130a3dd9402f0825876f0c29968faa0afdf4047"
+    },
+    {
+      "path": "src/server/http/hospital-validation-boundaries.test.ts",
+      "sha256": "02dcc07b3298d40689f9416577caf19042a42adf1e48840464abb9a0ab851b75"
+    },
+    {
+      "path": "src/server/http/openapi-runtime-request.test.ts",
+      "sha256": "2fee09e0a199f4046162e16073796c1254a571e2340ba6ebca7a01be112ee256"
+    },
+    {
+      "path": "src/server/http/openapi-runtime-response.test.ts",
+      "sha256": "0f05cc4c0904d034d074bc91c8d5dd4d516eb499ef357f7ee283028f0f1df1b8"
+    },
+    {
+      "path": "src/server/http/operation-dispatch-route.test.ts",
+      "sha256": "a20e749ec9320ce6b4e625e9b2ce43cfc0166917f31ea954654a502603e269e8"
+    },
+    {
+      "path": "src/server/http/planner-view-schemas.ts",
+      "sha256": "eea1f7cdc94e8db255d8ab5ce340397e7bf8a9e5364ddffad799ec772ac085a9"
+    },
+    {
+      "path": "src/server/http/request-body.test.ts",
+      "sha256": "0d0d9354b212b7e2159f6c8018ab12ae7eb78c42f977cb253c2d21a575145de4"
+    },
+    {
+      "path": "src/server/http/request-body.ts",
+      "sha256": "c29a874daaf26a9f2bd22d6fbdd6117bb4d7f0241fd76db128fbba50e3b37bef"
+    },
+    {
+      "path": "src/server/http/result-access-route.test.ts",
+      "sha256": "220871ab72271d83d4fe19a26a3fb89be706f1ea820853ff6009c47c07a6a013"
+    },
+    {
+      "path": "src/server/http/scoped-reads-route.test.ts",
+      "sha256": "732deda2ec667c9d13c25b545f0e57c4b6c648f321e02dfb911d72c5ae0f34ec"
+    },
+    {
+      "path": "src/server/http/ux-security-route.test.ts",
+      "sha256": "f6519cc072131ddb6664d86dbcf41980fbe7efc4ff96049acb39288b952aff74"
+    },
+    {
+      "path": "src/server/http/work-activity-schemas.ts",
+      "sha256": "d06c9ef9c74e1d42db041813ca4a29f17ecbfd03b4b6effed870a7969c49ba0c"
+    },
+    {
+      "path": "src/server/observability/alert-rules-contract.test.ts",
+      "sha256": "da77563a1c58a938ebdd25c518e71574aa81572a710b83f11d2c2b84330e51e7"
+    },
+    {
+      "path": "src/server/observability/build-info.test.ts",
+      "sha256": "aaa4ada30ba09caaadebb3bc8aa552c846093b7b32908104c4af3941c9aeea6b"
+    },
+    {
+      "path": "src/server/observability/build-info.ts",
+      "sha256": "88fe11e310183c14cac4745139181069ce994811b23bfa9f9b02ca1f40cc43b7"
+    },
+    {
+      "path": "src/server/observability/metrics.test.ts",
+      "sha256": "43d0c5b5ec8ff23b52108c2569d799c583fc7c0357df3dd59417410b26e3addf"
+    },
+    {
+      "path": "src/server/observability/metrics.ts",
+      "sha256": "1cfc56e2a13504e6f12efa36e9ed1e7b087dd20d5b5cbe4c01ab71c5c433747d"
+    },
+    {
+      "path": "src/server/observability/realtime-coverage.test.ts",
+      "sha256": "3e49643e69263a22ea0794b72d3bdd0d3fd607f59ce40429d6ecd255b77dd62b"
+    },
+    {
+      "path": "src/server/observability/realtime-state-reader.test.ts",
+      "sha256": "68115a3291443a61550abd846e6fac75cdb2ee7882c13779b8d15c569d62b7be"
+    },
+    {
+      "path": "src/server/observability/realtime-state-reader.ts",
+      "sha256": "7b537fb3a0c7ba7c436c2f2660263a81c532a8d8838eb8e50f059d857ea3ab50"
+    },
+    {
+      "path": "src/server/observability/realtime-stream.test.ts",
+      "sha256": "0aa9befbd8f72c81f8f7790807a1feb857c6ea7ef931d34c903ce2ff00284610"
+    },
+    {
+      "path": "src/server/observability/realtime-stream.ts",
+      "sha256": "87d79cbee32bd25c71f89b2714c8faead82cd700366292f8de1ec2eac7e3206a"
+    },
+    {
+      "path": "src/server/observability/realtime.test.ts",
+      "sha256": "a7467425f1266368ef27f46cb0df2bcfcd8f7e1fe084c8dd008a87abd19efdfa"
+    },
+    {
+      "path": "src/server/observability/realtime.ts",
+      "sha256": "30b210e755da5fb49bf30910e3939cdf3d00738c52dcba6b7434fb81eb5ba6f9"
+    },
+    {
+      "path": "src/server/observability/structured-logger.test.ts",
+      "sha256": "f9848479d59f08b71d83d9f11021543c16a7eea6e0c6e448e81ab654ec94af38"
+    },
+    {
+      "path": "src/server/observability/structured-logger.ts",
+      "sha256": "96ec4a563d29f609898629d235b8708044738c35a4ec029970a386651928d6f7"
+    },
+    {
+      "path": "src/server/operations/clinical-archive-job.test.ts",
+      "sha256": "fbe46bca6b0f9e8c9f770aa57f8baa7abbaa20c5e4c6bb0d31b1641ebbfd045c"
+    },
+    {
+      "path": "src/server/operations/clinical-archive-job.ts",
+      "sha256": "e67aef8ec98dc14b51aee833839e082bc749e69c74b3ff52353e558d1be96f39"
+    },
+    {
+      "path": "src/server/operations/data-governance-policy.test.ts",
+      "sha256": "7d10ed526c1b08badcb65becc383f14c5a463f3efb20a8f0624885051aec9ee8"
+    },
+    {
+      "path": "src/server/operations/data-governance-policy.ts",
+      "sha256": "448cce856f821c2de4553b54c8b4a9d28783f4d61c8f66d22c7ad1f87e45823f"
+    },
+    {
+      "path": "src/server/operations/outbox-healthcheck-probe.test.ts",
+      "sha256": "a448b907c65ef915dd4bbd9377162438a516330b497fab77fc656aabe51fa454"
+    },
+    {
+      "path": "src/server/operations/outbox-heartbeat.test.ts",
+      "sha256": "49079cfd7fdf97207fea7acf84f823872608f0bb70b8797e74713fbf4af9ee83"
+    },
+    {
+      "path": "src/server/operations/outbox-heartbeat.ts",
+      "sha256": "03e20f164348196ff2d19d03e20b486329b0c9dd9f047576c0a2309e8de6cb49"
+    },
+    {
+      "path": "src/server/operations/outbox.test.ts",
+      "sha256": "847a46d2d45204f45604b83dc0c932541c0e3015a499a4618955090f4ac3c8d1"
+    },
+    {
+      "path": "src/server/operations/outbox.ts",
+      "sha256": "09d5e6ccf842fff094c3d233007c1c6742ced92e2e07881c86bdf86a41f4fd91"
+    },
+    {
+      "path": "src/server/operations/recovery-manifest.test.ts",
+      "sha256": "235b3c141960266d17b053f2146a89f99fd2915fcee9f7645779821423ebb6e1"
+    },
+    {
+      "path": "src/server/operations/recovery-manifest.ts",
+      "sha256": "e9cc6f1c7a32795b0d2e164a4517f6ec12065327045db8befc740a4c9510bac9"
+    },
+    {
+      "path": "src/server/operations/runtime-retention-job.test.ts",
+      "sha256": "b8e92f388da4479cc5daf6bc85cf4701ac78103d706adaa49f5678edd9c41425"
+    },
+    {
+      "path": "src/server/operations/runtime-retention-job.ts",
+      "sha256": "314e7465495823d2187e5e66e64da62b028779cb9c31a809f71358201def475f"
+    },
+    {
+      "path": "src/server/operations/whatsapp-cloud-api.test.ts",
+      "sha256": "f7f08c8bfd84c6b9c67997772bce32019c33d45ee612de0c6ec9d7e9881c8052"
+    },
+    {
+      "path": "src/server/operations/whatsapp-cloud-api.ts",
+      "sha256": "e6c2367b57344ca00baa876e12a87d68c79850451318ba3cd258fdbf35e20111"
+    },
+    {
+      "path": "src/server/operations/whatsapp-outbox-sink.test.ts",
+      "sha256": "0beb8840748599de98968a05bde2fde8ef57962aa0c805569b9dfeb71178b845"
+    },
+    {
+      "path": "src/server/operations/whatsapp-outbox-sink.ts",
+      "sha256": "97b0c7e540d97c4bc01e03b6bd1b5503aa0d0aa52d0701d56e3f573cf2ea9564"
+    },
+    {
+      "path": "src/server/security/access-group-policy.test.ts",
+      "sha256": "6fb5db613ba1c1fb2962cba20a57c1b053d605c80d67c9ffb2a31ce27353053a"
+    },
+    {
+      "path": "src/server/security/access-group-policy.ts",
+      "sha256": "df2b508cca4d8f5c1a2c042dbabbbc6f6bb6453e9b6c9b51e03713641803a62b"
+    },
+    {
+      "path": "src/server/security/attachment-scan-signal.test.ts",
+      "sha256": "8821765d5a602c275e4cb51b026c97330dc89eae5e79b1f0471dd75da097fec9"
+    },
+    {
+      "path": "src/server/security/attachment-scan-signal.ts",
+      "sha256": "0b10eb46edb6765a4394b0bf96d6c299602ddb9466d4011024fe88b1361fcdb8"
+    },
+    {
+      "path": "src/server/security/authorization-baseline.test.ts",
+      "sha256": "478d3b14a2ebe79c5028f995e0453e58a7fdfe68da53dacfbb092412ab1ea9dc"
+    },
+    {
+      "path": "src/server/security/authorization.test.ts",
+      "sha256": "ab84a36e5a5339670178628901df4ba21b8fdafcd231032381352546785dd99f"
+    },
+    {
+      "path": "src/server/security/authorization.ts",
+      "sha256": "50e97b581525ea816960cea8fc28b84db827056847a011b7585af45561104362"
+    },
+    {
+      "path": "src/server/security/common-passwords.ts",
+      "sha256": "f514b5c997c9845b55f661421963f2b901d5be3cad83e78b2a989e7c6c5b59ca"
+    },
+    {
+      "path": "src/server/security/file-secrets.test.ts",
+      "sha256": "c96dc07c1d4d53215250fea71b663b72a46f54f4220ce2523f069b963162a37e"
+    },
+    {
+      "path": "src/server/security/file-secrets.ts",
+      "sha256": "26fb3d6b9166ad72032c36b72e655393005cae23552e5a796aa099151e493cdd"
+    },
+    {
+      "path": "src/server/security/login-signal.test.ts",
+      "sha256": "ebe2fd1a1efb0f368dea3ee1a6e9538fd27ba273ffc9e2f57623ce9d1ee872a6"
+    },
+    {
+      "path": "src/server/security/login-signal.ts",
+      "sha256": "03173636059fe302e24015b9e5d3623043bd52dcc2b4ee0529a16ce560f68fad"
+    },
+    {
+      "path": "src/server/security/metrics-token.test.ts",
+      "sha256": "fb856233f42a42da269e19efdc66c223db6d449fe3204d086c0aa4ff11b1f115"
+    },
+    {
+      "path": "src/server/security/metrics-token.ts",
+      "sha256": "94ac886d8e247d4f7900eef893df2c4337a008eca3274048b034fe0d82d86399"
+    },
+    {
+      "path": "src/server/security/password-policy.test.ts",
+      "sha256": "4f6218088480bdc0f425c2879e589f17dc432ea8a1e53d03f1445967b8b7ed93"
+    },
+    {
+      "path": "src/server/security/password-policy.ts",
+      "sha256": "c92002474bcce58fcc14453199bf2636e5f9d7adcffb9c8eb1702eb7a21e2de4"
+    },
+    {
+      "path": "src/server/security/password-reset.test.ts",
+      "sha256": "1de063d7ddef95d8153cfbc5ad45b71104d28f2b37d324c82b838eb93014f546"
+    },
+    {
+      "path": "src/server/security/password-reset.ts",
+      "sha256": "375965da6713e8ca588bd7cb3c9de63081232a2fff6b6abd275526999ec5b8b7"
+    },
+    {
+      "path": "src/server/security/password.ts",
+      "sha256": "7e39c4b18adb3a083e43b939bb8e37f7caeef27e1691583a72dfed3920e166d0"
+    },
+    {
+      "path": "src/server/security/rate-limit.test.ts",
+      "sha256": "b7617261febf5d5123de4b832bf242f8fbf5a53a72b5be2658a2c375f7013a09"
+    },
+    {
+      "path": "src/server/security/rate-limit.ts",
+      "sha256": "cc6190ff90f24c406583f749bf2080ca6d391d7ed1ee747047648d788e9805a4"
+    },
+    {
+      "path": "src/server/security/session-rotation.test.ts",
+      "sha256": "b2b2cf99a4f3e8449d005df6ceb452fea9c9c0aa097a906649a6a8026876c82c"
+    },
+    {
+      "path": "src/server/security/session.test.ts",
+      "sha256": "f00b5ad920b36f43ef5e43292310103c44f53143c1911e8992f2ba6a42e9e3cc"
+    },
+    {
+      "path": "src/server/security/session.ts",
+      "sha256": "0aec19766a1ac0348dc8813a6937d9093cef35e7e4de68f2bff5ddf7cf5b9a83"
+    },
+    {
+      "path": "src/server/storage/attachments-reconcile.test.ts",
+      "sha256": "a2ff329faf94409ce6f6dab385b19a50561031141a9fa19fdfedfe26a02e4846"
+    },
+    {
+      "path": "src/server/storage/attachments-reconcile.ts",
+      "sha256": "579dc2ae486f1125a4c47342bddb5e24611db51f29c4f9ea9b91db13177ec775"
+    },
+    {
+      "path": "src/server/storage/attachments-restore-plan.test.ts",
+      "sha256": "dbb867e2238b7b22e8a495521b714eaeeb8ab1d12b79958b89c5c38bb7c0cbe9"
+    },
+    {
+      "path": "src/server/storage/attachments-restore-plan.ts",
+      "sha256": "9b61c485eb4a4015825c01638937c8aac5a67b35a75977191abaebdfde576a5b"
+    },
+    {
+      "path": "src/server/storage/bucket-hardening.test.ts",
+      "sha256": "bf5702750504ca124c1e913e429f0d557655d9e9668534a4b9dcc75076ca3dd4"
+    },
+    {
+      "path": "src/server/storage/bucket-hardening.ts",
+      "sha256": "ded30496f9226f551157c9344ddb73c1bf455665b5ce5be685eb3f4f1d63377b"
+    },
+    {
+      "path": "src/server/storage/file-store-contract.ts",
+      "sha256": "83aa67b04681fbb15c2f0811f7edc255684edde6efeee26a932ca7de92443681"
+    },
+    {
+      "path": "src/server/storage/file-store-factory.test.ts",
+      "sha256": "a238bd1cdfc64f78f2d00bb3a38b153cf2740fd7e12d5512bd04d01066a9d397"
+    },
+    {
+      "path": "src/server/storage/file-store.test.ts",
+      "sha256": "ae0001428413570811a1632a425341f30829169cd9ad1f1143703446ac2d59f1"
+    },
+    {
+      "path": "src/server/storage/file-store.ts",
+      "sha256": "063344fa53b39083f0367bbc7ce9e0dc533d9489f193165b26bba4eee05deb15"
+    },
+    {
+      "path": "src/server/storage/malware-scanner.test.ts",
+      "sha256": "90df07ebb6e658cc8eab4c4259bbf75a5649762408d80b3bdfc1c3317e7bff38"
+    },
+    {
+      "path": "src/server/storage/malware-scanner.ts",
+      "sha256": "8f53d748d3df1292f0aecb3554b6df59b47cd780e98951842b58dd2868a049b2"
+    },
+    {
+      "path": "src/server/storage/s3-file-store-coverage.test.ts",
+      "sha256": "4f223a735aa739735d0d45d8f6c976950d66cafac40f088042aa7e6b2254224b"
+    },
+    {
+      "path": "src/server/storage/s3-file-store.test.ts",
+      "sha256": "9eedbc7984258c88b4737c326de18662b9d282dcf431ec9f2f922ab9dfc8154d"
+    },
+    {
+      "path": "src/server/storage/s3-file-store.ts",
+      "sha256": "450810eb4948a715f2c66dcf5dc97ba0405596bfeb395e3bff873bf6cffb7762"
+    },
+    {
+      "path": "src/server/storage/storage-key.ts",
+      "sha256": "1024a35b88cc93712908ee3ee99d087dfac7d7805aaaf4e083f6574b6734a328"
+    },
+    {
+      "path": "src/server/store/audit-read.test.ts",
+      "sha256": "9e7f328dc2f50d072eb19a22823787d877b4e457ad875df0db2b58410fab306c"
+    },
+    {
+      "path": "src/server/store/audit-read.ts",
+      "sha256": "4c4eeceeede1da5ef606bee8d9a457fbbb804e31e9ed4d42347104bbb545dec8"
+    },
+    {
+      "path": "src/server/store/fixtures.test.ts",
+      "sha256": "3b9f4b61abc8d24e1f3ef0f253677745bc137859f3faca6c89f579b1f826f3c1"
+    },
+    {
+      "path": "src/server/store/fixtures.ts",
+      "sha256": "b73404accdd5f4e3652d9f3260fd9166cc9b4739bbc6da67518c3dfef187c25f"
+    },
+    {
+      "path": "src/server/store/immutable-state.ts",
+      "sha256": "1b8b446a87b31431a828c5aae5475444510b3ab85275a66f5153d7c5a7f42305"
+    },
+    {
+      "path": "src/server/store/memory-store.test.ts",
+      "sha256": "29e08bb6c1c1b69d994ccac6415c6db7be93161a6295a5d826e52eb40c777f3f"
+    },
+    {
+      "path": "src/server/store/memory-store.ts",
+      "sha256": "bc99bbd8076ed6eca3a88264c3c4951db8110d2fcf92047b65ad62e7cb2dd478"
+    },
+    {
+      "path": "src/server/store/migrations.test.ts",
+      "sha256": "6ef965ca27f5761342dd599aecd07a50c3a19cbd30cec7dd63be70b867ad98ee"
+    },
+    {
+      "path": "src/server/store/migrations.ts",
+      "sha256": "6c37d19eb7216355146ddbde51d035bb41d36f3dd4425d278867a771645ff8df"
+    },
+    {
+      "path": "src/server/store/postgres-administration.test.ts",
+      "sha256": "65f1a9f6af9240aa8f27462a316e67ee4d3daadcdb7d9085fb355b088bdac73d"
+    },
+    {
+      "path": "src/server/store/postgres-administration.ts",
+      "sha256": "da4fa021a0e087820f2058a4dc403b4a58ccc86d6bc7a15198287cd08fbce1ff"
+    },
+    {
+      "path": "src/server/store/postgres-audit-read.ts",
+      "sha256": "cc80aafe67ceeddea76a48ee34e63f53f8f96b410be298e9a94bddf22908c42f"
+    },
+    {
+      "path": "src/server/store/postgres-authorization-read.ts",
+      "sha256": "4ebd843252e42f5a471d5f50c4ea2bd05087e1c7ce5a1a811192745dad5274b6"
+    },
+    {
+      "path": "src/server/store/postgres-backfill-executor.test.ts",
+      "sha256": "4b4b9f909ce9538752cfa1be6d65755900e27abf9d0eb445ba747c65c9be8947"
+    },
+    {
+      "path": "src/server/store/postgres-backfill-executor.ts",
+      "sha256": "7a33fd55508307561474e885e31e30c85de789c3cc1f6f31d27e7fc64014b726"
+    },
+    {
+      "path": "src/server/store/postgres-backfill-support.test.ts",
+      "sha256": "e10e9cd9af0e7306fbc2f5a276059703e72c8991f1dd835a09b3e68ce19d197e"
+    },
+    {
+      "path": "src/server/store/postgres-backfill-support.ts",
+      "sha256": "5e79b0a9f580c73fcbdf0aa8a5b5c4707132f057cbfbdcfb274a7043984f03b1"
+    },
+    {
+      "path": "src/server/store/postgres-clinical-archive.test.ts",
+      "sha256": "3ccd173a652ba18dcc09bc805fd9df2080cc1857fdc406aba99993b19fd4afdb"
+    },
+    {
+      "path": "src/server/store/postgres-clinical-archive.ts",
+      "sha256": "eb6a6ca41a6df1f36e51fbc12f6d39f9b72292a2aef800bd8a62fd39fa45bced"
+    },
+    {
+      "path": "src/server/store/postgres-entity-state.test.ts",
+      "sha256": "5f981f7abfd3dc56b1506dadc9ef6d78dec1c31bf4fb4fd78cc2d0879585d7a2"
+    },
+    {
+      "path": "src/server/store/postgres-entity-state.ts",
+      "sha256": "b707710015ef46b92b12a7bceed9089857f3305efd338ca1ae3b8809c3ddb4ac"
+    },
+    {
+      "path": "src/server/store/postgres-notification-projection.test.ts",
+      "sha256": "cfcc8445527e63af2e7b65cda59a49f88e49b5dad951f9beb84f543a07653a98"
+    },
+    {
+      "path": "src/server/store/postgres-notification-projection.ts",
+      "sha256": "9cc1bd24f684c4e0484d1910a95a535a7d4313395fd12862e8a2420c340ebb29"
+    },
+    {
+      "path": "src/server/store/postgres-outbox-read.ts",
+      "sha256": "ab85c5e7acee62ff8d9157ceb2c4d8cc6e6fc382ddb27a3db4363e7cf2ffc6cb"
+    },
+    {
+      "path": "src/server/store/postgres-privileges.ts",
+      "sha256": "cb67c107c6e94f0bb2f93efc89aa33fc1ebf7e5eca45c0db62d1bc6a3365ee4e"
+    },
+    {
+      "path": "src/server/store/postgres-session-activity.test.ts",
+      "sha256": "b19eff52477661809ebdcd6e7ebd3f1a4e70bee5fc7dae8cb18a11f4d7ab8115"
+    },
+    {
+      "path": "src/server/store/postgres-session-activity.ts",
+      "sha256": "b031b47f07a35ac1a55616620358bb6e0552bb6220e33c9ee4a39fa15406cc6a"
+    },
+    {
+      "path": "src/server/store/postgres-state-cache.test.ts",
+      "sha256": "15033878c87e1a685beb97d89ac19116b8848e9de50c9a1a3aef00783d5e5e17"
+    },
+    {
+      "path": "src/server/store/postgres-state-cache.ts",
+      "sha256": "d9cd38ba1b0f5f6db6dee1fd62fba3652abea0345ed013d83786f7110bf4f95e"
+    },
+    {
+      "path": "src/server/store/postgres-state-codec.test.ts",
+      "sha256": "f5f9fc284314915949f0149382933432276479e5a4a5f550d7cf6f7fbbd4dc85"
+    },
+    {
+      "path": "src/server/store/postgres-state-codec.ts",
+      "sha256": "9f5d95d30445ec7f7ba2e9ce1755538299f8065e12679fd7a59372409cf4a3e7"
+    },
+    {
+      "path": "src/server/store/postgres-state-invalidation.test.ts",
+      "sha256": "5e952a1591cd2d03b7d20b56f4ee493987882a7e246d770116830a8302360f02"
+    },
+    {
+      "path": "src/server/store/postgres-state-invalidation.ts",
+      "sha256": "7ea093943ed9bc0e6c523782d8dda9cff5b12d7aff187902a9638dba0630048c"
+    },
+    {
+      "path": "src/server/store/postgres-store-coverage.test.ts",
+      "sha256": "9c5d1f2d3c849184c74ce7b74857f44f8229c625e370a23e71ea12e702714cfa"
+    },
+    {
+      "path": "src/server/store/postgres-store.test.ts",
+      "sha256": "c262db726ff1b607d5ffb7aebbae0a50d2d5550e4be3c5af6ac077c6f67619af"
+    },
+    {
+      "path": "src/server/store/postgres-store.ts",
+      "sha256": "9a76690699299e68a0362e71d22a93dfd5edafa36f9d65cee8beead4fa464cec"
+    },
+    {
+      "path": "src/server/store/production-bootstrap.test.ts",
+      "sha256": "652e999bfdace96d3bc5dfaed4f63863352d8a395ca09d7ee15b471a379c6d68"
+    },
+    {
+      "path": "src/server/store/production-bootstrap.ts",
+      "sha256": "f50202605bb31b1d911db6b3e560ccff63dc1bfa473b1fd4c3c67454f59d3164"
+    },
+    {
+      "path": "src/server/store/relational/backfill.test.ts",
+      "sha256": "ed089a5390a8ef0aa0ead886477c160ebc7cff88332c9911366ba6e539c095e1"
+    },
+    {
+      "path": "src/server/store/relational/backfill.ts",
+      "sha256": "e0804e30c10d6b525e948b58a4065b833b275cbe2c2d895caf53006f48d6f8e0"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-adapter.test.ts",
+      "sha256": "37318f41f2b251acdd7dce050d9427406417929a0b2b5f9b7381fac8037287b6"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-adapter.ts",
+      "sha256": "fd761a8da594293fc1d00d22674c05cd2b4a0da0610d911a847b1e7d78daa1be"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-backfill.test.ts",
+      "sha256": "49135a7e2be4e2489ae96dae07f66a17d7eb30ef46e43f0e80d745b2f592195a"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-backfill.ts",
+      "sha256": "f3d3979d3cdbea82d405fc8134128f32077f10b5d45bcc06d1becaee62b535cc"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-contracts.ts",
+      "sha256": "ce3e0d2abaf6d6e171501337b724657dd29f6ff6feed399f7d0ce0d7c9260809"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-read-coverage.test.ts",
+      "sha256": "5d40fd38f224f7e28324e67c35e21c1f5f9b150ee4183bb65f7127e881348fb9"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-read.ts",
+      "sha256": "c7629a320956d9a7b72b334f695b826662507731f57a1826e0559581c7e48aaf"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-readiness-sql.ts",
+      "sha256": "371d1d15077ea72045f96db65252bcf84998e86f3ac14f2d5ca48a01522275d8"
+    },
+    {
+      "path": "src/server/store/relational/clinical-core-readiness.ts",
+      "sha256": "0f0bc881822d10f5e55aafae11af84329780049dab621c932732bc2a228b618a"
+    },
+    {
+      "path": "src/server/store/relational/cutover.test.ts",
+      "sha256": "d7549b23e91b30a42d66403fc1b717b894e559a959ab5e86b471f389f9510951"
+    },
+    {
+      "path": "src/server/store/relational/cutover.ts",
+      "sha256": "b8674b7a2105db3ccea46279b8bff31223761aaeab710378a56ebaf3bd36d854"
+    },
+    {
+      "path": "src/server/store/relational/projection-sql.test.ts",
+      "sha256": "bbe0a3fecafc5c8f4316f9b9739042e7c95aafc1c157a2eb04482f05f7fafe3f"
+    },
+    {
+      "path": "src/server/store/relational/projection-sql.ts",
+      "sha256": "02561d367d8a2e75e80e6f00e8db6b0d95709f44c2ad079d45717be759c47e1c"
+    },
+    {
+      "path": "src/server/store/relational/sample-lineage.test.ts",
+      "sha256": "9a1782d754c4bd23ad02d1c659ad9ef25a0198ab8b9a3dd751f060b0f1421705"
+    },
+    {
+      "path": "src/server/store/relational/sample-lineage.ts",
+      "sha256": "63691ce000c6de321326dbb0654c4c5905270fcd4e4a61fb4c786033239549c6"
+    },
+    {
+      "path": "src/server/store/runtime-retention.test.ts",
+      "sha256": "5954ad776b3500d9439bd59623ad4a0b7878ad93607708736950fd58fe45d993"
+    },
+    {
+      "path": "src/server/store/runtime-retention.ts",
+      "sha256": "790edd0ca046c0c862d08cd158b0bf37bb666bf341b2d65f1d0e315a098ad485"
+    },
+    {
+      "path": "src/server/store/runtime-security.test.ts",
+      "sha256": "0b159dcfb3425eeba3acccd914a2f369fa2fca740fa7951948d4109d0f8c1a85"
+    },
+    {
+      "path": "src/server/store/runtime.ts",
+      "sha256": "c1a1fe1a8bead5bef714f8a6fbd2cbc32fd89fa162e08c250f2f2db79ae2572e"
+    },
+    {
+      "path": "src/server/store/superadmin-bootstrap.test.ts",
+      "sha256": "19cf08718cb45e9640c66148d3799d056840083ebbd07af319f1fc0973eaf8a1"
+    },
+    {
+      "path": "src/server/store/superadmin-bootstrap.ts",
+      "sha256": "09fd7b97768ea110cfb37b407334da85b06e21097452f79ee6d6e01c646d5787"
+    },
+    {
+      "path": "src/server/store/synthetic-seed-security.test.ts",
+      "sha256": "06f0880530eb2ca3d3f4ec65118a218ec23477db0b8d9c4c4b117f93f06b755d"
+    },
+    {
+      "path": "src/test/archive-fixtures.ts",
+      "sha256": "ca681087e161dc2a582fd036e56c7e00bc1b9aa256d8bfccd657a54250f51cc2"
+    },
+    {
+      "path": "src/test/fake-entity-database.ts",
+      "sha256": "19739c2e955a513751b73350b275ba86f4b55369e681332cab33cee4bb5ab2ec"
+    },
+    {
+      "path": "src/test/his-v4-pinned-producer-source.json",
+      "sha256": "b83dc590bb4f9c58e1386de9f03eda958934c08dad01a2536772a61a45275484"
+    },
+    {
+      "path": "src/test/his-v4-pinned-producer.ts",
+      "sha256": "8e82f78c6992fa1f421fe9396c4b41e8b9cfa3d72c7103e6e64d05f772ee026a"
+    },
+    {
+      "path": "src/test/hospital-external-fixtures.ts",
+      "sha256": "6d4bbea654430e86d5bfe903fea576ba1b0de85dfbdb48c97b4268ad0431be12"
+    },
+    {
+      "path": "src/test/hospital-his-v4-fixtures.ts",
+      "sha256": "c90825565fb143215670093257f41c91827d60785b3d9e9a068289f34497db4b"
+    },
+    {
+      "path": "src/test/hospital-operation-fixtures.ts",
+      "sha256": "441c303a149aa0fc1058bcdfb90edb6ae444f8d7de60bae829963bc78507b2c2"
+    },
+    {
+      "path": "src/test/hospital-planner-http-fixture.ts",
+      "sha256": "7b4e33670963037c3a0c06553a7d4e263c5607c8a6310643a67294801b3d7503"
+    },
+    {
+      "path": "src/test/perf-hospital-planner.test.ts",
+      "sha256": "33704b58ef8eb5e4ba8af1a85db451854f25927cffaa61cc0e6c552c3bcf7d3c"
+    },
+    {
+      "path": "src/test/setup.ts",
+      "sha256": "d9b5a49b29daaa9bc9df187a156fc9a73d8f816589b447336c58e51b3555db5c"
+    },
+    {
+      "path": "tests/e2e/accessibility.spec.ts",
+      "sha256": "077d6ee86dbfc8d28460e756d1a3f5c9830b832a8fef591b7e2df07082173862"
+    },
+    {
+      "path": "tests/e2e/clinical-lifecycle.spec.ts",
+      "sha256": "fe36d992cbb5b7aa402a44f47d37db3e98473413fb220785483759686c0c8ec1"
+    },
+    {
+      "path": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+      "sha256": "c7096765c08ce4c0a1d0b5d51854ed44a88b0b11a72c348a4bea91e4f9e26bba"
+    },
+    {
+      "path": "tests/e2e/core-flows.spec.ts",
+      "sha256": "54d78c952af0a2a94429010e8be55ed693d48a06db2eb7ec962d539eeb5f91b5"
+    },
+    {
+      "path": "tests/e2e/hospital-capacity-accessibility.spec.ts",
+      "sha256": "c8fd0800fdb8d127648cb71f111da35749feb326fc7f005999d85c328f2d241c"
+    },
+    {
+      "path": "tests/e2e/hospital-continuity.spec.ts",
+      "sha256": "3a81dd36159920641c19ee00b0ca24a276ea70a3ad3d134abbf497873abdf8d2"
+    },
+    {
+      "path": "tests/e2e/hospital-metrics-capacity.spec.ts",
+      "sha256": "18a73a054e7f18e6f360ed5eb98a41809dd9685be4185fba03c44d9caab3e00f"
+    },
+    {
+      "path": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+      "sha256": "b60e051c0ebcd9cbf8904465303e84aa3753b953380ef8c3b2fe2f4509f02e6d"
+    },
+    {
+      "path": "tests/e2e/hospital-planner-accessibility.spec.ts",
+      "sha256": "26a0e355183919c4e7002946e35ec6abc5719856741161b4b8dc5246a20b7c55"
+    },
+    {
+      "path": "tests/e2e/hospital-planner-search.spec.ts",
+      "sha256": "325445b6a44bca0d7d905199f284f98a229e8b65c98a3d234c56ad7952a74b1c"
+    },
+    {
+      "path": "tests/e2e/hospital-planner.spec.ts",
+      "sha256": "ed08b45948996c8cdd1dd9b3dab1600a0c0f95c8fec275ed9f26f56b77481d88"
+    },
+    {
+      "path": "tests/e2e/hospital-saved-views.spec.ts",
+      "sha256": "56d6eab11c807f2ffa9ce255e68fe8c610ace20edd7ca6dd9eab1df9bbcc74b0"
+    },
+    {
+      "path": "tests/e2e/hospital-timezone.spec.ts",
+      "sha256": "d969273e6c1a4e7da9322aeffb747067cefb8ff8804eb077332a82be5131eb6a"
+    },
+    {
+      "path": "tests/e2e/plane-regressions.spec.ts",
+      "sha256": "d9d8d451cc7686bde975c667728f981236354bcd7df4f11d173d943d566b47b3"
+    },
+    {
+      "path": "tests/e2e/realtime.spec.ts",
+      "sha256": "021d2341ba4c8b3277bfcc26714cef7b1172d3f3c0368617fbe2aa34d395e77c"
+    },
+    {
+      "path": "tests/e2e/superadmin-exam-visibility.spec.ts",
+      "sha256": "13131d9917b96ca7497d0704f3e5a61e9ec2dca3bdcb3ba421266226ad4e5e92"
+    },
+    {
+      "path": "tests/e2e/superadmin-navigation.spec.ts",
+      "sha256": "692a0d136d5809db51bdd592f36a56da044d8efb82be17610fcfbab77e450089"
+    },
+    {
+      "path": "tests/e2e/support/auth.ts",
+      "sha256": "ec509ab3a75915b51d03e5757c7d3a0301d9a853fa3fde2e37b564ff4df9e4fb"
+    },
+    {
+      "path": "tests/e2e/support/browser-request.ts",
+      "sha256": "c462b7ed486c6a79c4242b6f45a64938a84fbadb27b5046590da1fe7e588bbb2"
+    },
+    {
+      "path": "tests/e2e/support/seed.ts",
+      "sha256": "5f6ab30b5dc6c5c174c1025ece307bd634e8970a376e2dd8bf0a0fb44917e8c5"
+    },
+    {
+      "path": "tests/e2e/ux-simplification.spec.ts",
+      "sha256": "f5304be8a2f2ed051ee47f118f0aff0a605807c139c42b74cf567a0190af54dc"
+    },
+    {
+      "path": "tests/e2e/visual.spec.ts",
+      "sha256": "2b9222de1711da2138b240974c60880d5eb475f31b4f7fe317fe31da29124fc0"
+    },
+    {
+      "path": "tests/e2e/visual.spec.ts-snapshots/dashboard-chromium-linux.png",
+      "sha256": "b815b5aec254b133180ffae64600f724d78cdb3ff942d8a584fdde6c7db5d8f6"
+    },
+    {
+      "path": "tests/e2e/visual.spec.ts-snapshots/dashboard-mobile-linux.png",
+      "sha256": "bd12bb5ead26225dc7f919f278d016291f6223d05aa340583acbc3272c0fbac1"
+    },
+    {
+      "path": "tests/e2e/visual.spec.ts-snapshots/dashboard-tablet-linux.png",
+      "sha256": "f4cc4e7d0c6051507a1419353e15e11d2116bddee6a45816e8cd1be7f5408796"
+    },
+    {
+      "path": "tests/postgres/access-group-migration-matrix.integration.test.ts",
+      "sha256": "c1daf6ea520f9d3c9a787766f85bfad56d0fa406813cfb1d0d2b44e18bcccf51"
+    },
+    {
+      "path": "tests/postgres/audit-metrics.integration.test.ts",
+      "sha256": "ad8875937ef0b7f70f664e25959ddab61f6080e8e723ef3960ccd2851c084012"
+    },
+    {
+      "path": "tests/postgres/audit-read-authority.integration.test.ts",
+      "sha256": "8f2669261f653e937578c6fd79e827e6907b6915eccb440cbc3a18495cdc0e14"
+    },
+    {
+      "path": "tests/postgres/clinical-archive.integration.test.ts",
+      "sha256": "65a774de831c6951c71042ec5e050a944d27fa7e853dcf7a82f3e2f171686042"
+    },
+    {
+      "path": "tests/postgres/cutover-guard.integration.test.ts",
+      "sha256": "ace3163b94bdaad4c0e8834aa0e318643ad9ed538543acf4097fe59eb4d420cb"
+    },
+    {
+      "path": "tests/postgres/database-privileges.integration.test.ts",
+      "sha256": "fa760fc4d65cec955d5bd4c7e4a8abae9dd6865174bae352e418b083e62d8a30"
+    },
+    {
+      "path": "tests/postgres/hospital-acceptance-recovery.integration.test.ts",
+      "sha256": "f076ad0289bb0574aeff0fadba3d33abbcda33245b7887b6261ce37775d98f85"
+    },
+    {
+      "path": "tests/postgres/hospital-calendar-boundary.integration.test.ts",
+      "sha256": "77b8a3b4601fb45aaafcfa63ca8b64ead443c06ee6b3189d401525431a67fb21"
+    },
+    {
+      "path": "tests/postgres/hospital-collaboration-acceptance.integration.test.ts",
+      "sha256": "98b8b549084dde4cc5c12ea6dd07edd4cd3889752f5f3c0dcfea70e300c364bb"
+    },
+    {
+      "path": "tests/postgres/hospital-collaboration.integration.test.ts",
+      "sha256": "e3b7d324cf2192bcfdd196e842b2dd76258e03bd4df0ae87466f443a38fc9689"
+    },
+    {
+      "path": "tests/postgres/hospital-comment-timeline-acceptance.integration.test.ts",
+      "sha256": "11dea90c0f9a7da2bf2700f2af1e5deefef4fe2609586aaeed3246259f69303d"
+    },
+    {
+      "path": "tests/postgres/hospital-directory-care-context-acceptance.integration.test.ts",
+      "sha256": "bd170cdedc9c0c800529335d49a704c6e702a62fcc8afc6483c58bdddac160de"
+    },
+    {
+      "path": "tests/postgres/hospital-external.integration.test.ts",
+      "sha256": "537063af3118f6c59bbce20ee8b2efdb9566e28a90129f4d1d3b31f70bdfb386"
+    },
+    {
+      "path": "tests/postgres/hospital-foundation.integration.test.ts",
+      "sha256": "77de3aa09e60d5ac251d1226227c78030557f766baa6ed494ae4a779c50344a4"
+    },
+    {
+      "path": "tests/postgres/hospital-his-v4.integration.test.ts",
+      "sha256": "a083a0776c407b9d6aebe150e12ca50b3af6a31bf545668cf64e4e153d800eb4"
+    },
+    {
+      "path": "tests/postgres/hospital-planning.integration.test.ts",
+      "sha256": "73a21856d9f0df0f899e013f8d9cbb7a871fb9220cce88dd792b71fe2bb222ca"
+    },
+    {
+      "path": "tests/postgres/hospital-recurrence-worker-restart.integration.test.ts",
+      "sha256": "92575f46fb0f5bcfd36d830aeee4f3998140b0a9ab7f15a6a6af097b79d4a0ff"
+    },
+    {
+      "path": "tests/postgres/hospital-task-attachment-restore.integration.test.ts",
+      "sha256": "0b556dfa820b26cbc3286d67ee4b45cb40df253c62090dbc9c9d4750eaaae914"
+    },
+    {
+      "path": "tests/postgres/hospital-task-dependency-completion.integration.test.ts",
+      "sha256": "7c0da7c53bf2e5a437f48b06892b964d80116a1e7db6b0f7dfddf979564d8c4a"
+    },
+    {
+      "path": "tests/postgres/http-multi-instance.integration.test.ts",
+      "sha256": "a3eba45d71bae32a5a2cac8e8916a1bc49055d8c7d85697ec64313a6e733f61a"
+    },
+    {
+      "path": "tests/postgres/initial-password.integration.test.ts",
+      "sha256": "12a772f34369947306f24df06b43e15b1f75fa767d992673a983eb3c7e36258c"
+    },
+    {
+      "path": "tests/postgres/login-rate-limit.integration.test.ts",
+      "sha256": "d58c077064ff31ac1a19d0fbcaf38b71de4a6b75b18d92e3445c591e12a7a40b"
+    },
+    {
+      "path": "tests/postgres/outbox-read-authority.integration.test.ts",
+      "sha256": "c72210358cdc20978b72961d90d4dc87d8214ec3814e0b74c96aa4dee0c030e1"
+    },
+    {
+      "path": "tests/postgres/postgres-store.integration.test.ts",
+      "sha256": "93f1e1f16097fe48fdbd4f74e92dd303f84d2158d5bc878bac7afc40fdbedc04"
+    },
+    {
+      "path": "tests/postgres/postgres-test-harness.test.ts",
+      "sha256": "33eca79202d32c383a6b6a30ce096b37aa1bf95815935ae018aa0469f81628ff"
+    },
+    {
+      "path": "tests/postgres/production-bootstrap.integration.test.ts",
+      "sha256": "354c69ba6267757f433d27edbca49a4f1353bed4f1ba8b8612b52aa21993e1cb"
+    },
+    {
+      "path": "tests/postgres/realtime-listen.integration.test.ts",
+      "sha256": "f320380dfdaa35658bf91496993b9c525129a9b7ca3792c69331569c6ecbf611"
+    },
+    {
+      "path": "tests/postgres/relational-migration-upgrade.integration.test.ts",
+      "sha256": "a8b6d0e7d37f7e1d01dd97654f1d52c819fbfdf87f6f2d0d758677bc51d75ff9"
+    },
+    {
+      "path": "tests/postgres/relational-sample-lineage.integration.test.ts",
+      "sha256": "6d22972fdfa56ea289084a83b885d86869aa0682fc5acb484e535a790b77a42a"
+    },
+    {
+      "path": "tests/postgres/report-archive.integration.test.ts",
+      "sha256": "7c5918ccf3cc32a7c98c82a7af109aa1f20d7208d219534aa99070eafd590f1f"
+    },
+    {
+      "path": "tests/postgres/role-provisioning.integration.test.ts",
+      "sha256": "9aac6bf36e332c85432b9eca3aaaa267b32860325ce92460282715e80d1c3c7b"
+    },
+    {
+      "path": "tests/postgres/runtime-entity-rows.integration.test.ts",
+      "sha256": "c2dcad7326086342c8bf900bd04e2850268ce43e67714c39cf97911123ce2ead"
+    },
+    {
+      "path": "tests/postgres/session-activity.integration.test.ts",
+      "sha256": "3bc0e65796e43ecedbb8b0b1455b15f723436092f1f0366bcf92f56a0ce25e88"
+    },
+    {
+      "path": "tests/postgres/state-cache.integration.test.ts",
+      "sha256": "785c9e78738ad36f7d3dc3b75b57bfd223f672fbb2eebe32d9a65938cceac9ae"
+    },
+    {
+      "path": "tests/support/next-http-test-server.ts",
+      "sha256": "5c2b8415c6a5520b56e21177ee2f5ee0d5a32086fd022b2d84a17869ba3ded1b"
+    },
+    {
+      "path": "tests/support/postgres-test-harness.ts",
+      "sha256": "a79b71d1c8ce8dcc01a6f8c3bdd56f5b5b5b3c26a6636aa101d4ef47e4ae9ba3"
+    },
+    {
+      "path": "tsconfig.json",
+      "sha256": "8741d2df4eb28fb1fc499bb497c306193a10f88a7871993f4fc50bde01e01cdf"
+    },
+    {
+      "path": "vendor/fast-glob-3.3.1-cvg.1.tgz",
+      "sha256": "5694daabe24f27a196fbfb04577b4ae415162ea7a25e53abda6692668b587a20"
+    },
+    {
+      "path": "vendor/fast-glob.provenance.json",
+      "sha256": "5185a07375672ff7eb43aa06dbb3e8210d6dfb33ae6b91af84fff9bf63866ecb"
+    },
+    {
+      "path": "vitest.config.ts",
+      "sha256": "594e2326bd67483275893441e37d6df0ae422731167575ccc309d08bde98f72e"
+    },
+    {
+      "path": "vitest.postgres.config.ts",
+      "sha256": "0c972a5b4c910c2e5f257e6321c902d8230fe43bbf8405897a240e9cc1a057ca"
+    }
+  ]
+}

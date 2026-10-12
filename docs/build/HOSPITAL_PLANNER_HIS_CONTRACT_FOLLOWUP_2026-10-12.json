@@ -885,5 +885,14 @@
     "Installed sourceHeadMatch remainsUNKNOWN/deploymentVerifiedfalse; LIS/PACS and nominal pilot acceptance remain unknown/open.",
     "No installed hospital services, ports, configuration, credentials, clinical APIs or database were changed.",
     "Actual HTTPS webhook receiver, approved mappings, institutional content, target workload, scanner/restore/alerts and nominal go/no-go remain external gates."
-  ]
+  ],
+  "snapshotApplicability": {
+    "status": "SUPERSEDED_VALIDATION_INPUTS_AFTER_FIRST_REMOTE_CI",
+    "capturedCandidateCommit": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+    "capturedSourceFingerprintSha256": "fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5",
+    "currentFollowup": "HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json",
+    "currentManifest": "HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "currentCandidateFullCICertified": false,
+    "meaning": "Original fields and results are preserved at their captured inputs. Only analytics test clock and CI duration change in the subsequent candidate; unchanged HIS focused proofs retain their scopes."
+  }
 }

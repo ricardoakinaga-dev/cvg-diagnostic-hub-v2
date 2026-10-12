@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { hospitalOperationFixture } from "../../test/hospital-operation-fixtures";
 import { processPendingHospitalReportJobs } from "./hospital-report-service";
 import { runScheduledHospitalReports, createHospitalReportSchedule } from "./hospital-report-job";
@@ -21,6 +21,11 @@ async function archivedReport() {
   return { ...f, item, report, job };
 }
 describe("operational metrics and report jobs", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-11T10:00:00.000Z"));
+  });
+  afterEach(() => vi.useRealTimers());
   it("counts the half-open event window once, excludes drafts and retains terminal archived history", async () => {
     const f = await setup();
     await f.store.transaction((state) => ({ state: { ...state, hospitalTasks: [...state.hospitalTasks, { ...f.task, id: "at-end", createdAt: window.to }, { ...f.task, id: "draft", isDraft: true }, { ...f.task, id: "archived", phase: "COMPLETED", completedAt: "2026-10-11T09:00:00.000Z", archivedAt: "2026-10-11T10:00:00.000Z" }] }, result: undefined }));

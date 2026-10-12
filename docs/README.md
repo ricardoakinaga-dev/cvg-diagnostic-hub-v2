@@ -33,9 +33,13 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Compatibilidade HIS e fonte corrente — 12/10/2026
+## CI e revisão corrente do planner — 12/10/2026
 
-O [registro de 12/10](build/HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.md), a [evidência estruturada](build/HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.json) e o [manifesto corrente](build/HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-12.json) acompanham o reparo do evento HIS real com metadata, o contrato Unicode e a preparação do commit/PR. Passaram 40 testes HIS, 19 de contrato e quatro GETs do catálogo HTTPS nativo em memória. A CI completa é acompanhada no [GitHub Actions da branch](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions?query=branch%3Afeat%2Fhospital-planner-20261012). As provas completas de 11/10 descritas abaixo são históricas, atribuídas às fontes originais; a alteração posterior de produto exige nova validação global. Homologação HIS e piloto permanecem abertos.
+O [registro corrente](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.md), a [evidência](build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json) e o [manifesto](build/HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json) acompanham a correção dos quatro testes dependentes da data e o tempo de execução da CI. São dois inputs de validação alterados, com produto idêntico ao commit `5111a50`; 11 testes passaram em UTC e Honolulu. Os resultados completos são acompanhados no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). A primeira CI e suas falhas foram preservadas; a nova rodada precisa ser conferida no GitHub. Homologação e piloto continuam abertos.
+
+## Compatibilidade HIS — captura anterior de 12/10/2026
+
+O [registro de 12/10](build/HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.md), a [evidência estruturada](build/HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.json) e o [manifesto daquela captura](build/HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-12.json) acompanham o reparo do evento HIS real com metadata, o contrato Unicode e a preparação do commit/PR. Passaram 40 testes HIS, 19 de contrato e quatro GETs do catálogo HTTPS nativo em memória. A CI completa é acompanhada no [GitHub Actions da branch](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions?query=branch%3Afeat%2Fhospital-planner-20261012). As provas completas de 11/10 descritas abaixo são históricas, atribuídas às fontes originais; a alteração posterior de produto exige nova validação global. Homologação HIS e piloto permanecem abertos.
 
 ## Pareamento com o Plane — planner hospitalar veterinário (11/10/2026)
 

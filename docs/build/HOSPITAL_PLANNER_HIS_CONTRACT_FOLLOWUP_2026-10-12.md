@@ -2,7 +2,9 @@
 
 **Data:** 12/10/2026 · **Estado local:** correção HIS e contrato Unicode com provas focadas aprovadas; CI completa a consultar no GitHub · **042:** PARTIAL · **051:** OPEN · **Release:** não aplicada.
 
-Este é o registro corrente posterior ao [snapshot de 11/10](HOSPITAL_PLANNER_VALIDATION_2026-10-11.json). A [evidência estruturada](HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.json) e o [manifesto de 1.085 arquivos](HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-12.json) identificam a fonte `fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5`. Os resultados completos anteriores continuam atribuídos às fontes em que foram executados.
+**Revisão posterior da CI:** consultar o [registro corrente](HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.md) e o [manifesto](HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json). Esta captura conserva as provas do reparo HIS na fonte original; o novo ajuste afeta somente testes e duração da CI.
+
+Este é o registro do reparo HIS posterior ao [snapshot de 11/10](HOSPITAL_PLANNER_VALIDATION_2026-10-11.json). A [evidência estruturada](HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.json) e o [manifesto de 1.085 arquivos](HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-12.json) identificam a fonte `fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5`. Os resultados completos anteriores continuam atribuídos às fontes em que foram executados.
 
 ## Defeito e correção
 

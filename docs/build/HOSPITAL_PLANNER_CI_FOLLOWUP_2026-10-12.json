@@ -1,0 +1,949 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-12T01:01:58.450013+00:00",
+  "status": "FIRST_REMOTE_CI_FAIL_TEST_CLOCK_REPAIRED_FOCUSED_PASS_FRESH_CI_PENDING",
+  "candidate": {
+    "manifest": "HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "fingerprintSha256": "cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8",
+    "fileCount": 1085,
+    "baseCommit": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+    "branch": "feat/hospital-planner-20261012",
+    "committedAtCapture": false,
+    "deployed": false
+  },
+  "sourceDelta": {
+    "changed": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "beforeSha256": "8093fb524c716a5bac4465d17ea7b6d5bd89f315f05d03dee44ce66b3ff1ae27",
+        "afterSha256": "ee5eb963b35e79715df2a2b14c9cbec4bcbe114e3b636fa03d5ed841333e3a0b"
+      },
+      {
+        "path": "src/server/application/hospital-analytics-service.test.ts",
+        "beforeSha256": "cd283dd73ae8ccc23894dfa12ef9210b10538f23d4ce2b85fedcbe8522e1572c",
+        "afterSha256": "6004a4229a5ea55ce556908a3bc58685960598e9dee65c694aeae89cf8725385"
+      }
+    ],
+    "added": [],
+    "removed": [],
+    "unchanged": 1083,
+    "runtimeProductChanged": false,
+    "meaning": "All assertions remain unchanged; runtime metrics correctly applied the original half-open window. This is a test-clock and CI duration repair."
+  },
+  "firstRemoteCI": {
+    "runId": 38188835705,
+    "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705",
+    "headSha": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+    "conclusion": "FAIL",
+    "unitCoverage": {
+      "testFiles": 327,
+      "passed": 5160,
+      "failed": 4,
+      "total": 5164,
+      "durationSeconds": 732.6,
+      "failingFile": "src/server/application/hospital-analytics-service.test.ts"
+    },
+    "postgresCoverage": "NOT_EXECUTED_AFTER_UNIT_FAILURE",
+    "coverageGate": "NOT_EXECUTED_AFTER_UNIT_FAILURE",
+    "originalLog": {
+      "path": "/tmp/cvg-hpl-pr78-ci-verify-22x-raw-job-log-20261012.log",
+      "sha256": "4f6a40a6c711736c8e39e647863ec5c3132dafbb5b6a72738c64e9022c5ff8fc",
+      "bytes": 328051
+    },
+    "workflowSnapshot": {
+      "conclusion": "failure",
+      "headSha": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+      "jobs": [
+        {
+          "completedAt": "2026-10-12T00:55:03Z",
+          "conclusion": "failure",
+          "databaseId": 114616964842,
+          "name": "verify (22.x)",
+          "startedAt": "2026-10-12T00:39:21Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T00:39:24Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T00:39:23Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:47Z",
+              "conclusion": "success",
+              "name": "Initialize containers",
+              "number": 2,
+              "startedAt": "2026-10-12T00:39:24Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:50Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "number": 3,
+              "startedAt": "2026-10-12T00:39:47Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:56Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v7",
+              "number": 4,
+              "startedAt": "2026-10-12T00:39:50Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:09Z",
+              "conclusion": "success",
+              "name": "Run npm ci",
+              "number": 5,
+              "startedAt": "2026-10-12T00:39:56Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:09Z",
+              "conclusion": "success",
+              "name": "Run npm run validate:docs",
+              "number": 6,
+              "startedAt": "2026-10-12T00:40:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:12Z",
+              "conclusion": "success",
+              "name": "Run npm run validate:openapi",
+              "number": 7,
+              "startedAt": "2026-10-12T00:40:09Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:12Z",
+              "conclusion": "success",
+              "name": "Run npm run validate:traceability",
+              "number": 8,
+              "startedAt": "2026-10-12T00:40:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:12Z",
+              "conclusion": "success",
+              "name": "Run node --test scripts/validate-traceability.test.mjs",
+              "number": 9,
+              "startedAt": "2026-10-12T00:40:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:13Z",
+              "conclusion": "success",
+              "name": "Run npm run validate:migrations",
+              "number": 10,
+              "startedAt": "2026-10-12T00:40:12Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:26Z",
+              "conclusion": "success",
+              "name": "Run npm run observability:check",
+              "number": 11,
+              "startedAt": "2026-10-12T00:40:13Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:23Z",
+              "conclusion": "success",
+              "name": "Run npm run logs:check",
+              "number": 12,
+              "startedAt": "2026-10-12T00:40:26Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:23Z",
+              "conclusion": "success",
+              "name": "Run npm run security:scan",
+              "number": 13,
+              "startedAt": "2026-10-12T00:41:23Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:25Z",
+              "conclusion": "success",
+              "name": "Run npm run privacy:scan",
+              "number": 14,
+              "startedAt": "2026-10-12T00:41:23Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:26Z",
+              "conclusion": "success",
+              "name": "Generate dependency SBOM",
+              "number": 15,
+              "startedAt": "2026-10-12T00:41:25Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:53Z",
+              "conclusion": "success",
+              "name": "Run npm run typecheck",
+              "number": 16,
+              "startedAt": "2026-10-12T00:41:26Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:42:28Z",
+              "conclusion": "success",
+              "name": "Run npm run lint",
+              "number": 17,
+              "startedAt": "2026-10-12T00:41:53Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:42:43Z",
+              "conclusion": "success",
+              "name": "Run npm run test:config",
+              "number": 18,
+              "startedAt": "2026-10-12T00:42:28Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "failure",
+              "name": "Run npm run test:coverage",
+              "number": 19,
+              "startedAt": "2026-10-12T00:42:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run mutation control sentinel",
+              "number": 20,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run node --test scripts/coverage-report.test.mjs",
+              "number": 21,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm --silent run coverage:report > coverage-report.json",
+              "number": 22,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run test:perf",
+              "number": 23,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run test:recovery",
+              "number": 24,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run perf:synthetic",
+              "number": 25,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run perf:snapshot:gate",
+              "number": 26,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run perf:realtime-budget",
+              "number": 27,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run test:postgres",
+              "number": 28,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm audit --audit-level=high",
+              "number": 29,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run build",
+              "number": 30,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "skipped",
+              "name": "Run npm run privacy:scan -- --bundle .next/static",
+              "number": 31,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "success",
+              "name": "Upload coverage artifact",
+              "number": 32,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:57Z",
+              "conclusion": "success",
+              "name": "Upload coverage layer report",
+              "number": 33,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:59Z",
+              "conclusion": "success",
+              "name": "Upload dependency SBOM",
+              "number": 34,
+              "startedAt": "2026-10-12T00:54:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:59Z",
+              "conclusion": "success",
+              "name": "Upload mutation report",
+              "number": 35,
+              "startedAt": "2026-10-12T00:54:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:59Z",
+              "conclusion": "skipped",
+              "name": "Post Run actions/setup-node@v7",
+              "number": 68,
+              "startedAt": "2026-10-12T00:54:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "number": 69,
+              "startedAt": "2026-10-12T00:54:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:59Z",
+              "conclusion": "success",
+              "name": "Stop containers",
+              "number": 70,
+              "startedAt": "2026-10-12T00:54:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:54:59Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 71,
+              "startedAt": "2026-10-12T00:54:59Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114616964842"
+        },
+        {
+          "completedAt": "2026-10-12T00:39:26Z",
+          "conclusion": "success",
+          "databaseId": 114616964963,
+          "name": "Dependency review",
+          "startedAt": "2026-10-12T00:39:21Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T00:39:23Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T00:39:22Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:24Z",
+              "conclusion": "success",
+              "name": "Review dependency changes",
+              "number": 2,
+              "startedAt": "2026-10-12T00:39:23Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:24Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 3,
+              "startedAt": "2026-10-12T00:39:24Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114616964963"
+        },
+        {
+          "completedAt": "2026-10-12T00:41:38Z",
+          "conclusion": "success",
+          "databaseId": 114616965002,
+          "name": "CodeQL SAST",
+          "startedAt": "2026-10-12T00:39:21Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T00:39:22Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T00:39:21Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:25Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "number": 2,
+              "startedAt": "2026-10-12T00:39:22Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:43Z",
+              "conclusion": "success",
+              "name": "Initialize CodeQL",
+              "number": 3,
+              "startedAt": "2026-10-12T00:39:25Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:35Z",
+              "conclusion": "success",
+              "name": "Analyze with CodeQL",
+              "number": 4,
+              "startedAt": "2026-10-12T00:39:43Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:35Z",
+              "conclusion": "success",
+              "name": "Post Analyze with CodeQL",
+              "number": 6,
+              "startedAt": "2026-10-12T00:41:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:36Z",
+              "conclusion": "success",
+              "name": "Post Initialize CodeQL",
+              "number": 7,
+              "startedAt": "2026-10-12T00:41:35Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:36Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "number": 8,
+              "startedAt": "2026-10-12T00:41:36Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:36Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 9,
+              "startedAt": "2026-10-12T00:41:36Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114616965002"
+        },
+        {
+          "completedAt": "2026-10-12T00:47:00Z",
+          "conclusion": "success",
+          "databaseId": 114616965012,
+          "name": "Real HTTP/PostgreSQL/SSE benchmark",
+          "startedAt": "2026-10-12T00:39:21Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T00:39:23Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T00:39:22Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:44Z",
+              "conclusion": "success",
+              "name": "Initialize containers",
+              "number": 2,
+              "startedAt": "2026-10-12T00:39:23Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:46Z",
+              "conclusion": "success",
+              "name": "Run actions/checkout@v7",
+              "number": 3,
+              "startedAt": "2026-10-12T00:39:44Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:39:48Z",
+              "conclusion": "success",
+              "name": "Run actions/setup-node@v7",
+              "number": 4,
+              "startedAt": "2026-10-12T00:39:46Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:00Z",
+              "conclusion": "success",
+              "name": "Run npm ci",
+              "number": 5,
+              "startedAt": "2026-10-12T00:39:48Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:40:00Z",
+              "conclusion": "success",
+              "name": "Prepare benchmark artifacts",
+              "number": 6,
+              "startedAt": "2026-10-12T00:40:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:41:00Z",
+              "conclusion": "success",
+              "name": "Run real HTTP/PostgreSQL/SSE benchmark",
+              "number": 7,
+              "startedAt": "2026-10-12T00:40:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:42:21Z",
+              "conclusion": "success",
+              "name": "Run the benchmark over 12 months of D2 clinical volume",
+              "number": 8,
+              "startedAt": "2026-10-12T00:41:00Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:57Z",
+              "conclusion": "success",
+              "name": "Run hospital journeys through an app and a worker crash",
+              "number": 9,
+              "startedAt": "2026-10-12T00:42:21Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:58Z",
+              "conclusion": "success",
+              "name": "Scan the benchmark server logs for personal data",
+              "number": 10,
+              "startedAt": "2026-10-12T00:46:57Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:58Z",
+              "conclusion": "success",
+              "name": "Upload PostgreSQL benchmark artifacts",
+              "number": 11,
+              "startedAt": "2026-10-12T00:46:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:58Z",
+              "conclusion": "success",
+              "name": "Post Run actions/setup-node@v7",
+              "number": 20,
+              "startedAt": "2026-10-12T00:46:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:59Z",
+              "conclusion": "success",
+              "name": "Post Run actions/checkout@v7",
+              "number": 21,
+              "startedAt": "2026-10-12T00:46:58Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:59Z",
+              "conclusion": "success",
+              "name": "Stop containers",
+              "number": 22,
+              "startedAt": "2026-10-12T00:46:59Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:46:59Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 23,
+              "startedAt": "2026-10-12T00:46:59Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114616965012"
+        },
+        {
+          "completedAt": "2026-10-12T00:55:08Z",
+          "conclusion": "failure",
+          "databaseId": 114620029626,
+          "name": "browser (22.x)",
+          "startedAt": "2026-10-12T00:55:05Z",
+          "status": "completed",
+          "steps": [
+            {
+              "completedAt": "2026-10-12T00:55:06Z",
+              "conclusion": "success",
+              "name": "Set up job",
+              "number": 1,
+              "startedAt": "2026-10-12T00:55:06Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:55:06Z",
+              "conclusion": "failure",
+              "name": "Require every browser project to pass",
+              "number": 2,
+              "startedAt": "2026-10-12T00:55:06Z",
+              "status": "completed"
+            },
+            {
+              "completedAt": "2026-10-12T00:55:06Z",
+              "conclusion": "success",
+              "name": "Complete job",
+              "number": 3,
+              "startedAt": "2026-10-12T00:55:06Z",
+              "status": "completed"
+            }
+          ],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114620029626"
+        },
+        {
+          "completedAt": "2026-10-12T00:55:03Z",
+          "conclusion": "skipped",
+          "databaseId": 114620029871,
+          "name": "Browser E2E (${{ matrix.project }})",
+          "startedAt": "2026-10-12T00:55:03Z",
+          "status": "completed",
+          "steps": [],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114620029871"
+        },
+        {
+          "completedAt": "2026-10-12T00:55:03Z",
+          "conclusion": "skipped",
+          "databaseId": 114620029978,
+          "name": "Build and smoke-test application image",
+          "startedAt": "2026-10-12T00:55:03Z",
+          "status": "completed",
+          "steps": [],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114620029978"
+        },
+        {
+          "completedAt": "2026-10-12T00:55:03Z",
+          "conclusion": "skipped",
+          "databaseId": 114620030369,
+          "name": "Browser E2E with disposable PostgreSQL",
+          "startedAt": "2026-10-12T00:55:04Z",
+          "status": "completed",
+          "steps": [],
+          "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705/job/114620030369"
+        }
+      ],
+      "status": "completed",
+      "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38188835705"
+    },
+    "meaning": "Dependency review, CodeQL and the real benchmark passed for the first commit. Browser aggregate failure derives from skipped projects; browser/PG/image were not executed. These first-commit results do not certify the next SHA.",
+    "securityAnalysisScope": {
+      "status": "PASS_WITH_RECORDED_SCOPE",
+      "codeqlLog": {
+        "path": "/tmp/cvg-pr78-security-ci-38188835705-CodeQL-SAST.log",
+        "sha256": "bdebee6af8b52234d88b5e2c71740e47adf18c90669179cc3b9eb2ca2d5f337f"
+      },
+      "meaning": "The 300-file diff limit disabled overlay/diff-informed optimization only; extraction, queries and result processing completed. The PR does not publish file-coverage diagnostics. PASS is not a claim of zero vulnerabilities."
+    }
+  },
+  "clockRepair": {
+    "status": "CORRECTED_TEST_CLOCK_PROOF",
+    "capturedAt": "2026-10-12T00:59:50.531083+00:00",
+    "ciFailure": {
+      "runId": 38188835705,
+      "jobId": 114616964842,
+      "headSha": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+      "unitPassed": 5160,
+      "unitFailed": 4,
+      "proofPath": "/tmp/cvg-hpl-pr78-ci-verify-failure-evidence-20261012.json"
+    },
+    "editedFile": {
+      "path": "src/server/application/hospital-analytics-service.test.ts",
+      "beforeSha256": "cd283dd73ae8ccc23894dfa12ef9210b10538f23d4ce2b85fedcbe8522e1572c",
+      "afterSha256": "6004a4229a5ea55ce556908a3bc58685960598e9dee65c694aeae89cf8725385",
+      "bytes": 18832,
+      "onlyDelta": "Vitest beforeEach/afterEach imports and Date-only fixed UTC clock restored after each test",
+      "allAssertionsAndOtherOriginalBytesUnchanged": true
+    },
+    "fix": {
+      "fixedInstant": "2026-10-11T10:00:00.000Z",
+      "toFake": [
+        "Date"
+      ],
+      "systemTimersRemainReal": true,
+      "clockRestoredAfterEach": true,
+      "setupDTOChanged": false,
+      "productCodeChanged": false
+    },
+    "focusedResults": {
+      "red": {
+        "timeZone": "UTC",
+        "passed": 7,
+        "failed": 4,
+        "total": 11
+      },
+      "green": [
+        {
+          "timeZone": "UTC",
+          "passed": 11,
+          "failed": 0
+        },
+        {
+          "timeZone": "Pacific/Honolulu",
+          "passed": 11,
+          "failed": 0
+        }
+      ]
+    },
+    "commands": {
+      "red": "TZ=UTC ./node_modules/.bin/vitest run src/server/application/hospital-analytics-service.test.ts",
+      "greenUtc": "TZ=UTC ./node_modules/.bin/vitest run src/server/application/hospital-analytics-service.test.ts",
+      "greenHonolulu": "TZ=Pacific/Honolulu ./node_modules/.bin/vitest run src/server/application/hospital-analytics-service.test.ts",
+      "types": "./node_modules/.bin/tsc --noEmit --project /tmp/cvg-hpl-pr78-analytics-clock-tsconfig-20261012.json",
+      "typesScope": "focused config extends project tsconfig; includes single changed test plus next-env and imported dependencies; not full-project typecheck",
+      "lint": "./node_modules/.bin/eslint src/server/application/hospital-analytics-service.test.ts",
+      "diffCheck": "git diff --check -- src/server/application/hospital-analytics-service.test.ts"
+    },
+    "logs": [
+      {
+        "name": "red",
+        "logPath": "/tmp/cvg-hpl-pr78-analytics-clock-red-20261012.log",
+        "exitPath": "/tmp/cvg-hpl-pr78-analytics-clock-red-20261012.exit",
+        "exitCode": 1,
+        "bytes": 3249,
+        "sha256": "df3120a5f7db915fd20b2ef0a0c03f815acbad53f5327ae41e5203104ab11d17"
+      },
+      {
+        "name": "green-utc",
+        "logPath": "/tmp/cvg-hpl-pr78-analytics-clock-green-utc-20261012.log",
+        "exitPath": "/tmp/cvg-hpl-pr78-analytics-clock-green-utc-20261012.exit",
+        "exitCode": 0,
+        "bytes": 226,
+        "sha256": "6a3fa9ac4fb547cdaae56f560c06c93de5ac52172673e023529fdb44997bebe9"
+      },
+      {
+        "name": "green-honolulu",
+        "logPath": "/tmp/cvg-hpl-pr78-analytics-clock-green-honolulu-20261012.log",
+        "exitPath": "/tmp/cvg-hpl-pr78-analytics-clock-green-honolulu-20261012.exit",
+        "exitCode": 0,
+        "bytes": 225,
+        "sha256": "185fe83aff02478efdbade3b9bf6ec911d0e3c9ad54c7bfb95c2a05fbb56307b"
+      },
+      {
+        "name": "lint",
+        "logPath": "/tmp/cvg-hpl-pr78-analytics-clock-lint-20261012.log",
+        "exitPath": "/tmp/cvg-hpl-pr78-analytics-clock-lint-20261012.exit",
+        "exitCode": 0,
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "types",
+        "logPath": "/tmp/cvg-hpl-pr78-analytics-clock-types-20261012.log",
+        "exitPath": "/tmp/cvg-hpl-pr78-analytics-clock-types-20261012.exit",
+        "exitCode": 0,
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "name": "diffcheck",
+        "logPath": "/tmp/cvg-hpl-pr78-analytics-clock-diffcheck-20261012.log",
+        "exitPath": "/tmp/cvg-hpl-pr78-analytics-clock-diffcheck-20261012.exit",
+        "exitCode": 0,
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ],
+    "limits": [
+      "No production code, permissions, business assertions, DTO setup, documents, manifests or Git staging changed.",
+      "Focused local proof only; fresh remote CI remains necessary and previous run failure is preserved.",
+      "No local broad coverage/build/browser suite or deployment performed."
+    ]
+  },
+  "workflowRepair": {
+    "path": ".github/workflows/ci.yml",
+    "job": "verify",
+    "timeoutMinutesBefore": 25,
+    "timeoutMinutesAfter": 40,
+    "basis": "Measured hosted-runner unit coverage was 732.60s; PostgreSQL coverage, the remaining independent checks and build still need to run. Only the duration budget changes; commands, gates, assertions and coverage thresholds are preserved."
+  },
+  "focusedWorkflowGuard": {
+    "status": "PASS",
+    "command": "node --test scripts/e2e-canonical.test.mjs",
+    "exitCode": 0,
+    "log": {
+      "path": "/tmp/cvg-hpl-functional-followup-ci12-workflow-guard-20261011.log",
+      "sha256": "156d3dbdf08f9103cfd08c114552bb7fd29a382095a5097160a6947bee645c2b",
+      "bytes": 1270
+    },
+    "exit": {
+      "path": "/tmp/cvg-hpl-functional-followup-ci12-workflow-guard-20261011.exit",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+      "bytes": 2
+    }
+  },
+  "previousCapture": {
+    "fingerprintSha256": "fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5",
+    "recordsBeforeApplicabilityNotice": [
+      {
+        "path": "docs/build/HOSPITAL_PLANNER_SOURCE_MANIFEST_2026-10-12.json",
+        "sha256": "7a67ffb4c87b02a052361b5fb59154656c826638c8b08bcb15c0e43f54c38f3a",
+        "bytes": 173690
+      },
+      {
+        "path": "docs/build/HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.json",
+        "sha256": "94f3e7d2a21ba53aaabeb2c8fed3259a35e8cd53339476a0fb5b13c19c5d53e4",
+        "bytes": 41833
+      },
+      {
+        "path": "docs/build/HOSPITAL_PLANNER_HIS_CONTRACT_FOLLOWUP_2026-10-12.md",
+        "sha256": "6e4909a4c1d18695d1dabe81113e97a55a5c5f1c7c072183fe854e5109b22bb9",
+        "bytes": 4811
+      }
+    ],
+    "HISFocusedProofReuse": "The HIS product, producer tests, API contract and catalogue parser/client/configuration are byte-identical. Their recorded focused proofs retain those exact scopes; no full CI or whole new input-suite pass is inferred.",
+    "archiveCommit": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3"
+  },
+  "finalReportingChecks": {
+    "status": "PASS",
+    "recordedAt": "2026-10-12T01:03:32.137588+00:00",
+    "scope": "Post-report documentation, safe source privacy, secret scan, indexed 1085-file manifest and cached whitespace. Only the record metadata below is appended afterward; no source edits.",
+    "documentation": {
+      "status": "PASS",
+      "command": "npm run validate:docs",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-ci12-corrective-docs-20261011.log",
+        "sha256": "37e5555270a622f2d0c1449d9d5be5aa70c0fec911b74b12a7c7fd8638e31102",
+        "bytes": 207
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-ci12-corrective-docs-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "secrets": {
+      "status": "PASS",
+      "command": "npm run security:scan",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-ci12-corrective-secrets-20261011.log",
+        "sha256": "01e4220a4ae212c4d17d708b7bfb6dc55d13bde287e0e1ad7f9f61ff769afb9d",
+        "bytes": 205
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-ci12-corrective-secrets-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "privacy": {
+      "status": "PASS",
+      "command": "node /tmp/cvg-hpl-prepublication-corrective-privacy-20261012.mjs",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-ci12-corrective-privacy-20261011.log",
+        "sha256": "3c9cc89bcd926829eb32979a2e4e1827fab3d2a062a472dec94e67342b57af92",
+        "bytes": 40
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-ci12-corrective-privacy-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      },
+      "scanned": 1247,
+      "findings": 0,
+      "report": {
+        "path": "/tmp/cvg-hpl-prepublication-corrective-privacy-20261012.json",
+        "sha256": "94ad3ee50854de44daa21baa6d595d26a615891a6ebf9ad8b9d3b4d075066fe4",
+        "bytes": 193357
+      }
+    },
+    "cachedWhitespace": {
+      "status": "PASS",
+      "command": "git diff --cached --check",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-prepublication-corrective-diff-check-20261012.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-prepublication-corrective-diff-check-20261012.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "indexedSourceManifest": {
+      "status": "PASS",
+      "verifiedRawBlobs": 1085,
+      "fingerprintSha256": "cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8"
+    }
+  },
+  "freshCI": {
+    "statusAtCapture": "NOT_EXECUTED_PENDING_CORRECTIVE_COMMIT",
+    "pullRequest": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78",
+    "authority": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions?query=branch%3Afeat%2Fhospital-planner-20261012"
+  },
+  "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+  "BLD-HPL-051": "OPEN",
+  "done": false,
+  "release": "NOT_APPLIED",
+  "limits": [
+    "No installed HIS, clinical database, running hospital service, credentials or external clinical delivery were changed.",
+    "LIS/PACS and nominal hospital validators remain unknown.",
+    "The real pilot still needs its selected content/flows, approved endpoints and mappings, target workload/restore/alerts and named acceptance."
+  ]
+}

@@ -21,8 +21,9 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    # Coverage (~9 min) plus the PostgreSQL suite and the log stack check: 10 to 15 min depending on the runner.
-    timeout-minutes: 25
+    # The hospital planner unit coverage took 12m13s on a hosted runner;
+    # leave time for PostgreSQL coverage, the remaining checks and the build.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:

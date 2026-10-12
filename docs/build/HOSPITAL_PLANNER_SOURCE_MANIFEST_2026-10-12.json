@@ -4435,5 +4435,14 @@
       "path": "vitest.postgres.config.ts",
       "sha256": "0c972a5b4c910c2e5f257e6321c902d8230fe43bbf8405897a240e9cc1a057ca"
     }
-  ]
+  ],
+  "snapshotApplicability": {
+    "status": "SUPERSEDED_VALIDATION_INPUTS_AFTER_FIRST_REMOTE_CI",
+    "capturedCandidateCommit": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+    "capturedSourceFingerprintSha256": "fbf9a702b9d2b6fd9808ad334d09cfda01fc1a84444b71fdb23316e09493bab5",
+    "currentFollowup": "HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json",
+    "currentManifest": "HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "currentCandidateFullCICertified": false,
+    "meaning": "Original fields and results are preserved at their captured inputs. Only analytics test clock and CI duration change in the subsequent candidate; unchanged HIS focused proofs retain their scopes."
+  }
 }
