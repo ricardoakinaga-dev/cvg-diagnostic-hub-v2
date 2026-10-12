@@ -33,7 +33,11 @@ Todo conteúdo relevante usa uma destas marcas:
 
 Uma decisão documental não transforma uma hipótese operacional em fato. Perguntas clínicas e de governança permanecem no registro de perguntas abertas e nos gates de produção.
 
-## Validação corrente da fixture de UX — 12/10/2026
+## Correção corrente do teste de privacidade de alertas — 12/10/2026
+
+O [teste de alerta crítico](build/HOSPITAL_PLANNER_ALERT_PRIVACY_TEST_FOLLOWUP_2026-10-12.md) agora aceita o UUID legítimo que colidiu com um fragmento de telefone sintético e exige a estrutura completa da mensagem. Os 14 testes passaram e três alterações temporárias do produtor com PII foram rejeitadas, sem mudar produto ou guards. Apenas esse teste difere no [manifesto atual](build/HOSPITAL_PLANNER_ALERT_PRIVACY_TEST_SOURCE_MANIFEST_2026-10-12.json). A CI 38214466428 permanece FAIL; a nova CI e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Piloto e gates no alvo continuam pendentes.
+
+## Validação anterior da fixture de UX — captura de 12/10/2026
 
 A [correção da sequência e das expectativas de acesso](build/HOSPITAL_PLANNER_UX_FIXTURE_FOLLOWUP_2026-10-12.md) preserva o cadastro, busca de paciente além dos primeiros 100, criação do exame e revogação de sessão. Seis casos de UX e três checks da Home passaram no executor canônico, sem retries. Só o teste de UX mudou no [manifesto atual](build/HOSPITAL_PLANNER_UX_FIXTURE_SOURCE_MANIFEST_2026-10-12.json); produto e guards permanecem iguais. A CI 38209256914 continua FAIL, e a nova rodada e imagens serão ligadas ao novo commit no [PR #78](https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78). Capturas anteriores e aceite hospitalar são preservados.
 
