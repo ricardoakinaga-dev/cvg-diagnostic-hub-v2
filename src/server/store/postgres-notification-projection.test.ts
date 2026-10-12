@@ -32,6 +32,36 @@ function clientReturning(rowCount = 1) {
 }
 
 describe("durable notification projection seam", () => {
+  it("does not serialize unchanged shared history during an unrelated clinical command", async () => {
+    const history = Array.from({ length: 1_000 }, (_, index) => Object.freeze(notification({ id: `historical-${index}` })));
+    Object.freeze(history);
+    const before = { ...createDemoState("postgres-projection-test-password"), notifications: history };
+    const after: StoreState = { ...before, users: [...before.users] };
+    const { client, query } = clientReturning();
+    const serialize = vi.spyOn(JSON, "stringify");
+    try {
+      await projectDurableNotificationRows(client, before, after);
+      expect(query).not.toHaveBeenCalled();
+      expect(serialize.mock.calls.length).toBe(0);
+    } finally { serialize.mockRestore(); }
+  });
+
+  it("projects a new delivery without serializing the shared history while still comparing cloned entries", async () => {
+    const history = Array.from({ length: 1_000 }, (_, index) => Object.freeze(notification({ id: `historical-${index}` })));
+    Object.freeze(history);
+    const before = { ...createDemoState("postgres-projection-test-password"), notifications: history };
+    const after: StoreState = { ...before, notifications: [{ ...history[0] }, ...history.slice(1), notification()] };
+    const { client, query } = clientReturning();
+    const serialize = vi.spyOn(JSON, "stringify");
+    try {
+      await projectDurableNotificationRows(client, before, after);
+      expect(query).toHaveBeenCalledTimes(2);
+      expect(query.mock.calls[1]?.[0]).toContain("INSERT INTO notifications");
+      expect(query.mock.calls[1]?.[1]?.[0]).toBe("notification-projection-test");
+      expect(serialize.mock.calls.length).toBe(2);
+    } finally { serialize.mockRestore(); }
+  });
+
   it("projects the recipient before inserting a new notification", async () => {
     const before = createDemoState("postgres-projection-test-password");
     const after: StoreState = { ...before, notifications: [notification()] };

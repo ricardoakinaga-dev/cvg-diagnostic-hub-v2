@@ -11,10 +11,12 @@ export async function projectDurableNotificationRows(
   before: StoreState,
   after: StoreState
 ): Promise<void> {
+  // Clinical commands preserve this immutable collection when no delivery changed.
+  if (before.notifications === after.notifications) return;
   const previousNotifications = new Map(before.notifications.map((notification) => [notification.id, notification]));
   for (const notification of after.notifications) {
     const previous = previousNotifications.get(notification.id);
-    if (previous && JSON.stringify(previous) === JSON.stringify(notification)) continue;
+    if (previous === notification || (previous && JSON.stringify(previous) === JSON.stringify(notification))) continue;
 
     const recipient = after.users.find((user) => user.id === notification.recipientUserId);
     if (!recipient) throw new Error(`POSTGRES_NOTIFICATION_RECIPIENT_MISSING:${notification.id}`);

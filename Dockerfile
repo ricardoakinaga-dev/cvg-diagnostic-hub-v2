@@ -20,7 +20,9 @@ WORKDIR /app
 # Public Next.js values are frozen by `next build`; derive them from the same
 # institutional timezone that Compose supplies to app and worker at runtime.
 ARG APP_TIMEZONE=America/Sao_Paulo
+ARG NEXT_BUILD_WORKERS=2
 ENV NODE_ENV=production \
+    NEXT_BUILD_WORKERS=$NEXT_BUILD_WORKERS \
     APP_TIMEZONE=$APP_TIMEZONE \
     NEXT_PUBLIC_HOSPITAL_TIMEZONE=$APP_TIMEZONE
 

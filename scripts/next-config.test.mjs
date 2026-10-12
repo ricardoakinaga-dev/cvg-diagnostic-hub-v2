@@ -7,14 +7,31 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
-function loadConfig(origins) {
+function loadConfig(origins, workers) {
   const env = { ...process.env };
   delete env.NEXT_ALLOWED_DEV_ORIGINS;
+  delete env.NEXT_BUILD_WORKERS;
   if (origins !== undefined) env.NEXT_ALLOWED_DEV_ORIGINS = origins;
+  if (workers !== undefined) env.NEXT_BUILD_WORKERS = workers;
   return JSON.parse(execFileSync(process.execPath, ["--input-type=module", "-e",
-    "import config from './next.config.mjs'; console.log(JSON.stringify({ origins: config.allowedDevOrigins, headers: await config.headers() }));"
-  ], { cwd: root, env, encoding: "utf8" }));
+    "import config from './next.config.mjs'; console.log(JSON.stringify({ origins: config.allowedDevOrigins, headers: await config.headers(), buildWorkers: config.experimental.cpus }));"
+  ], { cwd: root, env, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
 }
+
+test("build workers are bounded independently of host CPU count", () => {
+  assert.equal(loadConfig().buildWorkers, 2);
+  for (const workers of ["1", "4", "16"]) {
+    const configured = loadConfig(undefined, workers);
+    assert.equal(configured.buildWorkers, Number(workers));
+    assert.deepEqual(configured.headers, loadConfig().headers);
+  }
+});
+
+test("invalid build budgets are rejected before starting a build", () => {
+  for (const workers of ["", "0", "-1", "1.5", "17", "NaN", "02", " 2 "]) {
+    assert.throws(() => loadConfig(undefined, workers), /NEXT_BUILD_WORKERS/);
+  }
+});
 
 test("dev origins default to loopback without a machine-specific LAN address", () => {
   assert.deepEqual(loadConfig().origins, ["localhost", "127.0.0.1"]);
