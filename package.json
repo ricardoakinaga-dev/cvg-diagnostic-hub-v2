@@ -77,17 +77,17 @@
     "validate": "npm run typecheck && npm run lint && npm run test:config && npm run test:coverage && npm run validate:docs && npm run validate:openapi && npm run validate:traceability && npm run validate:migrations"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.1146.0",
-    "next": "16.3.8",
+    "@aws-sdk/client-s3": "^3.1149.0",
+    "next": "16.4.0",
     "pg": "^8.23.1",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "zod": "^4.6.5"
+    "zod": "^4.6.6"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "1.55.1",
-    "@redocly/cli": "2.57.0",
+    "@redocly/cli": "2.62.1",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^22.20.5",
