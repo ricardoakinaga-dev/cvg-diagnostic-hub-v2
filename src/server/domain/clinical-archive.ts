@@ -9,6 +9,7 @@ import {
   type ClinicalArchiveRow,
   type ClinicalArchiveSummary,
   type DiagnosticService,
+  type ExamDefinitionSnapshot,
   type StoreState
 } from "./models";
 import {
@@ -105,6 +106,7 @@ export function purgeAuditEvent(summary: ClinicalArchivePurgeSummary, now: Date)
 export function assertBoundedArchiveQuery(query: ClinicalArchiveQuery): void {
   if (query.limit !== undefined && (!Number.isSafeInteger(query.limit) || query.limit <= 0)) throw new Error("CLINICAL_ARCHIVE_QUERY_INVALID_LIMIT");
   if (query.offset !== undefined && (!Number.isSafeInteger(query.offset) || query.offset < 0)) throw new Error("CLINICAL_ARCHIVE_QUERY_INVALID_OFFSET");
+  if (query.cursor && (!Number.isFinite(Date.parse(query.cursor.updatedAt)) || !query.cursor.requestId || query.cursor.requestId.length > 200 || query.offset !== undefined)) throw new Error("CLINICAL_ARCHIVE_QUERY_INVALID_CURSOR");
   if (query.patientId === undefined && query.requestId === undefined && query.limit === undefined) throw new Error("CLINICAL_ARCHIVE_QUERY_UNBOUNDED");
 }
 
@@ -120,7 +122,7 @@ export function archivedEntitiesOf<T>(rows: readonly ClinicalArchiveRow[], colle
 }
 
 interface ArchivedRequestShape { id: string; requestCode: string; patientId: string; encounterId: string; requestingDepartmentCode: string; updatedAt: string }
-interface ArchivedItemShape { id: string; serviceId: string; departmentCode: string; completedAt?: string }
+interface ArchivedItemShape { id: string; serviceId: string; departmentCode: string; completedAt?: string; definitionSnapshot?: ExamDefinitionSnapshot }
 interface ArchivedResultShape { id: string; itemId: string }
 interface ArchivedVersionShape { id: string; resultId: string }
 interface ArchivedAttachmentShape { resultVersionId: string }
@@ -155,17 +157,18 @@ export function archiveEntries(rows: readonly ClinicalArchiveRow[], services: re
     const byServiceId = new Map<string, ClinicalArchiveEntry["services"][number]>();
     for (const item of items) {
       const service = serviceById.get(item.serviceId);
-      const code = service?.code ?? item.serviceId;
+      const code = item.definitionSnapshot?.definition.code ?? service?.code ?? item.serviceId;
       const attachments = attachmentsByItem.get(item.id) ?? 0;
       const known = byServiceId.get(item.serviceId);
       if (known) { known.attachmentCount += attachments; continue; }
-      const summary = { code, name: service?.name ?? item.serviceId, departmentCode: item.departmentCode, attachmentCount: attachments };
+      const summary = { code, name: item.definitionSnapshot?.definition.name ?? service?.name ?? item.serviceId, departmentCode: item.departmentCode, attachmentCount: attachments };
       byServiceId.set(item.serviceId, summary);
       archivedServices.push(summary);
     }
     const completedAt = items.reduce((latest, item) => (item.completedAt && item.completedAt > latest ? item.completedAt : latest), request.updatedAt);
     entries.push({ updatedAt: request.updatedAt, entry: {
       requestId,
+      updatedAt: request.updatedAt,
       requestCode: request.requestCode,
       patientId: request.patientId,
       encounterId: request.encounterId,

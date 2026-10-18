@@ -2,8 +2,13 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { QueueItem, ResultView } from "@cvg/contracts";
-import { QueueBoard } from "./queue-board";
+import { QueueBoard as ActualQueueBoard } from "./queue-board";
+import { rolePermissions } from "@/server/security/authorization";
 import * as apiClient from "./api-client";
+
+function QueueBoard(props: Parameters<typeof ActualQueueBoard>[0]) {
+  return <ActualQueueBoard permissions={rolePermissions[props.role === "VET" ? "VETERINARIAN" : props.role]} {...props} />;
+}
 
 export const queueItem = (overrides: Partial<QueueItem> = {}): QueueItem => ({
   id: "item-1", requestId: "request-1", status: "RECEIVED", workflowType: "LABORATORY", priority: "ROUTINE", version: 7, currentSampleId: "sample-1", dueAt: "2026-10-03T12:00:00Z", createdAt: "2026-10-03T10:00:00Z", requestCode: "EX-1", nextAction: "Iniciar processamento", overdue: false,

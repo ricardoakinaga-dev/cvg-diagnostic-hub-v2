@@ -24,6 +24,20 @@ describe("critical result readiness (D-056)", () => {
     expect(criticalResultReadiness(state, approved, now).policy).toEqual({ status: "ACTIVE", version: "v1", approvalRef: "ATA-3" });
   });
 
+  it("counts an active SUPERADMIN as an administrator and a clinical requester, preserving inactive exclusions", () => {
+    const base = createDemoState("readiness-password");
+    const users: User[] = base.users.map((user) => user.role === "ADMIN"
+      ? { ...user, role: "SUPERADMIN", onCall: true }
+      : ["VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(user.role) ? { ...user, onCall: true } : user);
+    const environment = { ...approved, CRITICAL_POLICY_IN_APP_ONLY_APPROVAL_REF: "ATA-SUPER" };
+    const readiness = criticalResultReadiness({ users }, environment, now);
+    const superadmin = users.find((user) => user.role === "SUPERADMIN")!;
+    expect(readiness).toMatchObject({ administrators: 1, ready: true });
+    expect(readiness.onCall.departments.find((department) => department.departmentCode === superadmin.departmentCode)).toMatchObject({ requesters: 1, onCall: 1 });
+    const inactive = criticalResultReadiness({ users: users.map((user) => user.role === "SUPERADMIN" ? { ...user, active: false } : user) }, environment, now);
+    expect(inactive).toMatchObject({ administrators: 0, ready: false });
+  });
+
   it("is ready with the approved policy, WhatsApp or a named in-app-only acceptance, and someone on call in every requesting department", () => {
     const base = createDemoState("readiness-password");
     const onCall = (user: User) => ({ ...user, onCall: true });

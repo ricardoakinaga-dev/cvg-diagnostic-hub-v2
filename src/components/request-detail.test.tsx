@@ -24,6 +24,30 @@ describe("RequestDetail", () => {
     vi.restoreAllMocks();
   });
 
+  it("removes an earlier clinical context when the request is denied during reconciliation", async () => {
+    let denied = false;
+    vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path) => {
+      if (path.startsWith("/diagnostic-requests/")) { if (denied) throw new apiClient.ApiClientError(404, { error: { code: "SCOPE_DENIED" } }); return request as never; }
+      if (path.startsWith("/timeline")) { if (!denied) throw new apiClient.ApiClientError(503, {}); return [] as never; }
+      return { user: { id: "reader", role: "VIEWER", permissions: [] } } as never;
+    });
+    render(<RequestDetail requestId="request-1" />); await screen.findByText("Hemograma"); denied = true;
+    fireEvent.click(screen.getByRole("button", { name: "Reconciliar visão" }));
+    await screen.findByRole("heading", { name: "Contexto indisponível" });
+    expect(screen.queryByText("Hemograma")).not.toBeInTheDocument(); expect(screen.queryByText(/Thor em acompanhamento/)).not.toBeInTheDocument(); expect(screen.queryByText(/HIS-THOR/)).not.toBeInTheDocument();
+  });
+
+  it("hides the preceding request during route change and offers retry if the new context fails", async () => {
+    vi.spyOn(apiClient, "apiFetch").mockImplementation(async (path) => {
+      if (path === "/diagnostic-requests/request-1") return request as never;
+      if (path === "/diagnostic-requests/request-2") throw new apiClient.ApiClientError(503, {});
+      if (path.startsWith("/timeline")) return [] as never;
+      return { user: { id: "reader", role: "VIEWER", permissions: [] } } as never;
+    });
+    const ui = render(<RequestDetail requestId="request-1" />); await screen.findByText("Hemograma"); ui.rerender(<RequestDetail requestId="request-2" />);
+    expect(screen.queryByText("Hemograma")).not.toBeInTheDocument(); await screen.findByRole("heading", { name: "Contexto indisponível" }); expect(screen.getByRole("button", { name: "Tentar novamente" })).toBeInTheDocument(); expect(screen.queryByText(/HIS-THOR/)).not.toBeInTheDocument();
+  });
+
   it("joins request and timeline context and keeps terminal items visible", async () => {
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
       if (path === "/diagnostic-requests/request-1") return Promise.resolve(request) as never;
@@ -59,6 +83,7 @@ describe("RequestDetail", () => {
     let timelineAttempts = 0;
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
       if (path === "/diagnostic-requests/request-1") return Promise.resolve(request) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "VIEWER" } }) as never;
       timelineAttempts += 1;
       if (timelineAttempts > 1) return Promise.resolve([]) as never;
       return Promise.reject(new Error("timeline unavailable")) as never;
@@ -89,15 +114,15 @@ describe("RequestDetail", () => {
 
   it("does not let an obsolete request response replace the active route", async () => {
     const pending: Array<{ path: string; resolve: (value: unknown) => void }> = [];
-    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => new Promise((resolve) => {
+    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => path === "/session/me" ? Promise.resolve({ user: { role: "VIEWER" } }) as never : new Promise((resolve) => {
       pending.push({ path, resolve });
     }) as never);
     const secondRequest = { ...request, id: "request-2", requestCode: "EX-0002", patient: { ...request.patient, displayName: "Mel" } };
 
     const { rerender } = render(<RequestDetail requestId="request-1" />);
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(3));
     rerender(<RequestDetail requestId="request-2" />);
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(4));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(6));
 
     await act(async () => {
       pending.find(({ path }) => path === "/diagnostic-requests/request-2")?.resolve(secondRequest);

@@ -158,11 +158,14 @@ describe("PostgresStore clinical archive", () => {
 
     const entries = await store.readClinicalArchive({ patientId: "patient-thor", limit: 5 });
     expect(entries).toEqual([expect.objectContaining({ requestId: "request-old", archivedAt: "2026-10-08T12:00:00.000Z", services: [{ code: "HEMOGRAM", name: "Hemograma", departmentCode: "LABORATORY", attachmentCount: 0 }] })]);
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("data->>'patientId' = $1"), ["patient-thor", null, 5, 0]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("data->>'patientId' = $1"), ["patient-thor", null, 5, 0, null, null]);
     await store.readClinicalArchive({ patientId: "patient-thor" });
-    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("LIMIT $3::int OFFSET $4::int"), ["patient-thor", null, null, 0]);
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("LIMIT $3::int OFFSET $4::int"), ["patient-thor", null, null, 0, null, null]);
     await store.readClinicalArchive({ patientId: "patient-thor", limit: 100, offset: 200 });
-    expect(pool.query).toHaveBeenCalledWith(expect.any(String), ["patient-thor", null, 100, 200]);
+    expect(pool.query).toHaveBeenCalledWith(expect.any(String), ["patient-thor", null, 100, 200, null, null]);
+    await store.readClinicalArchive({ patientId: "patient-thor", limit: 5, cursor: { updatedAt: "2024-06-01T12:00:00.000Z", requestId: "request-old" } });
+    expect(pool.query).toHaveBeenCalledWith(expect.stringContaining("request_id > $6::text"), ["patient-thor", null, 5, 0, "2024-06-01T12:00:00.000Z", "request-old"]);
+    await expect(store.readClinicalArchive({ patientId: "patient-thor", cursor: { updatedAt: "invalid", requestId: "r" } })).rejects.toThrow("CLINICAL_ARCHIVE_QUERY_INVALID_CURSOR");
     await expect(store.readClinicalArchive({ patientId: "patient-thor", offset: -1 })).rejects.toThrow("CLINICAL_ARCHIVE_QUERY_INVALID_OFFSET");
     const rows = await store.readArchivedRequest("request-old");
     expect(rows?.map((row) => row.collection)).toEqual(["requests", "items"]);
@@ -244,7 +247,7 @@ describe("clinical archive SQL helpers", () => {
   it("returns nothing when no archived request matches and converts string dates", async () => {
     const none = { query: vi.fn(async () => ({ rows: [], rowCount: 0 })) };
     expect(await readClinicalArchiveRows(none, { limit: 5 })).toEqual([]);
-    expect(none.query).toHaveBeenCalledWith(expect.any(String), [null, null, 5, 0]);
+    expect(none.query).toHaveBeenCalledWith(expect.any(String), [null, null, 5, 0, null, null]);
     const withRow = { query: vi.fn(async (text: string) => (text.includes("SELECT request_id FROM cvg_clinical_archive WHERE collection") ? { rows: [{ request_id: "r1" }], rowCount: 1 } : { rows: [{ request_id: "r1", collection: "requests", entity_key: "r1", position: 3, data: {}, archived_at: "2026-10-08T12:00:00.000Z", archive_batch: "b" }], rowCount: 1 })) };
     expect(await readClinicalArchiveRows(withRow, { limit: 5, requestId: "r1" })).toEqual([{ requestId: "r1", collection: "requests", entityKey: "r1", position: 3, data: {}, archivedAt: "2026-10-08T12:00:00.000Z", archiveBatch: "b" }]);
     expect(await readArchivedRequestRows({ query: vi.fn(async () => ({ rows: [], rowCount: 0 })) }, "r1")).toBeUndefined();

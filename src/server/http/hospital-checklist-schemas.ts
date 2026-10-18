@@ -1,0 +1,16 @@
+import { z } from "zod";
+import { PRIORITIES, ROLES } from "@cvg/contracts";
+const id = z.string().min(1).max(100); const expectedVersion = z.number().int().positive(); const date = z.iso.datetime({ offset: true });
+const code = z.string().regex(/^[A-Za-z][A-Za-z0-9_]{1,59}$/); const name = z.string().trim().min(1).max(200);
+const step = z.object({ code, label: name, required: z.boolean(), evidenceRequired: z.boolean() }).strict();
+const steps = z.array(step).min(1).max(100).refine((values) => new Set(values.map((entry) => entry.code)).size === values.length);
+const clinicalProcess = z.object({ modality: z.enum(["CARE", "PROCEDURE"]), allowedExecutorRoles: z.array(z.enum(ROLES)).min(1).max(9).refine((values) => new Set(values).size === values.length), clinicalSystemReference: z.string().trim().min(1).max(500), confirmationPolicyReference: z.string().trim().min(1).max(500) }).strict();
+export const hospitalChecklistCreateSchema = z.object({ code, name, departmentCode: z.string().min(1).max(60), careContextRequired: z.boolean(), steps, clinicalProcess: clinicalProcess.optional() }).strict();
+export const hospitalChecklistPatchSchema = z.object({ name: name.optional(), careContextRequired: z.boolean().optional(), steps: steps.optional(), clinicalProcess: clinicalProcess.nullable().optional(), expectedVersion }).strict();
+export const hospitalChecklistApprovalSchema = z.object({ expectedVersion }).strict();
+export const hospitalChecklistStepSchema = z.object({ stepCode: code, command: z.enum(["DONE", "VOID"]), evidenceText: z.string().trim().max(2000).optional(), reason: z.string().trim().min(1).max(500).optional(), expectedVersion }).strict();
+export const hospitalChecklistFiltersSchema = z.object({ departmentCode: z.string().min(1).max(60).optional(), status: z.enum(["DRAFT", "APPROVED", "RETIRED"]).optional(), query: z.string().trim().max(200).optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() }).strict();
+export const hospitalRecurrenceCreateSchema = z.object({ templateId: id, departmentCode: z.string().min(1).max(60), patientId: id.optional(), encounterId: id.optional(), title: name, priority: z.enum(PRIORITIES), responsibleUserId: id.optional(), startAt: date, intervalMinutes: z.number().int().min(1).max(525_600), endAt: date.optional() }).strict();
+export const hospitalRecurrencePatchSchema = z.object({ title: name.optional(), priority: z.enum(PRIORITIES).optional(), responsibleUserId: id.nullable().optional(), endAt: date.nullable().optional(), active: z.boolean().optional(), expectedVersion }).strict();
+export const hospitalRecurrenceFiltersSchema = z.object({ departmentCode: z.string().min(1).max(60).optional(), patientId: id.optional(), active: z.boolean().optional(), limit: z.number().int().min(1).max(100).optional(), cursor: z.string().max(2000).optional() }).strict();
+export const hospitalRecurrenceGenerationSchema = z.object({ asOf: date.optional(), limit: z.number().int().min(1).max(100).optional() }).strict();

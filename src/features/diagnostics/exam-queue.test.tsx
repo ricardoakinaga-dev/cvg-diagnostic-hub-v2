@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { rolePermissions } from "@/server/security/authorization";
 import { ExamQueue } from "./exam-queue";
 import * as apiClient from "@/components/api-client";
 
@@ -37,7 +38,7 @@ describe("ExamQueue", () => {
 
   it("opens a contextual drawer without leaving the queue and closes it with Escape", async () => {
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", departmentCode: "LABORATORY" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", permissions: rolePermissions.LAB_TECH, departmentCode: "LABORATORY" } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
     const queueFetchMock = vi.spyOn(apiClient, "apiFetchWithMeta").mockImplementation((path) => {
@@ -70,7 +71,7 @@ describe("ExamQueue", () => {
 
   it("keeps the full operational context and primary action in the mobile card renderer", async () => {
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", departmentCode: "LABORATORY" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", permissions: rolePermissions.LAB_TECH, departmentCode: "LABORATORY" } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
     const queueFetchMock = vi.spyOn(apiClient, "apiFetchWithMeta").mockImplementation((path) => {
@@ -116,7 +117,7 @@ describe("ExamQueue", () => {
     const secondRadiologyItem = { ...radiologyItem, id: "item-rx-2", requestId: "request-rx-2", requestCode: "EX-RX-0002", patient: { ...radiologyItem.patient, id: "patient-rx-2", displayName: "Bento" } };
     const secondOperationsItem = { ...operationsItem, id: "item-op-2", requestId: "request-op-2", requestCode: "EX-OP-0002", patient: { ...operationsItem.patient, id: "patient-op-2", displayName: "Jade" } };
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "MANAGER", departmentCode: "OPERATIONS", managedDepartmentCodes: ["LABORATORY", "RADIOLOGY"] } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "MANAGER", permissions: rolePermissions.MANAGER, departmentCode: "OPERATIONS", managedDepartmentCodes: ["LABORATORY", "RADIOLOGY"] } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
     const queueFetchMock = vi.spyOn(apiClient, "apiFetchWithMeta").mockImplementation((path) => {
@@ -155,7 +156,7 @@ describe("ExamQueue", () => {
     };
     vi.stubGlobal("matchMedia", vi.fn(() => media));
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", departmentCode: "LABORATORY" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", permissions: rolePermissions.LAB_TECH, departmentCode: "LABORATORY" } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
     vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue({ data: [item], meta: { total: 1 } } as never);
@@ -179,7 +180,7 @@ describe("ExamQueue", () => {
 
   it("reports partial queue failures and a mixed pagination failure without hiding visible work", async () => {
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "MANAGER", departmentCode: "LABORATORY", managedDepartmentCodes: ["RADIOLOGY", "ULTRASOUND"] } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "MANAGER", permissions: rolePermissions.MANAGER, departmentCode: "LABORATORY", managedDepartmentCodes: ["RADIOLOGY", "ULTRASOUND"] } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
     const queueFetchMock = vi.spyOn(apiClient, "apiFetchWithMeta").mockImplementation((path) => {
@@ -202,7 +203,7 @@ describe("ExamQueue", () => {
   it("fails closed when every queue is unavailable and retries after the dependency returns", async () => {
     let attempts = 0;
     vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", departmentCode: "LABORATORY" } }) as never;
+      if (path === "/session/me") return Promise.resolve({ user: { role: "LAB_TECH", permissions: rolePermissions.LAB_TECH, departmentCode: "LABORATORY" } }) as never;
       return Promise.reject(new Error(`unexpected request: ${path}`)) as never;
     });
     vi.spyOn(apiClient, "apiFetchWithMeta").mockImplementation(() => {

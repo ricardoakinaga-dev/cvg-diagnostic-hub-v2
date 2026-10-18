@@ -4,10 +4,14 @@ import { useId, useMemo, useRef, useState } from "react";
 import type { ItemState, Priority, SessionRole } from "@cvg/contracts";
 import { Icon } from "@/components/ui-icons";
 import { QueueBoardQuickAdd } from "@/components/queue-board-quick-add";
+import type { CreatedRequest } from "@/components/request-created-notice";
+import { hospitalDateKey } from "@/lib/hospital-time";
 import { Avatar, DepartmentIcon, PriorityIcon, StateIcon } from "./icons";
 import { NextActionButtons, WorkItemKey, WorkItemProperties, StatePill, allowedTransitions } from "./properties";
 import type { WorkflowActionKind } from "@/components/workflow-action";
-import { PRIORITY_LABELS, STATE_LABELS, departmentLabel, formatDateTime, formatDue, workItemTitle, type DisplayOptions, type WorkItem, type WorkItemGroup } from "./model";
+import { PRIORITY_LABELS, STATE_LABELS, formatDateTime, formatDue, workItemTitle, type DisplayOptions, type WorkItem, type WorkItemGroup } from "./model";
+import { useWorkflowPermissions } from "@/components/workflow-permissions";
+import { useDepartmentName } from "@/components/department-labels";
 
 export interface LayoutProps {
   groups: WorkItemGroup[];
@@ -21,7 +25,7 @@ export interface LayoutProps {
   onAction: (item: WorkItem, action: WorkflowActionKind) => void;
   onCreate: () => void;
   /** Scope for the inline quick add; managers are limited to their sectors. */
-  quickAdd: { departments: string[]; onCreated: () => void };
+  quickAdd: { departments: string[]; onCreated: (request: CreatedRequest) => void };
 }
 
 /** Plane's inline "New work item" row: it opens a compact form in place. */
@@ -91,6 +95,7 @@ export function ListLayout({ groups, display, role, peekId, busy, canCreate, onP
 /* ---------- Board ---------- */
 
 export function BoardLayout({ groups, display, role, peekId, busy, canCreate, onPeek, onMove, onAction, onCreate, quickAdd }: LayoutProps) {
+  const permissions = useWorkflowPermissions();
   const dragged = useRef<WorkItem | undefined>(undefined);
   const [overColumn, setOverColumn] = useState<string>();
   const [collapsed, setCollapsed] = useState<string[]>([]);
@@ -99,7 +104,7 @@ export function BoardLayout({ groups, display, role, peekId, busy, canCreate, on
     {groups.map((group) => {
       const isCollapsed = collapsed.includes(group.id);
       const target = group.value as ItemState;
-      const canDrop = (item?: WorkItem) => Boolean(statusBoard && item && item.status !== target && allowedTransitions(item, role).some((transition) => transition.target === target));
+      const canDrop = (item?: WorkItem) => Boolean(statusBoard && item && item.status !== target && allowedTransitions(item, role, permissions).some((transition) => transition.target === target));
       if (isCollapsed) {
         return <button key={group.id} type="button" className="board-column-collapsed" onClick={() => setCollapsed((current) => current.filter((id) => id !== group.id))} aria-label={`Expandir ${group.label}`}><GroupIcon group={group} /><span>{group.label}</span><span className="group-count">{group.items.length}</span></button>;
       }
@@ -116,7 +121,7 @@ export function BoardLayout({ groups, display, role, peekId, busy, canCreate, on
         </header>
         <div className="board-cards" role="list" aria-label={`Exames: ${group.label}`}>
           {group.items.map((item) => {
-            const draggable = statusBoard && !busy && allowedTransitions(item, role).length > 0;
+            const draggable = statusBoard && !busy && allowedTransitions(item, role, permissions).length > 0;
             return <article key={item.id} role="listitem" data-item-row="" data-request-code={item.requestCode} className={`board-card${peekId === item.id ? " is-peeked" : ""}${item.overdue ? " is-overdue" : ""}`} draggable={draggable}
               onDragStart={(event) => { dragged.current = item; event.dataTransfer.setData("text/plain", item.id); event.dataTransfer.effectAllowed = "move"; }}
               onDragEnd={() => { dragged.current = undefined; setOverColumn(undefined); }}
@@ -139,44 +144,47 @@ export function BoardLayout({ groups, display, role, peekId, busy, canCreate, on
 const weekdayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
 function startOf(mode: "month" | "week", date: Date): Date {
-  return mode === "month" ? new Date(date.getFullYear(), date.getMonth(), 1) : new Date(date.getFullYear(), date.getMonth(), date.getDate() - date.getDay());
+  return mode === "month" ? new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1)) : new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - date.getUTCDay()));
 }
 
 function dayKey(date: Date): string {
-  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+  return date.toISOString().slice(0, 10);
 }
+
+function hospitalToday(): Date { return new Date(`${hospitalDateKey(new Date())}T00:00:00.000Z`); }
+function civilDateLabel(date: Date): string { return date.toLocaleDateString("pt-BR", { timeZone: "UTC" }); }
 
 export function CalendarLayout({ items, role, peekId, onPeek, onMove, busy }: { items: WorkItem[]; role: SessionRole; peekId?: string; onPeek: (item: WorkItem) => void; onMove: (item: WorkItem, target: ItemState) => void; busy: boolean }) {
   const calendarId = useId();
   const [mode, setMode] = useState<"month" | "week">("month");
-  const [anchor, setAnchor] = useState(() => startOf("month", new Date()));
+  const [anchor, setAnchor] = useState(() => startOf("month", hospitalToday()));
   const [expandedDays, setExpandedDays] = useState<string[]>([]);
-  const today = new Date();
+  const today = hospitalToday();
   const days = useMemo(() => {
-    if (mode === "week") return Array.from({ length: 7 }, (_, index) => new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + index));
-    const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1 - anchor.getDay());
-    const weeks = Math.ceil((anchor.getDay() + new Date(anchor.getFullYear(), anchor.getMonth() + 1, 0).getDate()) / 7);
-    return Array.from({ length: weeks * 7 }, (_, index) => new Date(start.getFullYear(), start.getMonth(), start.getDate() + index));
+    if (mode === "week") return Array.from({ length: 7 }, (_, index) => new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate() + index)));
+    const start = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), 1 - anchor.getUTCDay()));
+    const weeks = Math.ceil((anchor.getUTCDay() + new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth() + 1, 0)).getUTCDate()) / 7);
+    return Array.from({ length: weeks * 7 }, (_, index) => new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate() + index)));
   }, [anchor, mode]);
   const byDay = useMemo(() => {
     const map = new Map<string, WorkItem[]>();
     for (const item of items) {
       const due = new Date(item.dueAt);
       if (Number.isNaN(due.getTime())) continue;
-      const key = dayKey(due);
+      const key = hospitalDateKey(due);
       map.set(key, [...(map.get(key) ?? []), item]);
     }
     return map;
   }, [items]);
-  const title = mode === "month" ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(anchor) : `${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(days[0])} – ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(days[6])}`;
-  const shift = (step: number) => setAnchor((current) => mode === "month" ? new Date(current.getFullYear(), current.getMonth() + step, 1) : new Date(current.getFullYear(), current.getMonth(), current.getDate() + step * 7));
-  const switchMode = (next: "month" | "week") => { setMode(next); setAnchor(startOf(next, new Date())); };
+  const title = mode === "month" ? new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", month: "long", year: "numeric" }).format(anchor) : `${new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short" }).format(days[0])} – ${new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC", day: "2-digit", month: "short", year: "numeric" }).format(days[6])}`;
+  const shift = (step: number) => setAnchor((current) => mode === "month" ? new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth() + step, 1)) : new Date(Date.UTC(current.getUTCFullYear(), current.getUTCMonth(), current.getUTCDate() + step * 7)));
+  const switchMode = (next: "month" | "week") => { setMode(next); setAnchor(startOf(next, hospitalToday())); };
   return <div className="calendar-layout">
     <div className="calendar-toolbar">
       <h2>{title}</h2>
       <div className="calendar-nav">
         <button type="button" className="icon-button" onClick={() => shift(-1)} aria-label="Período anterior"><Icon name="chevron-left" size={15} /></button>
-        <button type="button" className="header-button" onClick={() => setAnchor(startOf(mode, new Date()))}>Hoje</button>
+        <button type="button" className="header-button" onClick={() => setAnchor(startOf(mode, hospitalToday()))}>Hoje</button>
         <button type="button" className="icon-button" onClick={() => shift(1)} aria-label="Próximo período"><Icon name="chevron-right" size={15} /></button>
         <div className="segmented" role="group" aria-label="Escala do calendário">
           <button type="button" aria-pressed={mode === "month"} className={mode === "month" ? "is-active" : ""} onClick={() => switchMode("month")}>Mês</button>
@@ -192,19 +200,19 @@ export function CalendarLayout({ items, role, peekId, onPeek, onMove, busy }: { 
         {days.slice(week * 7, week * 7 + 7).map((day) => {
           const key = dayKey(day);
           const entries = byDay.get(key) ?? [];
-          const outside = mode === "month" && day.getMonth() !== anchor.getMonth();
+          const outside = mode === "month" && day.getUTCMonth() !== anchor.getUTCMonth();
           const isToday = key === dayKey(today);
           const limit = mode === "month" ? 3 : 12;
           const expanded = expandedDays.includes(key);
           const entriesId = `${calendarId}-${key}`;
-          return <div key={day.toISOString()} role="gridcell" className={`calendar-day${outside ? " is-outside" : ""}${isToday ? " is-today" : ""}`} aria-label={`${day.toLocaleDateString("pt-BR")}: ${entries.length} exames`}>
-            <span className="calendar-date">{day.getDate()}</span>
+          return <div key={day.toISOString()} role="gridcell" className={`calendar-day${outside ? " is-outside" : ""}${isToday ? " is-today" : ""}`} aria-label={`${civilDateLabel(day)}: ${entries.length} exames`}>
+            <span className="calendar-date">{day.getUTCDate()}</span>
             <div id={entriesId} className="calendar-entries">
               {(expanded ? entries : entries.slice(0, limit)).map((item) => <div key={item.id} className={`calendar-entry${peekId === item.id ? " is-peeked" : ""}${item.overdue ? " is-overdue" : ""}`}>
                 <StatePill item={item} role={role} onMove={onMove} showLabel={false} disabled={busy} />
                 <button type="button" onClick={() => onPeek(item)} aria-label={`Abrir ${item.service.name} — ${item.patient.displayName}`}>{item.patient.displayName} · {item.service.name}</button>
               </div>)}
-              {entries.length > limit && <button type="button" className="calendar-more" aria-expanded={expanded} aria-controls={entriesId} aria-label={`${expanded ? "Mostrar menos exames" : `+${entries.length - limit} exames`} em ${day.toLocaleDateString("pt-BR")}`} onClick={() => setExpandedDays((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])}>{expanded ? "Mostrar menos" : `+${entries.length - limit} exames`}</button>}
+              {entries.length > limit && <button type="button" className="calendar-more" aria-expanded={expanded} aria-controls={entriesId} aria-label={`${expanded ? "Mostrar menos exames" : `+${entries.length - limit} exames`} em ${civilDateLabel(day)}`} onClick={() => setExpandedDays((current) => current.includes(key) ? current.filter((value) => value !== key) : [...current, key])}>{expanded ? "Mostrar menos" : `+${entries.length - limit} exames`}</button>}
             </div>
           </div>;
         })}
@@ -218,6 +226,7 @@ export function CalendarLayout({ items, role, peekId, onPeek, onMove, busy }: { 
 type SheetColumn = { id: string; label: string; render: (item: WorkItem) => React.ReactNode; sort?: (item: WorkItem) => string | number };
 
 export function SpreadsheetLayout({ items, role, peekId, onPeek, onMove, busy }: { items: WorkItem[]; role: SessionRole; peekId?: string; onPeek: (item: WorkItem) => void; onMove: (item: WorkItem, target: ItemState) => void; busy: boolean }) {
+  const departmentLabel = useDepartmentName();
   const [sort, setSort] = useState<{ column: string; direction: 1 | -1 }>();
   const columns: SheetColumn[] = [
     { id: "state", label: "Estado", render: (item) => <StatePill item={item} role={role} onMove={onMove} disabled={busy} />, sort: (item) => STATE_LABELS[item.status] },

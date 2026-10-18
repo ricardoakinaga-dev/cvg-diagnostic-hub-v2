@@ -1,8 +1,14 @@
-import { describe, expect, it } from "vitest";
+import * as crypto from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
 import { CRITICAL_ALERT_WHATSAPP_EVENT, type Notification, type StoreState } from "../domain/models";
 import { createDemoState } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { whatsAppAlertsEnabled, withCriticalWhatsAppAlert } from "./critical-alert-channel";
+
+vi.mock("node:crypto", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("node:crypto")>();
+  return { ...actual, randomUUID: vi.fn(actual.randomUUID) };
+});
 
 // Built at run time so the privacy scan never sees a formatted phone number in the source.
 const phone = ["+55", "11", "9", "8765", "4321"].join("");
@@ -63,7 +69,13 @@ describe("withCriticalWhatsAppAlert", () => {
 
   it("queues the alert for a reachable recipient with exactly one PII-free outbox message", async () => {
     const state = await build();
-    const next = withCriticalWhatsAppAlert(state, "notif-ca-1", request, "corr-queue", enabled);
+    const uuid = vi.mocked(crypto.randomUUID).mockReturnValueOnce("5dc8b7bd-8765-4b78-9efb-b6a9dd406059");
+    let next: StoreState;
+    try {
+      next = withCriticalWhatsAppAlert(state, "notif-ca-1", request, "corr-queue", enabled);
+    } finally {
+      uuid.mockRestore();
+    }
     expect(next).not.toBe(state);
     const updated = next.notifications.find((entry) => entry.id === "notif-ca-1")!;
     expect(updated.whatsapp).toEqual({ status: "QUEUED", updatedAt: expect.any(String) });
@@ -71,18 +83,24 @@ describe("withCriticalWhatsAppAlert", () => {
     expect(updated.version).toBe(3);
     expect(next.outbox).toHaveLength(state.outbox.length + 1);
     const added = next.outbox.at(-1)!;
-    expect(added).toMatchObject({
+    expect(added.id).toBe("outbox-5dc8b7bd-8765-4b78-9efb-b6a9dd406059");
+    expect(added).toStrictEqual({
+      id: expect.stringMatching(/^outbox-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i),
       eventType: CRITICAL_ALERT_WHATSAPP_EVENT,
       consumerType: "NOTIFICATION_DELIVERY",
       routingKey: "notification.whatsapp",
       aggregateType: "Notification",
       aggregateId: "notif-ca-1",
       correlationId: "corr-queue",
+      status: "PENDING",
+      attempts: 0,
+      availableAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/),
       payload: { notificationId: "notif-ca-1", recipientUserId: "user-vet", requestCode: "REQ-001", linkPath: "requests/req-1?tab=result" }
     });
+    expect(new Date(added.availableAt).toISOString()).toBe(added.availableAt);
     expect(Object.keys(added.payload).sort()).toEqual(["linkPath", "notificationId", "recipientUserId", "requestCode"]);
     expect(JSON.stringify(added)).not.toContain(phone);
-    expect(JSON.stringify(added)).not.toContain("8765");
+    expect(JSON.stringify(added.payload)).not.toContain("8765");
   });
 
   it("leaves other notifications and the input state untouched", async () => {

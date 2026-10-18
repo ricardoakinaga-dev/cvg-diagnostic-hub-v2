@@ -29,6 +29,8 @@ const SAFE_ERROR_MESSAGES: Record<string, string> = {
   PASSWORD_POLICY: "Esta senha é fraca. Evite repetições, sequências, seu nome ou e-mail e senhas comuns.",
   PASSWORD_RESET_INVALID: "Link de redefinição inválido ou expirado.",
   IDEMPOTENCY_KEY_REUSED: "Esta operação já foi recebida. Atualize os dados antes de tentar novamente.",
+  INTAKE_REJECTION_POLICY_CHANGED: "A política de rejeição mudou. Atualize os motivos antes de confirmar uma nova decisão.",
+  INTAKE_REJECTION_POLICY_UNAVAILABLE: "O motivo aprovado está indisponível. Atualize os motivos ou informe um motivo próprio.",
   NOT_FOUND: "O recurso solicitado não está disponível.",
   CONFLICT: "Este registro já existe ou mudou. Atualize os dados e tente novamente.",
   RATE_LIMITED: "Muitas tentativas em pouco tempo. Aguarde e tente novamente.",

@@ -1,0 +1,12 @@
+import { z } from "zod";
+import { HOSPITAL_TASK_PHASES, PLANNER_VIEW_COLUMNS, PRIORITIES } from "@cvg/contracts";
+const id = z.string().min(1).max(100);
+const sector = z.string().trim().regex(/^[A-Za-z0-9_-]{1,60}$/).transform((value) => value.toUpperCase());
+const date = z.iso.datetime({ offset: true });
+export const plannerViewFiltersSchema = z.object({ departmentCode: sector.optional(), responsibleUserId: id.optional(), typeId: id.optional(), priority: z.enum(PRIORITIES).optional(), phase: z.enum(HOSPITAL_TASK_PHASES).optional(), from: date.optional(), to: date.optional(), planId: id.optional() }).strict().refine((value) => !value.from || !value.to || Date.parse(value.from) <= Date.parse(value.to), "O início do filtro não pode ultrapassar o fim.");
+export const plannerViewDisplaySchema = z.object({ layout: z.enum(["LIST", "BOARD", "TABLE", "CALENDAR"]), orderBy: z.enum(["UPDATED", "PRIORITY", "PLANNED_START"]), direction: z.enum(["ASC", "DESC"]), groupBy: z.enum(["NONE", "DEPARTMENT", "RESPONSIBLE", "TYPE", "PHASE"]), columns: z.array(z.enum(PLANNER_VIEW_COLUMNS)).min(1).max(PLANNER_VIEW_COLUMNS.length) }).strict().refine((value) => new Set(value.columns).size === value.columns.length, "As colunas não podem se repetir.");
+const version = z.number().int().positive().max(999_999_999_999_999).optional();
+const name = z.string().trim().min(1).max(120);
+export const plannerViewCreateSchema = z.object({ name, sharedDepartmentCode: sector.optional(), filters: plannerViewFiltersSchema, display: plannerViewDisplaySchema }).strict();
+export const plannerViewPatchSchema = z.object({ name: name.optional(), sharedDepartmentCode: sector.nullable().optional(), filters: plannerViewFiltersSchema.optional(), display: plannerViewDisplaySchema.optional(), active: z.literal(true).optional(), expectedVersion: version }).strict();
+export const plannerViewDeactivateSchema = z.object({ expectedVersion: version }).strict();

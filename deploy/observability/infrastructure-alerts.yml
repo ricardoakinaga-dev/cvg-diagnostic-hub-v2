@@ -6,6 +6,21 @@ groups:
         for: 2m
         labels: {severity: critical}
         annotations: {summary: "Servidor do Hub ou agente VPN indisponível.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgPostgresExporterDown
+        expr: up{job="cvg-postgres"} == 0 or absent(up{job="cvg-postgres"})
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Exporter PostgreSQL indisponível ou coleta não configurada.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgPostgresConnectionFailed
+        expr: pg_up{job="cvg-postgres"} == 0 or absent(pg_up{job="cvg-postgres"})
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Monitor não consegue conectar ao PostgreSQL com o perfil dedicado.", runbook: "docs/operations/MONITORING.md"}
+      - alert: CvgPostgresCollectorFailed
+        expr: pg_scrape_collector_success{job="cvg-postgres",collector=~"stat_database|stat_bgwriter|stat_archiver"} == 0 or absent(pg_scrape_collector_success{job="cvg-postgres",collector="stat_database"}) or absent(pg_scrape_collector_success{job="cvg-postgres",collector="stat_bgwriter"}) or absent(pg_scrape_collector_success{job="cvg-postgres",collector="stat_archiver"})
+        for: 2m
+        labels: {severity: warning}
+        annotations: {summary: "Coleta de contadores PostgreSQL falhou ou um coletor obrigatório está ausente.", runbook: "docs/operations/MONITORING.md"}
       - alert: CvgHostCollectorStale
         expr: time() - cvg_host_collector_timestamp_seconds > 120 or absent(cvg_host_collector_timestamp_seconds{job="cvg-host"})
         for: 1m

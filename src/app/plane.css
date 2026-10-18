@@ -874,8 +874,8 @@ button.pill:disabled { opacity: 1; cursor: default; }
   .app-frame.sidebar-collapsed > .sidebar .sidebar-footer { padding-inline: 12px; }
   .app-frame.sidebar-collapsed > .sidebar .sidebar-account { justify-content: flex-start; padding-inline: 8px; }
   .sidebar-scrim { position: fixed; z-index: 45; inset: 0; display: block; border: 0; background: rgb(23 23 23 / 30%); }
-  .app-frame > .main-content { grid-column: 1; margin: 0; padding-bottom: 0; }
-  .main-panel { border-width: 1px 0 0; border-radius: 10px 10px 0 0; padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .app-frame > .main-content { grid-column: 1; margin: 0; padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .main-panel { border-width: 1px 0 0; border-radius: 10px 10px 0 0; }
   .page-header { flex-wrap: wrap; padding: 8px 12px; }
   .page-header-actions { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
   .header-search { flex: 1 1 140px; }

@@ -1,6 +1,8 @@
 {
 	admin off
 	auto_https disable_redirects
+	# Literal-IP clients omit SNI; select the existing localhost certificate.
+	default_sni localhost
 }
 
 https://localhost:{$LOCAL_HTTPS_PORT}, https://127.0.0.1:{$LOCAL_HTTPS_PORT} {

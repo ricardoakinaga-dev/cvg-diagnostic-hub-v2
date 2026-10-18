@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ExamDefinitionSnapshot, Permission } from "@cvg/contracts";
 import { ResultView } from "./result-view";
 import * as apiClient from "./api-client";
 
@@ -9,6 +10,7 @@ vi.mock("next/link", () => ({
 }));
 
 const released = {
+  permissions: ["result.view.record", "result.review", "result.draft.edit_own", "result.release", "result.amend", "result.void", "attachment.download", "attachment.upload_session", "attachment.finalize"] as Permission[],
   result: { id: "result-1", lifecycleStatus: "RELEASED", needsReReview: false, version: 4 },
   version: { id: "version-1", sequence: 1, status: "RELEASED" as const, narrative: "Resultado clínico confirmado.", conclusion: "Sem alterações.", authorId: "user-lab", createdAt: "2026-08-23T12:00:00.000Z", releasedAt: "2026-08-23T12:05:00.000Z", critical: false, needsReReview: false, version: 2, content: { value: 7 } },
   item: { id: "item-1", status: "RESULT_AVAILABLE" as const, version: 5, serviceId: "service-xray" },
@@ -50,7 +52,7 @@ const laboratoryDraft = {
   }
 };
 
-function mockReads(data: { result: { id: string }; version: unknown }, calls: Array<[string, RequestInit | undefined]>, reportAttachments: Attachment[] = []) {
+function mockReads(data: { result: { id: string }; version: unknown; permissions?: readonly Permission[] }, calls: Array<[string, RequestInit | undefined]>, reportAttachments: Attachment[] = []) {
   return vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
     calls.push([path, init]);
     if (path === `/results/${data.result.id}`) return Promise.resolve(data) as never;
@@ -482,4 +484,148 @@ describe("ResultView clinical lifecycle actions", () => {
     expect(await screen.findByText(/Este draft ainda usa conteúdo legado/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Liberar resultado" })).not.toBeInTheDocument();
   });
+  it.each([
+    ["VIEWER", []],
+    ["VETERINARIAN", ["result.view.record", "result.review", "attachment.download"]],
+    ["INPATIENT_TEAM", ["result.view.record", "result.review", "attachment.download"]],
+    ["LAB_TECH", ["result.view.record", "result.amend", "result.void", "attachment.download"]],
+    ["RADIOLOGY_TEAM", ["result.view.record", "result.amend", "result.void", "attachment.download"]],
+    ["ULTRASOUND_TEAM", ["result.view.record", "result.amend", "result.void", "attachment.download"]],
+    ["MANAGER", ["result.view.record", "result.review", "result.amend", "result.void", "attachment.download"]],
+    ["SUPERADMIN", ["result.view.record", "result.review", "result.amend", "result.void", "attachment.download"]]
+  ] as const)("shows only %s's effective commands on a released result", async (_role, permissions) => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    mockReads({ ...released, permissions: [...permissions] }, calls);
+    render(<ResultView resultId="result-1" />);
+    await screen.findByText("Resultado clínico confirmado.");
+    const granted = permissions as readonly string[];
+    for (const [permission, label] of [["result.review", "Marcar como revisado"], ["result.amend", "Emendar resultado"], ["result.void", "Invalidar"]]) expect(screen.queryByRole("button", { name: label }) !== null).toBe(granted.includes(permission));
+    expect(screen.queryByRole("button", { name: "Editar draft" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Liberar resultado" })).not.toBeInTheDocument();
+    if (!granted.includes("result.view.record")) expect(calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
+  });
+
+  it.each([undefined, []])("fails closed when permissions or draft ownership are not granted (%s)", async (permissions) => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    mockReads({ ...draft, permissions }, calls);
+    render(<ResultView resultId="result-1" />);
+    await screen.findByText("Draft em edição");
+    for (const name of ["Editar draft", "Liberar resultado", "Enviar anexo", "Invalidar", "Emendar resultado", "Marcar como revisado"]) expect(screen.queryByRole("button", { name })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Liberar como resultado crítico")).not.toBeInTheDocument();
+    expect(calls.filter(([, init]) => init?.method && init.method !== "GET")).toHaveLength(0);
+  });
+
+  it("opens superseded and voided content with its authorship and keeps every historical query read-only", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    const older = { ...released.version, id: "old", sequence: 1, status: "SUPERSEDED" as const, narrative: "Conteúdo antigo preservado.", authorId: "author-old" };
+    const voided = { ...released.version, id: "voided", sequence: 2, status: "VOIDED" as const, narrative: "Conteúdo invalidado preservado.", authorId: "author-void" };
+    const latest = { ...released, permissions: [] as Permission[], result: { ...released.result, currentVersionId: "latest" }, version: { ...released.version, id: "latest", sequence: 3 } };
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+      calls.push([path, init]);
+      if (path === "/results/result-1") return Promise.resolve(latest) as never;
+      if (path === "/results/result-1/versions") return Promise.resolve([latest.version, voided, older]) as never;
+      if (path === "/reports/result-1") return Promise.resolve({ attachments: [] }) as never;
+      if (path === "/results/result-1?versionId=old") return Promise.resolve({ ...latest, version: older }) as never;
+      if (path === "/results/result-1?versionId=voided") return Promise.resolve({ ...latest, version: voided }) as never;
+      return Promise.reject(new Error("unexpected read")) as never;
+    });
+    render(<ResultView resultId="result-1" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir versão 1" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Abrir versão 1" }));
+    expect(await screen.findByText("Conteúdo antigo preservado.")).toBeInTheDocument();
+    expect(screen.getByText("Autoria: author-old · Substituído")).toBeInTheDocument();
+    expect(screen.getByText("Consulta histórica · somente leitura")).toBeInTheDocument();
+    expect(screen.queryByText("Resultado clínico confirmado.")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir versão 2" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Abrir versão 2" }));
+    expect(await screen.findByText("Conteúdo invalidado preservado.")).toBeInTheDocument();
+    expect(screen.getByText("Autoria: author-void · Invalidado")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Invalidar" })).not.toBeInTheDocument();
+    expect(calls.filter(([, init]) => init?.method && init.method !== "GET")).toHaveLength(0);
+  });
+
+  it("shows authorized history while the current amendment draft remains inaccessible", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    const old = { ...released.version, status: "SUPERSEDED" as const, narrative: "Laudo anterior à emenda." };
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+      calls.push([path, init]);
+      if (path === "/results/result-1/versions") return Promise.resolve([old]) as never;
+      if (path === "/results/result-1?versionId=version-1") return Promise.resolve({ ...released, permissions: [], result: { ...released.result, currentVersionId: "private-draft" }, version: old }) as never;
+      return Promise.reject(new apiClient.ApiClientError(404, { error: { code: "NOT_FOUND" } })) as never;
+    });
+    render(<ResultView resultId="result-1" />);
+    expect(await screen.findByText("Laudo anterior à emenda.")).toBeInTheDocument();
+    expect(screen.getByText(/A versão vigente não está disponível para consulta/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Editar draft" })).not.toBeInTheDocument();
+    expect(calls.filter(([, init]) => init?.method && init.method !== "GET")).toHaveLength(0);
+  });
+
+  it("removes the previous clinical content when the selected historical version is denied", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    const mock = mockReads({ ...released, permissions: [] }, calls);
+    const prior = mock.getMockImplementation()!;
+    mock.mockImplementation((path, init) => path.includes("?versionId=") ? Promise.reject(new apiClient.ApiClientError(404, { error: { code: "NOT_FOUND" } })) as never : prior(path, init));
+    render(<ResultView resultId="result-1" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir versão 1" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Abrir versão 1" }));
+    expect(await screen.findByText("Versão indisponível")).toBeInTheDocument();
+    expect(screen.queryByText("Resultado clínico confirmado.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Abrir versão vigente" })).toBeInTheDocument();
+  });
+
+  it("withdraws mutation controls after realtime permission revocation", async () => {
+    const calls: Array<[string, RequestInit | undefined]> = [];
+    let current = released;
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+      calls.push([path, init]);
+      if (path === "/results/result-1") return Promise.resolve(current) as never;
+      if (path === "/results/result-1/versions") return Promise.resolve([current.version]) as never;
+      if (path === "/reports/result-1") return Promise.resolve({ attachments: [] }) as never;
+      return Promise.resolve({}) as never;
+    });
+    render(<ResultView resultId="result-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Emendar resultado" }));
+    expect(screen.getByRole("button", { name: "Confirmar" })).toBeInTheDocument();
+    current = { ...released, permissions: [] };
+    act(() => window.dispatchEvent(new Event("cvg:realtime-updated")));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Emendar resultado" })).not.toBeInTheDocument());
+    expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
+    expect(calls.some(([path]) => path.endsWith("/amend"))).toBe(false);
+  });
+
+  it("renders the recorded laboratory analytes and units without reinterpreting history through today's template", async () => {
+    const historical = { ...released.version, id: "old-lab", status: "SUPERSEDED" as const, narrative: "Painel histórico.", content: { kind: "LABORATORY_STRUCTURED", panelCode: "OLD_PANEL", panelVersion: 1, observations: [{ analyteCode: "OLD_ANALYTE", value: 12, unitCode: "old-unit", flag: "HIGH", referenceRange: { kind: "FIXED", low: 1, high: 2, unitCode: "old-unit" } }] } };
+    const current = { ...released, permissions: [], service: laboratoryDraft.service };
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/results/result-1/versions" ? [historical] : path === "/reports/result-1" ? { attachments: [] } : path.includes("?versionId=") ? { ...current, version: historical } : current) as never);
+    render(<ResultView resultId="result-1" />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Abrir versão 1" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Abrir versão 1" }));
+    await screen.findByText("Painel histórico.");
+    expect(screen.getByRole("rowheader", { name: "OLD_ANALYTE" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "old-unit" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "1 – 2 old-unit" })).toBeInTheDocument();
+    expect(screen.queryByRole("rowheader", { name: /Hemoglobina/ })).not.toBeInTheDocument();
+  });
+
+  it("uses the captured definition even when the response also contains a later live template", async () => {
+    const frozenTemplate = { ...laboratoryDraft.service.resultTemplate, name: "Painel conservado", analytes: [{ ...laboratoryDraft.service.resultTemplate.analytes[0], label: "Analito conservado" }] };
+    const definitionSnapshot = { schemaVersion: 1, capturedAt: "2026-08-23T11:00:00Z", provenance: "REQUEST_CAPTURE", definitionId: "definition-original", serviceId: "service-hemogram", serviceVersion: 3, patientContext: { species: "Canino" }, definition: { ...laboratoryDraft.service, code: "HEMOGRAM", name: "Exame conservado", category: "LABORATORY", departmentCode: "LABORATORY", requiresSample: true, requiresSchedule: false, slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 }, resultTemplate: frozenTemplate } } as ExamDefinitionSnapshot;
+    const data = { ...released, permissions: [], definitionProvenance: "REQUEST_CAPTURE", service: { ...laboratoryDraft.service, resultTemplate: { ...frozenTemplate, name: "Painel futuro", analytes: [{ ...frozenTemplate.analytes[0], label: "Analito futuro" }] } }, version: { ...released.version, definitionSnapshot, content: { kind: "LABORATORY_STRUCTURED", panelCode: frozenTemplate.code, panelVersion: frozenTemplate.version, observations: [{ analyteCode: "HEMOGLOBIN", value: 7, unitCode: "g/dL", flag: "UNINTERPRETED", referenceRange: null }] } } };
+    mockReads(data, []);
+    render(<ResultView resultId="result-1" />);
+    expect(await screen.findByRole("rowheader", { name: /Analito conservado/ })).toBeInTheDocument();
+    expect(screen.getByText(/Definição conservada: Exame conservado · revisão 3/)).toBeInTheDocument();
+    expect(screen.queryByText("Painel futuro")).not.toBeInTheDocument();
+    expect(screen.queryByRole("rowheader", { name: /Analito futuro/ })).not.toBeInTheDocument();
+  });
+
+  it("renders an unknown legacy current result from stored observations without current catalog labels", async () => {
+    mockReads({ ...released, permissions: [], definitionProvenance: "UNKNOWN_LEGACY", service: laboratoryDraft.service, version: { ...released.version, content: { kind: "LABORATORY_STRUCTURED", panelCode: "RECORDED_PANEL", panelVersion: 1, observations: [{ analyteCode: "RECORDED_CODE", value: 4, unitCode: "recorded-unit", flag: "HIGH", referenceRange: { kind: "NUMERIC", low: 1, high: 2, unitCode: "recorded-unit", source: "HUMAN_APPROVED" } }] } } } as never, []);
+    render(<ResultView resultId="result-1" />);
+    expect(await screen.findByRole("rowheader", { name: "RECORDED_CODE" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "1 – 2 recorded-unit" })).toBeInTheDocument();
+    expect(screen.getByText(/Definição histórica desconhecida/)).toBeInTheDocument();
+    expect(screen.queryByRole("rowheader", { name: /Hemoglobina/ })).not.toBeInTheDocument();
+  });
+
 });

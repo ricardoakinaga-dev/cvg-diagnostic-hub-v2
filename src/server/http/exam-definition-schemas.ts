@@ -1,0 +1,13 @@
+import { z } from "zod";
+
+const text = (max: number) => z.string().trim().min(1).max(max);
+const version = z.number().int().positive();
+export const laboratoryPopulationSchema = z.object({ species: z.array(text(100)).min(1).max(20), sex: z.array(text(80)).min(1).max(20).optional(), minAgeDays: z.number().int().min(0).max(365_000).optional(), maxAgeDays: z.number().int().min(0).max(365_000).optional() }).strict().refine((value) => value.minAgeDays === undefined || value.maxAgeDays === undefined || value.minAgeDays <= value.maxAgeDays, "A idade mínima não pode ultrapassar a máxima.");
+const range = z.object({ kind: z.enum(["NUMERIC", "PENDING_POLICY"]), unitCode: text(80), low: z.number().optional(), high: z.number().optional(), source: z.enum(["HUMAN_APPROVED", "SYNTHETIC_FIXTURE", "PENDING_HUMAN_POLICY"]), note: text(500).optional() }).strict().refine((value) => value.kind !== "NUMERIC" || (value.low !== undefined || value.high !== undefined), "Configure ao menos um limite da faixa numérica.").refine((value) => value.low === undefined || value.high === undefined || value.low <= value.high, "A faixa mínima não pode ultrapassar a máxima.");
+const analyte = z.object({ code: text(60).regex(/^[A-Za-z][A-Za-z0-9_]{1,59}$/), label: text(160), valueType: z.enum(["NUMERIC", "QUALITATIVE", "TEXT"]), unitCode: text(80), required: z.boolean(), displayOrder: z.number().int().min(0).max(10_000), referenceRange: range.optional(), allowedValues: z.array(text(160)).max(100).optional() }).strict().refine((value) => !value.referenceRange || value.referenceRange.unitCode === value.unitCode, "A unidade da faixa deve corresponder ao analito.");
+export const prepareExamTemplateSchema = z.object({ expectedVersion: version, template: z.object({ code: text(60).regex(/^[A-Za-z][A-Za-z0-9_]{1,59}$/), name: text(160), schemaVersion: text(80), analytes: z.array(analyte).min(1).max(200) }).strict().refine((value) => new Set(value.analytes.map((entry) => entry.code)).size === value.analytes.length, "Analitos não podem ter códigos repetidos.") }).strict();
+export const publishExamTemplateSchema = z.object({ expectedVersion: version, policyReference: text(500), population: laboratoryPopulationSchema, confirm: z.literal(true) }).strict();
+export const retireExamTemplateSchema = z.object({ expectedVersion: version, reason: text(500) }).strict();
+export type PrepareExamTemplateInput = z.infer<typeof prepareExamTemplateSchema> & { idempotencyKey?: string; correlationId?: string };
+export type PublishExamTemplateInput = z.infer<typeof publishExamTemplateSchema> & { idempotencyKey?: string; correlationId?: string };
+export type RetireExamTemplateInput = z.infer<typeof retireExamTemplateSchema> & { idempotencyKey?: string; correlationId?: string };

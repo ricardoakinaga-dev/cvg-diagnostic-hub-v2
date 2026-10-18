@@ -25,7 +25,7 @@ const secrets = { "agent_ca.pem": await readFile(path.join(work, "ca.pem"), "utf
   "agent_server_cert.pem": await readFile(path.join(work, "server.pem"), "utf8"), "agent_server_key.pem": await readFile(path.join(work, "server.key"), "utf8"),
   metrics_scrape_token: "synthetic-monitor-token-".repeat(3),
   ...Object.fromEntries(["primary", "reserve", "watchdog"].flatMap(name => [[`${name}_webhook_url`, `https://${name}.hospital.internal/alerts`], [`${name}_webhook_token`, `synthetic-${name}-token-`.repeat(3)]])) };
-const environment = { MONITOR_ROLE: "external", MONITOR_HUB_URL: "https://hub.hospital.internal", MONITOR_AGENT_URL: "https://agent.server.hospital.internal:9100" };
+const environment = { MONITOR_ROLE: "external", MONITOR_HUB_URL: "https://hub.hospital.internal", MONITOR_AGENT_URL: "https://agent.server.hospital.internal:9100", MONITOR_POSTGRES_URL: "https://agent.server.hospital.internal:9187" };
 const configure = (env = {}, overrides = {}) => monitoringConfiguration({ ...environment, ...env }, async name => {
   const value = { ...secrets, ...overrides }[name];
   if (!value) throw new Error(`missing ${name}`);
@@ -271,4 +271,176 @@ test("the real Node Exporter serves private textfile metrics only to a valid TLS
     exporter.kill("SIGTERM");
     if (exporter.exitCode === null) await new Promise(resolve => exporter.once("exit", resolve));
   }
+});
+
+
+test("PostgreSQL monitoring requires a dedicated mTLS target and refuses missing or unsafe endpoints", async () => {
+  const configuration = await configure();
+  const job = configuration["prometheus.yml"].scrape_configs.find(item => item.job_name === "cvg-postgres");
+  assert.ok(job, "database monitoring must not be omitted from the independent monitor");
+  assert.equal(job.scheme, "https");
+  assert.deepEqual(job.static_configs[0].targets, ["agent.server.hospital.internal:9187"]);
+  assert.equal(job.tls_config.cert_file, "/run/secrets/agent_client_cert.pem");
+  for (const value of ["", "http://agent.hospital.internal:9187", "https://agent.hospital.internal:9187/probe", "https://agent.hospital.internal:9187?target=foreign"]) {
+    await assert.rejects(configure({ MONITOR_POSTGRES_URL: value }));
+  }
+});
+
+test("PostgreSQL agent validates isolated credentials without serializing them and rejects broad users or arbitrary DSNs", async () => {
+  const env = { MONITOR_ROLE: "agent", MONITOR_AGENT_BIND_IP: "10.35.1.4", MONITOR_POSTGRES_ENABLED: "true" };
+  const credentials = { postgres_uri: "postgres:5432/cvg_hub?sslmode=disable&connect_timeout=5", postgres_user: "cvg_pg_exporter", postgres_password: "synthetic-isolated-exporter-password-".repeat(2) };
+  const agent = await configure(env, credentials);
+  assert.equal(agent["postgres-exporter-web.yml"]?.tls_server_config.client_auth_type, "RequireAndVerifyClientCert");
+  assert.ok(!JSON.stringify(agent).includes(credentials.postgres_password));
+  for (const overrides of [{ postgres_user: "postgres" }, { postgres_password: "short" }, { postgres_uri: "postgres:5432/cvg_hub?sslmode=disable&password=hidden" },
+    { postgres_uri: "foreign:5432/cvg_hub?sslmode=disable&connect_timeout=5" }, { postgres_uri: "postgres:5432/cvg_hub?sslmode=disable&connect_timeout=5\nother" }]) {
+    await assert.rejects(configure(env, { ...credentials, ...overrides }));
+  }
+});
+
+test("the PostgreSQL exporter uses only file credentials, an existing private network and three numeric collectors", async () => {
+  const overlay = await readFile("docker-compose.monitoring-postgres.yml", "utf8");
+  assert.match(overlay, /postgres-exporter:v0\.20\.0@sha256:[a-f0-9]{64}/);
+  assert.match(overlay, /external: true/);
+  assert.match(overlay, /\$\{MONITOR_AGENT_BIND_IP:\?\}:9187:9187/);
+  for (const name of ["URI", "USER", "PASS"]) assert.match(overlay, new RegExp(`DATA_SOURCE_${name}_FILE:`));
+  assert.doesNotMatch(overlay, /DATA_SOURCE_(URI|USER|PASS):|network_mode: host|docker\.sock|privileged:/);
+  assert.deepEqual([...overlay.matchAll(/^      - --collector\.([^\n]+)$/gm)].map(item => item[1]).sort(), ["stat_archiver", "stat_bgwriter", "stat_database"]);
+  for (const name of ["roles", "stat_activity", "stat_statements", "stat_user_tables", "statio_user_tables", "settings", "stat_replication"]) {
+    assert.ok(overlay.includes(`--no-collector.${name}\n`));
+  }
+});
+
+test("real disposable PostgreSQL and pinned exporter prove numeric collection, mTLS, least privilege and access failure/recovery", {
+  skip: process.env.ALLOW_POSTGRES_EXPORTER_TESTS !== "true", timeout: 90_000
+}, async () => {
+  // This harness creates its own isolated network/containers. It has no installed database URL or Docker inspection of other services.
+  const suffix = `${process.pid}-${Date.now()}`;
+  const network = `cvg-monitor-test-${suffix}`;
+  const postgres = `${network}-pg`;
+  const exporter = `${network}-exporter`;
+  const quote = value => `'${String(value).replaceAll("'", "'\\''")}'`;
+  const docker = (args, options = {}) => {
+    const result = spawnSync("sg", ["docker", "-c", ["docker", ...args].map(quote).join(" ")], { encoding: "utf8", timeout: 20_000, ...options });
+    if (!options.allowFailure) assert.equal(result.status, 0, `${args[0]}: ${result.stderr}`);
+    return result;
+  };
+  const directory = path.join(work, "postgres-smoke");
+  await mkdir(directory, { mode: 0o700 });
+  const password = "synthetic-disposable-pg-exporter-".repeat(2);
+  const credentials = { postgres_uri: "postgres:5432/cvg_monitor_test?sslmode=disable&connect_timeout=5", postgres_user: "cvg_pg_exporter", postgres_password: password };
+  for (const [name, value] of Object.entries({ ...secrets, ...credentials })) await writeFile(path.join(directory, name), value, { mode: 0o600 });
+  const envFile = path.join(directory, "postgres.env");
+  await writeFile(envFile, "POSTGRES_DB=cvg_monitor_test\nPOSTGRES_PASSWORD=synthetic-admin-password-used-only-in-disposable-db\n", { mode: 0o600 });
+  const web = (await configure({ MONITOR_ROLE: "agent", MONITOR_AGENT_BIND_IP: "10.35.1.4", MONITOR_POSTGRES_ENABLED: "true" }, credentials))["postgres-exporter-web.yml"];
+  await writeFile(path.join(directory, "postgres-exporter-web.yml"), JSON.stringify(web), { mode: 0o600 });
+  const overlay = await readFile("docker-compose.monitoring-postgres.yml", "utf8");
+  const image = overlay.match(/image: (quay[^\s]+)/)[1];
+  const flags = [...overlay.matchAll(/^      - (--[^\n]+)$/gm)].map(item => item[1]);
+  const sql = (input, allowFailure = false, role = "postgres") => docker(["exec", "-i", postgres, "psql", "-X", "-v", "ON_ERROR_STOP=1", "-U", role, "-d", "cvg_monitor_test", "-At"], { input, allowFailure });
+  const roleScript = await readFile("deploy/monitoring/postgres-role.sql", "utf8");
+  const created = [];
+  try {
+    docker(["network", "create", "--label", "cvg.scope=monitoring-disposable-tests", network]);
+    created.push(network);
+    docker(["run", "-d", "--name", postgres, "--label", "cvg.scope=monitoring-disposable-tests", "--network", network, "--network-alias", "postgres", "--env-file", envFile, "postgres:16-alpine"]);
+    created.push(postgres);
+    let ready = false;
+    for (let attempt = 0; attempt < 80; attempt++) {
+      if (docker(["exec", postgres, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-d", "cvg_monitor_test"], { allowFailure: true }).status === 0) { ready = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(ready, "own disposable PostgreSQL must become ready");
+    sql("CREATE SCHEMA clinical; CREATE TABLE clinical.patient_records (id integer, narrative text); INSERT INTO clinical.patient_records VALUES (1,'PRIVATE_SYNTHETIC_CLINICAL_SENTINEL'); REVOKE ALL ON SCHEMA clinical FROM PUBLIC; REVOKE ALL ON TABLE clinical.patient_records FROM PUBLIC;");
+    sql(roleScript);
+    sql(`ALTER ROLE cvg_pg_exporter PASSWORD '${password}';`);
+    assert.match(sql("SHOW default_transaction_read_only; SHOW search_path; SELECT count(*) FROM pg_stat_database;", false, "cvg_pg_exporter").stdout, /^on\npg_catalog\n\d+\n$/);
+    assert.equal(sql("SELECT bool_and(query IS NULL OR query='<insufficient privilege>') FROM pg_stat_activity WHERE usename='postgres';", false, "cvg_pg_exporter").stdout.trim(), "t", "other users' SQL text must remain redacted");
+    for (const command of ["SELECT * FROM clinical.patient_records;", "SET default_transaction_read_only=off; INSERT INTO clinical.patient_records VALUES (2,'forbidden');", "SET ROLE postgres;"]) {
+      assert.notEqual(sql(command, true, "cvg_pg_exporter").status, 0, "clinical data / elevated role must be denied even with read-only disabled");
+    }
+    sql("GRANT USAGE ON SCHEMA clinical TO PUBLIC; GRANT SELECT ON clinical.patient_records TO PUBLIC;");
+    assert.notEqual(sql(roleScript, true).status, 0, "PUBLIC clinical authority must cause provisioning to fail closed");
+    sql("REVOKE SELECT ON clinical.patient_records FROM PUBLIC; REVOKE USAGE ON SCHEMA clinical FROM PUBLIC; GRANT pg_monitor TO cvg_pg_exporter;");
+    assert.notEqual(sql(roleScript, true).status, 0, "broad monitoring role membership must be rejected");
+    sql("REVOKE pg_monitor FROM cvg_pg_exporter;");
+    const missedAuthority = [];
+    for (const target of ["cvg_pg_exporter", "PUBLIC"]) {
+      sql(`GRANT USAGE ON SCHEMA clinical TO ${target}; GRANT SELECT(narrative) ON clinical.patient_records TO ${target};`);
+      assert.equal(sql("SELECT narrative FROM clinical.patient_records;", false, "cvg_pg_exporter").stdout.trim(), "PRIVATE_SYNTHETIC_CLINICAL_SENTINEL", "column grant is genuine clinical read authority");
+      if (sql(roleScript, true).status === 0) missedAuthority.push(`column grant: ${target}`);
+      sql(`REVOKE SELECT(narrative) ON clinical.patient_records FROM ${target}; REVOKE USAGE ON SCHEMA clinical FROM ${target};`);
+    }
+    sql("GRANT CREATE ON DATABASE cvg_monitor_test TO cvg_pg_exporter;");
+    if (sql(roleScript, true).status === 0) missedAuthority.push("database CREATE");
+    sql("REVOKE CREATE ON DATABASE cvg_monitor_test FROM cvg_pg_exporter;");
+    assert.deepEqual(missedAuthority, [], "all existing authority must be rejected, including columns and database CREATE");
+    sql(roleScript); // Repeat provisioning safely without resetting the independent password.
+    docker(["run", "-d", "--name", exporter, "--label", "cvg.scope=monitoring-disposable-tests", "--network", network, "--user", `${process.getuid()}:${process.getgid()}`,
+      "--read-only", "--cap-drop", "ALL", "--security-opt", "no-new-privileges", "--memory", "128m", "-p", "127.0.0.1::9187",
+      "-v", `${directory}:/run/secrets:ro`, "-v", `${directory}:/etc/cvg-monitor:ro`,
+      "-e", "DATA_SOURCE_URI_FILE=/run/secrets/postgres_uri", "-e", "DATA_SOURCE_USER_FILE=/run/secrets/postgres_user", "-e", "DATA_SOURCE_PASS_FILE=/run/secrets/postgres_password", image, ...flags]);
+    created.push(exporter);
+    assert.equal(docker(["inspect", "--format", "{{.State.Running}}", exporter]).stdout.trim(), "true", "own exporter must be running");
+    const address = docker(["port", exporter, "9187/tcp"]).stdout.trim();
+    assert.match(address, /^127\.0\.0\.1:\d+$/);
+    const readMetrics = client => new Promise((resolve, reject) => {
+      const request = https.get(`https://${address}/metrics`, { ca: secrets["agent_ca.pem"], ...(client ? { cert: secrets["agent_client_cert.pem"], key: secrets["agent_client_key.pem"] } : {}), agent: false }, response => {
+        let data = "";
+        response.on("data", chunk => { data += chunk; });
+        response.on("end", () => response.statusCode === 200 ? resolve(data) : reject(new Error(`status ${response.statusCode}`)));
+      });
+      request.on("error", reject);
+      request.setTimeout(7_000, () => request.destroy(new Error("metrics timeout")));
+    });
+    const waitForMetrics = async pattern => {
+      let last = "";
+      for (let attempt = 0; attempt < 30; attempt++) {
+        try { last = await readMetrics(true); if (pattern.test(last)) return last; } catch { /* bounded readiness polling, never retries an assertion */ }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      assert.fail(`numeric collector did not reach expected state ${pattern}: ${last}`);
+    };
+    const metrics = await waitForMetrics(/^pg_up 1$/m);
+    for (const name of ["pg_stat_database_xact_commit", "pg_stat_bgwriter", "pg_stat_archiver"]) assert.ok(metrics.includes(name), `${name} must be collected without pg_monitor`);
+    for (const collector of ["stat_database", "stat_bgwriter", "stat_archiver"]) {
+      assert.ok(metrics.includes(`pg_scrape_collector_success{collector="${collector}"} 1`), `${collector} must finish successfully`);
+    }
+    assert.doesNotMatch(metrics, /PRIVATE_SYNTHETIC_CLINICAL_SENTINEL|patient_records|narrative|query=|pg_stat_activity|pg_stat_statements|pg_stat_user_tables/);
+    await assert.rejects(readMetrics(false), "client certificate is mandatory");
+    sql("ALTER ROLE cvg_pg_exporter NOLOGIN; SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE usename='cvg_pg_exporter';");
+    await waitForMetrics(/^pg_up 0$/m);
+    sql("ALTER ROLE cvg_pg_exporter LOGIN;");
+    await waitForMetrics(/^pg_up 1$/m);
+    assert.equal(sql("SELECT count(*) FROM clinical.patient_records;").stdout.trim(), "1", "monitoring must not mutate clinical records");
+  } finally {
+    // Remove only resources whose successful creation this harness recorded; surface cleanup failures.
+    const cleanupFailures = [];
+    for (const name of [exporter, postgres]) if (created.includes(name) && docker(["rm", "-fv", name], { allowFailure: true }).status !== 0) cleanupFailures.push(name);
+    if (created.includes(network) && docker(["network", "rm", network], { allowFailure: true }).status !== 0) cleanupFailures.push(network);
+    assert.deepEqual(cleanupFailures, [], "all own disposable resources must be removed");
+  }
+});
+
+test("PostgreSQL startup rejects public or symlinked credential files before the exporter starts", async () => {
+  const secretDirectory = path.join(work, "postgres-private-files");
+  const configDirectory = path.join(work, "postgres-private-config");
+  await mkdir(secretDirectory, { mode: 0o700 });
+  const credentials = { postgres_uri: "postgres:5432/cvg_hub?sslmode=disable&connect_timeout=5", postgres_user: "cvg_pg_exporter", postgres_password: "synthetic-private-exporter-password-".repeat(2) };
+  for (const [name, value] of Object.entries({ ...secrets, ...credentials })) await writeFile(path.join(secretDirectory, name), value, { mode: 0o600 });
+  const run = extra => spawnSync(process.execPath, [path.resolve("scripts/monitoring-config.mjs"), ...extra], { encoding: "utf8", env: {
+    PATH: process.env.PATH, MONITOR_ROLE: "agent", MONITOR_AGENT_BIND_IP: "10.35.1.4", MONITOR_POSTGRES_ENABLED: "true",
+    MONITOR_CONFIG_DIR: configDirectory, MONITOR_SECRETS_DIR: secretDirectory
+  } });
+  assert.equal(run([]).status, 0);
+  assert.equal(run(["--check"]).status, 0);
+  assert.ok(!(await readFile(path.join(configDirectory, "postgres-exporter-web.yml"), "utf8")).includes(credentials.postgres_password));
+  await chmod(path.join(secretDirectory, "postgres_password"), 0o644);
+  assert.equal(run(["--check"]).status, 1);
+  await chmod(path.join(secretDirectory, "postgres_password"), 0o600);
+  await rm(path.join(secretDirectory, "postgres_uri"));
+  const { symlink } = await import("node:fs/promises");
+  await writeFile(path.join(secretDirectory, "uri-source"), credentials.postgres_uri, { mode: 0o600 });
+  await symlink("uri-source", path.join(secretDirectory, "postgres_uri"));
+  assert.equal(run(["--check"]).status, 1);
 });

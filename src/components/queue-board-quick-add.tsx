@@ -4,9 +4,10 @@ import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 import type { DiagnosticService, Encounter, Patient } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
-import { apiFetch, getSafeErrorMessage } from "./api-client";
+import { apiFetch, createClientUniqueId, getSafeErrorMessage } from "./api-client";
+import { RequestCreatedNotice, type CreatedRequest } from "./request-created-notice";
 
-export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshing = false }: { departments: string[]; onCreated: () => void; disabled: boolean; refreshing?: boolean }) {
+export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshing = false }: { departments: string[]; onCreated: (request: CreatedRequest) => void; disabled: boolean; refreshing?: boolean }) {
   const id = useId();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [services, setServices] = useState<DiagnosticService[]>([]);
@@ -24,6 +25,7 @@ export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshin
   const [serviceError, setServiceError] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [createdRequest, setCreatedRequest] = useState<CreatedRequest>();
   const [revision, setRevision] = useState(0);
   const [patientRetry, setPatientRetry] = useState(0);
   const [serviceRetry, setServiceRetry] = useState(0);
@@ -33,6 +35,7 @@ export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshin
   const loadingServices = loadedServiceKey !== serviceKey;
   const encounterRequest = useRef(0);
   const submitting = useRef(false);
+  const submitIntent = useRef<{ body: string; key: string } | undefined>(undefined);
   const mounted = useRef(false);
   const previousRefreshing = useRef(refreshing);
 
@@ -116,11 +119,15 @@ export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshin
     submitting.current = true;
     setPending(true);
     try {
-      await apiFetch("/diagnostic-requests", { method: "POST", body: JSON.stringify({ patientId, encounterId, priority: "ROUTINE", items: [{ serviceId }] }) });
+      const body = JSON.stringify({ patientId, encounterId, priority: "ROUTINE", items: [{ serviceId }] });
+      if (submitIntent.current?.body !== body) submitIntent.current = { body, key: createClientUniqueId() };
+      const request = await apiFetch<CreatedRequest>("/diagnostic-requests", { method: "POST", headers: { "idempotency-key": submitIntent.current.key }, body });
       if (!mounted.current) return;
       setServiceId("");
+      submitIntent.current = undefined;
       setNotice("Exame solicitado.");
-      onCreated();
+      setCreatedRequest(request);
+      onCreated(request);
     } catch (cause) {
       if (mounted.current) setError(getSafeErrorMessage(cause, "Não foi possível solicitar o exame. Confira o atendimento e possíveis exames duplicados."));
     } finally {
@@ -150,6 +157,7 @@ export function QueueBoardQuickAdd({ departments, onCreated, disabled, refreshin
     {!loadingServices && serviceError && <p role="alert">{serviceError}<button type="button" disabled={pending || disabled || refreshing} onClick={() => setServiceRetry((value) => value + 1)}>Tentar novamente</button></p>}
     {error && <p role="alert">{error}<button type="button" disabled={pending || disabled || refreshing} onClick={() => { if (encounterId) setError(""); else void selectPatient(patientId); }}>Tentar novamente</button></p>}
     {notice && <p role="status">{notice}</p>}
+    {createdRequest && <RequestCreatedNotice request={createdRequest} />}
     <ActionButton type="submit" state={pending ? "pending" : "idle"} disabled={disabled || refreshing || loadingServices || Boolean(serviceError) || loadingEncounter || pending}>Adicionar exame</ActionButton>
     <small>Enter para adicionar em Solicitado. Prioridade padrão: rotina.</small>
   </form>;

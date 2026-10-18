@@ -21,13 +21,22 @@ for failing in \${FAKE_FAIL:-}; do
 done
 case "$1" in
   compose)
+    [[ "$args" == *" config --format json "* ]] && { printf '%s' "$FAKE_COMPOSE_CONFIG"; exit 0; }
     [[ "$args" == *" pull "* ]] && echo "minio=\${MINIO_IMAGE_TAG:-} mc=\${MC_IMAGE_TAG:-}" >> "$FAKE_LOG.env"
     [[ "$args" == *" ps -q app "* ]] && echo app-container
     [[ "$args" == *" ps -q worker "* ]] && echo worker-container
     exit 0 ;;
   pull) exit 0 ;;
+  run)
+    [[ "$args" == *" --entrypoint node "* ]] && exec "$FAKE_NODE" -e "\${@: -1}"
+    exit 1 ;;
   image)
     image="\${@: -1}"
+    if [[ "$args" == *hospital.timezone* ]]; then
+      if [[ "$image" == *-ops:* ]]; then timezone="\${FAKE_TIMEZONE_OPS:-\${FAKE_TIMEZONE:-America/Sao_Paulo}}"; else timezone="\${FAKE_TIMEZONE:-America/Sao_Paulo}"; fi
+      [[ "$timezone" == none ]] || echo "$timezone"
+      exit 0
+    fi
     if [[ "$image" == *-ops:* ]]; then revision="\${FAKE_REVISION_OPS:-\${FAKE_REVISION:-${COMMIT}}}"; else revision="\${FAKE_REVISION:-${COMMIT}}"; fi
     # "none" stands for an image without the revision label.
     [[ "$revision" == none ]] || echo "$revision"
@@ -55,14 +64,18 @@ function run(script, ws, args, env = {}) {
   return spawnSync("bash", [path.join(root, script), ...args], {
     cwd: ws.dir,
     encoding: "utf8",
-    env: { PATH: process.env.PATH, DOCKER: ws.docker, FAKE_LOG: ws.log, RELEASE_HEALTH_POLL_SECONDS: "0", ...env }
+    env: { PATH: process.env.PATH, DOCKER: ws.docker, FAKE_LOG: ws.log, FAKE_NODE: process.execPath, FAKE_COMPOSE_CONFIG: JSON.stringify(timezoneConfig()), RELEASE_HEALTH_POLL_SECONDS: "0", ...env }
   });
+}
+
+function timezoneConfig(timezone = "America/Sao_Paulo") {
+  return { services: Object.fromEntries(["app", "worker", "migrate", "bootstrap"].map((name) => [name, { environment: { APP_TIMEZONE: timezone, NEXT_PUBLIC_HOSPITAL_TIMEZONE: timezone } }])) };
 }
 
 const deploy = (ws, extra = [], env = {}) =>
   run("deploy/release/deploy.sh", ws, ["--project", "cvg-hml", "--env-file", ".env.test", "--tag", TAG, "--prefix", PREFIX, "--state-dir", ws.state, ...extra], env);
 const calls = (ws) => (existsSync(ws.log) ? readFileSync(ws.log, "utf8").trim().split("\n") : []);
-const commandOf = (line) => line.split("|")[1];
+const commandOf = (line) => line.slice(line.indexOf("|") + 1);
 const events = (output) => output.trim().split("\n").filter((line) => line.startsWith("{")).map((line) => JSON.parse(line));
 
 test("both release scripts parse and document their contract", () => {
@@ -100,10 +113,18 @@ test("a rolling deploy pulls, checks the commit, backs up, starts and records th
   const log = calls(ws);
   // Compose sees the release, not whatever IMAGE_TAG the env file had.
   assert.ok(log.every((line) => line.startsWith(`${PREFIX}:${TAG}|`)));
-  assert.deepEqual(log.map(commandOf), [
+  const commands = log.map(commandOf);
+  // The two sides of the timezone pipeline start concurrently. Preserve all
+  // other ordering checks, including validation before backup or maintenance.
+  commands.splice(3, 2, ...commands.slice(3, 5).sort());
+  assert.deepEqual(commands, [
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test pull",
     `image inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} ${PREFIX}:${TAG}`,
     `image inspect --format {{index .Config.Labels "org.opencontainers.image.revision"}} ${PREFIX}-ops:${TAG}`,
+    "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test --profile bootstrap config --format json",
+    commands.find((line) => line.startsWith(`run --rm -i --network none --read-only --cap-drop ALL --security-opt no-new-privileges --log-driver none --entrypoint node ${PREFIX}:${TAG} -e `)),
+    `image inspect --format {{index .Config.Labels "org.cvg.hospital.timezone"}} ${PREFIX}:${TAG}`,
+    `image inspect --format {{index .Config.Labels "org.cvg.hospital.timezone"}} ${PREFIX}-ops:${TAG}`,
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test run --rm --no-deps backup --once",
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test up -d --no-build",
     "compose -p cvg-hml -f docker-compose.prod.yml --env-file .env.test ps -q app",
@@ -132,7 +153,44 @@ test("--maintenance stops the runtime before the backup and migrates alone befor
   const result = deploy(ws, ["--maintenance"]);
   assert.equal(result.status, 0, result.stderr);
   const steps = calls(ws).map(commandOf).filter((line) => line.startsWith("compose")).map((line) => line.split(" --env-file .env.test ")[1]);
-  assert.deepEqual(steps.slice(0, 5), ["pull", "stop proxy app worker backup", "run --rm --no-deps backup --once", "run --rm migrate", "up -d --no-build"]);
+  assert.deepEqual(steps.slice(0, 6), ["pull", "--profile bootstrap config --format json", "stop proxy app worker backup", "run --rm --no-deps backup --once", "run --rm migrate", "up -d --no-build"]);
+});
+
+test("timezone guard accepts a matching non-default release and refuses missing or mismatched build labels before maintenance", () => {
+  const valid = workspace();
+  const result = deploy(valid, [], { FAKE_TIMEZONE: "America/Manaus", FAKE_COMPOSE_CONFIG: JSON.stringify(timezoneConfig("America/Manaus")) });
+  assert.equal(result.status, 0, result.stderr);
+  for (const env of [{ FAKE_TIMEZONE: "none" }, { FAKE_TIMEZONE_OPS: "none" }, { FAKE_TIMEZONE: "America/Manaus" }, { FAKE_TIMEZONE_OPS: "America/Manaus" }]) {
+    const ws = workspace(); const denied = deploy(ws, ["--maintenance"], env);
+    assert.equal(denied.status, 1);
+    assert.equal(events(denied.stderr)[0].event, "release.timezone_mismatch");
+    assert.ok(!calls(ws).some((line) => / stop | backup | migrate$| up /.test(line)));
+    assert.ok(!existsSync(path.join(ws.state, "cvg-hml.current")));
+  }
+});
+
+test("timezone guard checks interpolated runtime fields without printing configuration secrets", () => {
+  const secret = "synthetic-secret-never-output-8f130";
+  const configs = ["not-json", "{}", JSON.stringify(timezoneConfig("Invalid/Hospital")), JSON.stringify(timezoneConfig(""))];
+  for (const name of ["app", "worker", "migrate", "bootstrap"]) for (const key of ["APP_TIMEZONE", "NEXT_PUBLIC_HOSPITAL_TIMEZONE"]) for (const missing of [false, true]) {
+    const config = timezoneConfig(); config.services.app.environment.SESSION_SECRET = secret;
+    if (missing) delete config.services[name].environment[key];
+    else config.services[name].environment[key] = "America/Manaus";
+    configs.push(JSON.stringify(config));
+  }
+  for (const config of configs) {
+    const ws = workspace(); const result = deploy(ws, ["--maintenance"], { FAKE_COMPOSE_CONFIG: config });
+    assert.equal(result.status, 1);
+    assert.equal(events(result.stderr)[0].event, "release.timezone_mismatch");
+    assert.ok(!`${result.stdout}${result.stderr}${calls(ws).join("\n")}`.includes(secret));
+    assert.ok(!calls(ws).some((line) => / stop | backup | migrate$| up /.test(line)));
+  }
+  for (const failure of ["config_--format_json", "--entrypoint_node"]) {
+    const ws = workspace(); const result = deploy(ws, ["--maintenance"], { FAKE_FAIL: failure });
+    assert.equal(result.status, 1, failure);
+    assert.equal(events(result.stderr)[0].event, "release.timezone_mismatch");
+    assert.ok(!calls(ws).some((line) => / stop | backup | migrate$| up /.test(line)));
+  }
 });
 
 test("an image built from another commit stops the deploy before the backup", () => {

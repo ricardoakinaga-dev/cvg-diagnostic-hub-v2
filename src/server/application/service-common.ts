@@ -1,4 +1,6 @@
 import { createHash, createHmac, randomUUID } from "node:crypto";
+import { resolveUserPermissions } from "../security/access-group-policy";
+import { serviceAccessPolicyFor } from "./executor-service-access";
 import type { ItemState, ManagedSession, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import { outboxEnvelopeFor, type Admission, type Attachment, type AuditEvent, type DiagnosticItem, type DiagnosticRequest, type DiagnosticService, type Notification, type Procedure, type ProcedureSchedule, type ReasonCode, type Result, type ResultVersion, type Sample, type StateStore, type StoreState, type User } from "../domain/models";
 import type { FileStore } from "../storage/file-store";
@@ -63,24 +65,26 @@ export function now(): string {
 }
 
 export function dashboardTimezone(actor: User): string {
-  const candidate = actor.timezone?.trim() || process.env.APP_TIMEZONE?.trim() || "UTC";
+  void actor;
+  const candidate = process.env.NEXT_PUBLIC_HOSPITAL_TIMEZONE?.trim() || process.env.APP_TIMEZONE?.trim() || "America/Sao_Paulo";
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: candidate }).format();
     return candidate;
   } catch {
-    return "UTC";
+    return "America/Sao_Paulo";
   }
 }
-
 export function managedUser(user: User): ManagedUser {
   return {
     id: user.id,
     email: user.email,
     displayName: user.displayName,
     role: user.role,
+    accessGroupId: user.accessGroupId,
     departmentCode: user.departmentCode,
     managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined,
     serviceCodes: user.serviceCodes ? [...user.serviceCodes] : undefined,
+    serviceAccessPolicy: serviceAccessPolicyFor(user),
     timezone: user.timezone,
     active: user.active !== false,
     createdAt: user.createdAt,
@@ -89,7 +93,6 @@ export function managedUser(user: User): ManagedUser {
     alertContactReady: Boolean(user.whatsappPhone && user.whatsappConsentAt)
   };
 }
-
 export function managedSession(session: StoreState["sessions"][number], user: User, currentSessionId?: string): ManagedSession {
   const status = session.revokedAt
     ? "REVOKED"
@@ -127,11 +130,9 @@ export function stableSerialize(value: unknown): string {
   }
   return JSON.stringify(value);
 }
-
 export function hashPayload(value: unknown): string {
   return createHash("sha256").update(stableSerialize(idempotencyFingerprint(value))).digest("hex");
 }
-
 export function idempotencyFingerprint(value: unknown): unknown {
   if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
   const payload = value as Record<string, unknown>;
@@ -162,18 +163,16 @@ export function requireText(value: string, field: string, maxLength: number): st
 }
 
 export const operationalManagedRoles: RoleCode[] = ["VETERINARIAN", "INPATIENT_TEAM", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"];
-
 export function canManageUserTarget(actor: User, role: RoleCode, departmentCode: string): boolean {
-  if (actor.role === "ADMIN") return true;
+  if (role === "SUPERADMIN") return actor.role === "SUPERADMIN";
+  if (actor.role === "SUPERADMIN" || actor.role === "ADMIN") return true;
   return actor.role === "MANAGER" && operationalManagedRoles.includes(role) && managerCanAccessDepartment(actor, departmentCode);
 }
-
 export function normalizedEmail(value: string): string {
   const email = requireText(value, "email", 320).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError("VALIDATION_ERROR", "O e-mail informado é inválido.", 400);
   return email;
 }
-
 export function validatedTimezone(value: string): string {
   const timezone = requireText(value, "timezone", 80);
   try {
@@ -183,7 +182,6 @@ export function validatedTimezone(value: string): string {
   }
   return timezone;
 }
-
 export function validatedPassword(value: string): string {
   if (typeof value !== "string" || Array.from(value).length < 12 || Array.from(value).length > 200 || !/[A-Za-z]/.test(value) || !/[0-9]/.test(value)) {
     throw new ApiError("VALIDATION_ERROR", "A senha deve ter pelo menos 12 caracteres, letras e números.", 400);
@@ -191,7 +189,6 @@ export function validatedPassword(value: string): string {
   assertPasswordPolicy(value);
   return value;
 }
-
 export function normalizedManagedDepartments(value: string[] | undefined): string[] | undefined {
   if (value === undefined) return undefined;
   if (value.length > 20) throw new ApiError("VALIDATION_ERROR", "O colaborador não pode ter mais de 20 setores delegados.", 400);
@@ -237,6 +234,7 @@ export function requireActiveUser(state: StoreState, actor: User): User {
     : (persisted ?? []).filter((entry) => asserted.includes(entry));
   return {
     ...current,
+    permissions: resolveUserPermissions(state, current).filter((permission) => actor.permissions === undefined || actor.permissions.includes(permission)),
     managedDepartmentCodes: narrowed(current.managedDepartmentCodes, actor.managedDepartmentCodes),
     patientIds: narrowed(current.patientIds, actor.patientIds),
     serviceCodes: narrowed(current.serviceCodes, actor.serviceCodes),
@@ -278,7 +276,9 @@ export function hasManagerRequestContext(state: StoreState, actor: User, request
 }
 
 export function hasManagerPatientContext(state: StoreState, actor: User, patientId: string): boolean {
-  return requestsForPatient(state, patientId).some((request) => hasManagerRequestContext(state, actor, request));
+  return requestsForPatient(state, patientId).some((request) => hasManagerRequestContext(state, actor, request))
+    || state.admissions.some((admission) => state.encounters.some((encounter) => encounter.id === admission.encounterId && encounter.patientId === patientId)
+      && canAccessResource(actor, "admission.view", { departmentCode: admission.departmentCode, patientId }));
 }
 
 export function requirePatientPermission(state: StoreState, actor: User, permission: Permission, patientId: string): void {
@@ -432,22 +432,7 @@ export function validatedSlaHours(value: Record<Priority, number>): Record<Prior
   return { ROUTINE: value.ROUTINE, URGENT: value.URGENT, EMERGENCY: value.EMERGENCY };
 }
 
-export function validateServiceDefinition(category: DiagnosticService["category"], workflowType: WorkflowType): void {
-  const valid = (category === "LABORATORY" && workflowType === "LABORATORY") || (category === "IMAGING" && ["RADIOLOGY", "ULTRASOUND"].includes(workflowType));
-  if (!valid) throw new ApiError("VALIDATION_ERROR", "Categoria e workflow do serviço não são compatíveis.", 400);
-}
-
-export function validateServiceResultSchema(
-  category: DiagnosticService["category"],
-  workflowType: WorkflowType,
-  resultSchema: DiagnosticService["resultSchema"],
-  resultTemplate?: DiagnosticService["resultTemplate"]
-): void {
-  if (resultSchema !== "NUMERIC_PANEL") return;
-  if (category !== "LABORATORY" || workflowType !== "LABORATORY" || resultTemplate?.status !== "ACTIVE") {
-    throw new ApiError("VALIDATION_ERROR", "Um painel numérico exige um template laboratorial ativo e versionado.", 422);
-  }
-}
+export { validateServiceDefinition, validateServiceResultSchema } from "./catalog-definition-validation";
 
 export function serviceFor(state: StoreState, serviceId: string): DiagnosticService {
   // Deactivation removes the offering from new requests while preserving clinical history.
@@ -486,7 +471,7 @@ export function procedureFor(state: StoreState, procedureId: string): Procedure 
 export function scheduleWindow(input: ScheduleInput): { startsAt: string; endsAt: string; resource: string } {
   const starts = new Date(input.startsAt);
   const ends = new Date(input.endsAt);
-  const resource = requireText(input.resource, "resource", 100);
+  const resource = input.resourceIds?.length ? input.resource?.trim().slice(0, 100) || "Recursos cadastrados" : requireText(input.resource ?? "", "resource", 100);
   if (!Number.isFinite(starts.getTime()) || !Number.isFinite(ends.getTime()) || ends <= starts) {
     throw new ApiError("VALIDATION_ERROR", "A janela da agenda é inválida.", 400);
   }
@@ -500,7 +485,7 @@ export function hasScheduleConflict(state: StoreState, window: { startsAt: strin
   const starts = new Date(window.startsAt).getTime();
   const ends = new Date(window.endsAt).getTime();
   return state.schedules.some((schedule) => {
-    if (schedule.status !== "SCHEDULED" || schedule.resource !== window.resource) return false;
+    if (schedule.status !== "SCHEDULED" || schedule.resourceIds?.length || schedule.resource !== window.resource) return false;
     if (excludeProcedureId && schedule.procedureId === excludeProcedureId) return false;
     return starts < new Date(schedule.endsAt).getTime() && ends > new Date(schedule.startsAt).getTime();
   });
@@ -624,6 +609,7 @@ export function requestViewForActor(state: StoreState, actor: User, request: Dia
 }
 
 export function canViewRequest(state: StoreState, actor: User, request: DiagnosticRequest): boolean {
+  if (actor.role === "SUPERADMIN") return canAccessResource(actor, "request.view", { patientId: request.patientId, departmentCode: request.requestingDepartmentCode });
   if (actor.role === "MANAGER") return hasManagerRequestContext(state, actor, request) && canAccessResource(actor, "request.view", {});
   return request.itemIds.some((itemId) => canViewItem(state, actor, itemFor(state, itemId)));
 }
@@ -695,6 +681,7 @@ export function auditEventDepartmentCode(state: StoreState, event: AuditEvent): 
 }
 
 export function canViewManagementAudit(state: StoreState, actor: User, event: AuditEvent): boolean {
+  if (actor.role === "SUPERADMIN") return canAccessResource(actor, "audit.view", {});
   if (actor.role !== "MANAGER") return false;
   if (event.entityType === "ReasonCode") return true;
   if (event.entityType === "DiagnosticService") {
@@ -749,7 +736,7 @@ export function resultView(state: StoreState, result: Result): ResultView {
 
 export function visibleResultVersions(state: StoreState, resultId: string): ResultVersion[] {
   return resultVersionsForResult(state, resultId)
-    .filter((version) => ["RELEASED", "SUPERSEDED"].includes(version.status))
+    .filter((version) => ["RELEASED", "SUPERSEDED", "VOIDED"].includes(version.status))
     .sort((left, right) => right.sequence - left.sequence);
 }
 

@@ -90,10 +90,12 @@ test("fullscreen examination context contains focus and restores its opener", as
   await expect(peek).toBeVisible();
   if (testInfo.project.name !== "chromium") {
     await expect(peek).toHaveAttribute("aria-modal", "true");
-    const last = peek.getByRole("link").last();
+    const last = peek.locator("a[href]:visible, button:not([disabled]):visible, input:not([disabled]):visible, select:not([disabled]):visible, textarea:not([disabled]):visible, [tabindex='0']:visible").last();
     await last.focus();
     await page.keyboard.press("Tab");
     await expect(peek.getByRole("button", { name: "Fechar contexto" })).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(last).toBeFocused();
     await expect(page.locator(".app-topbar")).toHaveAttribute("inert", "");
   } else {
     await expect(peek).toHaveAttribute("aria-modal", "false");
@@ -135,6 +137,7 @@ test("calendar exposes every examination on a busy day with valid grid relations
   await mockExams(page, 13);
   await signInAs(page, "vet@cvg.local");
   await page.goto("/queues");
+  await expect(page.getByRole("button", { name: /^Abrir Exame audit \d+ — Thor$/ })).toHaveCount(13);
   await page.getByRole("radio", { name: "Calendário" }).click();
   await expect(page.getByRole("grid")).toBeVisible();
   const results = await new AxeBuilder({ page }).include(".calendar-grid").withRules(["aria-required-parent", "aria-required-children"]).analyze();

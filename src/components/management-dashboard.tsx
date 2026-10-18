@@ -1,11 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import type { ItemState, ManagementOverview, Priority } from "@cvg/contracts";
+import type { ItemState, ManagementOverview, Permission, Priority, SessionResponse } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
-import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { ApiClientError, apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { EmptyState, ErrorState, LoadingState, StaleNotice } from "./feedback-states";
 import { Icon } from "./ui-icons";
 
@@ -47,23 +48,39 @@ export function ManagementDashboard() {
   const requestedView = searchParams.get("view");
   const view: ManagementView = requestedView === "requests" || requestedView === "pending" || requestedView === "stats" ? requestedView : "overview";
   const [data, setData] = useState<ManagementOverview | null>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [lastConfirmedAt, setLastConfirmedAt] = useState<string | null>(null);
   const loadVersion = useRef(0);
+  const identity = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     const version = ++loadVersion.current;
     setLoading(true);
+    setPermissions([]);
     setError("");
+    let identityConfirmed = false;
     try {
+      const session = await apiFetch<SessionResponse>("/session/me");
+      if (loadVersion.current !== version) return;
+      identityConfirmed = true;
+      if (identity.current !== null && identity.current !== session.user.id) { setData(null); setLastConfirmedAt(null); }
+      identity.current = session.user.id;
       const nextData = await apiFetch<ManagementOverview>("/management/overview");
       if (loadVersion.current !== version) return;
+      setPermissions(session.user.permissions ?? []);
       setData(nextData);
       setLastConfirmedAt(nextData.asOf);
     }
     catch (cause) {
-      if (loadVersion.current === version) setError(getSafeErrorMessage(cause, "Não foi possível carregar o centro operacional."));
+      if (loadVersion.current !== version) return;
+      if (!identityConfirmed || (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status))) {
+        setData(null);
+        setPermissions([]);
+        setLastConfirmedAt(null);
+      }
+      setError(getSafeErrorMessage(cause, "Não foi possível carregar o centro operacional."));
     }
     finally {
       if (loadVersion.current === version) setLoading(false);
@@ -72,7 +89,9 @@ export function ManagementDashboard() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
-    return () => { window.clearTimeout(timer); loadVersion.current += 1; };
+    const refresh = () => { setData(null); setLastConfirmedAt(null); void load(); };
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => { window.clearTimeout(timer); loadVersion.current += 1; window.removeEventListener("cvg:realtime-resync", refresh); };
   }, [load]);
 
   if (!data && loading) return <LoadingState label="Carregando controle operacional" />;
@@ -82,7 +101,7 @@ export function ManagementDashboard() {
   return <div className="management-page">
     <div className="page-heading"><div><p className="eyebrow">Gestão · {data.scope.departments.length} setores autorizados</p><h1>{title}</h1><p className="page-lede">Acompanhe solicitações, capacidade e próximos passos em uma única visão operacional.</p></div><ActionButton tone="ghost" state={loading ? "pending" : "idle"} onClick={() => void load()}><Icon name="refresh" size={15} /> {loading ? "Atualizando…" : "Atualizar"}</ActionButton></div>
     {error && <StaleNotice title="Controle operacional desatualizado" message={`${error} Os dados exibidos continuam sendo o último snapshot confirmado.`} lastConfirmedAt={lastConfirmedAt ? formatRelativeTime(lastConfirmedAt) : undefined} onRetry={load} retrying={loading} />}
-    <nav className="management-tabs" aria-label="Visões de gestão">{(Object.keys(viewLabels) as ManagementView[]).map((key) => <Link key={key} href={key === "overview" ? "/management" : `/management?view=${key}`} className={view === key ? "active" : ""} aria-current={view === key ? "page" : undefined}>{viewLabels[key]}</Link>)}<Link href="/admin#users">Acessos</Link><Link href="/admin#catalog">Catálogos</Link><Link href="/admin#audit">Auditoria</Link></nav>
+    <nav className="management-tabs" aria-label="Visões de gestão">{(Object.keys(viewLabels) as ManagementView[]).map((key) => <Link key={key} href={key === "overview" ? "/management" : `/management?view=${key}`} className={view === key ? "active" : ""} aria-current={view === key ? "page" : undefined}>{viewLabels[key]}</Link>)}{permissions.some((permission) => ["user_role.manage", "user.view", "user.create", "user.update", "user.deactivate"].includes(permission)) && <Link href="/admin/users">Acessos</Link>}{permissions.some((permission) => ["service.catalog.manage", "service.catalog.view", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate"].includes(permission)) && <Link href="/admin/catalog">Catálogos</Link>}{permissions.includes("audit.view") && <Link href="/system#audit">Auditoria</Link>}</nav>
     <section className="management-scope" aria-label="Escopo da gestão"><span className="scope-icon" aria-hidden="true"><Icon name="spark" size={16} /></span><span><strong>Escopo ativo</strong><small>{scopeLabel(data.scope.departments, data.scope.label)}</small></span><span className="scope-updated">Atualizado {formatRelativeTime(data.asOf)}</span></section>
     <section className="metric-grid management-metric-grid" aria-label="Resumo operacional"><ManagementMetric label="Solicitações" value={data.summary.totalRequests} caption="no escopo atual" tone="info" /><ManagementMetric label="Itens ativos" value={data.summary.activeItems} caption="não terminais" tone="info" /><ManagementMetric label="Atrasados" value={data.summary.overdue} caption="exigem intervenção" tone="danger" /><ManagementMetric label="Recoletas" value={data.summary.recollections} caption="aguardam nova amostra" tone="warning" /><ManagementMetric label="Resultados novos" value={data.summary.newResults} caption="aguardam revisão" tone="success" /><ManagementMetric label="Críticos" value={data.summary.critical} caption="confirmação necessária" tone="critical" /></section>
     {view === "stats" ? <StatsPanel data={data} /> : view === "requests" ? <RequestsPanel data={data} /> : view === "pending" ? <PendingPanel data={data} /> : <OverviewPanels data={data} />}
@@ -109,7 +128,7 @@ function RequestsPanel({ data, compact = false }: { data: ManagementOverview; co
 
 function StatsPanel({ data }: { data: ManagementOverview }) {
   const total = useMemo(() => data.departments.reduce((sum, department) => sum + department.activeItems, 0), [data.departments]);
-  return <div className="management-stats-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">Distribuição de trabalho</p><h2>Setores monitorados</h2></div><span className="timeline-count">{data.departments.length}</span></div><DepartmentTable data={data} /></section><section className="panel management-definitions"><div className="panel-heading"><div><p className="eyebrow">Leitura honesta</p><h2>Indicadores de gestão</h2></div></div><ul><li><strong>Itens ativos</strong><span>{total} itens em estados não terminais.</span></li><li><strong>Atrasados</strong><span>Itens ativos cuja data de SLA já passou no relógio do servidor.</span></li><li><strong>Pendências</strong><span>Próxima ação derivada do estado confirmado do item, sem estimativa no cliente.</span></li><li><strong>Atualização</strong><span>Snapshot único do servidor em {new Date(data.asOf).toLocaleString("pt-BR")}.</span></li></ul></section></div>;
+  return <div className="management-stats-grid"><section className="panel"><div className="panel-heading"><div><p className="eyebrow">Distribuição de trabalho</p><h2>Setores monitorados</h2></div><span className="timeline-count">{data.departments.length}</span></div><DepartmentTable data={data} /></section><section className="panel management-definitions"><div className="panel-heading"><div><p className="eyebrow">Leitura honesta</p><h2>Indicadores de gestão</h2></div></div><ul><li><strong>Itens ativos</strong><span>{total} itens em estados não terminais.</span></li><li><strong>Atrasados</strong><span>Itens ativos cuja data de SLA já passou no relógio do servidor.</span></li><li><strong>Pendências</strong><span>Próxima ação derivada do estado confirmado do item, sem estimativa no cliente.</span></li><li><strong>Atualização</strong><span>Snapshot único do servidor em {formatHospitalDateTime(data.asOf)}.</span></li></ul></section></div>;
 }
 
 function DepartmentTable({ data }: { data: ManagementOverview }) {

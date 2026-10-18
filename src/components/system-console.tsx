@@ -7,12 +7,15 @@ import { ActionButton } from "@cvg/ui";
 import { ApiClientError, apiFetch, getSafeErrorMessage } from "./api-client";
 import { useConfirm } from "./confirm-dialog";
 import { EmptyState, ErrorState, LoadingState } from "./feedback-states";
+import { ReauthDialog } from "./admin-users";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 
 export function SystemConsole() {
   const [sessions, setSessions] = useState<ManagedSession[]>([]);
   const [deadLetters, setDeadLetters] = useState<DeadLetterMessage[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [readiness, setReadiness] = useState<CriticalReadiness | null>(null);
+  const [sections, setSections] = useState({ sessions: false, revokeSessions: false, outbox: false, readiness: false, audit: false });
   const [allowed, setAllowed] = useState(false);
   const [denied, setDenied] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -22,17 +25,31 @@ export function SystemConsole() {
     const version = ++generation.current;
     setLoading(true); setError(""); setDenied(false); setAllowed(false);
     setSessions([]); setDeadLetters([]); setAuditEvents([]); setReadiness(null);
+    setSections({ sessions: false, revokeSessions: false, outbox: false, readiness: false, audit: false });
     try {
       const identity = await apiFetch<SessionResponse>("/session/me");
       if (version !== generation.current) return;
-      if (identity.user.role !== "ADMIN") { setDenied(true); return; }
+      const technical = ["ADMIN", "SUPERADMIN"].includes(identity.user.role);
+      const permissions = identity.user.permissions ?? [];
+      const nextSections = {
+        sessions: technical && permissions.some((permission) => permission === "user_role.manage" || permission === "user.view"),
+        revokeSessions: technical && permissions.some((permission) => permission === "user_role.manage" || permission === "user.update"),
+        outbox: technical && permissions.includes("outbox.manage"),
+        readiness: technical && permissions.includes("critical_result_policy.manage"),
+        audit: permissions.includes("audit.view")
+      };
+      if (!nextSections.sessions && !nextSections.outbox && !nextSections.readiness && !nextSections.audit) { setDenied(true); return; }
       const results = await Promise.allSettled([
-        apiFetch<ManagedSession[]>("/sessions"), apiFetch<DeadLetterMessage[]>("/outbox/dead-letters"), apiFetch<AuditEvent[]>("/audit-events?limit=20"), apiFetch<CriticalReadiness>("/critical-results/readiness")
+        nextSections.sessions ? apiFetch<ManagedSession[]>("/sessions") : Promise.resolve([]),
+        nextSections.outbox ? apiFetch<DeadLetterMessage[]>("/outbox/dead-letters") : Promise.resolve([]),
+        nextSections.audit ? apiFetch<AuditEvent[]>("/audit-events?limit=20") : Promise.resolve([]),
+        nextSections.readiness ? apiFetch<CriticalReadiness>("/critical-results/readiness") : Promise.resolve(null)
       ]);
       if (version !== generation.current) return;
       const [sessionResult, messageResult, auditResult, readinessResult] = results;
-      if (results.some((result) => result.status === "rejected" && result.reason instanceof ApiClientError && result.reason.code === "SCOPE_DENIED")) { setDenied(true); return; }
+      if (results.some((result) => result.status === "rejected" && result.reason instanceof ApiClientError && [401, 403, 404].includes(result.reason.status))) { setDenied(true); return; }
       setAllowed(true);
+      setSections(nextSections);
       if (sessionResult.status === "fulfilled") setSessions(sessionResult.value);
       if (messageResult.status === "fulfilled") setDeadLetters(messageResult.value);
       if (auditResult.status === "fulfilled") setAuditEvents(auditResult.value);
@@ -40,23 +57,25 @@ export function SystemConsole() {
       if (results.some((result) => result.status === "rejected")) setError("Parte dos dados do sistema está indisponível. Tente atualizar.");
     } catch (cause) {
       if (version !== generation.current) return;
-      if (cause instanceof ApiClientError && cause.code === "SCOPE_DENIED") setDenied(true);
+      if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) setDenied(true);
       else setError(getSafeErrorMessage(cause, "Não foi possível carregar o sistema."));
     } finally { if (version === generation.current) setLoading(false); }
   }, []);
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
-    return () => { window.clearTimeout(timer); generation.current += 1; };
+    const refresh = () => { void load(); };
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => { window.clearTimeout(timer); window.removeEventListener("cvg:realtime-resync", refresh); generation.current += 1; };
   }, [load]);
   if (loading) return <LoadingState label="Carregando sistema" />;
   return <div className="admin-page"><div className="page-heading"><div><h1>Sistema</h1><p className="page-lede">Sessões, mensagens retidas e auditoria.</p></div><ActionButton tone="ghost" onClick={() => void load()}>Atualizar</ActionButton></div>
-    {denied ? <ErrorState title="Sistema restrito à administração técnica" message="Somente o perfil ADMIN pode acessar esta área." onRetry={load} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : <>
+    {denied ? <ErrorState title="Acesso ao sistema indisponível" message="Somente o perfil ADMIN ou SUPERADMIN pode acessar funções técnicas com a permissão correspondente. A auditoria exige permissão de leitura no seu escopo." onRetry={load} action={<Link className="button button-ghost" href="/">Voltar à visão geral</Link>} /> : <>
       {error && <ErrorState title="Sistema indisponível" message={error} onRetry={load} />}
       {allowed && <>
-        <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><h2>Dispositivos e acessos ativos</h2><span>{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="As sessões aparecerão aqui." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={session.id} session={session} onSaved={load} />)}</div>}</section>
-        <CriticalReadinessPanel readiness={readiness} />
-        <section className="panel admin-audit-panel" id="dead-letters"><div className="panel-heading"><h2>Dead-letter do outbox</h2><span>{deadLetters.length}</span></div>{deadLetters.length === 0 ? <EmptyState title="Nenhuma mensagem retida" message="Mensagens com falha de entrega aparecerão aqui." /> : <div className="admin-list">{deadLetters.map((message) => <DeadLetterRow key={message.id} message={message} onSaved={load} />)}</div>}</section>
-        <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><h2>Auditoria recente</h2><span>{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento recente" message="As alterações aparecerão aqui." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType} · {event.entityId} · {new Date(event.occurredAt).toLocaleString("pt-BR")}</small></span><span className="admin-audit-state">{event.newState ?? "registrado"}</span></li>)}</ul>}</section>
+        {sections.sessions && <section className="panel admin-audit-panel" id="sessions"><div className="panel-heading"><h2>Dispositivos e acessos ativos</h2><span>{sessions.length}</span></div>{sessions.length === 0 ? <EmptyState title="Nenhuma sessão no escopo" message="As sessões aparecerão aqui." /> : <div className="admin-list">{sessions.map((session) => <ManagedSessionRow key={session.id} session={session} canRevoke={sections.revokeSessions} onSaved={load} />)}</div>}</section>}
+        {sections.readiness && <CriticalReadinessPanel readiness={readiness} />}
+        {sections.outbox && <section className="panel admin-audit-panel" id="dead-letters"><div className="panel-heading"><h2>Dead-letter do outbox</h2><span>{deadLetters.length}</span></div>{deadLetters.length === 0 ? <EmptyState title="Nenhuma mensagem retida" message="Mensagens com falha de entrega aparecerão aqui." /> : <div className="admin-list">{deadLetters.map((message) => <DeadLetterRow key={message.id} message={message} onSaved={load} />)}</div>}</section>}
+        {sections.audit && <section className="panel admin-audit-panel" id="audit"><div className="panel-heading"><h2>Auditoria recente</h2><span>{auditEvents.length}</span></div>{auditEvents.length === 0 ? <EmptyState title="Nenhum evento recente" message="As alterações aparecerão aqui." /> : <ul className="admin-audit-list">{auditEvents.map((event) => <li key={event.id}><span className="audit-dot" aria-hidden="true" /><span><strong>{event.eventType.replace(/([a-z])([A-Z])/g, "$1 $2")}</strong><small>{event.entityType} · {event.entityId} · {formatHospitalDateTime(event.occurredAt)}</small></span><span className="admin-audit-state">{event.newState ?? "registrado"}</span></li>)}</ul>}</section>}
       </>}
     </>}
   </div>;
@@ -77,22 +96,30 @@ function CriticalReadinessPanel({ readiness }: { readiness: CriticalReadiness | 
   </section>;
 }
 
-function ManagedSessionRow({ session, onSaved }: { session: ManagedSession; onSaved: () => Promise<void> }) {
+function ManagedSessionRow({ session, canRevoke, onSaved }: { session: ManagedSession; canRevoke: boolean; onSaved: () => Promise<void> }) {
   const { confirm, dialog } = useConfirm();
   const [busy, setBusy] = useState(false);
   const submitting = useRef(false);
   const [error, setError] = useState("");
+  const [authorize, setAuthorize] = useState<(() => Promise<void>) | null>(null);
+  async function performRevoke(propagateFailure = false) {
+    if (submitting.current) return;
+    submitting.current = true;
+    setBusy(true); setError("");
+    try { await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({}) }); await onSaved(); }
+    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão.")); if (propagateFailure) throw cause; }
+    finally { submitting.current = false; setBusy(false); }
+  }
   async function revoke() {
-    if (submitting.current || session.current || session.status !== "ACTIVE") return;
+    if (!canRevoke || submitting.current || authorize || session.current || session.status !== "ACTIVE") return;
     submitting.current = true;
     const confirmed = await confirm({ title: "Revogar sessão", message: `Revogar a sessão de ${session.userEmail}?`, confirmLabel: "Revogar", tone: "danger" });
     if (!confirmed) { submitting.current = false; return; }
-    setBusy(true); setError("");
-    try { await apiFetch(`/sessions/${session.id}/revoke`, { method: "POST", body: JSON.stringify({}) }); await onSaved(); }
-    catch (cause) { setError(getSafeErrorMessage(cause, "Não foi possível revogar a sessão.")); }
-    finally { submitting.current = false; setBusy(false); }
+    submitting.current = false;
+    if (session.userRole === "SUPERADMIN") setAuthorize(() => () => performRevoke(true));
+    else await performRevoke();
   }
-  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {new Date(session.createdAt).toLocaleString("pt-BR")}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}</>;
+  return <><div className="admin-row"><div className="admin-row-heading"><strong>{session.userDisplayName}</strong><span>{session.status === "ACTIVE" ? "Ativa" : session.status === "REVOKED" ? "Revogada" : "Expirada"}</span></div><small>{session.userEmail} · {session.departmentCode} · {formatHospitalDateTime(session.createdAt)}</small>{session.current ? <small>Sessão atual: use sair para encerrá-la.</small> : canRevoke && session.status === "ACTIVE" && <ActionButton tone="ghost" type="button" state={busy ? "pending" : "idle"} onClick={() => void revoke()}>Revogar sessão</ActionButton>}{error && <p className="form-alert" role="alert">{error}</p>}</div>{dialog}{authorize && <ReauthDialog privilegedRole="SUPERADMIN" onClose={() => setAuthorize(null)} onConfirmed={authorize} />}</>;
 }
 
 function DeadLetterRow({ message, onSaved }: { message: DeadLetterMessage; onSaved: () => Promise<void> }) {

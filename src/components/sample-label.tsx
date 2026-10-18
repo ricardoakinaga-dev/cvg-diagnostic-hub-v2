@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { SampleLabel, SampleStatus } from "@cvg/contracts";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { ErrorState, LoadingState } from "./feedback-states";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 
 export const sampleStatusLabels: Record<SampleStatus, string> = { EXPECTED: "Esperada", RECEIVED: "Recebida", REJECTED: "Rejeitada", REPLACED: "Substituída" };
 
@@ -14,8 +15,7 @@ export function SampleLabelLink({ sampleId, accessionCode }: { sampleId: string;
 }
 
 function formatRequestedAt(value: string): string {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
+  return formatHospitalDateTime(value);
 }
 
 export function SampleLabelView({ sampleId }: { sampleId: string }) {

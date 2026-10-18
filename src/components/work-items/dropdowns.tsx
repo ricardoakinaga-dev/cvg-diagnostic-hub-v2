@@ -53,7 +53,7 @@ function toggle<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((entry) => entry !== value) : [...list, value];
 }
 
-export function FiltersDropdown({ filters, onChange, departments, services, lockedDepartment }: { filters: WorkItemFilters; onChange: (next: WorkItemFilters) => void; departments: string[]; services: Array<{ code: string; name: string }>; lockedDepartment?: string }) {
+export function FiltersDropdown({ filters, onChange, departments, departmentNames = {}, services, lockedDepartment }: { filters: WorkItemFilters; onChange: (next: WorkItemFilters) => void; departments: string[]; departmentNames?: Record<string, string>; services: Array<{ code: string; name: string }>; lockedDepartment?: string }) {
   const [query, setQuery] = useState("");
   const count = activeFilterCount(filters) - (lockedDepartment ? filters.departments.filter((code) => code === lockedDepartment).length : 0);
   const term = query.trim().toLocaleLowerCase("pt-BR");
@@ -68,7 +68,7 @@ export function FiltersDropdown({ filters, onChange, departments, services, lock
         {PRIORITY_ORDER.filter((priority) => matches(PRIORITY_LABELS[priority])).map((priority: Priority) => <CheckRow key={priority} checked={filters.priorities.includes(priority)} onChange={() => onChange({ ...filters, priorities: toggle(filters.priorities, priority) })}><PriorityIcon priority={priority} />{PRIORITY_LABELS[priority]}</CheckRow>)}
       </Section>
       {!lockedDepartment && departments.length > 1 && <Section title="Setor">
-        {departments.filter((code) => matches(departmentLabel(code))).map((code) => <CheckRow key={code} checked={filters.departments.includes(code)} onChange={() => onChange({ ...filters, departments: toggle(filters.departments, code) })}><DepartmentIcon code={code} />{departmentLabel(code)}</CheckRow>)}
+        {departments.filter((code) => matches(departmentNames[code] ?? departmentLabel(code))).map((code) => <CheckRow key={code} checked={filters.departments.includes(code)} onChange={() => onChange({ ...filters, departments: toggle(filters.departments, code) })}><DepartmentIcon code={code} />{departmentNames[code] ?? departmentLabel(code)}</CheckRow>)}
       </Section>}
       {services.length > 0 && <Section title="Exame" defaultOpen={services.length <= 8}>
         {services.filter((service) => matches(service.name)).map((service) => <CheckRow key={service.code} checked={filters.services.includes(service.code)} onChange={() => onChange({ ...filters, services: toggle(filters.services, service.code) })}><Icon name="hash" size={13} />{service.name}</CheckRow>)}

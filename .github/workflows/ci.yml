@@ -21,8 +21,9 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-24.04
-    # Coverage (~9 min) plus the PostgreSQL suite and the log stack check: 10 to 15 min depending on the runner.
-    timeout-minutes: 25
+    # The hospital planner unit coverage took 12m13s on a hosted runner;
+    # leave time for PostgreSQL coverage, the remaining checks and the build.
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
@@ -117,7 +118,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: mutation-${{ github.run_id }}-${{ github.run_attempt }}
-          path: mutation-report.json
+          path: |
+            mutation-report.json
+            /tmp/cvg-mutation-evidence-*/
           if-no-files-found: warn
           retention-days: 14
 
@@ -229,7 +232,8 @@ jobs:
       - name: Analyze with CodeQL
         uses: github/codeql-action/analyze@v4
 
-  browser:
+  browser-projects:
+    name: Browser E2E (${{ matrix.project }})
     runs-on: ubuntu-24.04
     container: mcr.microsoft.com/playwright:v1.55.1-noble@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c
     timeout-minutes: 20
@@ -238,6 +242,9 @@ jobs:
       fail-fast: false
       matrix:
         node-version: ["22.x"]
+        project: ["chromium", "tablet", "mobile"]
+    env:
+      CVG_E2E_PROJECT: ${{ matrix.project }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -248,26 +255,15 @@ jobs:
       # The pinned Playwright image supplies Chromium and the exact font set.
       # AUD-09: the home scenario runs alone on fresh servers first, so it cannot lean on data other specs leave behind.
       - name: Run the home scenario in isolation
-        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts --grep "Plane-style home" --retries=0
-      - name: Run browser E2E without accessibility (fail on flaky retries)
-        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts tests/e2e/clinical-lifecycle.spec.ts tests/e2e/realtime.spec.ts tests/e2e/visual.spec.ts tests/e2e/ux-simplification.spec.ts tests/e2e/plane-regressions.spec.ts --retries=0 --fail-on-flaky-tests
+        run: npm run test:e2e -- tests/e2e/core-flows.spec.ts --grep "Plane-style home" --project=${{ matrix.project }} --retries=0 --fail-on-flaky-tests --trace=retain-on-failure
+      # All checked-in specs, including HPL, visual and accessibility, enter this gate.
+      - name: Run the complete browser matrix (fail on flaky retries)
+        run: npm run test:e2e -- --project=${{ matrix.project }} --retries=0 --fail-on-flaky-tests --trace=retain-on-failure
       - name: Upload browser E2E artifacts
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-e2e-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            playwright-report/
-            test-results/
-          if-no-files-found: warn
-          retention-days: 14
-      - name: Run accessibility (fail on flaky retries)
-        run: npm run test:accessibility -- --retries=0 --fail-on-flaky-tests
-      - name: Upload accessibility artifacts
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: playwright-accessibility-${{ github.run_id }}-${{ github.run_attempt }}
+          name: playwright-e2e-${{ matrix.project }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             playwright-report/
             test-results/
@@ -276,6 +272,24 @@ jobs:
       - name: Clean disposable browser builds
         if: always()
         run: npm run cleanup:builds
+
+  # Keep the protected branch's existing required context. Any failed,
+  # cancelled or skipped project prevents this aggregate from becoming green.
+  browser:
+    name: browser (22.x)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [browser-projects]
+    if: always()
+    steps:
+      - name: Require every browser project to pass
+        env:
+          BROWSER_PROJECTS_RESULT: ${{ needs.browser-projects.result }}
+        run: |
+          if [[ "$BROWSER_PROJECTS_RESULT" != "success" ]]; then
+            echo "Browser project matrix did not pass ($BROWSER_PROJECTS_RESULT)." >&2
+            exit 1
+          fi
 
   browser-postgres:
     name: Browser E2E with disposable PostgreSQL
@@ -302,6 +316,8 @@ jobs:
           --health-retries 5
     env:
       E2E_DATABASE_NAME: "cvg_test_e2e_${{ github.run_id }}"
+      # Only this disposable lane prepares a native synthetic reference approval before any request.
+      E2E_APPROVED_SYNTHETIC_LABORATORY: "true"
       POSTGRES_TEST_ADMIN_URL: "postgresql://cvg:cvg_ci@127.0.0.1:5432/postgres"
       DATABASE_URL: "postgresql://cvg:cvg_ci@127.0.0.1:5432/cvg_test_e2e_${{ github.run_id }}"
       APP_DATA_MODE: postgres
@@ -626,7 +642,7 @@ jobs:
           image-ref: cvg-diagnostics-hub:ci
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit operational image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -634,7 +650,7 @@ jobs:
           image-ref: cvg-diagnostics-hub-ops:ci
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit MinIO image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -642,7 +658,7 @@ jobs:
           image-ref: cvg-minio-source:7aac2a2
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Build MinIO client image (storage-iam, D-051)
         run: bash scripts/ci-docker-build.sh --file deploy/minio/Dockerfile.mc --tag cvg-mc-source:7394ce0 .
@@ -652,7 +668,7 @@ jobs:
           image-ref: cvg-mc-source:7394ce0
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Boot image and verify livez and readyz
         run: |

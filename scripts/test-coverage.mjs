@@ -14,7 +14,11 @@ if (process.env.ALLOW_POSTGRES_INTEGRATION_TESTS !== "true" || !process.env.POST
   delete unitEnvironment.ALLOW_POSTGRES_INTEGRATION_TESTS;
   delete unitEnvironment.POSTGRES_TEST_ADMIN_URL;
   try {
-    await run(vitest, ["run", "--coverage", "--reporter=dot", "--reporter=blob", `--outputFile=${path.join(blobDirectory, "unit.json")}`], unitEnvironment);
+    // Unit and PostgreSQL runs are complementary collections. Enforce the
+    // configured coverage thresholds on their merged report below, so the
+    // first partial report cannot prevent the database suite from running.
+    // Test failures still abort immediately; no product file is excluded.
+    await run(vitest, ["run", "--coverage", "--coverage.thresholds.lines=0", "--coverage.thresholds.functions=0", "--coverage.thresholds.branches=0", "--coverage.thresholds.statements=0", "--reporter=dot", "--reporter=blob", `--outputFile=${path.join(blobDirectory, "unit.json")}`], unitEnvironment);
     await run(vitest, ["run", "--config", "vitest.postgres.config.ts", "--coverage", "--reporter=dot", "--reporter=blob", `--outputFile=${path.join(blobDirectory, "postgres.json")}`]);
     await run(vitest, ["--coverage", "--merge-reports", blobDirectory]);
   } finally {

@@ -9,6 +9,8 @@ import { hashPassword } from "../security/password";
 import type { ApplicationServiceContext, PatientDiagnosticsAuxiliaryRead } from "./service-context";
 import * as helpers from "./service-common";
 import { patientAuditScope, readPatientAuditEvents } from "./audit-read";
+import { getPatientTimeline } from "./patient-timeline";
+import { captureExamDefinition } from "./exam-definition";
 import { reprojectRequestForActor } from "./request-projection";
 import { accessionPrefixFromEnv, accessionTimeZoneFromEnv, generateAccessionCodes } from "../domain/accession";
 import { code128Geometry } from "../domain/barcode-code128";
@@ -149,6 +151,7 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           requirePermission(currentActor, "request.duplicate_override", { patientId: patient.id, departmentCode: currentActor.departmentCode });
         }
         const createdAt = now();
+        const correlationId = meta.correlationId ?? id("corr");
         const requestId = id("request");
         const requestCode = `EX-${createdAt.slice(2, 10).replace(/-/g, "")}-${String(originalState.protocolSequence).padStart(4, "0")}`;
         const request: DiagnosticRequest = {
@@ -168,12 +171,15 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         };
         const baseItems = input.items.map((entry, index) => {
           const service = services[index];
+          const capture = captureExamDefinition(originalState, service, patient, currentActor.id, createdAt, correlationId, "REQUEST_CAPTURE");
+          originalState = capture.state;
           const itemId = id("item");
           const note = entry.note ? requireText(entry.note, "note", MAX_NOTE_LENGTH) : undefined;
           return {
             id: itemId,
             requestId,
             serviceId: service.id,
+            definitionSnapshot: capture.snapshot,
             departmentCode: service.departmentCode,
             workflowType: service.workflowType,
             priority: input.priority,
@@ -203,7 +209,6 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
         const sampleByItem = new Map(samples.flatMap((sample) => sample.itemIds.map((itemId) => [itemId, sample.id] as const)));
         const items: DiagnosticItem[] = baseItems.map((item) => ({ ...item, ...(sampleByItem.has(item.id) ? { currentSampleId: sampleByItem.get(item.id) } : {}) }));
         const nextRequest = { ...request, itemIds: items.map((item) => item.id) };
-        const correlationId = meta.correlationId ?? id("corr");
         const audits = [
           createAudit("DiagnosticRequestCreated", currentActor.id, "DiagnosticRequest", request.id, correlationId, undefined, "REQUESTED", { requestCode, ...(duplicateOverrideReason ? { duplicateOverride: true, overrideReason: duplicateOverrideReason } : {}) }),
           ...items.map((item) => createAudit("DiagnosticItemRequested", currentActor.id, "DiagnosticRequestItem", item.id, correlationId, undefined, item.status, { serviceCode: serviceFor(originalState, item.serviceId).code })),
@@ -231,7 +236,9 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
       return requestViewForActor(state, currentActor, request);
     },
 
-    async getPatientDiagnostics(actor: User, patientId: string, filters: { limit?: number; cursor?: string } = {}): Promise<PatientDiagnosticsResult> {
+    getPatientTimeline: (actor: User, patientId: string, filters: { limit?: number; cursor?: string } = {}) => getPatientTimeline(store, actor, patientId, filters),
+
+    async getPatientDiagnostics(actor: User, patientId: string, filters: { limit?: number; cursor?: string; timelineLimit?: number } = {}): Promise<PatientDiagnosticsResult> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const limit = pageSize(filters.limit);
@@ -381,7 +388,8 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           };
         })
         .sort((left, right) => left.dueAt.localeCompare(right.dueAt) || left.id.localeCompare(right.id));
-      const events = await readPatientAuditEvents(store, patientAuditScope(state, patient.id, visibleRequestIds, visibleItemIds));
+      const timelinePage = filters.timelineLimit === undefined ? undefined : await getPatientTimeline(store, currentActor, patient.id, { limit: filters.timelineLimit });
+      const events = timelinePage ? [...timelinePage.items].reverse() : await readPatientAuditEvents(store, patientAuditScope(state, patient.id, visibleRequestIds, visibleItemIds));
       const last = pageRequests.at(-1);
       const nextCursor = last && pageRequests.length < afterCursor.length ? encodeKeysetCursor({ createdAt: last.createdAt, id: last.id }) : undefined;
       // The workspace carries its own per-item sample context; the request-level samples list is not repeated.
@@ -392,12 +400,21 @@ export function createRequestService({ store, storage, patientDiagnosticsAuxilia
           workspaceContext: workspaceContextFor(item, request)
         }))
       }));
+      const finalState = await store.readState();
+      const finalActor = requireActiveUser(finalState, currentActor);
+      requirePatientPermission(finalState, finalActor, "patient.view", patient.id);
+      requirePatientPermission(finalState, finalActor, "diagnostic.timeline.view", patient.id);
+      if (finalActor.version !== currentActor.version || [...visibleItemIds].some((itemId) => {
+        const item = findById(finalState.items, itemId);
+        return !item || !canViewItem(finalState, finalActor, item);
+      })) throw new ApiError("SCOPE_DENIED", "Você não tem acesso a este recurso.", 404);
       return {
         patient: { ...patient },
         encounters,
         admissions,
         items,
         events,
+        ...(timelinePage ? { timelineTotal: timelinePage.total, ...(timelinePage.nextCursor ? { timelineNextCursor: timelinePage.nextCursor } : {}) } : {}),
         nextActions,
         workspace: {
           asOf,

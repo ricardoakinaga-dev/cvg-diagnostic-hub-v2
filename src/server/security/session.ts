@@ -1,10 +1,11 @@
+import { hydrateUserPermissions, resolveUserPermissions } from "./access-group-policy";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import type { Session, StateStore, StoreState, User } from "../domain/models";
 import { sessionActivityTouchIntervalMs, sessionIsIdle, shouldTouchSessionActivity } from "../domain/session-activity";
 import { ApiError } from "../http/envelope";
 import * as passwordSecurity from "./password";
 import { findById, sessionForTokenHash } from "../domain/state-index";
-import { assertRateLimit } from "./rate-limit";
+import { assertRateLimit, confirmRateLimitSlotFailure, releaseRateLimitSlot, reserveRateLimitSlot } from "./rate-limit";
 import { assertAcceptablePassword } from "./password-policy";
 import { withoutPendingReset } from "./password-reset";
 
@@ -136,7 +137,7 @@ export async function loginUser(store: StateStore, email: string, password: stri
     };
     return {
       state: { ...currentState, sessions: [...currentState.sessions, session] },
-      result: { user: currentUser, sessionToken, csrfToken, expiresAt }
+      result: { user: hydrateUserPermissions(currentState, currentUser), sessionToken, csrfToken, expiresAt }
     };
   });
 }
@@ -166,11 +167,18 @@ export async function authenticateRequest(
   if (user.mustChangePassword && !options.allowPasswordChange) {
     throw new ApiError("PASSWORD_CHANGE_REQUIRED", "Troque sua senha inicial antes de continuar.", 403);
   }
-  return { ...user, sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
+  return { ...hydrateUserPermissions(state, user), sessionId: session.id, reauthenticatedAt: session.reauthenticatedAt };
 }
 
 const PASSWORD_CHANGE_ATTEMPTS = 5;
 const PASSWORD_CHANGE_WINDOW_MS = 15 * 60 * 1000;
+// Password confirmation unlocks role changes, patient data export and
+// superadmin session management. In-flight attempts occupy a bounded account
+// slot before verification; successful confirmations return it. Wrong or
+// interrupted attempts remain until the window ends; reaching the budget also
+// revokes the session that was guessing.
+const REAUTHENTICATION_FAILURE_LIMIT = 5;
+const REAUTHENTICATION_FAILURE_WINDOW_MS = 15 * 60 * 1000;
 
 /**
  * Stores the new hash, revokes every live session of the user and issues one
@@ -201,7 +209,7 @@ function rotateCredentials(
         previousState: audit.previousState, newState: "ACTIVE", correlationId: audit.correlationId, metadata: { sessionsRotated: true, sessionsRevoked: revoked, ...(pending.revoked ? { resetLinkRevoked: true } : {}) }, occurredAt: createdAt
       }]
     },
-    result: { user, sessionToken, csrfToken, expiresAt }
+    result: { user: hydrateUserPermissions(state, user), sessionToken, csrfToken, expiresAt }
   };
 }
 
@@ -258,6 +266,8 @@ export function authorizationSnapshotIsCurrent(state: StoreState, actor: User, o
     && current.version === actor.version
     && current.role === actor.role
     && current.departmentCode === actor.departmentCode
+    && current.accessGroupId === actor.accessGroupId
+    && (actor.permissions === undefined || sameScope(resolveUserPermissions(state, current), actor.permissions))
     && sameScope(current.patientIds, actor.patientIds)
     && sameScope(current.serviceCodes, actor.serviceCodes)
     && sameScope(current.managedDepartmentCodes, actor.managedDepartmentCodes)
@@ -278,12 +288,19 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
   }
   await assertSessionIsActive(store, session);
   const user = activeUser(state, session.userId);
+  const failureKey = `reauth-failure:${session.userId}`;
+  const reservation = await reserveRateLimitSlot(failureKey, REAUTHENTICATION_FAILURE_LIMIT, REAUTHENTICATION_FAILURE_WINDOW_MS);
   const passwordValid = passwordSecurity.verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
   if (!user || !passwordValid) {
+    const confirmedFailures = await confirmRateLimitSlotFailure(reservation, REAUTHENTICATION_FAILURE_LIMIT);
+    if (confirmedFailures >= REAUTHENTICATION_FAILURE_LIMIT) {
+      await revokeSession(store, token);
+      throw new ApiError("SESSION_EXPIRED", "Muitas tentativas. Entre novamente.", 401);
+    }
     throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
   }
 
-  return store.transaction((currentState) => {
+  return store.transaction(async (currentState) => {
     const sessionById = findById(currentState.sessions, session.id);
     const currentSession = sessionById?.userId === session.userId && sessionById.tokenHash === tokenHash ? sessionById : undefined;
     if (
@@ -301,11 +318,13 @@ export async function reauthenticateUser(store: StateStore, request: Request, pa
     if (currentUser.passwordHash !== user.passwordHash || currentUser.version !== user.version) {
       throw new ApiError("UNAUTHENTICATED", "Credenciais inválidas.", 401);
     }
+    // Fail closed on a shared-backend release failure before persisting reauth.
+    await releaseRateLimitSlot(reservation);
     const reauthenticatedAt = new Date().toISOString();
     const updatedSession = { ...currentSession, reauthenticatedAt, version: currentSession.version + 1 };
     return {
       state: { ...currentState, sessions: currentState.sessions.map((entry) => entry.id === currentSession.id ? updatedSession : entry) },
-      result: { ...currentUser, sessionId: currentSession.id, reauthenticatedAt }
+      result: { ...hydrateUserPermissions(currentState, currentUser), sessionId: currentSession.id, reauthenticatedAt }
     };
   });
 }

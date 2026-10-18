@@ -28,26 +28,56 @@ const dashboard = {
   ]
 };
 
+function clinicalPermissions(role: string) {
+  return ["request.list", "queue.view", "service.catalog.view", ...(["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(role) ? ["request.create"] : [])];
+}
+
 function mockSession(role: string, options: { dashboardFails?: boolean } = {}) {
   vi.mocked(apiFetch).mockImplementation(async (path: string) => {
-    if (path === "/session/me") return { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina Costa", role, departmentCode: "INPATIENT", timezone: "UTC" } } as never;
+    if (path === "/session/me") return { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina Costa", role, departmentCode: "INPATIENT", timezone: "UTC", permissions: clinicalPermissions(role) } } as never;
     if (path === "/dashboard") { if (options.dashboardFails) throw new Error("down"); return dashboard as never; }
+    if (path === "/departments") return dashboard.departments.filter((department) => department.departmentCode !== "INPATIENT").map((department) => ({ id: department.departmentCode, code: department.departmentCode, name: department.label, type: "DIAGNOSTIC", active: true })) as never;
     return [] as never;
   });
   vi.mocked(apiFetchWithMeta).mockImplementation(async (path: string) => ({ data: path.startsWith("/diagnostic-requests") ? [request] : [], meta: {} }) as never);
 }
 
 describe("Home", () => {
-  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); });
+  afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.clearAllMocks(); vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+  it.each(["VETERINARIAN", "INPATIENT_TEAM", "MANAGER", "SUPERADMIN"])("keeps an authorized home feed without request creation for reduced %s", async (role) => {
+    mockSession(role);
+    const original = vi.mocked(apiFetch).getMockImplementation()!;
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => path === "/session/me" ? { user: { id: "home-reader", displayName: "Leitura clínica", role, departmentCode: "INPATIENT", permissions: ["request.list", "queue.view", "service.catalog.view"] } } as never : original(path, init));
+    render(<Home />); await screen.findByRole("link", { name: /Na minha fila\s*2/ });
+    expect(screen.queryByRole("link", { name: "Nova solicitação" })).not.toBeInTheDocument();
+  });
+
+  it("blocks creation while the existing feed hook revalidates and withdraws request.create", async () => {
+    mockSession("VETERINARIAN");
+    const original = vi.mocked(apiFetch).getMockImplementation()!;
+    let refreshing = false; let resolveIdentity!: (value: unknown) => void;
+    vi.mocked(apiFetch).mockImplementation(async (path, init) => {
+      if (path === "/session/me") return refreshing ? new Promise((resolve) => { resolveIdentity = resolve; }) as never : { user: { id: "user-vet", displayName: "Dra. Marina Costa", role: "VETERINARIAN", departmentCode: "INPATIENT", permissions: ["request.list", "queue.view", "service.catalog.view", "request.create"] } } as never;
+      return original(path, init);
+    });
+    render(<Home />); await screen.findByRole("link", { name: /Na minha fila\s*2/ });
+    expect(screen.getByRole("link", { name: "Nova solicitação" })).toBeInTheDocument();
+    refreshing = true; fireEvent(window, new Event("cvg:realtime-resync"));
+    expect(screen.queryByRole("link", { name: "Nova solicitação" })).not.toBeInTheDocument();
+    await act(async () => { resolveIdentity({ user: { id: "user-vet", displayName: "Leitura clínica", role: "VETERINARIAN", departmentCode: "INPATIENT", permissions: ["request.list", "queue.view", "service.catalog.view"] } }); });
+    await screen.findByRole("link", { name: /Na minha fila\s*2/ });
+    expect(screen.queryByRole("link", { name: "Nova solicitação" })).not.toBeInTheDocument();
+  });
 
   it("greets the clinician and summarises work like Plane's home", async () => {
     mockSession("VETERINARIAN");
     render(<Home />);
     expect(await screen.findByRole("heading", { level: 1, name: /, Marina$/ })).toBeInTheDocument();
     const shortcuts = screen.getByRole("navigation", { name: "Atalhos" });
-    expect(await within(shortcuts).findByRole("link", { name: /Atrasados\s*2/ })).toHaveAttribute("href", "/queues?preset=overdue");
-    expect(within(shortcuts).getByRole("link", { name: /Minhas solicitações\s*2/ })).toHaveAttribute("href", "/queues?view=mine");
-    expect(within(shortcuts).getByRole("link", { name: /Resultados novos\s*3/ })).toBeInTheDocument();
+    expect(await within(shortcuts).findByRole("link", { name: /Atrasados\s*0/ })).toHaveAttribute("href", "/queues?preset=overdue");
+    expect(within(shortcuts).getByRole("link", { name: /Na minha fila\s*2/ })).toHaveAttribute("href", "/queues?view=mine");
+    expect(within(shortcuts).getByRole("link", { name: /Resultados novos\s*1/ })).toBeInTheDocument();
     const [attention] = await screen.findAllByRole("link", { name: /LAB-0003\s*Bob — Hemograma/ });
     expect(attention).toHaveAttribute("href", "/queues?dept=LABORATORY&item=item-1");
     expect(screen.getAllByRole("link", { name: /RX-0003\s*Bob — RX de tórax/ }).length).toBeGreaterThan(0);
@@ -69,16 +99,16 @@ describe("Home", () => {
     render(<Home />);
     expect(await screen.findByText("Não foi possível carregar os exames")).toBeInTheDocument();
     expect(screen.queryByText("Nenhum exame exige atenção imediata.")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: /Minhas solicitações\s*0/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Na minha fila\s*0/ })).not.toBeInTheDocument();
     mockSession("VETERINARIAN");
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
-    expect(await screen.findByRole("link", { name: /Minhas solicitações\s*2/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Na minha fila\s*2/ })).toBeInTheDocument();
   });
 
   it("reconciles indicators when the realtime stream requests a resync", async () => {
     mockSession("VETERINARIAN");
     render(<Home />);
-    await screen.findByRole("link", { name: /Atrasados\s*2/ });
+    await screen.findByRole("link", { name: /Atrasados\s*0/ });
     vi.mocked(apiFetch).mockClear();
     act(() => { window.dispatchEvent(new Event("cvg:realtime-resync")); });
     await waitFor(() => expect(apiFetch).toHaveBeenCalledWith("/dashboard"));
@@ -98,10 +128,10 @@ describe("Home", () => {
   });
 
   it.each([[8, "Bom dia"], [14, "Boa tarde"], [21, "Boa noite"]])("greets a clinician at hour %s", async (hour, greeting) => {
-    vi.spyOn(Date.prototype, "getHours").mockReturnValue(Number(hour));
+    vi.stubEnv("NEXT_PUBLIC_HOSPITAL_TIMEZONE", "America/Sao_Paulo"); vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(`2026-10-11T${String(hour).padStart(2, "0")}:00:00-03:00`));
     mockSession("VET"); render(<Home />);
     expect(await screen.findByRole("heading", { level: 1, name: `${greeting}, Marina` })).toBeInTheDocument();
-    await screen.findByRole("link", { name: /Minhas solicitações\s*2/ });
+    await screen.findByRole("link", { name: /Na minha fila\s*2/ });
   });
 
   it("shows empty work and zero fallback counts when both feeds contain no work", async () => {
@@ -112,20 +142,31 @@ describe("Home", () => {
     expect(screen.getByText("Nenhum exame exige atenção imediata.")).toBeInTheDocument();
     expect(screen.getByText("Nenhum resultado aguardando revisão.")).toBeInTheDocument();
     const shortcuts = screen.getByRole("navigation", { name: "Atalhos" });
-    for (const label of ["Minhas solicitações", "Atrasados", "Resultados novos", "Recoletas"]) expect(within(shortcuts).getByRole("link", { name: new RegExp(`${label}\\s*0`) })).toBeInTheDocument();
+    for (const label of ["Na minha fila", "Atrasados", "Resultados novos", "Recoletas"]) expect(within(shortcuts).getByRole("link", { name: new RegExp(`${label}\\s*0`) })).toBeInTheDocument();
   });
 
-  it.each(["LAB_TECH", "MANAGER", "INPATIENT_TEAM"])("counts active personal work for %s without including terminal or another owner's exams", async (role) => {
+  it.each([
+    ["SUPERADMIN", "IT", "LABORATORY"],
+    ["VETERINARIAN", "INPATIENT", "LABORATORY"],
+    ["VET", "INPATIENT", "LABORATORY"],
+    ["INPATIENT_TEAM", "INPATIENT", "LABORATORY"],
+    ["MANAGER", "IT", "RADIOLOGY"],
+    ["VIEWER", "IT", "LABORATORY"],
+    ["LAB_TECH", "LABORATORY", "LABORATORY"],
+    ["RADIOLOGY_TEAM", "RADIOLOGY", "RADIOLOGY"],
+    ["ULTRASOUND_TEAM", "ULTRASOUND", "ULTRASOUND"]
+  ])("counts another professional's authorized active exam in %s's queue without turning routine work into attention", async (role, departmentCode, workflowType) => {
     mockSession(role);
     const prior = vi.mocked(apiFetch).getMockImplementation()!;
-    vi.mocked(apiFetch).mockImplementation(async (path, options) => path === "/session/me" ? { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Equipe Marina", role, departmentCode: "LABORATORY", timezone: "UTC" } } as never : prior(path, options));
-    const own = { ...request, items: [request.items[0], { ...request.items[0], id: "terminal", status: "COMPLETED" }] };
-    const other = { ...request, id: "other", requesterId: "someone-else", items: [{ ...request.items[1], id: "other-rx" }] };
+    vi.mocked(apiFetch).mockImplementation(async (path, options) => path === "/session/me" ? { user: { id: "user-vet", email: "vet@cvg.local", displayName: "Equipe Marina", role, departmentCode, managedDepartmentCodes: role === "MANAGER" ? ["RADIOLOGY"] : undefined, timezone: "UTC", permissions: clinicalPermissions(role) } } as never : prior(path, options));
+    const exam = { ...request.items[0], priority: "ROUTINE", workflowType, departmentCode: workflowType };
+    const own = { ...request, items: ["COMPLETED", "CANCELLED", "REJECTED"].map((status) => ({ ...exam, id: `terminal-${status}`, status })) };
+    const other = { ...request, id: "other", requesterId: "someone-else", items: [{ ...exam, id: "authorized-routine" }] };
     vi.mocked(apiFetchWithMeta).mockImplementation(async (path) => ({ data: path.startsWith("/diagnostic-requests") ? [own, other] : [], meta: {} }) as never);
     render(<Home />);
-    const label = role === "INPATIENT_TEAM" ? "Minhas solicitações" : "Na minha fila";
-    expect(await screen.findByRole("link", { name: new RegExp(`${label}\\s*1`) })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Nova solicitação" }) !== null).toBe(role !== "LAB_TECH");
+    expect(await screen.findByRole("link", { name: /Na minha fila\s*1/ })).toHaveAttribute("href", "/queues?view=mine");
+    expect(screen.getByText("Nenhum exame exige atenção imediata.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Nova solicitação" }) !== null).toBe(["SUPERADMIN", "VETERINARIAN", "VET", "INPATIENT_TEAM", "MANAGER"].includes(role));
   });
 
   it("computes fallback counts from overdue, recollection and available result states", async () => {
@@ -137,7 +178,7 @@ describe("Home", () => {
     ] }];
     vi.mocked(apiFetchWithMeta).mockImplementation(async (path) => ({ data: path.startsWith("/diagnostic-requests") ? data : [], meta: {} }) as never);
     render(<Home />);
-    expect(await screen.findByRole("link", { name: /Minhas solicitações\s*2/ })).toBeInTheDocument();
+    expect(await screen.findByRole("link", { name: /Na minha fila\s*2/ })).toBeInTheDocument();
     for (const label of ["Atrasados", "Resultados novos", "Recoletas"]) expect(screen.getByRole("link", { name: new RegExp(`${label}\\s*1`) })).toBeInTheDocument();
     const attention = screen.getByRole("region", { name: "Precisa de atenção" });
     expect(within(attention).getByText("Rotina")).toBeInTheDocument();
@@ -164,18 +205,18 @@ describe("Home", () => {
       return { data: path.startsWith("/diagnostic-requests") && !path.includes("cursor=") ? [request] : [], meta: kind === "truncated" && path.startsWith("/diagnostic-requests") ? { nextCursor: "next" } : {} } as never;
     });
     render(<Home />);
-    const message = kind === "partial" ? "Parte das filas do setor não respondeu" : "Lista limitada a 1.000 solicitações";
+    const message = kind === "partial" ? "Parte das filas do setor não respondeu" : "Há mais exames disponíveis";
     expect(await screen.findByText(new RegExp(message))).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Resultados novos\s*3/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Resultados novos\s*1/ })).toBeInTheDocument();
   });
 
   it("preserves work with a stale warning after refresh fails and recovers both feeds", async () => {
     mockSession("VETERINARIAN"); render(<Home />);
-    await screen.findByRole("link", { name: /Minhas solicitações\s*2/ });
+    await screen.findByRole("link", { name: /Na minha fila\s*2/ });
     vi.mocked(apiFetchWithMeta).mockRejectedValue(new Error("offline"));
     act(() => window.dispatchEvent(new Event("cvg:realtime-updated")));
     expect(await screen.findByRole("status", { name: "Dados desatualizados" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Minhas solicitações\s*2/ })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Na minha fila\s*2/ })).toBeInTheDocument();
     mockSession("VETERINARIAN");
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     await waitFor(() => expect(screen.queryByRole("status", { name: "Dados desatualizados" })).not.toBeInTheDocument());

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationsView } from "./notifications-view";
 import * as apiClient from "./api-client";
 
@@ -16,7 +16,36 @@ const items = [
   { id: "delivered", category: "ACTIONABLE", priority: "URGENT", title: "Para confirmar", body: "Confirme quando concluir.", createdAt: "2026-08-20T13:04:00.000Z", state: "DELIVERED" as const, deepLink: "/requests/request-5", version: 2 }
 ];
 
+const session = { user: { id: "vet", permissions: ["notification.acknowledge"] } };
+function mockInboxApi(implementation: (path: string, init?: RequestInit) => unknown) {
+  return vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => path === "/session/me" ? Promise.resolve(session) as never : implementation(path, init) as never);
+}
+
 describe("NotificationsView", () => {
+  beforeEach(() => { vi.spyOn(apiClient, "apiFetchWithMeta").mockImplementation(async (path) => ({ data: await apiClient.apiFetch(path), meta: {} }) as never); });
+  it("continues inbox pages without duplicates and keeps confirmed entries when the next page fails", async () => {
+    mockInboxApi(() => Promise.resolve(items));
+    const page = vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValueOnce({ data: [items[4]], meta: { total: 2, nextCursor: "cursor+/=" } } as never).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ data: [items[4], items[0]], meta: { total: 2 } } as never);
+    render(<NotificationsView />);
+    await screen.findByRole("heading", { name: "Para confirmar" });
+    fireEvent.click(screen.getByRole("button", { name: "Carregar mais notificações" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("heading", { name: "Para confirmar" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    await screen.findByRole("button", { name: /^Confirmada/ });
+    expect(screen.getAllByRole("button", { name: /^Para confirmar/ })).toHaveLength(1);
+    expect(page).toHaveBeenLastCalledWith("/notifications?filter=ALL&limit=50&cursor=cursor%2B%2F%3D");
+    expect(screen.queryByRole("button", { name: "Carregar mais notificações" })).not.toBeInTheDocument();
+  });
+
+  it("fails closed for VIEWER and for a session without acknowledgement permission", async () => {
+    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path === "/session/me" ? { user: { id: "viewer", role: "VIEWER", permissions: ["notification.view"] } } : [items[4]]) as never);
+    render(<NotificationsView />);
+    await screen.findByRole("heading", { name: "Para confirmar" });
+    expect(screen.queryByRole("button", { name: "Confirmar" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Motivo da confirmação")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Abrir contexto/ })).toBeInTheDocument();
+  });
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
@@ -27,7 +56,7 @@ describe("NotificationsView", () => {
     const acknowledgement = new Promise<void>((resolve) => {
       resolveAcknowledgement = resolve;
     });
-    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path, init) => {
+    const apiFetchMock = mockInboxApi((path, init) => {
       if (path === "/notifications/delivered/acknowledge") return acknowledgement as never;
       return Promise.resolve(path.includes("filter=UNREAD") ? [] : items) as never;
     });
@@ -60,12 +89,12 @@ describe("NotificationsView", () => {
   });
 
   it("reconciles after a realtime update event", async () => {
-    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockResolvedValue(items as never);
+    const apiFetchMock = mockInboxApi(() => Promise.resolve(items));
     render(<NotificationsView />);
     await screen.findByRole("heading", { name: "Confirmada" });
 
     fireEvent(window, new Event("cvg:realtime-updated"));
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(apiFetchMock.mock.calls.filter(([path]) => path.startsWith("/notifications"))).toHaveLength(2));
   });
 
   it("ignores a slower response from the previous filter", async () => {
@@ -74,16 +103,16 @@ describe("NotificationsView", () => {
     const allResponse = new Promise<typeof items>((resolve) => { resolveAll = resolve; });
     const unreadItems = [{ ...items[4], id: "unread", title: "Somente não lida" }];
     const unreadResponse = new Promise<typeof items>((resolve) => { resolveUnread = resolve; });
-    const apiFetchMock = vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => {
-      if (path === "/notifications?filter=ALL") return allResponse as never;
-      if (path === "/notifications?filter=UNREAD") return unreadResponse as never;
+    const apiFetchMock = mockInboxApi((path) => {
+      if (path === "/notifications?filter=ALL&limit=50") return allResponse as never;
+      if (path === "/notifications?filter=UNREAD&limit=50") return unreadResponse as never;
       return Promise.resolve([]) as never;
     });
 
     render(<NotificationsView />);
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/notifications?filter=ALL"));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/notifications?filter=ALL&limit=50"));
     fireEvent.click(screen.getByRole("tab", { name: "Não lidas" }));
-    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/notifications?filter=UNREAD"));
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalledWith("/notifications?filter=UNREAD&limit=50"));
 
     resolveUnread(unreadItems);
     expect(await screen.findByRole("heading", { name: "Somente não lida" })).toBeInTheDocument();
@@ -94,7 +123,7 @@ describe("NotificationsView", () => {
 
   it("sanitizes a load failure and exposes a retry path", async () => {
     let attempts = 0;
-    vi.spyOn(apiClient, "apiFetch").mockImplementation(() => {
+    mockInboxApi(() => {
       attempts += 1;
       return attempts === 1 ? Promise.reject(new Error("postgres://secret")) as never : Promise.resolve([]) as never;
     });
@@ -112,7 +141,7 @@ describe("NotificationsView", () => {
       { id: "root", category: "CRITICAL", priority: "URGENT", title: "Resultado crítico requer confirmação", body: "Thor · PCR", createdAt: "2026-08-20T13:05:00.000Z", state: "DELIVERED" as const, deepLink: "/results/result-1", version: 2, whatsapp: { status: "READ", updatedAt: "2026-08-20T13:06:00.000Z" }, escalation: { level: 2, lastEscalatedAt: "2026-08-20T13:35:00.000Z" } },
       { id: "copy", category: "CRITICAL", priority: "URGENT", title: "Resultado crítico sem confirmação", body: "Thor · PCR", createdAt: "2026-08-20T13:20:00.000Z", state: "DELIVERED" as const, deepLink: "/results/result-1", version: 2, escalationOf: "root", escalation: { level: 1, lastEscalatedAt: "2026-08-20T13:20:00.000Z" }, whatsapp: { status: "SKIPPED", updatedAt: "2026-08-20T13:20:00.000Z", errorCode: "NO_CONTACT" } }
     ];
-    vi.spyOn(apiClient, "apiFetch").mockImplementation((path) => Promise.resolve(path.includes("filter=UNREAD") ? [] : critical) as never);
+    mockInboxApi((path) => Promise.resolve(path.includes("filter=UNREAD") ? [] : critical) as never);
     render(<NotificationsView />);
     fireEvent.click(await screen.findByRole("button", { name: /^Resultado crítico requer confirmação/ }));
     expect(await screen.findByText("WhatsApp: lido.")).toBeInTheDocument();

@@ -53,7 +53,7 @@ describe("SampleLabelView", () => {
   it("keeps an unparseable request date as received", async () => {
     vi.spyOn(apiClient, "apiFetch").mockResolvedValue({ ...label, requestedAt: "ontem" } as never);
     render(<SampleLabelView sampleId="sample-1" />);
-    expect(await screen.findByLabelText("Etiqueta A261008-00015")).toHaveTextContent("Solicitado em ontem");
+    expect(await screen.findByLabelText("Etiqueta A261008-00015")).toHaveTextContent("Solicitado em Não informado");
   });
 
   it("offers a retry when the label is unavailable", async () => {

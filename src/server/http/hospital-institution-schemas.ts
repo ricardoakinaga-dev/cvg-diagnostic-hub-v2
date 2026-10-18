@@ -1,0 +1,10 @@
+import { z } from "zod";
+import { HOSPITAL_CAPABILITIES } from "@cvg/contracts";
+const id = z.string().min(1).max(100);
+const revision = z.number().int().positive();
+export const hospitalInstitutionPutSchema = z.object({ name: z.string().trim().min(1).max(200), timezone: z.string().min(1).max(80), expectedVersion: z.number().int().nonnegative() }).strict();
+export const hospitalDepartmentCapabilitySchema = z.object({ disabledNewWork: z.array(z.enum(HOSPITAL_CAPABILITIES)).max(7).refine((entries) => new Set(entries).size === entries.length), archived: z.boolean(), expectedVersion: revision }).strict();
+export const hospitalInvitationCreateSchema = z.object({ email: z.email().max(320), displayName: z.string().trim().min(1).max(160), role: z.enum(["VETERINARIAN", "INPATIENT_TEAM", "LAB_TECH", "RADIOLOGY_TEAM", "ULTRASOUND_TEAM", "VIEWER"]), departmentCode: z.string().trim().regex(/^[A-Za-z0-9_-]{1,60}$/), accessGroupId: id, expectedGroupVersion: revision, serviceCodes: z.array(z.string().min(1).max(60)).max(500).refine((entries) => new Set(entries).size === entries.length).optional(), expiresInHours: z.number().int().min(1).max(168) }).strict();
+export const hospitalInvitationRevokeSchema = z.object({ reason: z.string().trim().min(1).max(500), expectedVersion: revision }).strict();
+export const hospitalInvitationPreviewSchema = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict();
+export const hospitalInvitationAcceptSchema = hospitalInvitationPreviewSchema.extend({ password: z.string().min(12).max(128) }).strict();

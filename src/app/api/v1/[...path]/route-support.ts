@@ -7,6 +7,8 @@ import type { CommandMeta, SearchResultType, createApplicationService } from "..
 import type { ApiHandlerEntry } from "../../../../server/http/api-handler-registry";
 import type { authenticateRequest } from "../../../../server/security/session";
 import { ApiError } from "../../../../server/http/envelope";
+import { rolePermissions } from "../../../../server/security/authorization";
+import type { RoleCode } from "@cvg/contracts";
 import { assertRateLimit } from "../../../../server/security/rate-limit";
 import { createSafeConsoleSink, processOutboxBatch } from "../../../../server/operations/outbox";
 import { createStructuredLogger } from "../../../../server/observability/structured-logger";
@@ -174,6 +176,10 @@ export function parseCommandBody<T>(body: Record<string, unknown>, schema: z.Zod
     throw new ApiError("VALIDATION_ERROR", message, 400);
   return parsed.data;
 }
+export function parseVersionedCommandBody<T>(request: Request, body: Record<string, unknown>, operation: ApiOperation, schema: z.ZodType<T>, message: string): T {
+  const metadata = commandMeta(request, body, operation);
+  return parseCommandBody(operation.concurrencyGuard ? { ...body, expectedVersion: metadata.expectedVersion } : body, schema, message);
+}
 export function commandMeta(request: Request, body: Record<string, unknown>, operation: ApiOperation): CommandMeta {
   const bodyVersion = typeof body.expectedVersion === "number" ? body.expectedVersion : undefined;
   const rawIfMatch = request.headers.get("if-match");
@@ -197,6 +203,13 @@ export function commandMeta(request: Request, body: Record<string, unknown>, ope
   };
 }
 export const REQUEST_HEADER_VALIDATORS = Object.freeze({
+  "x-webhook-id": (value: string) => /^[A-Za-z0-9._:-]{1,100}$/.test(value),
+  "x-webhook-event": (value: string) => /^[A-Za-z0-9._:-]{1,120}$/.test(value),
+  "x-webhook-delivery-id": (value: string) => /^[A-Za-z0-9._:-]{1,100}$/.test(value),
+  "x-webhook-signature": (value: string) => /^sha256=[0-9a-f]{64}$/.test(value),
+  "x-webhook-timestamp": (value: string) => /^[1-9][0-9]{0,14}$/.test(value),
+  "x-webhook-signature-version": (value: string) => value === "v2",
+  "authorization": (value: string) => /^Bearer cvg_int_[A-Za-z0-9_-]{43}$/.test(value),
   "x-correlation-id": (value: string) => /^[A-Za-z0-9._:-]{1,100}$/.test(value),
   "x-csrf-token": (value: string) => codePointLength(value) >= 1 && codePointLength(value) <= 500,
   "idempotency-key": (value: string) => codePointLength(value) >= 1 && codePointLength(value) <= 200 && /\S/.test(value),
@@ -231,6 +244,7 @@ export async function flushConfiguredLocalOutbox(store: Awaited<ReturnType<typeo
   await processOutboxBatch(store, createSafeConsoleSink(() => undefined), { workerId: `inline_${process.pid}`, batchSize: 100, allowSyntheticDelivery: true });
 }
 export function publicUser(user: {
+  permissions?: ReadonlyArray<import("@cvg/contracts").Permission>;
   id: string;
   email: string;
   displayName: string;
@@ -244,7 +258,7 @@ export function publicUser(user: {
   onCall?: boolean;
 }) {
   const alertContact = user.whatsappPhone && user.whatsappConsentAt ? { maskedPhone: maskAlertPhone(user.whatsappPhone), consentAt: user.whatsappConsentAt } : undefined;
-  return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, departmentCode: user.departmentCode, managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined, timezone: user.timezone, mustChangePassword: user.mustChangePassword, alertContact, onCall: user.onCall === true ? true : undefined };
+  return { id: user.id, email: user.email, displayName: user.displayName, role: user.role, permissions: [...(user.permissions ?? rolePermissions[user.role as RoleCode] ?? [])], departmentCode: user.departmentCode, managedDepartmentCodes: user.managedDepartmentCodes ? [...user.managedDepartmentCodes] : undefined, timezone: user.timezone, mustChangePassword: user.mustChangePassword, alertContact, onCall: user.onCall === true ? true : undefined };
 }
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));

@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ItemState, PatientDiagnosticsResult, PatientWorkspaceSample, SessionResponse } from "@cvg/contracts";
+import type { ItemState, PatientDiagnosticsResult, PatientWorkspaceSample, SessionResponse, TimelineEvent } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
-import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { ApiClientError, apiFetch, apiFetchWithMeta, formatRelativeTime, getSafeErrorMessage } from "./api-client";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 import { EncounterCloseDialog, EncounterOpenDialog, encounterTypeLabels } from "./encounter-actions";
 import { EmptyState, ErrorState, PartialNotice, StaleNotice } from "./feedback-states";
 import { PatientArchive } from "./patient-archive";
@@ -23,8 +24,7 @@ const sampleLabels: Record<SampleSummary["status"], string> = {
 };
 
 function formatSnapshotDate(value: string | null | undefined): string {
-  if (!value) return "Não informado";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return formatHospitalDateTime(value);
 }
 
 function formatBirthDate(value: string | undefined): string {
@@ -166,16 +166,21 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [paginationError, setPaginationError] = useState("");
+  const [loadingTimeline, setLoadingTimeline] = useState(false);
+  const [timelineError, setTimelineError] = useState("");
   const [compactTimeline, setCompactTimeline] = useState(() => typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(max-width: 560px)").matches);
   const [timelineExpanded, setTimelineExpanded] = useState(false);
   const [canManageEncounters, setCanManageEncounters] = useState(false);
   const [encounterDialog, setEncounterDialog] = useState<"open" | "close" | null>(null);
+  const [scopeRequiresRevalidation, setScopeRequiresRevalidation] = useState(false);
   const loadVersion = useRef(0);
   const load = useCallback(async () => {
     const version = loadVersion.current + 1;
     loadVersion.current = version;
     setLoading(true);
     setLoadingMore(false);
+    setLoadingTimeline(false);
+    setTimelineError("");
     setPaginationError("");
     try {
       const nextData = await apiFetch<DiagnosticsData>(`/patients/${patientId}/diagnostics?limit=50`);
@@ -185,6 +190,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
       setError("");
     } catch (cause) {
       if (loadVersion.current !== version) return;
+      if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) setData(null);
       setError(getSafeErrorMessage(cause, "Não foi possível carregar o workspace do paciente."));
     } finally {
       if (loadVersion.current === version) setLoading(false);
@@ -212,11 +218,36 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
         };
       });
     } catch (cause) {
-      if (loadVersion.current === version) setPaginationError(getSafeErrorMessage(cause, "Não foi possível carregar mais protocolos."));
+      if (loadVersion.current === version) {
+        if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) { setData(null); setError(getSafeErrorMessage(cause, "Não foi possível carregar o workspace do paciente.")); }
+        setPaginationError(getSafeErrorMessage(cause, "Não foi possível carregar mais protocolos."));
+      }
     } finally {
       if (loadVersion.current === version) setLoadingMore(false);
     }
   }, [data, loading, loadingMore, patientId]);
+  const loadMoreTimeline = useCallback(async () => {
+    const cursor = data?.timelineNextCursor;
+    if (!cursor || loading || loadingTimeline) return;
+    const version = loadVersion.current;
+    setLoadingTimeline(true);
+    setTimelineError("");
+    try {
+      const page = await apiFetchWithMeta<TimelineEvent[]>(`/patients/${patientId}/timeline?limit=50&cursor=${encodeURIComponent(cursor)}`);
+      if (loadVersion.current !== version) return;
+      setData((current) => {
+        if (!current || current.patient.id !== patientId) return current;
+        const known = new Set(current.events.map((event) => event.id));
+        return { ...current, events: [...page.data].reverse().filter((event) => !known.has(event.id)).concat(current.events), timelineNextCursor: typeof page.meta.nextCursor === "string" ? page.meta.nextCursor : undefined, timelineTotal: typeof page.meta.total === "number" ? page.meta.total : current.timelineTotal };
+      });
+      setTimelineExpanded(true);
+    } catch (cause) {
+      if (loadVersion.current === version) {
+        if (cause instanceof ApiClientError && [401, 403, 404].includes(cause.status)) { setData(null); setError(getSafeErrorMessage(cause, "Não foi possível carregar o workspace do paciente.")); }
+        setTimelineError(getSafeErrorMessage(cause, "Não foi possível carregar mais eventos."));
+      }
+    } finally { if (loadVersion.current === version) setLoadingTimeline(false); }
+  }, [data, loading, loadingTimeline, patientId]);
   useEffect(() => {
     const timer = window.setTimeout(() => { void load(); }, 0);
     return () => {
@@ -225,10 +256,30 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     };
   }, [load]);
   useEffect(() => {
-    void apiFetch<SessionResponse>("/session/me")
-      .then((session) => setCanManageEncounters(["VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session?.user?.role)))
-      .catch(() => setCanManageEncounters(false));
-  }, []);
+    let active = true;
+    let version = 0;
+    const readIdentity = (revalidateScope = false) => {
+      const current = ++version;
+      void apiFetch<SessionResponse>("/session/me")
+        .then((session) => {
+          if (!active || current !== version) return;
+          setCanManageEncounters(Boolean(session.user.permissions?.includes("encounter.manage") && ["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM", "MANAGER"].includes(session.user.role)));
+          if (!revalidateScope) return;
+          if (!session.user.permissions?.includes("patient.view")) { setCanManageEncounters(false); setError(getSafeErrorMessage(new ApiClientError(403, {}), "Não foi possível revalidar o paciente.")); setLoading(false); return; }
+          setScopeRequiresRevalidation(false);
+          void load();
+        })
+        .catch((cause) => {
+          if (!active || current !== version) return;
+          setCanManageEncounters(false);
+          if (revalidateScope) { setData(null); setError(getSafeErrorMessage(cause, "Não foi possível revalidar o paciente.")); setLoading(false); }
+        });
+    };
+    const refresh = () => { loadVersion.current += 1; setData(null); setError(""); setLoading(true); setCanManageEncounters(false); setEncounterDialog(null); setScopeRequiresRevalidation(true); readIdentity(true); };
+    readIdentity();
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => { active = false; version += 1; window.removeEventListener("cvg:realtime-resync", refresh); };
+  }, [load]);
   useEffect(() => {
     if (typeof window.matchMedia !== "function") return;
     const media = window.matchMedia("(max-width: 560px)");
@@ -244,7 +295,7 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
     return <PatientWorkspaceSkeleton />;
   }
   if (!activeData) {
-    return <ErrorState page className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
+    return <ErrorState page className="patient-workspace-error" title="Paciente indisponível" message={error} onRetry={scopeRequiresRevalidation ? () => { window.dispatchEvent(new Event("cvg:realtime-resync")); } : load} retrying={loading} action={<Link className="button button-ghost" href="/patients">Voltar aos pacientes</Link>} />;
   }
 
   const context = activeData.workspace.currentContext;
@@ -260,10 +311,11 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
   const contextHeading = context.admissionId
     ? [context.ward, context.bed].filter(Boolean).join(" · ") || "Internação sem acomodação informada"
     : encounterContextLabel(currentEncounter?.type);
-  const timelinePreviewLimit = compactTimeline ? 8 : 20;
-  const visibleTimelineEvents = activeData.events.slice(-(timelineExpanded ? 20 : timelinePreviewLimit)).reverse();
-  const timelineScopeLabel = activeData.events.length > visibleTimelineEvents.length
-    ? `últimos ${visibleTimelineEvents.length} de ${activeData.events.length}`
+  const timelinePreviewLimit = compactTimeline ? 8 : activeData.events.length;
+  const visibleTimelineEvents = (timelineExpanded ? activeData.events : activeData.events.slice(-timelinePreviewLimit)).slice().reverse();
+  const timelineTotal = activeData.timelineTotal ?? activeData.events.length;
+  const timelineScopeLabel = timelineTotal > visibleTimelineEvents.length
+    ? `últimos ${visibleTimelineEvents.length} de ${timelineTotal}`
     : `${activeData.events.length} ${activeData.events.length === 1 ? "evento" : "eventos"}`;
   const totalRequestCount = activeData.total ?? summary.requestCount;
   const requestScopeLabel = activeData.items.length < totalRequestCount
@@ -362,10 +414,12 @@ export function PatientDiagnostics({ patientId }: { patientId: string }) {
           <ol className="timeline" id="patient-timeline-events">{visibleTimelineEvents.map((event) => <li key={event.id}><span className="timeline-marker" /><div><strong>{eventLabel(event.eventType)}</strong><small>{eventStateLabel(event.newState)} · {formatRelativeTime(event.occurredAt)}</small></div></li>)}</ol>
           {compactTimeline && activeData.events.length > timelinePreviewLimit && <button type="button" className="button button-ghost workspace-timeline-toggle" aria-expanded={timelineExpanded} aria-controls="patient-timeline-events" onClick={() => setTimelineExpanded((current) => !current)}>{timelineExpanded ? "Mostrar menos eventos" : "Mostrar mais eventos"}</button>}
         </>}
+        {timelineError && <ErrorState title="Histórico parcialmente carregado" message={timelineError} onRetry={loadMoreTimeline} retrying={loadingTimeline} />}
+        {activeData.timelineNextCursor && <div className="workspace-pagination"><span>Carregados {activeData.events.length} de {timelineTotal} eventos</span><ActionButton tone="ghost" state={loadingTimeline ? "pending" : "idle"} disabled={loading} onClick={() => void loadMoreTimeline()}>{loadingTimeline ? "Carregando…" : "Carregar mais eventos"}</ActionButton></div>}
       </section>
     </div>
-    {encounterDialog === "open" && <EncounterOpenDialog patientId={patientId} onClose={() => setEncounterDialog(null)} onOpened={encounterChanged} />}
-    {encounterDialog === "close" && currentEncounter && <EncounterCloseDialog encounter={currentEncounter} onClose={() => setEncounterDialog(null)} onClosed={encounterChanged} />}
+    {canManageEncounters && encounterDialog === "open" && <EncounterOpenDialog patientId={patientId} onClose={() => setEncounterDialog(null)} onOpened={encounterChanged} />}
+    {canManageEncounters && encounterDialog === "close" && currentEncounter && <EncounterCloseDialog encounter={currentEncounter} onClose={() => setEncounterDialog(null)} onClosed={encounterChanged} />}
     <PatientArchive patientId={patientId} />
   </div>;
 }

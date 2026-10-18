@@ -4,7 +4,7 @@ import { performance } from "node:perf_hooks";
 import { createDemoState } from "../src/server/store/fixtures";
 import type { StoreState } from "../src/server/domain/models";
 
-export const SNAPSHOT_BENCHMARK_VERSION = "prod-2026-10-snapshot-v2";
+export const SNAPSHOT_BENCHMARK_VERSION = "prod-2026-10-snapshot-v3-hpl";
 export const PERF_BASELINE_PATH = path.resolve(process.cwd(), "docs/build/PERF_BASELINE.json");
 const DEFAULT_EVENT_COUNTS = [1_000, 10_000, 100_000];
 const FIXTURE_TIMESTAMP = "2026-08-19T12:00:00.000Z";
@@ -28,6 +28,17 @@ export interface PerfBaseline {
   readonly policy: string;
   readonly regressionToleranceRatio: number;
   readonly samples: readonly PerfBaselineSample[];
+  readonly revision?: {
+    readonly previousBenchmark: string;
+    readonly previousByteSamples: readonly { readonly auditEvents: number; readonly bytes: number }[];
+    readonly fixedOverheadBytes: number;
+    readonly sourceBaseRevision: string;
+    readonly sourceState: string;
+    readonly fixtureProfile: string;
+    readonly byteAttribution: readonly { readonly field: string; readonly addedBytes: number; readonly reason: string }[];
+    readonly normalizedSnapshot1000Sha256: string;
+    readonly sourceSha256: Readonly<Record<string, string>>;
+  };
 }
 
 export interface PerfRegression {

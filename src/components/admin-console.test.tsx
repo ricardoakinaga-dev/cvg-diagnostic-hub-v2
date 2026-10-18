@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DiagnosticService, ManagedUser, ReasonCode, SessionUser } from "@cvg/contracts";
+import type { Department, DiagnosticService, ManagedUser, ReasonCode, SessionUser } from "@cvg/contracts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { AdminConsole } from "./admin-console";
 import { UserRow } from "./admin-users";
@@ -11,7 +11,9 @@ vi.mock("next/link", () => ({ default: ({ children, ...props }: { children: Reac
 const service: DiagnosticService = { id: "service-1", code: "HEMOGRAM", name: "Hemograma", category: "LABORATORY", departmentCode: "LABORATORY", workflowType: "LABORATORY", requiresSample: true, requiresSchedule: false, allowsAttachment: false, resultSchema: "NARRATIVE", active: true, version: 1, slaHours: { ROUTINE: 8, URGENT: 4, EMERGENCY: 2 } };
 const reason: ReasonCode = { id: "reason-1", type: "RECOLLECTION", code: "HEMOLYZED", label: "Amostra hemolisada", active: true, version: 1 };
 const user: ManagedUser = { id: "user-vet", email: "vet@cvg.local", displayName: "Dra. Marina Costa", role: "VETERINARIAN", departmentCode: "INPATIENT", active: true, timezone: "America/Sao_Paulo", createdAt: "2026-10-03T00:00:00Z", version: 1 };
-const identity: SessionUser = { id: "admin", email: "admin@cvg.local", displayName: "Admin", role: "ADMIN", departmentCode: "INPATIENT", timezone: "America/Sao_Paulo" };
+const identity: SessionUser = { id: "admin", email: "admin@cvg.local", displayName: "Admin", role: "ADMIN", departmentCode: "INPATIENT", timezone: "America/Sao_Paulo", permissions: ["department.view", "service.catalog.manage", "reason_code.manage", "user_role.manage", "user.view", "patient.data_export"] };
+const departments: Department[] = [["LABORATORY", "Laboratório", "DIAGNOSTIC"], ["RADIOLOGY", "Radiologia", "DIAGNOSTIC"], ["ULTRASOUND", "Ultrassom", "DIAGNOSTIC"], ["INPATIENT", "Internação", "CLINICAL"], ["IT", "TI", "ADMINISTRATIVE"], ["OPERATIONS", "Operações", "SUPPORT"]].map(([code, name, type]) => ({ id: `dept-${code}`, code, name, type: type as Department["type"], active: true, memberUserIds: [], version: 1, createdAt: "2026-10-11T00:00:00Z", updatedAt: "2026-10-11T00:00:00Z" }));
+function authorizedDepartments(session: SessionUser) { return session.role === "MANAGER" ? departments.filter((department) => [session.departmentCode, ...(session.managedDepartmentCodes ?? [])].includes(department.code)) : departments; }
 const numericService: DiagnosticService = {
   ...service,
   resultSchema: "NUMERIC_PANEL",
@@ -27,6 +29,7 @@ function mockHttpApi(session: SessionUser, services: DiagnosticService[] = [serv
     if (path === "/api/v1/diagnostic-services" && init?.method === "POST" && mutation) return mutation(init);
     let data: unknown;
     if (path === "/api/v1/session/me") data = { user: session };
+    else if (path === "/api/v1/departments?includeInactive=true") data = authorizedDepartments(session);
     else if (path === "/api/v1/users/user-vet/roles" && init?.method === "POST") data = { ...user, ...JSON.parse(init.body as string), version: user.version + 1 };
     else if (path === "/api/v1/diagnostic-services?includeInactive=true") data = services;
     else if (path === "/api/v1/reason-codes") data = [reason];
@@ -50,6 +53,7 @@ function mockApi(respond?: Responder, session: SessionUser = identity, initialUs
     const custom = respond?.(path, init);
     if (custom !== undefined) return await custom as T;
     if (path === "/session/me") return { user: session } as T;
+    if (path === "/departments?includeInactive=true") return authorizedDepartments(session) as T;
     if (path === "/diagnostic-services?includeInactive=true") return [service] as T;
     if (path === "/reason-codes" && !init?.method) return [reason] as T;
     if (path === "/users" && !init?.method) return currentUsers as T;
@@ -79,6 +83,7 @@ function payloadFor(mock: ReturnType<typeof mockApi>, path: string, method: stri
 async function openAdmin() {
   render(<AdminConsole />);
   await screen.findByText(user.displayName);
+  await screen.findByRole("form", { name: "Adicionar serviço" });
 }
 function row() { return screen.getByRole("form", { name: `Acesso de ${user.email}` }); }
 function fillCreation(role = "LAB_TECH") {
@@ -262,7 +267,7 @@ describe("AdminConsole", () => {
     fireEvent.change(within(row()).getByLabelText("Setor"), { target: { value: "LABORATORY" } });
     fireEvent.change(within(row()).getByLabelText("Setores gerenciados"), { target: { value: "laboratory, ultrasound, laboratory" } });
     fireEvent.click(within(row()).getByRole("button", { name: `Salvar ${user.email}` }));
-    await waitFor(() => expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ role: "MANAGER", departmentCode: "LABORATORY", active: true, expectedVersion: 1, managedDepartmentCodes: ["LABORATORY", "ULTRASOUND"] }));
+    await waitFor(() => expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ displayName: user.displayName, email: user.email, role: "MANAGER", departmentCode: "LABORATORY", active: true, expectedVersion: 1, managedDepartmentCodes: ["LABORATORY", "ULTRASOUND"] }));
     expect(mock.mock.calls.some(([path]) => path === "/session/reauth")).toBe(false);
     expect(screen.queryByLabelText(/Motivo da alteração|Senha para reautenticar|Confirmo/)).not.toBeInTheDocument();
     expect(within(row()).getByText("Opções avançadas").parentElement).not.toHaveAttribute("open");
@@ -283,7 +288,7 @@ describe("AdminConsole", () => {
     await waitFor(() => expect(mock.mock.calls.filter(([path, init]) => path === "/api/v1/users/user-vet/roles" && init?.method === "POST")).toHaveLength(1));
     const call = mock.mock.calls.find(([path, init]) => path === "/api/v1/users/user-vet/roles" && init?.method === "POST")!;
     const init = call[1]!;
-    expect(JSON.parse(init.body as string)).toEqual({ role: user.role, departmentCode: code, active: true, expectedVersion: user.version });
+    expect(JSON.parse(init.body as string)).toEqual({ displayName: user.displayName, email: user.email, role: user.role, departmentCode: code, active: true, expectedVersion: user.version });
     expect(init.credentials).toBe("include");
     expect(new Headers(init.headers).get("x-csrf-token")).toBe("user-csrf");
     expect(new Headers(init.headers).get("idempotency-key")).toBeTruthy();
@@ -299,8 +304,9 @@ describe("AdminConsole", () => {
     await openAdmin();
     const select = within(row()).getByRole("combobox", { name: "Setor" });
     for (const code of ["CUSTOM_USER", "CUSTOM_USER_SCOPE", "CUSTOM_CATALOG", "CUSTOM_IDENTITY", "CUSTOM_IDENTITY_SCOPE"]) {
-      expect(within(select).getAllByRole("option", { name: code })).toHaveLength(1);
-      expect(within(select).getByRole("option", { name: code })).toHaveValue(code);
+      expect(within(select).getAllByRole("option", { name: `${code} (inativo/histórico)` })).toHaveLength(1);
+      expect(within(select).getByRole("option", { name: `${code} (inativo/histórico)` })).toHaveValue(code);
+      expect(within(select).getByRole("option", { name: `${code} (inativo/histórico)` })).toBeDisabled();
     }
     expect(select).toHaveValue(user.departmentCode);
   });
@@ -312,11 +318,11 @@ describe("AdminConsole", () => {
     render(<UserRow user={original} technical viewerId={identity.id} onChanged={onChanged} />);
     const select = within(row()).getByRole("combobox", { name: "Setor" });
     expect(select).toHaveValue(original.departmentCode);
-    expect(within(select).getByRole("option", { name: original.departmentCode })).toHaveValue(original.departmentCode);
+    expect(within(select).getByRole("option", { name: `${original.departmentCode} (inativo/histórico)` })).toHaveValue(original.departmentCode);
     fireEvent.change(within(row()).getByLabelText("Perfil"), { target: { value: "VIEWER" } });
     fireEvent.click(within(row()).getByRole("button", { name: `Salvar ${user.email}` }));
     await waitFor(() => expect(onChanged).toHaveBeenCalledWith(expect.objectContaining({ role: "VIEWER", departmentCode: original.departmentCode })));
-    expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ role: "VIEWER", departmentCode: original.departmentCode, active: true, expectedVersion: original.version });
+    expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ displayName: user.displayName, email: user.email, role: "VIEWER", departmentCode: original.departmentCode, active: true, expectedVersion: original.version });
     expect(select).toHaveValue(original.departmentCode);
   });
 
@@ -393,7 +399,7 @@ describe("AdminConsole", () => {
     fireEvent.click(within(form).getByText("Opções avançadas do exame"));
     fireEvent.change(within(form).getByLabelText("Categoria"), { target: { value: "IMAGING" } });
     fireEvent.change(within(form).getByLabelText("Workflow"), { target: { value: "ULTRASOUND" } });
-    fireEvent.change(within(form).getByLabelText("Setor"), { target: { value: "ultrasound" } });
+    fireEvent.change(within(form).getByLabelText("Setor"), { target: { value: "ULTRASOUND" } });
     for (const label of ["Exige amostra", "Exige agenda", "Aceita anexo"]) fireEvent.click(within(form).getByLabelText(label));
     fireEvent.change(within(form).getByLabelText("Modelo de resultado"), { target: { value: "NUMERIC_PANEL" } });
     for (const [label, value] of [["SLA rotina (h)", "12"], ["SLA urgente (h)", "6"], ["SLA emergência (h)", "4"]]) fireEvent.change(within(form).getByLabelText(label), { target: { value } });
@@ -423,7 +429,7 @@ describe("AdminConsole", () => {
     expect(within(form).getAllByRole("textbox")).toHaveLength(2);
     fireEvent.click(within(form).getByRole("button", { name: "Criar acesso" }));
     const dialog = await screen.findByRole("dialog", { name: "Senha inicial" });
-    expect(payloadFor(mock, "/users", "POST")).toEqual({ displayName: "Nova colaboradora", email: "nova@cvg.local", role: "LAB_TECH", departmentCode: "INPATIENT" });
+    expect(payloadFor(mock, "/users", "POST")).toEqual({ displayName: "Nova colaboradora", email: "nova@cvg.local", role: "LAB_TECH", departmentCode: "INPATIENT", serviceAccessPolicy: { mode: "NONE", includeFuture: false } });
     expect(mock.mock.calls.some(([path]) => path === "/session/reauth")).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "Copiar senha" }));
     await waitFor(() => expect(copy).toHaveBeenCalledWith("GeneratedPassword123"));
@@ -443,12 +449,13 @@ describe("AdminConsole", () => {
     const details = within(form).getByText(/^Exames autorizados/).closest("details")!;
     expect(details).not.toHaveAttribute("open");
     fireEvent.click(within(form).getByText(/^Exames autorizados/));
+    fireEvent.change(within(details).getByLabelText("Acesso aos exames"), { target: { value: "SELECTED" } });
     expect(within(details).getByLabelText("Hemograma")).not.toBeChecked();
     expect(within(details).queryByLabelText("Radiografia")).not.toBeInTheDocument();
     fireEvent.click(within(details).getByLabelText("Hemograma"));
     fireEvent.click(within(form).getByRole("button", { name: "Criar acesso" }));
     await screen.findByRole("dialog", { name: "Senha inicial" });
-    expect(payloadFor(mock, "/users", "POST")).toEqual({ displayName: "Nova colaboradora", email: "nova@cvg.local", role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: ["HEMOGRAM"] });
+    expect(payloadFor(mock, "/users", "POST")).toEqual({ displayName: "Nova colaboradora", email: "nova@cvg.local", role: "LAB_TECH", departmentCode: "LABORATORY", serviceCodes: ["HEMOGRAM"], serviceAccessPolicy: { mode: "SELECTED", includeFuture: false } });
   });
 
   it("passes the catalog into user rows and preserves only explicitly selected executor exams", async () => {
@@ -463,7 +470,7 @@ describe("AdminConsole", () => {
     fireEvent.click(within(form).getByLabelText("Hemograma"));
     fireEvent.click(within(form).getByLabelText("Proteína C reativa"));
     fireEvent.click(within(form).getByRole("button", { name: `Salvar ${user.email}` }));
-    await waitFor(() => expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ role: "LAB_TECH", departmentCode: "LABORATORY", active: true, expectedVersion: 1, serviceCodes: ["CRP"] }));
+    await waitFor(() => expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ displayName: user.displayName, email: user.email, role: "LAB_TECH", departmentCode: "LABORATORY", active: true, expectedVersion: 1, serviceCodes: ["CRP"], serviceAccessPolicy: { mode: "SELECTED", includeFuture: false } }));
   });
 
   it("creates a manager with collapsed managed departments and tolerates an absent initialPassword", async () => {
@@ -485,7 +492,7 @@ describe("AdminConsole", () => {
     await screen.findByRole("button", { name: "Desfazer" });
     expect(payloadFor(mock, "/users/user-vet", "DELETE")).toEqual({ expectedVersion: 1 });
     fireEvent.click(screen.getByRole("button", { name: "Desfazer" }));
-    await waitFor(() => expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ role: "VETERINARIAN", departmentCode: "INPATIENT", active: true, expectedVersion: 7 }));
+    await waitFor(() => expect(payloadFor(mock, "/users/user-vet/roles", "POST")).toEqual({ displayName: user.displayName, email: user.email, role: "VETERINARIAN", departmentCode: "INPATIENT", active: true, expectedVersion: 7 }));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Desfazer" })).not.toBeInTheDocument());
     expect(mock.mock.calls.some(([path]) => path === "/session/reauth")).toBe(false);
   });
@@ -645,7 +652,7 @@ describe("AdminConsole", () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Senha para reautenticar")).toHaveValue("");
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancelar" }));
-    if (operation === "create") expect(screen.getByLabelText("Nome completo")).toHaveValue("Nova colaboradora");
+    if (operation === "create") expect(within(screen.getByRole("form", { name: "Adicionar colaborador" })).getByLabelText("Nome completo")).toHaveValue("Nova colaboradora");
     else expect(within(row()).getByLabelText("Perfil")).toHaveValue("ADMIN");
     expect(screen.queryByRole("dialog", { name: "Senha inicial" })).not.toBeInTheDocument();
   });

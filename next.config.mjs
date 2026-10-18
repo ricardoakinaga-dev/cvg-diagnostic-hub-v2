@@ -9,6 +9,12 @@ const securityHeaders = [
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
 ];
 
+// Bound build workers independently of the host CPU count on a shared VPS.
+const configuredBuildWorkers = process.env.NEXT_BUILD_WORKERS ?? "2";
+if (!/^(?:[1-9]|1[0-6])$/.test(configuredBuildWorkers)) {
+  throw new Error("NEXT_BUILD_WORKERS deve ser um inteiro entre 1 e 16.");
+}
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
@@ -35,7 +41,7 @@ const nextConfig = {
   // Disposable servers (E2E, benchmarks) point this at a throw-away tsconfig so Next never rewrites the real one.
   typescript: { tsconfigPath: process.env.NEXT_TSCONFIG_PATH || "tsconfig.json" },
   turbopack: { root: process.cwd() },
-  experimental: { proxyClientMaxBodySize: "25mb" },
+  experimental: { proxyClientMaxBodySize: "25mb", cpus: Number(configuredBuildWorkers) },
   transpilePackages: ["@cvg/contracts", "@cvg/domain", "@cvg/ui", "@cvg/services", "@cvg/shared-state"],
   async headers() {
     return [{ source: "/(.*)", headers: securityHeaders }];

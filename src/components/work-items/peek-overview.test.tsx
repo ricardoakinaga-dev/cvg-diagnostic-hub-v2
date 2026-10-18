@@ -1,14 +1,18 @@
 /** @vitest-environment jsdom */
 import { useState } from "react";
 import { renderToString } from "react-dom/server";
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render as baseRender, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { apiFetch } from "@/components/api-client";
 import { PeekOverview } from "./peek-overview";
+import { WorkflowPermissionsProvider } from "@/components/workflow-permissions";
+import { rolePermissions } from "@/server/security/authorization";
 import type { WorkItem } from "./model";
 
 vi.mock("next/link", () => ({ default: ({ children, ...props }: { children: React.ReactNode; href: string }) => <a {...props}>{children}</a> }));
 vi.mock("@/components/api-client", async (original) => ({ ...await original<typeof import("@/components/api-client")>(), apiFetch: vi.fn() }));
+
+const render = (ui: React.ReactNode) => baseRender(ui, { wrapper: ({ children }) => <WorkflowPermissionsProvider permissions={rolePermissions.MANAGER}>{children}</WorkflowPermissionsProvider> });
 
 const item: WorkItem = { id: "exam-1", requestId: "request-1", requestCode: "EX-261006-0001", status: "REQUESTED", priority: "ROUTINE", workflowType: "LABORATORY", departmentCode: "LABORATORY", version: 3, dueAt: "2026-10-07T12:00:00Z", createdAt: "2026-10-06T10:00:00Z", overdue: false, patient: { id: "patient-1", displayName: "Thor", species: "Canino", externalId: "HIS-1" }, service: { id: "service-1", code: "HEM", name: "Hemograma" } };
 const callbacks = () => ({ onClose: vi.fn(), onChanged: vi.fn(), onRefresh: vi.fn(), onMove: vi.fn() });

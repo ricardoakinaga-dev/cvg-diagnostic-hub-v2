@@ -38,13 +38,15 @@ describe("catalog import command (D10)", () => {
     const urinalysis = state.services.find((entry) => entry.code === "URINALYSIS")!;
     expect(urinalysis).toMatchObject({ version: 1, sampleType: "Urina", active: true, resultSchema: "NUMERIC_PANEL" });
     expect(urinalysis.resultTemplate).toMatchObject({ code: "URINALYSIS", version: 1, status: "ACTIVE" });
-    expect(urinalysis.resultTemplate!.analytes[0]!.referenceRange).toMatchObject({ kind: "NUMERIC", low: 1.015, high: 1.045, source: "HUMAN_APPROVED" });
+    expect(urinalysis.resultTemplate!.analytes[0]!.referenceRange).toMatchObject({ kind: "NUMERIC", low: 1.015, high: 1.045, source: "PENDING_HUMAN_POLICY" });
     expect(state.services.find((entry) => entry.code === "CRP")).toMatchObject({ name: "Proteína C reativa (PCR)", sampleType: "Soro", version: 2 });
     const events = state.auditEvents.filter((event) => event.correlationId === "corr-import");
-    expect(events.map((event) => event.eventType).sort()).toEqual(["CatalogImported", "DiagnosticServiceCreated", "DiagnosticServiceCreated", "DiagnosticServiceUpdated"]);
+    expect(events.filter((event) => event.eventType !== "ExamDefinitionRecorded").map((event) => event.eventType).sort()).toEqual(["CatalogImported", "DiagnosticServiceCreated", "DiagnosticServiceCreated", "DiagnosticServiceUpdated"]);
     expect(events.find((event) => event.eventType === "CatalogImported")?.metadata).toMatchObject({ created: 2, updated: 1, unchanged: 0 });
-    // executors who held every exam of the department receive the new ones
-    expect(state.users.find((user) => user.email === "lab@cvg.local")!.serviceCodes).toEqual(expect.arrayContaining(["URINALYSIS"]));
+    expect(events.filter((event) => event.eventType === "ExamDefinitionRecorded")).toHaveLength(4);
+    expect(state.examDefinitions).toHaveLength(4);
+    // A full legacy list is not consent to future exams: importing preserves its grants.
+    expect(state.users.find((user) => user.email === "lab@cvg.local")!.serviceCodes).toEqual(["HEMOGRAM", "CRP"]);
     expect((await service.listServices(admin)).find((entry) => entry.code === "URINALYSIS")?.resultTemplate?.analytes).toHaveLength(2);
     // replay with the same key returns the stored report
     const replay = await service.importCatalog(admin, { services: SHEET, analytes: ANALYTES, idempotencyKey: "apply-1" });

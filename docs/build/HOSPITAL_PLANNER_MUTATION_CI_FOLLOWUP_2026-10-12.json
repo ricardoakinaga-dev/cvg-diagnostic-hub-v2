@@ -1,0 +1,2089 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-12T01:50:34.027258+00:00",
+  "status": "LOCAL_SEVEN_MUTATION_CONTROLS_PASS_SECOND_REMOTE_CI_FAIL_FRESH_CI_PENDING",
+  "candidate": {
+    "manifest": "HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "fingerprintSha256": "c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5",
+    "fileCount": 1088,
+    "baseCommit": "007b8c40773680d6b2971720b621eadf474ddb9b",
+    "branch": "feat/hospital-planner-20261012",
+    "committedAtCapture": false,
+    "deployed": false
+  },
+  "sourceDelta": {
+    "changed": [
+      {
+        "path": ".github/workflows/ci.yml",
+        "beforeSha256": "ee5eb963b35e79715df2a2b14c9cbec4bcbe114e3b636fa03d5ed841333e3a0b",
+        "afterSha256": "9c6c9512b920bb82aa6b6634fc14d0455ae67c16a3540f3841dc4cc55b5ee552"
+      },
+      {
+        "path": "package.json",
+        "beforeSha256": "14d8bc3fff49bdecf0c1b9ffed69374eb4b3ee000550316fd28da06929475a14",
+        "afterSha256": "279f23b07dddf6193a14430bfb7d1bb367ae10c076c6653613004c404f6d1b5e"
+      },
+      {
+        "path": "scripts/mutation-controls.mjs",
+        "beforeSha256": "016d1d1385e9089fc6c56f0060121c6cb7b84104a9bbf9ac4261376d69f085e3",
+        "afterSha256": "0babee8bacc2cc3d8bd1f7034aa59e60d666ff9190d2fd755ba54c1ed5ba21c3"
+      }
+    ],
+    "added": [
+      {
+        "path": "scripts/mutation-controls-reporter.mjs",
+        "sha256": "248fa09c5e7ffc84c148a271944d474055b7b459f8a2095a357d9a6455d18b8b"
+      },
+      {
+        "path": "scripts/mutation-controls-support.mjs",
+        "sha256": "d8d28a97ddb47150604d89f843b97b0f6b1842833a940c5c4e833d745ce44a43"
+      },
+      {
+        "path": "scripts/mutation-controls.test.mjs",
+        "sha256": "d2812e8d6584b9947e2b8ad97ce4583003e09b24f6721be36d3f499a272aaa2c"
+      }
+    ],
+    "removed": [],
+    "unchangedPreviousInputs": 1082,
+    "runtimeProductChanged": false
+  },
+  "previousSnapshot": {
+    "fingerprintSha256": "cfb5ce999bc6b7bbdd3c6ba0753e4989767d3e103d44118b0e66fe06e2efb7b8",
+    "reportsBeforeApplicabilityNotice": [
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json",
+        "sha256": "59098a0b11ec41f9f89839348aa785ae1d8b87ec2811562de60407097a8ebc7f",
+        "bytes": 36590
+      },
+      {
+        "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/docs/build/HOSPITAL_PLANNER_CI_SOURCE_MANIFEST_2026-10-12.json",
+        "sha256": "af52ec075b08c7b26a7eb4ee89bfa99101c48fb806c7bde3c01d682e8dd09445",
+        "bytes": 173545
+      }
+    ],
+    "originalFieldsPreserved": true
+  },
+  "firstRemoteCI": {
+    "runId": 38188835705,
+    "headSha": "5111a50eeffa5f712d3525e8c4bbce6f9283dfc3",
+    "conclusion": "FAIL",
+    "unitPassed": 5160,
+    "unitFailed": 4,
+    "postgresAndFinalCoverage": "NOT_EXECUTED",
+    "clockRepairRecord": "HOSPITAL_PLANNER_CI_FOLLOWUP_2026-10-12.json"
+  },
+  "secondRemoteCI": {
+    "evidence": {
+      "capturedAt": "2026-10-12T01:28:30.409115+00:00",
+      "status": "CI_VERIFY_FAILED_MUTATION_SITE_DRIFT",
+      "runId": 38190584294,
+      "headSha": "007b8c40773680d6b2971720b621eadf474ddb9b",
+      "jobId": 114622293691,
+      "jobName": "verify (22.x)",
+      "conclusion": "failure",
+      "failedStep": "Run mutation control sentinel",
+      "error": "MC-AUTH-001: expected one mutation site, found 0",
+      "source": "scripts/mutation-controls.mjs:16,92",
+      "diagnosis": "MC-AUTH-001 hardcoded needle still uses role-only guard; actual canAccessResource guard also restricts actor.permissions. Mutation aborted before running a mutant.",
+      "proposal": "Update needle to exact current guard; remove only role-matrix check in replacement while retaining active and actor.permissions checks. Existing authorization test rejects active VIEWER sample.receive and should detect that mutant.",
+      "needleCounts": [
+        {
+          "file": "src/server/security/authorization.ts",
+          "occurrences": 0
+        },
+        {
+          "file": "src/server/application/service-common.ts",
+          "occurrences": 1
+        },
+        {
+          "file": "src/server/store/migrations.ts",
+          "occurrences": 1
+        },
+        {
+          "file": "src/server/application/service-common.ts",
+          "occurrences": 1
+        },
+        {
+          "file": "src/server/operations/outbox.ts",
+          "occurrences": 1
+        },
+        {
+          "file": "src/server/domain/outbox-read.ts",
+          "occurrences": 1
+        },
+        {
+          "file": "src/server/operations/recovery-manifest.ts",
+          "occurrences": 1
+        }
+      ],
+      "coverage": {
+        "status": "PASS",
+        "unitTests": 5164,
+        "unitFiles": 327,
+        "postgresTests": 141,
+        "postgresFiles": 34,
+        "mergedTests": 5305,
+        "mergedFiles": 361,
+        "lines": 98.41,
+        "statements": 95.94,
+        "functions": 97.17,
+        "branches": 92.53,
+        "thresholdGate": "PASS",
+        "existingExceptions": 20,
+        "uncovered": [],
+        "stale": []
+      },
+      "newHisSchemaTests": "20 real producer metadata scenarios appear individually passed in merged report; no HIS failure",
+      "laterGates": "Skipped after mutation sentinel failure; do not treat run as PASS or later build/browser proven",
+      "proof": [
+        {
+          "path": "/tmp/cvg-hpl-pr78-ci-repair-verify-watch-20261012T012710Z.json",
+          "bytes": 13765,
+          "sha256": "1b92b9e23c716578e45f9b163d56dedf592d70fd6ca27d8806ad3a29ba2e11d8"
+        },
+        {
+          "path": "/tmp/cvg-hpl-pr78-ci-repair-verify-job-api-20261012.json",
+          "bytes": 7583,
+          "sha256": "d55f46a19dcf28fd8bfe5b696d65a5072e1ca29655e3bcd7abf7fc440e029242"
+        },
+        {
+          "path": "/tmp/cvg-hpl-pr78-ci-repair-verify-annotations-20261012.json",
+          "bytes": 702,
+          "sha256": "47c287a50469227d9261a99fa8b82771dbfa31c66038e487ba7fee849c151811"
+        },
+        {
+          "path": "/tmp/cvg-hpl-pr78-ci-repair-verify-raw-log-20261012.log",
+          "bytes": 1108933,
+          "sha256": "223fef2995eeaa806c2685cfe0b5459c6f348f1372630300d84db474f0b69100"
+        }
+      ],
+      "readSourceHashes": [
+        {
+          "path": "scripts/mutation-controls.mjs",
+          "sha256": "016d1d1385e9089fc6c56f0060121c6cb7b84104a9bbf9ac4261376d69f085e3"
+        },
+        {
+          "path": "src/server/security/authorization.ts",
+          "sha256": "50e97b581525ea816960cea8fc28b84db827056847a011b7585af45561104362"
+        },
+        {
+          "path": "src/server/security/authorization.test.ts",
+          "sha256": "ab84a36e5a5339670178628901df4ba21b8fdafcd231032381352546785dd99f"
+        }
+      ],
+      "limits": [
+        "Read-only diagnosis; no source, tests, documents or Git altered.",
+        "No local broad suite or retry executed.",
+        "This is sentinel source drift, not evidence of a current authorization bypass.",
+        "Fresh CI with corrected mutation sentinel is still needed."
+      ]
+    },
+    "artifact": {
+      "path": "/tmp/cvg-hpl-pr78-ci-repair-verify-failure-evidence-20261012.json",
+      "sha256": "2d8da555df93c3b3a8e2bea83aa9e59b98c702cf31d0e8687b53a98f67b6beec",
+      "bytes": 3688
+    },
+    "url": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions/runs/38190584294",
+    "fullWorkflowConclusion": "FAIL",
+    "imageAndBrowser": "SKIPPED",
+    "coverageScope": "5305 G4 tests passed at 007b8c4. This is not an all-gates PASS for the current validation runner."
+  },
+  "runnerRepair": {
+    "authorizationRoleCheckRemovedOnlyInTemporaryMutant": true,
+    "activeAndEffectivePermissionGuardsPreserved": true,
+    "productionAuthorizationSourceUnchanged": true,
+    "safeStage": "Only nonignored allowlisted regular source/config/tests; no origin symlinks, real environments, data, credentials or generated trees. Installed node_modules is the sole explicit dependency symlink.",
+    "childEnvironment": "Operational allowlist; no application credentials, PostgreSQL opt-ins or NODE_OPTIONS.",
+    "detection": "Requires green baseline, complete matching test inventory, native body-assertion failure and exit 1. Runtime/setup/hook errors, signals, timeouts, spawn failures and zero tests fail the sentinel.",
+    "artifactDurability": "CI uploads the report and separate raw baseline/mutant logs, execution metadata, native reporter JSON and source inventory."
+  },
+  "localValidation": {
+    "firstSafeRun": {
+      "report": {
+        "schemaVersion": 2,
+        "status": "FAIL",
+        "mutationCount": 7,
+        "detectedCount": 5,
+        "inventory": {
+          "path": "/tmp/cvg-mutation-evidence-sd02yf/stage-source-inventory.json",
+          "bytes": 156162,
+          "sha256": "f85370df67a6b1d8837815c1d2abd8626da055331422721afa90daa510fe749b"
+        },
+        "evidenceDirectory": "/tmp/cvg-mutation-evidence-sd02yf",
+        "results": [
+          {
+            "id": "MC-AUTH-001",
+            "category": "authorization",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 595,
+              "assessment": {
+                "valid": true,
+                "passed": 10,
+                "failed": 0,
+                "total": 10,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-baseline.stdout.log",
+                  "bytes": 682,
+                  "sha256": "bcb10ac20cc7605e4ad0fa1c5bbc9489a16b48083799428960cbe8e9062854dd"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-baseline.vitest.json",
+                  "bytes": 3744,
+                  "sha256": "71c66155e54b97c148e16d9fe07558d86a9e18679e8c93b336f5c64dfa6ce7a3"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-baseline.execution.json",
+                  "bytes": 80,
+                  "sha256": "1d19738475e61616eb3b73f30785d3ac03cd89b8ab64fcd573e35e1be6718260"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 601,
+              "assessment": {
+                "valid": true,
+                "passed": 9,
+                "failed": 1,
+                "total": 10,
+                "failedTests": [
+                  "src/server/security/authorization.test.ts::server authorization rejects an active actor when the requested action is absent from the role matrix"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-mutant.stdout.log",
+                  "bytes": 716,
+                  "sha256": "b2ebdb4cdd9a7f61f199a7dbf11cd78e297d8fc8c1d445020e4051b56f4600f3"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-mutant.stderr.log",
+                  "bytes": 1063,
+                  "sha256": "7a8578ca1f6c549294418f492ae6bfa766389f1e6ec60643d388fde3553dd10d"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-mutant.vitest.json",
+                  "bytes": 4786,
+                  "sha256": "71d3f841893afc165fcbd4e9ee27f7e856670be8f479aeeb3d3305a86b7ac695"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-AUTH-001-mutant.execution.json",
+                  "bytes": 80,
+                  "sha256": "bdb0a8391af6b9fd0674176635cab2b2a8db3f42419a441f822d66cfeba05b26"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-VERSION-001",
+            "category": "optimistic-version",
+            "detected": false,
+            "outcome": "MUTANT_RUN_INVALID",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 4673,
+              "assessment": {
+                "valid": true,
+                "passed": 13,
+                "failed": 0,
+                "total": 13,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-baseline.stdout.log",
+                  "bytes": 754,
+                  "sha256": "07228d7700a294fa2a28cb7339188a9337af7a6d9e2374cc1b9ecb703f3a529f"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-baseline.vitest.json",
+                  "bytes": 5138,
+                  "sha256": "3bb86d867f3c10b025a9924b545884ad73fad7f21a42fc119792f42386a37bf6"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-baseline.execution.json",
+                  "bytes": 81,
+                  "sha256": "7c65df94233cd7a72ad06ffe86f0555a9fc1d9cd07db41d7d955289e9c231d55"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 4806,
+              "assessment": {
+                "valid": false,
+                "reason": "failure_is_not_test_assertion"
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-mutant.stdout.log",
+                  "bytes": 788,
+                  "sha256": "36f8572d15e6e68c590574f0ad004016472551d1a55285091f09ad55c4fbc893"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-mutant.stderr.log",
+                  "bytes": 22257,
+                  "sha256": "891d45d2af856de149abde760308fdc79b80d24d3bd00cd05e14ad6071242626"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-mutant.vitest.json",
+                  "bytes": 7377,
+                  "sha256": "52a94798f19e908537be7e9426532359f2681bd96b478998f356b715d63b0cbf"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-VERSION-001-mutant.execution.json",
+                  "bytes": 81,
+                  "sha256": "7325b822ece40712db5d8da73612a4df888d004147417d69f5dce4fa1a8597e7"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-MIGRATION-001",
+            "category": "migration-integrity",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 596,
+              "assessment": {
+                "valid": true,
+                "passed": 53,
+                "failed": 0,
+                "total": 53,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-baseline.stdout.log",
+                  "bytes": 1632,
+                  "sha256": "1f73a04bb6e279850a1ff930e913b2392a6587aba75308af121033f1aa61c304"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-baseline.vitest.json",
+                  "bytes": 18218,
+                  "sha256": "a5ba1e72818153589e12fdec411c89a938256ee5154812bc24940cf4f0bdb248"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-baseline.execution.json",
+                  "bytes": 80,
+                  "sha256": "5d06fc62dd8d810a8a2997568d20f697dc6f95f84031e16ebca11f54a22f4a0e"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 616,
+              "assessment": {
+                "valid": true,
+                "passed": 52,
+                "failed": 1,
+                "total": 53,
+                "failedTests": [
+                  "src/server/store/migrations.test.ts::database migration runner rejects a source migration edited after the shipped checksum manifest"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-mutant.stdout.log",
+                  "bytes": 1668,
+                  "sha256": "ff075e1686b85eb5d742a78eb07456cf462bc0396a434d7f8d7d7c89f8c679cc"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-mutant.stderr.log",
+                  "bytes": 902,
+                  "sha256": "c8d85c539974589072d704e8a33b4653019f6262b62467440967947e25faf8ec"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-mutant.vitest.json",
+                  "bytes": 18823,
+                  "sha256": "ff7d0f9abb902830dcfa9564863818ab47b3bbe10e451e5d15cc257568652fa9"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-MIGRATION-001-mutant.execution.json",
+                  "bytes": 80,
+                  "sha256": "9d9a319e422695e35d1f9fe53631539dade0f8dce84597c1a6b9b91f0f904a6f"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-UPLOAD-001",
+            "category": "upload-boundary",
+            "detected": false,
+            "outcome": "MUTANT_RUN_INVALID",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 5438,
+              "assessment": {
+                "valid": true,
+                "passed": 20,
+                "failed": 0,
+                "total": 20,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-baseline.stdout.log",
+                  "bytes": 907,
+                  "sha256": "4f3cf62bc41a2632b7b9c63316bd1baa337089427b3e2221fd38060967ff7460"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-baseline.vitest.json",
+                  "bytes": 7615,
+                  "sha256": "a4b9555e4f51795040452dbc90163afb0509f539f7fb291f16f3a6b872f3ad39"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-baseline.execution.json",
+                  "bytes": 81,
+                  "sha256": "9c47ee43a68eb5e5738060ece61b5421a7e711e1a5beec5bb32aadadc4c7b546"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 5909,
+              "assessment": {
+                "valid": false,
+                "reason": "failure_is_not_test_assertion"
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-mutant.stdout.log",
+                  "bytes": 942,
+                  "sha256": "b0a765acc5c69d0dddadc06884ec49940065b12214cdb397c76fef56a61d3a98"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-mutant.stderr.log",
+                  "bytes": 2086,
+                  "sha256": "6194c4a4141a06b8d240410a1d6cc44b573b4dc44085592f4b76834bfb69d0f3"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-mutant.vitest.json",
+                  "bytes": 8325,
+                  "sha256": "069555f5244e5bdee4385f1951da497c4cbf13053cc5441910ad3ba5a38b25f5"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-UPLOAD-001-mutant.execution.json",
+                  "bytes": 81,
+                  "sha256": "2179d162f611c2a0d8d74a40198699b7eb9e98f4b01d65b046645a40ab8abeaa"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-OUTBOX-001",
+            "category": "outbox-lease",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 14175,
+              "assessment": {
+                "valid": true,
+                "passed": 58,
+                "failed": 0,
+                "total": 58,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-baseline.stdout.log",
+                  "bytes": 1745,
+                  "sha256": "4eb95a17587fa2496ce0b746854c6500ab5d604940fa0c9c8f37ed779bd4ef7a"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-baseline.vitest.json",
+                  "bytes": 21503,
+                  "sha256": "4f499d80067acaad5a5e75e1162d5de424f0c0d20a45068f4abbb8890c676c24"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-baseline.execution.json",
+                  "bytes": 82,
+                  "sha256": "a5dfb47672a03917ad8ac40edaa8d3eebfd0fd1e720a01294df29bd8c32f32fa"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 13651,
+              "assessment": {
+                "valid": true,
+                "passed": 57,
+                "failed": 1,
+                "total": 58,
+                "failedTests": [
+                  "src/server/operations/outbox.test.ts::durable outbox processing does not complete a message after another worker replaces its lease"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-mutant.stdout.log",
+                  "bytes": 1780,
+                  "sha256": "e626c86644e2f2c5d44c24c12a68496b7946de46de0660355164b04b014417a2"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-mutant.stderr.log",
+                  "bytes": 1131,
+                  "sha256": "93068f893980481636db8cc710962d5a7e31c3d7c97b479a64e1fdaeaf690fdd"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-mutant.vitest.json",
+                  "bytes": 22216,
+                  "sha256": "87c66f965d11d17cbc0f7ee8772fd913b1903050bb395f90ac366aa3dcdd1a61"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-OUTBOX-001-mutant.execution.json",
+                  "bytes": 82,
+                  "sha256": "128cf69f3e09cf0d554e6bd362b4773abcb9b08b402cd2897c1261438ae43a1c"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-REALTIME-001",
+            "category": "realtime-replay",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 8056,
+              "assessment": {
+                "valid": true,
+                "passed": 38,
+                "failed": 0,
+                "total": 38,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-baseline.stdout.log",
+                  "bytes": 1305,
+                  "sha256": "13d3cdc99f5a4f5a799f69dbfef0ffa8198adeffd6c25d4637633ee06d74d154"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-baseline.vitest.json",
+                  "bytes": 14056,
+                  "sha256": "ba2967daf8a5aea55a90b8031fc458e2243bff588b4dc401d1705f95613955b8"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-baseline.execution.json",
+                  "bytes": 81,
+                  "sha256": "8fd32b02914c381b0b344009d1b305823de0764e618310ee7ca31d52d7be8e3b"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 8065,
+              "assessment": {
+                "valid": true,
+                "passed": 37,
+                "failed": 1,
+                "total": 38,
+                "failedTests": [
+                  "src/server/store/memory-store.test.ts::memory store narrow seams exposes only replayable messages in creation order through the bounded outbox seams"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-mutant.stdout.log",
+                  "bytes": 1380,
+                  "sha256": "b16b8fefbf42c57026acdd860e7a8ac3ace00df3de482206e4e5ed726e2847fe"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-mutant.stderr.log",
+                  "bytes": 1534,
+                  "sha256": "be548bd6177c64a29fb34251231cf5055d845445eefa8a7530b602a56d4d243c"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-mutant.vitest.json",
+                  "bytes": 14456,
+                  "sha256": "529b6e8d7e4ba4f26f0135029127b449365e06bd45cd4b31aa35c75c515a5acc"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-REALTIME-001-mutant.execution.json",
+                  "bytes": 81,
+                  "sha256": "3b86e2867b732ebbfebb98aa69f691c744aac8f7cc2f694ddc64a08168a60e00"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-RECOVERY-001",
+            "category": "recovery-integrity",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 633,
+              "assessment": {
+                "valid": true,
+                "passed": 5,
+                "failed": 0,
+                "total": 5,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-baseline.stdout.log",
+                  "bytes": 574,
+                  "sha256": "e6abaf069c9480763ae889c846a97b8228a2f3354a9937b1532745de987e9c9b"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-baseline.stderr.log",
+                  "bytes": 0,
+                  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-baseline.vitest.json",
+                  "bytes": 2365,
+                  "sha256": "cc363d552a10b026895c5505b244cae877125c7ab55c9d850ee177cb3301aa06"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-baseline.execution.json",
+                  "bytes": 80,
+                  "sha256": "350d513845e3ff989736dd35e30b9e76ca6381b32b01b1cb130795d78de7a12a"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 600,
+              "assessment": {
+                "valid": true,
+                "passed": 4,
+                "failed": 1,
+                "total": 5,
+                "failedTests": [
+                  "src/server/operations/recovery-manifest.test.ts::recovery manifest contract verifies checksums and sizes for a copied isolated artifact set"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-mutant.stdout.log",
+                  "bytes": 610,
+                  "sha256": "2ba1024c15a5ba0a902d6e99afef249ee9145f324305fcfbfee88cff722d041b"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-mutant.stderr.log",
+                  "bytes": 1325,
+                  "sha256": "0b71595ad0ff0a82c896e00ac29bea471d03ee2b48077bfb2ca65abc0fe5a894"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-mutant.vitest.json",
+                  "bytes": 3102,
+                  "sha256": "be68bf1ff329eeb1f5967a374dcb9178b6da00eb8b631189f76cdf6b8c91e9ed"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-sd02yf/MC-RECOVERY-001-mutant.execution.json",
+                  "bytes": 80,
+                  "sha256": "26d71f40cadd046a032ceae5f33a78cbe035ab2f1578ce304fbc0e4b7342ba86"
+                }
+              }
+            }
+          }
+        ],
+        "meaning": "Compact capture; original complete report, native Vitest JSON and raw outputs are identified by exact artifact SHA256, preserving all test identities and failures."
+      },
+      "artifact": {
+        "path": "/tmp/cvg-mutation-sentinel-final-20261012.json",
+        "sha256": "0e1cf27c044f630194a4cc03d0f57bbc5569abeb44bc69905a2935c38c48b510",
+        "bytes": 99597
+      },
+      "meaning": "Original FAIL 5/7 retained. Two native .rejects assertion failures were conservatively rejected by the initial classifier."
+    },
+    "successfulRun": {
+      "report": {
+        "schemaVersion": 2,
+        "status": "PASS",
+        "mutationCount": 7,
+        "detectedCount": 7,
+        "inventory": {
+          "path": "/tmp/cvg-mutation-evidence-1aRhxG/stage-source-inventory.json",
+          "bytes": 156326,
+          "sha256": "220ac65e6d49b73bba9eab69ecee9fa45a38619c561fb303e71399a15a8dc5ce"
+        },
+        "evidenceDirectory": "/tmp/cvg-mutation-evidence-1aRhxG",
+        "results": [
+          {
+            "id": "MC-AUTH-001",
+            "category": "authorization",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 635,
+              "assessment": {
+                "valid": true,
+                "passed": 10,
+                "failed": 0,
+                "total": 10,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-baseline.stdout.log",
+                  "bytes": 681,
+                  "sha256": "860e004f5f834e657a7fe83d59bc193a9454e437528726de384f569e5add36b4"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-baseline.vitest.json",
+                  "bytes": 3872,
+                  "sha256": "731925c4a9c9cc608c3f176447a0843f89ce9cd0d95716fc7b747b61f352c536"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-baseline.execution.json",
+                  "bytes": 80,
+                  "sha256": "632b589394570476e14d1bd5bb6b90597ee33f3c5e605ae186c986aa426b5b79"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 544,
+              "assessment": {
+                "valid": true,
+                "passed": 9,
+                "failed": 1,
+                "total": 10,
+                "failedTests": [
+                  "src/server/security/authorization.test.ts::server authorization rejects an active actor when the requested action is absent from the role matrix"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-mutant.stdout.log",
+                  "bytes": 716,
+                  "sha256": "f43d276dd794d8eaa5de92cf74344fb6d88ed3a705541b7cc06d70ef06d56d19"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-mutant.stderr.log",
+                  "bytes": 1163,
+                  "sha256": "d79dadcc5e45cf11e069ffbe3d5b93677f3ce81e24f8147611750556fe1ef431"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-mutant.vitest.json",
+                  "bytes": 4912,
+                  "sha256": "dceb656212a41968340ce8d6d37cdb1b0abc207d924c9429c64a7cc38aafafcb"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-AUTH-001-mutant.execution.json",
+                  "bytes": 80,
+                  "sha256": "b5cfd51b1689f28e2d11af45e3c1d2fd662b045783bd9860f0c7e9f071181e6a"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-VERSION-001",
+            "category": "optimistic-version",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 4675,
+              "assessment": {
+                "valid": true,
+                "passed": 13,
+                "failed": 0,
+                "total": 13,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-baseline.stdout.log",
+                  "bytes": 754,
+                  "sha256": "e77033eb180d8eeb731c9ed74c3e1506b3b8e0712294f620deb9170eb47e58c0"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-baseline.vitest.json",
+                  "bytes": 5259,
+                  "sha256": "606a75bee5d83443559ef2e85108222520d7c3111a43fad46fa392bf069fc0eb"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-baseline.execution.json",
+                  "bytes": 81,
+                  "sha256": "a80e9db6f03a29d2faaad4bb894e3c324e2ea0f846da569fcf6bdb46c8e518ac"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 4636,
+              "assessment": {
+                "valid": true,
+                "passed": 10,
+                "failed": 3,
+                "total": 13,
+                "failedTests": [
+                  "src/server/application/catalog.test.ts::versioned catalog administration creates and updates a service with permission, optimistic version and audit",
+                  "src/server/application/service.test.ts::diagnostic application service rejects stale item versions across sample receipt and recollection",
+                  "src/server/application/service.test.ts::diagnostic application service releases once, records notifications, and rejects stale review"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-mutant.stdout.log",
+                  "bytes": 788,
+                  "sha256": "b0c70dbcc1714ced7a9319396854269d3634079308e76d95808b9523bfbf3283"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-mutant.stderr.log",
+                  "bytes": 22357,
+                  "sha256": "3d716ad67336546f5990cccda1d874b44deb1918b816cc91a0f8a9e186f66beb"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-mutant.vitest.json",
+                  "bytes": 7494,
+                  "sha256": "18bf9b1f6bfd92782c02beb96c65f465338d859de3ffdffe5dcecd322e31f5f6"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-VERSION-001-mutant.execution.json",
+                  "bytes": 81,
+                  "sha256": "6dcf0737bb72ee3eaa01814c82fc48e1fddeacdf50f6ac08dda215a794dad66e"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-MIGRATION-001",
+            "category": "migration-integrity",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 716,
+              "assessment": {
+                "valid": true,
+                "passed": 53,
+                "failed": 0,
+                "total": 53,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-baseline.stdout.log",
+                  "bytes": 1633,
+                  "sha256": "313c696677b1a24e67d7a27ac3acf68ffe6b1d696113e8de65480d4aea888674"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-baseline.vitest.json",
+                  "bytes": 18348,
+                  "sha256": "f48a5a1ba95f2d7dc0d334caf41a8cf0a0631377315f38505362298ddc3f26f1"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-baseline.execution.json",
+                  "bytes": 80,
+                  "sha256": "a66b59318048b36455c8080c7e5ba46ed55ab23df13a5e96cfacf521fd928591"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 732,
+              "assessment": {
+                "valid": true,
+                "passed": 52,
+                "failed": 1,
+                "total": 53,
+                "failedTests": [
+                  "src/server/store/migrations.test.ts::database migration runner rejects a source migration edited after the shipped checksum manifest"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-mutant.stdout.log",
+                  "bytes": 1668,
+                  "sha256": "177090d817a2a46b54fba8be8473a44dd91fd08a7d7f132d294c31afa13be6ba"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-mutant.stderr.log",
+                  "bytes": 1002,
+                  "sha256": "1a228b710bc5b2e3e151907ff8e11b5a3bada61214fb6f369a56cf20e85acfd2"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-mutant.vitest.json",
+                  "bytes": 18955,
+                  "sha256": "76917b0e82b4bfd1e7b0d5a80c3db10536ce0b045f907159c8e31b36f5c1af00"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-MIGRATION-001-mutant.execution.json",
+                  "bytes": 80,
+                  "sha256": "4deb16b5f93a8dbdc42328499f46b85c56e6bdd3233b914bdf49a7f3f05055c3"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-UPLOAD-001",
+            "category": "upload-boundary",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 5782,
+              "assessment": {
+                "valid": true,
+                "passed": 20,
+                "failed": 0,
+                "total": 20,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-baseline.stdout.log",
+                  "bytes": 906,
+                  "sha256": "2a28b25a440d757508bbd13b4e3d22a041670af28d6e103eb6ee558033294065"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-baseline.vitest.json",
+                  "bytes": 7760,
+                  "sha256": "6a5aa62d105b4d0ccaa3a4c7f2076981d9cbd24a1b6eb601e1ff8c9ab2a48b46"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-baseline.execution.json",
+                  "bytes": 81,
+                  "sha256": "8d561826c34bbbf0bb8964d2499057f8429957a5eb70088412311c5b0b2dffb6"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 5454,
+              "assessment": {
+                "valid": true,
+                "passed": 19,
+                "failed": 1,
+                "total": 20,
+                "failedTests": [
+                  "src/server/application/attachments.test.ts::secure attachment lifecycle rejects an unsupported declared MIME before creating an upload session"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-mutant.stdout.log",
+                  "bytes": 942,
+                  "sha256": "20d83f7018b26e656047595a1a99da121f95b90afcca402f8926e05ef404f80c"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-mutant.stderr.log",
+                  "bytes": 2186,
+                  "sha256": "6b490b5f23827a1d58d0cf8b3a60b60359fa60133ee07dc605d3428d4673d5f8"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-mutant.vitest.json",
+                  "bytes": 8454,
+                  "sha256": "e3fc59ff13687985bb1bd885c0042b46f9f21b394366506a2632aa4a20275cdc"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-UPLOAD-001-mutant.execution.json",
+                  "bytes": 81,
+                  "sha256": "953627a91f84100ad42a8e0748e0dd76ba16e1902f6b1313bab8997c460c1c7a"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-OUTBOX-001",
+            "category": "outbox-lease",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 13880,
+              "assessment": {
+                "valid": true,
+                "passed": 58,
+                "failed": 0,
+                "total": 58,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-baseline.stdout.log",
+                  "bytes": 1745,
+                  "sha256": "7626b36fc45249d82d79f37863faa31584c9fbe1b7c84a7544753b070d336048"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-baseline.vitest.json",
+                  "bytes": 21624,
+                  "sha256": "d58a3cf7fab55f5ff7f410fa80df4434f57b6f670c4b5a91c907a8d649d32b49"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-baseline.execution.json",
+                  "bytes": 82,
+                  "sha256": "3a11b4bf30e7c2df6ee0d07bc56967fcb7fb8f0fda1a326aea1eb2b87d735df7"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 13591,
+              "assessment": {
+                "valid": true,
+                "passed": 57,
+                "failed": 1,
+                "total": 58,
+                "failedTests": [
+                  "src/server/operations/outbox.test.ts::durable outbox processing does not complete a message after another worker replaces its lease"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-mutant.stdout.log",
+                  "bytes": 1780,
+                  "sha256": "73e8decd0b7892e292d6805e2fc089efbcd5d6579ba416a7b7faab3a62dd16c8"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-mutant.stderr.log",
+                  "bytes": 1231,
+                  "sha256": "eb095613068724d83ef87d367f1cfdcfee5252678951a8e961eaee0a11005d91"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-mutant.vitest.json",
+                  "bytes": 22378,
+                  "sha256": "8515f45842f8a1f3caf2e216270310e57e17fc0deb6a7766001b104d81defc1e"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-OUTBOX-001-mutant.execution.json",
+                  "bytes": 82,
+                  "sha256": "aec007151d94f6c52e0a8c50cf66bffc8de5641070991e690df2eb2a07ad1129"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-REALTIME-001",
+            "category": "realtime-replay",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 8020,
+              "assessment": {
+                "valid": true,
+                "passed": 38,
+                "failed": 0,
+                "total": 38,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-baseline.stdout.log",
+                  "bytes": 1305,
+                  "sha256": "ffce6101be5757d1a8acb8ba393d6e7a00018768b16b14cad1af0b62a8d9d8b6"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-baseline.vitest.json",
+                  "bytes": 14190,
+                  "sha256": "429aa84d4fd8895e349af22d81f115272cf523ebf24335f60b22065054c1997f"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-baseline.execution.json",
+                  "bytes": 81,
+                  "sha256": "099e9c21308be2a47952bb240b92a2fd47e968d2cb6fc85d4e8e9fd1cb6bb9ed"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 7901,
+              "assessment": {
+                "valid": true,
+                "passed": 37,
+                "failed": 1,
+                "total": 38,
+                "failedTests": [
+                  "src/server/store/memory-store.test.ts::memory store narrow seams exposes only replayable messages in creation order through the bounded outbox seams"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-mutant.stdout.log",
+                  "bytes": 1380,
+                  "sha256": "2aa8af629d3fc6cb500f67508179dec7badf4961388f546ea018313e4b0c2b98"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-mutant.stderr.log",
+                  "bytes": 1634,
+                  "sha256": "8c338ce2f7c9bb20be91afc8147b111dbe65b93df1d2e0c11b3fb290f54ab65a"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-mutant.vitest.json",
+                  "bytes": 14550,
+                  "sha256": "e133070bc2b44279c6272937f657d674f73ab9eeebf0f16fbb4ffa3b0802022a"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-REALTIME-001-mutant.execution.json",
+                  "bytes": 81,
+                  "sha256": "2637bd3360c70a46ef450841687e75a267f861eb31f9d1c632c72efd6b728014"
+                }
+              }
+            }
+          },
+          {
+            "id": "MC-RECOVERY-001",
+            "category": "recovery-integrity",
+            "detected": true,
+            "outcome": "KILLED_BY_TEST_ASSERTION",
+            "baseline": {
+              "exitCode": 0,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 518,
+              "assessment": {
+                "valid": true,
+                "passed": 5,
+                "failed": 0,
+                "total": 5,
+                "failedTests": []
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-baseline.stdout.log",
+                  "bytes": 573,
+                  "sha256": "e66de109d033cdcb93ed6a944873de65c47d1f4cf16b900f5938c3e8eda76882"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-baseline.stderr.log",
+                  "bytes": 100,
+                  "sha256": "78a642a9f19b5bfccf4bfc49f22ba6292bab9790b4102503d4641c96a25b2722"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-baseline.vitest.json",
+                  "bytes": 2498,
+                  "sha256": "8b9bdfef7b5804d1fd2320bc94e5bb2d20e081cc71b2782fea03f83d1550c7be"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-baseline.execution.json",
+                  "bytes": 80,
+                  "sha256": "8b1edf7b2edc309dcd7caff1d1728362aa4142f85c25d0207a9adf2ad2ae0811"
+                }
+              }
+            },
+            "mutant": {
+              "exitCode": 1,
+              "signal": null,
+              "errorCode": null,
+              "durationMs": 519,
+              "assessment": {
+                "valid": true,
+                "passed": 4,
+                "failed": 1,
+                "total": 5,
+                "failedTests": [
+                  "src/server/operations/recovery-manifest.test.ts::recovery manifest contract verifies checksums and sizes for a copied isolated artifact set"
+                ]
+              },
+              "artifacts": {
+                "stdout": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-mutant.stdout.log",
+                  "bytes": 609,
+                  "sha256": "5e950473bfce0d0ff3807b82f147f14ccf2d229a27cd22068f003083b1b56b1f"
+                },
+                "stderr": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-mutant.stderr.log",
+                  "bytes": 1425,
+                  "sha256": "044e4d4733d11ae95a33448927f9cafff2b575e56155116df6efb8f703b032e7"
+                },
+                "vitest": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-mutant.vitest.json",
+                  "bytes": 3224,
+                  "sha256": "81677f272bb34d69925fef498a7139822869a0b649247c90ce55f60e76258b55"
+                },
+                "execution": {
+                  "path": "/tmp/cvg-mutation-evidence-1aRhxG/MC-RECOVERY-001-mutant.execution.json",
+                  "bytes": 80,
+                  "sha256": "3e82852cab40ebabc8c0e44e83454d96fe3576e7b8029d47b9d04cd547eb843c"
+                }
+              }
+            }
+          }
+        ],
+        "meaning": "Compact capture; original complete report, native Vitest JSON and raw outputs are identified by exact artifact SHA256, preserving all test identities and failures."
+      },
+      "artifact": {
+        "path": "/tmp/cvg-mutation-sentinel-native-final-20261012.json",
+        "sha256": "8dfb692ae31f78ff3d49a15ab3cc27f7e014ce837d897575c6fc9a09e028a9a8",
+        "bytes": 106470
+      }
+    },
+    "runnerChecks": {
+      "evidence": {
+        "schemaVersion": 1,
+        "status": "PASS_7_MUTANTS_WITH_GREEN_BASELINES_AND_NATIVE_ASSERTION_FAILURES",
+        "capturedAt": "2026-10-12T01:47:10.929722+00:00",
+        "sourceFiles": [
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/scripts/mutation-controls.mjs",
+            "bytes": 7927,
+            "sha256": "0babee8bacc2cc3d8bd1f7034aa59e60d666ff9190d2fd755ba54c1ed5ba21c3"
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/scripts/mutation-controls-support.mjs",
+            "bytes": 7750,
+            "sha256": "d8d28a97ddb47150604d89f843b97b0f6b1842833a940c5c4e833d745ce44a43"
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/scripts/mutation-controls-reporter.mjs",
+            "bytes": 1084,
+            "sha256": "248fa09c5e7ffc84c148a271944d474055b7b459f8a2095a357d9a6455d18b8b"
+          },
+          {
+            "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/scripts/mutation-controls.test.mjs",
+            "bytes": 11450,
+            "sha256": "d2812e8d6584b9947e2b8ad97ce4583003e09b24f6721be36d3f499a272aaa2c"
+          }
+        ],
+        "sourceScope": "Only four mutation-control scripts. Production guard/source untouched. Parent owns package/CI additions.",
+        "firstExecution": {
+          "status": "FAIL",
+          "exitCode": 1,
+          "detectedCount": 5,
+          "report": {
+            "path": "/tmp/cvg-mutation-sentinel-final-20261012.json",
+            "bytes": 99597,
+            "sha256": "0e1cf27c044f630194a4cc03d0f57bbc5569abeb44bc69905a2935c38c48b510"
+          },
+          "evidenceDirectory": "/tmp/cvg-mutation-evidence-sd02yf",
+          "interpretation": "Five valid kills; two genuine .rejects assertion failures were rejected as invalid by the initial overly narrow matcher. This FAIL is preserved."
+        },
+        "finalExecution": {
+          "status": "PASS",
+          "exitCode": 0,
+          "mutationCount": 7,
+          "detectedCount": 7,
+          "baselinePassed": 197,
+          "mutantTotal": 197,
+          "mutantFailedAssertions": 9,
+          "reportedTestProcessDurationMs": 67603,
+          "postStageArtifactIntervalMs": 67615,
+          "report": {
+            "path": "/tmp/cvg-mutation-sentinel-native-final-20261012.json",
+            "bytes": 106470,
+            "sha256": "8dfb692ae31f78ff3d49a15ab3cc27f7e014ce837d897575c6fc9a09e028a9a8"
+          },
+          "evidenceDirectory": "/tmp/cvg-mutation-evidence-1aRhxG",
+          "inventory": {
+            "path": "/tmp/cvg-mutation-evidence-1aRhxG/stage-source-inventory.json",
+            "bytes": 156326,
+            "sha256": "220ac65e6d49b73bba9eab69ecee9fa45a38619c561fb303e71399a15a8dc5ce"
+          },
+          "inventoryRegularFileCount": 936,
+          "results": [
+            {
+              "id": "MC-AUTH-001",
+              "category": "authorization",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 635,
+                "total": 10,
+                "passed": 10,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 544,
+                "total": 10,
+                "passed": 9,
+                "failed": 1,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            },
+            {
+              "id": "MC-VERSION-001",
+              "category": "optimistic-version",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 4675,
+                "total": 13,
+                "passed": 13,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 4636,
+                "total": 13,
+                "passed": 10,
+                "failed": 3,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            },
+            {
+              "id": "MC-MIGRATION-001",
+              "category": "migration-integrity",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 716,
+                "total": 53,
+                "passed": 53,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 732,
+                "total": 53,
+                "passed": 52,
+                "failed": 1,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            },
+            {
+              "id": "MC-UPLOAD-001",
+              "category": "upload-boundary",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 5782,
+                "total": 20,
+                "passed": 20,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 5454,
+                "total": 20,
+                "passed": 19,
+                "failed": 1,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            },
+            {
+              "id": "MC-OUTBOX-001",
+              "category": "outbox-lease",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 13880,
+                "total": 58,
+                "passed": 58,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 13591,
+                "total": 58,
+                "passed": 57,
+                "failed": 1,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            },
+            {
+              "id": "MC-REALTIME-001",
+              "category": "realtime-replay",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 8020,
+                "total": 38,
+                "passed": 38,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 7901,
+                "total": 38,
+                "passed": 37,
+                "failed": 1,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            },
+            {
+              "id": "MC-RECOVERY-001",
+              "category": "recovery-integrity",
+              "outcome": "KILLED_BY_TEST_ASSERTION",
+              "baseline": {
+                "exitCode": 0,
+                "durationMs": 518,
+                "total": 5,
+                "passed": 5,
+                "failed": 0,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              },
+              "mutant": {
+                "exitCode": 1,
+                "durationMs": 519,
+                "total": 5,
+                "passed": 4,
+                "failed": 1,
+                "nativeLifecycle": {
+                  "schemaVersion": 1,
+                  "lifecycleFailureCount": 0,
+                  "retryCount": 0,
+                  "unhandledErrorCount": 0,
+                  "interrupted": false
+                }
+              }
+            }
+          ]
+        },
+        "productionSourceUnchanged": [
+          {
+            "path": "src/server/security/authorization.ts",
+            "sha256": "50e97b581525ea816960cea8fc28b84db827056847a011b7585af45561104362",
+            "matchesCapturedStageOriginal": true
+          },
+          {
+            "path": "src/server/application/service-common.ts",
+            "sha256": "a51a1c0240cd15d735604225d048fe8b05ad6536f11f0b600369bff5b1ff1015",
+            "matchesCapturedStageOriginal": true
+          },
+          {
+            "path": "src/server/store/migrations.ts",
+            "sha256": "6c37d19eb7216355146ddbde51d035bb41d36f3dd4425d278867a771645ff8df",
+            "matchesCapturedStageOriginal": true
+          },
+          {
+            "path": "src/server/operations/outbox.ts",
+            "sha256": "09d5e6ccf842fff094c3d233007c1c6742ced92e2e07881c86bdf86a41f4fd91",
+            "matchesCapturedStageOriginal": true
+          },
+          {
+            "path": "src/server/domain/outbox-read.ts",
+            "sha256": "5e39003e5d731dc0dcbb65d4a78a65a15ec0999b5feee484f7f1af25d8b4cbeb",
+            "matchesCapturedStageOriginal": true
+          },
+          {
+            "path": "src/server/operations/recovery-manifest.ts",
+            "sha256": "e9cc6f1c7a32795b0d2e164a4517f6ec12065327045db8befc740a4c9510bac9",
+            "matchesCapturedStageOriginal": true
+          }
+        ],
+        "regressionChecks": {
+          "nodeTests": {
+            "exitCode": 0,
+            "tests": 5,
+            "passed": 5,
+            "failed": 0,
+            "realVitestScenarios": [
+              "passing body assertion",
+              "failing body assertion",
+              "passing async rejects",
+              "failing async rejects native stack",
+              "beforeAll runtime error",
+              "runtime expected-message error",
+              "fake native matcher token runtime error",
+              "beforeAll assertion setup error",
+              "beforeEach assertion setup error",
+              "no tests"
+            ]
+          },
+          "negativeControls": [
+            "origin regular allowlist/Git ignore including forced tracked ignored source",
+            "real env/secret/data/build/vendor/PEM files excluded without opening",
+            "origin symlinks not followed",
+            "application credentials, database opt-ins and NODE_OPTIONS not inherited",
+            "process timeout/signal/spawn/unsupported exit not killed",
+            "incomplete/skipped/zero/mismatched inventory not killed",
+            "missing lifecycle metadata/unhandled errors/interruption/retries not killed"
+          ],
+          "lintExitCode": 0,
+          "syntaxExitCode": 0,
+          "logs": [
+            {
+              "path": "/tmp/cvg-mutation-runner-controls-20261012.log",
+              "bytes": 1345,
+              "sha256": "f052f07f2d29abaf0b113e2e53bd36de0416ed26505306a5409c9aabccb43352"
+            },
+            {
+              "path": "/tmp/cvg-mutation-runner-controls-boundaries-20261012.log",
+              "bytes": 1345,
+              "sha256": "761e824e02f6b665c5ada916d3edafb334df6ab1007e23714bb6e7e92ea7e6b4"
+            },
+            {
+              "path": "/tmp/cvg-mutation-runner-controls-strict-20261012.log",
+              "bytes": 1929,
+              "sha256": "52741fd853c5e30522664a8ea6cd13b535cd5e8aff47f815ba6355680f5c6498"
+            },
+            {
+              "path": "/tmp/cvg-mutation-runner-native-lifecycle-20261012.log",
+              "bytes": 1345,
+              "sha256": "9a7338cdd811bd2462f9f3e1fb0c66330d3b8db87b3d7fb67f7fc9b0e320f141"
+            },
+            {
+              "path": "/tmp/cvg-mutation-runner-final-controls-20261012.log",
+              "bytes": 1345,
+              "sha256": "e4703f3fde091087a1900095da85e684495f0c16c69d1af31c79f2de55f97784"
+            },
+            {
+              "path": "/tmp/cvg-mutation-runner-final-lint-20261012.log",
+              "bytes": 0,
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            {
+              "path": "/tmp/cvg-mutation-runner-syntax-20261012.json",
+              "bytes": 313,
+              "sha256": "12c04cee86cda56dd269e9222c4c61a6edf80a1740f2d54ca5b83b19887dd140"
+            }
+          ]
+        },
+        "limits": [
+          "Focused mutation/control evidence only; no broad suite rerun, installed database access or infrastructure acceptance.",
+          "Installed node_modules is the sole deliberate dependency symlink; source links are excluded.",
+          "Process duration sum and artifact timestamp interval are separately identified, not an invented exact end-to-end stopwatch measurement.",
+          "First FAIL and lifecycle RED remain immutable. Production authorization active/effective-group guards are never changed."
+        ]
+      },
+      "artifact": {
+        "path": "/tmp/cvg-mutation-sentinel-proof-20261012.json",
+        "bytes": 12838,
+        "sha256": "8b32bd7e3339ce5a5fa2b36c6fa8c324894e448404acb81ce520e1fcb3fbc39c"
+      }
+    },
+    "peerReview": {
+      "evidence": {
+        "schemaVersion": 1,
+        "status": "READ_ONLY_PEER_REVIEW_NO_REMAINING_CONCRETE_FINDINGS",
+        "capturedAt": "2026-10-12T01:49:48.459966+00:00",
+        "reviewer": "/root/fix_clinical",
+        "sourceHashes": [
+          {
+            "path": "scripts/mutation-controls.mjs",
+            "bytes": 7927,
+            "sha256": "0babee8bacc2cc3d8bd1f7034aa59e60d666ff9190d2fd755ba54c1ed5ba21c3",
+            "matchesExecutedStageInventory": true
+          },
+          {
+            "path": "scripts/mutation-controls-support.mjs",
+            "bytes": 7750,
+            "sha256": "d8d28a97ddb47150604d89f843b97b0f6b1842833a940c5c4e833d745ce44a43",
+            "matchesExecutedStageInventory": true
+          },
+          {
+            "path": "scripts/mutation-controls-reporter.mjs",
+            "bytes": 1084,
+            "sha256": "248fa09c5e7ffc84c148a271944d474055b7b459f8a2095a357d9a6455d18b8b",
+            "matchesExecutedStageInventory": true
+          },
+          {
+            "path": "scripts/mutation-controls.test.mjs",
+            "bytes": 11450,
+            "sha256": "d2812e8d6584b9947e2b8ad97ce4583003e09b24f6721be36d3f499a272aaa2c",
+            "matchesExecutedStageInventory": true
+          }
+        ],
+        "trackedRunnerBeforeSHA256": "016d1d1385e9089fc6c56f0060121c6cb7b84104a9bbf9ac4261376d69f085e3",
+        "diffSummary": [
+          "Authorization mutant removes only role ceiling substring, preserving active/effective permission guards. Other six mutation sites retain their original semantics.",
+          "Runner now requires per-category green baseline and native complete identical test inventory, exit1 and assertion failures; source restored in finally.",
+          "Three new helper/reporter/regression files; source stage uses allowlisted Git nonignored regular inputs and excludes source symlinks.",
+          "Tests execute in isolated stage with UTC test environment, no application secrets/PG opt-ins/NODE_OPTIONS inherited, retry0."
+        ],
+        "reviewedConcerns": [
+          {
+            "topic": "Seven mutation semantics",
+            "evidence": "scripts/mutation-controls.mjs:14-70",
+            "finding": "Authorization role ceiling, stale version, migration checksum, MIME boundary, outbox current lease, PROCESSING replay exclusion and recovery checksum/size remain distinct native invariants. Existing corresponding failing tests identify each weakened invariant."
+          },
+          {
+            "topic": "Baseline and genuine kills",
+            "evidence": "scripts/mutation-controls-support.mjs:68-91; scripts/mutation-controls.mjs:84-123",
+            "finding": "Baseline green/exit0, exact selected files and same assertion identities required. Signals/timeouts/spawn errors/unsupported exit/missing report/skips/zero tests/runtime or collection errors cannot count as kills."
+          },
+          {
+            "topic": "Native lifecycle",
+            "evidence": "scripts/mutation-controls-reporter.mjs:6-20; support:71-72",
+            "finding": "Native task hooks, retries, unhandled errors and interruption augment ordinary JSON; missing/nonzero lifecycle metadata rejects kill. Checked compatibility with installed Vitest4.1.11 JsonReporter and TaskResult types."
+          },
+          {
+            "topic": "Assertion classification",
+            "evidence": "scripts/mutation-controls-support.mjs:82-84; scripts/mutation-controls.test.mjs real-Vitest cases",
+            "finding": "Generic expected-text regex removed. Actual AssertionError prefix or native promise mismatch plus exact @vitest/expect stack frame accepted. Runtime errors with expected-text or fake native token and beforeAll/beforeEach assertion errors are denied by meaningful real-Vitest regressions."
+          },
+          {
+            "topic": "Isolation",
+            "evidence": "scripts/mutation-controls-support.mjs:11-65; scripts/mutation-controls.test.mjs filesystem/environment regressions",
+            "finding": "Real env/data/secrets/generated/vendor/PEM/source symlinks excluded before bytes copied; check-ignore --no-index excludes forced tracked ignored source. Three env examples deliberately allowed. Sole created symlink is node_modules dependency directory; PATH/system temp/locale-only environment allowlist excludes app secrets, PG opt-ins and NODE_OPTIONS."
+          },
+          {
+            "topic": "Performance and evidence",
+            "evidence": "/tmp/cvg-mutation-sentinel-proof-20261012.json",
+            "finding": "Existing exact-hash proof shows14 native test runs/197 green baseline assertions and9 mutant assertion failures across7 kills; test process duration sum67.603s, not claimed exact wall time. Evidence logs/report/inventory individually SHA verified; no peer reexecution."
+          }
+        ],
+        "acceptedAndCorrectedDuringReview": [
+          "Runtime Error(expected environment to be configured) previously matched generic expected-text regex; now denied.",
+          "Fake __VITEST_REJECTS__ token in runtime message previously satisfied loose marker check; now requires native stack frame and is denied.",
+          "Owner independently found beforeEach assertion attributed as test-body failure by standard JSON; native lifecycle reporter and regression now reject it."
+        ],
+        "remainingFindings": [],
+        "existingProof": {
+          "path": "/tmp/cvg-mutation-sentinel-proof-20261012.json",
+          "sha256": "8b32bd7e3339ce5a5fa2b36c6fa8c324894e448404acb81ce520e1fcb3fbc39c",
+          "finalReport": {
+            "path": "/tmp/cvg-mutation-sentinel-native-final-20261012.json",
+            "sha256": "8dfb692ae31f78ff3d49a15ab3cc27f7e014ce837d897575c6fc9a09e028a9a8"
+          },
+          "inventory": {
+            "path": "/tmp/cvg-mutation-evidence-1aRhxG/stage-source-inventory.json",
+            "sha256": "220ac65e6d49b73bba9eab69ecee9fa45a38619c561fb303e71399a15a8dc5ce",
+            "regularFileCount": 936
+          }
+        },
+        "results": [
+          {
+            "id": "MC-AUTH-001",
+            "category": "authorization",
+            "baselinePassed": 10,
+            "mutantFailedAssertions": 1,
+            "failedTests": [
+              "src/server/security/authorization.test.ts::server authorization rejects an active actor when the requested action is absent from the role matrix"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          },
+          {
+            "id": "MC-VERSION-001",
+            "category": "optimistic-version",
+            "baselinePassed": 13,
+            "mutantFailedAssertions": 3,
+            "failedTests": [
+              "src/server/application/catalog.test.ts::versioned catalog administration creates and updates a service with permission, optimistic version and audit",
+              "src/server/application/service.test.ts::diagnostic application service rejects stale item versions across sample receipt and recollection",
+              "src/server/application/service.test.ts::diagnostic application service releases once, records notifications, and rejects stale review"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          },
+          {
+            "id": "MC-MIGRATION-001",
+            "category": "migration-integrity",
+            "baselinePassed": 53,
+            "mutantFailedAssertions": 1,
+            "failedTests": [
+              "src/server/store/migrations.test.ts::database migration runner rejects a source migration edited after the shipped checksum manifest"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          },
+          {
+            "id": "MC-UPLOAD-001",
+            "category": "upload-boundary",
+            "baselinePassed": 20,
+            "mutantFailedAssertions": 1,
+            "failedTests": [
+              "src/server/application/attachments.test.ts::secure attachment lifecycle rejects an unsupported declared MIME before creating an upload session"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          },
+          {
+            "id": "MC-OUTBOX-001",
+            "category": "outbox-lease",
+            "baselinePassed": 58,
+            "mutantFailedAssertions": 1,
+            "failedTests": [
+              "src/server/operations/outbox.test.ts::durable outbox processing does not complete a message after another worker replaces its lease"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          },
+          {
+            "id": "MC-REALTIME-001",
+            "category": "realtime-replay",
+            "baselinePassed": 38,
+            "mutantFailedAssertions": 1,
+            "failedTests": [
+              "src/server/store/memory-store.test.ts::memory store narrow seams exposes only replayable messages in creation order through the bounded outbox seams"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          },
+          {
+            "id": "MC-RECOVERY-001",
+            "category": "recovery-integrity",
+            "baselinePassed": 5,
+            "mutantFailedAssertions": 1,
+            "failedTests": [
+              "src/server/operations/recovery-manifest.test.ts::recovery manifest contract verifies checksums and sizes for a copied isolated artifact set"
+            ],
+            "nativeLifecycleCleanBothPhases": true,
+            "artifactsSHA256Verified": true
+          }
+        ],
+        "limits": [
+          "Independent read-only source and existing artifact review; peer did not execute runner, helper tests, services or any global gate.",
+          "Local fixed-dependency evidence only. Fresh remote CI still needed; original CI failures and first local5/7 failure remain historical and are not replaced.",
+          "This changes test sentinel machinery, not production authorization, source permissions, clinical policies or release state.",
+          "node_modules symlink deliberately exposes installed dependencies; this is isolated source staging, not an adversarial dependency sandbox.",
+          "No new deployment, merge, release or institutional acceptance claim."
+        ]
+      },
+      "artifact": {
+        "path": "/tmp/cvg-mutation-sentinel-peer-review-20261012.json",
+        "bytes": 9340,
+        "sha256": "53eeb6850a0e41cd87283731c5d074636cd563e31c2b17fa724f7d57813a4056"
+      }
+    },
+    "workflowGuard": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-workflow-guard-20261011.log",
+        "sha256": "22e40f21916dd0ab40de0e5d87f311f36a93a46ef2c930ccb4d3489d07c3b5a4",
+        "bytes": 1270
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-workflow-guard-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "integratedConfigTests": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-config-20261011.log",
+        "sha256": "b27159e07fad5888b64242514d9942c752d9be74f03833d8c4368d3923d402d5",
+        "bytes": 48279
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-config-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    },
+    "globalLint": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-global-lint-20261011.log",
+        "sha256": "74fe0026686129279d897921f5d00272ef3352a26675ba1947714a44e84f466c",
+        "bytes": 46
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-global-lint-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    }
+  },
+  "finalReportingChecks": {
+    "status": "PASS",
+    "recordedAt": "2026-10-12T01:51:51.285368+00:00",
+    "docs": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-docs-20261011.log",
+        "bytes": 207,
+        "sha256": "37e5555270a622f2d0c1449d9d5be5aa70c0fec911b74b12a7c7fd8638e31102"
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-docs-20261011.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    "secrets": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-secrets-20261011.log",
+        "bytes": 205,
+        "sha256": "01e4220a4ae212c4d17d708b7bfb6dc55d13bde287e0e1ad7f9f61ff769afb9d"
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-secrets-20261011.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    "privacy": {
+      "check": {
+        "status": "PASS",
+        "exitCode": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-functional-followup-mutation12-privacy-20261011.log",
+          "bytes": 40,
+          "sha256": "02610b22741e196f0fece8c1bcf43e415beb630ee7a5af017996c1b9f4d68583"
+        },
+        "exit": {
+          "path": "/tmp/cvg-hpl-functional-followup-mutation12-privacy-20261011.exit",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        }
+      },
+      "artifact": {
+        "path": "/tmp/cvg-hpl-prepublication-mutation-privacy-20261012.json",
+        "bytes": 194347,
+        "sha256": "1255d745cd1f9bd9cf719d49327e33677dbeffb00284356d0626477c559ac7b1"
+      },
+      "scannedTexts": 1253,
+      "findings": 0
+    },
+    "cachedWhitespace": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-cached-whitespace-20261011.log",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "exit": {
+        "path": "/tmp/cvg-hpl-functional-followup-mutation12-cached-whitespace-20261011.exit",
+        "bytes": 2,
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+      }
+    },
+    "indexedSourceBinding": {
+      "evidence": {
+        "schemaVersion": 1,
+        "recordedAt": "2026-10-12T01:51:16.036563+00:00",
+        "status": "PASS",
+        "baseCommit": "007b8c40773680d6b2971720b621eadf474ddb9b",
+        "fingerprintSha256": "c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5",
+        "manifest": "docs/build/HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json",
+        "manifestSha256": "890ece0c6cc14a59dda4faf71ef0348908e0d24294eaa63aae2194a8ee0b80ef",
+        "indexedFiles": 1088,
+        "mismatches": [],
+        "scope": "Every selected raw source blob in the Git index equals the pre-publication manifest; report/planning metadata is outside inherited fingerprint."
+      },
+      "artifact": {
+        "path": "/tmp/cvg-hpl-mutation-index-binding-20261012.json",
+        "bytes": 627,
+        "sha256": "2dfbd18766652e376c17e30f26126f315fa99ae5ca03522c174e05dbe00c2bee"
+      }
+    },
+    "scope": "Checks ran after the new documents were written and after final source freeze. Only this reporting metadata was appended afterward; source manifest inputs are unchanged."
+  },
+  "freshCI": {
+    "statusAtCapture": "NOT_EXECUTED_PENDING_CORRECTIVE_COMMIT",
+    "pullRequest": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/pull/78",
+    "actions": "https://github.com/ricardoakinaga-dev/cvg-diagnostic-hub-v2/actions?query=branch%3Afeat%2Fhospital-planner-20261012",
+    "requiredChecks": [
+      "verify (22.x)",
+      "Real HTTP/PostgreSQL/SSE benchmark",
+      "CodeQL SAST",
+      "browser (22.x)",
+      "Browser E2E with disposable PostgreSQL (22.x)",
+      "Build and smoke-test application image",
+      "Dependency review"
+    ],
+    "meaning": "Sealed pre-publication capture; live PR/Actions gives the subsequent SHA, actual completed checks and artifacts."
+  },
+  "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+  "BLD-HPL-051": "OPEN",
+  "done": false,
+  "release": "NOT_APPLIED",
+  "limits": [
+    "CodeQL successful jobs do not prove zero vulnerabilities or per-file scanner coverage; the previous changed-file warning only disabled an optimization.",
+    "No installed hospital service, port, database, credential or configuration was changed.",
+    "HIS source compatibility and disposable synthetic tests do not certify installed-image provenance or adopted clinical delivery.",
+    "Institutional content, approved mappings/endpoints, target workload/restore/alerts, named validators and real hospital UAT/go-no-go remain external gates. LIS/PACS are unknown."
+  ],
+  "snapshotApplicability": {
+    "status": "SUPERSEDED_BY_BROWSER_PRODUCT_AND_SYNTHETIC_PG_FIXTURE_REPAIR",
+    "validOnlyForSnapshotFingerprint": "c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5",
+    "currentCandidateCertified": false,
+    "supersededBy": "HOSPITAL_PLANNER_BROWSER_POSTGRES_FOLLOWUP_2026-10-12.json",
+    "currentSourceManifest": "HOSPITAL_PLANNER_BROWSER_POSTGRES_SOURCE_MANIFEST_2026-10-12.json",
+    "meaning": "Original capture and validations retain their old input scope. Fourth CI passed verify/image/demo browsers but failed PostgreSQL browsers. Corrected product and fixture require a new complete CI."
+  }
+}

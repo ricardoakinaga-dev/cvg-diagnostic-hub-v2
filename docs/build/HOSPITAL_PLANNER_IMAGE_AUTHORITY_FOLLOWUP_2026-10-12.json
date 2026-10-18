@@ -1,0 +1,167 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-12T09:57:00.224182+00:00",
+  "baseCommit": "eacb520e4b71aeb2f6e0283de4fc08af5cafd661",
+  "status": "ADOPTION_UNCOMMITTED_CURRENT_SOURCE_VALIDATION_PENDING",
+  "bindings": {
+    "previousCandidateFinalPacket": {
+      "path": "/tmp/cvg-hpl-final-packet-eacb520e-20261012.json",
+      "bytes": 11844,
+      "sha256": "5399ac38f880ac7f62a841813e9e352d4346a1ce33d0a756f150cf6b1a56790b"
+    },
+    "previousCandidateSupplementaryReview": {
+      "path": "/tmp/prod605-review-eacb520e-20261012/final-supplementary-scored-review-v2.json",
+      "bytes": 78633,
+      "sha256": "ee22a83c217b23c2bc8cee1f8c651b7068de8b19e9bd29f2d33da68ed7047af9"
+    },
+    "previousCandidateIncludingUnfixedScans": {
+      "path": "/tmp/cvg-hpl-unfixed-included-image-scans-continuation-20261012-3kx3xu6i/proof.json",
+      "bytes": 348924,
+      "sha256": "2272d90c9f615e0b38dfa036517ab43e12dee4518a72a64210ca38a772eef91a"
+    },
+    "previousCandidateAdjudication": {
+      "path": "/tmp/cvg-hpl-highcrit-adjudication-eacb520e-20261012/adjudication.json",
+      "bytes": 88010,
+      "sha256": "dc7df99e54c463d8f83d4b35a0d65e29080f83e4a372e2413679e3f340859fc3"
+    },
+    "prototypePreparation": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-preparation-20261012/preparation-proof.json",
+      "bytes": 13493,
+      "sha256": "f522bb08c026579c02558abc80db6fd75b1bc4945ebed655bb8cf6c95c6dff2c"
+    },
+    "prototypeBuild": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-build-20261012-3104tu18/build-scan-proof.json",
+      "bytes": 312493,
+      "sha256": "c83e82ba783a0b5fa1e8ff9ee935e17d4b43dd8246900d7d5f50aaaa1962ec7a"
+    },
+    "prototypeIncludingUnfixedScan": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-scan-20261012-ztqp_j5a/scan-proof.json",
+      "bytes": 40995,
+      "sha256": "6a93efe2af6fa377ad4a96a7418525aa985a6fcc704b5fb45e277766677b4127"
+    },
+    "prototypeNativeRuntime": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-smoke-40a336be2a3e/proof.json",
+      "bytes": 77001,
+      "sha256": "be7f8fafd366c0106eb07ba43aec12855b0e5e8f40a493c69dc4974b8cc74a0a"
+    },
+    "prototypeNativeRuntimeReadReview": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-smoke-40a336be2a3e/root-native-smoke-read-review.json",
+      "bytes": 8667,
+      "sha256": "55fd1d134fabdebbc642177b14514f31bc326f467140a4ffa79af19f9eeebe52"
+    },
+    "nodeBaseNativeMultiarchIndex": {
+      "path": "/tmp/cvg-hpl-node-alpine323-current-native-index-20261012.json",
+      "bytes": 6426,
+      "sha256": "baf676f7d0e552f3231945c2f979055ca121bce128c152f7a34e6bd1728b1c5a"
+    },
+    "pgOriginalRun": {
+      "path": "/tmp/cvg-hpl-pg-effective-authority-run-20261012-bonhm4yu/proof.json",
+      "bytes": 50315,
+      "sha256": "26cae34cadb4e32f0fe7093478860239cdb93e43fd00c0e2ff40d48c367ddf3a"
+    },
+    "pgCorrectedFocusedRun": {
+      "path": "/tmp/cvg-hpl-pg-effective-authority-run-20261012-amv5ay99/proof.json",
+      "bytes": 49762,
+      "sha256": "a1f502aa6c3ee03492e89d6a28110e603f36c49de95eac72cb656767058142e6"
+    },
+    "pgCorrectedTestInput": {
+      "path": "/tmp/cvg-hpl-pg-effective-authority-preparation-20261012/hospital-effective-authority-read-scope-v3.integration.test.ts",
+      "bytes": 37581,
+      "sha256": "cb3b1c408855f0dafc58fad491d2982058a9c2058fd252fc9735714511126481"
+    },
+    "prototypeSmokeInfrastructureFailure": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-smoke-453c1688eacc/proof.json",
+      "bytes": 29186,
+      "sha256": "63855c55b3fa60914ce2d967801b06acef2c6bd3ec91edec3d880962c491051f"
+    },
+    "prototypeSmokeUploadFixtureFailure": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-smoke-18fcf7c97520/proof.json",
+      "bytes": 51417,
+      "sha256": "caa4d1e7950d490959ec17788bc452c9042164496107b20c5e6d1c83c9b3a025"
+    },
+    "prototypeSmokeManifestFixtureFailure": {
+      "path": "/tmp/cvg-hpl-alpine-prototype-smoke-c5e5272096a0/proof.json",
+      "bytes": 56055,
+      "sha256": "2b1f724cf9314663ff4711d1cfb102b9454916b2be48c56bee860e1b482d5003"
+    },
+    "adoptionPatch": {
+      "path": "/tmp/cvg-hpl-alpine-adoption-preparation-20261012/adoption.patch",
+      "bytes": 10815,
+      "sha256": "bd513baa665bd8d76289778257949a6c3ccc8731d7ccb36ebbec64190f0e4771"
+    },
+    "adoptionPreparation": {
+      "path": "/tmp/cvg-hpl-alpine-adoption-preparation-20261012/preparation-proof.json",
+      "bytes": 12381,
+      "sha256": "42c251f2d8aff2f4fe9c60e931a00b4c40c02acb1a04af3dbeccae060372195a"
+    },
+    "postgresCompositePeerReview": {
+      "path": "/tmp/cvg-hpl-pg-effective-authority-preparation-20261012/native-v5-v6-composite-peer-review.json",
+      "bytes": 39799,
+      "sha256": "219e2c572f59caee36be722eec996a5ae4d0c9984f5fcdf09479ea0f6a328c5c"
+    }
+  },
+  "candidateValidation": {
+    "newCommit": null,
+    "currentCI": "PENDING_NEW_COMMITTED_SOURCE",
+    "currentFourStampedImages": "PENDING_NEW_COMMITTED_SOURCE",
+    "currentRuntime": "PENDING_NEW_COMMITTED_SOURCE",
+    "productionApproval": false
+  },
+  "prototype": {
+    "committed": false,
+    "sourceRevision": "unknown",
+    "nativeRuntimeChecks": 63,
+    "nativeJobs": 20,
+    "includingUnfixedHighCritical": {
+      "app": 0,
+      "ops": 0
+    },
+    "secrets": {
+      "app": 0,
+      "ops": 0
+    },
+    "testedPlatform": "linux/amd64",
+    "preexistingContainersUnchanged": 24,
+    "ownedContainersRemaining": 0,
+    "ownedNetworksRemaining": 0,
+    "ephemeralTLSRemoved": true,
+    "antivirusEfficacyProven": false,
+    "institutionalRecoveryProven": false
+  },
+  "postgres": {
+    "distinctCases": 20,
+    "singleFullCorrectedRun": false,
+    "originalRun": {
+      "passed": 19,
+      "failed": 1
+    },
+    "correctedFocusedRun": {
+      "passed": 1,
+      "notSelected": 19
+    },
+    "fixtureCorrection": "The initial visibility check requires both request.list and item.view; add item.view to that synthetic group. Keep all positive and denied assertions."
+  },
+  "previousCandidate": {
+    "supplementaryScore": 82.5,
+    "verdict": "REPROVADA",
+    "securityAdjudicationOpenCves": 7,
+    "securityHighCriticalRealCount": null,
+    "codeChangedByPrototypes": false,
+    "externalPROD605Completed": false
+  },
+  "limits": [
+    "Prototype and focused tests do not certify a new committed candidate",
+    "Alpine musl changes upstream Node support tier; only native amd64 compatibility exercised",
+    "Scans cover four candidate images, not scanners/monitoring or entire VPS estate",
+    "Synthetic verdict fixture is not ClamAV/EICAR efficacy",
+    "Real HIS/hospital target/manual accessibility/content/inventory/pentest/external review/UAT/pilot/approval remain open",
+    "Five proposed p95 goals failed in previous 12-month CI benchmark; target workload/topology not approved",
+    "All 50 deliveries plus051,137source items and15invariants remain under their literal acceptances; no institutional DONE inferred"
+  ],
+  "changes": [
+    "Dockerfile base pinned multiarch Alpine; fresh musl dependencies and no global runtime package managers",
+    "Eight CI/release scan gates include unfixed HIGH/CRITICAL",
+    "Operational maintenance documentation uses existing local tsx entrypoints",
+    "Twenty durable effective-authority PostgreSQL acceptance tests"
+  ]
+}

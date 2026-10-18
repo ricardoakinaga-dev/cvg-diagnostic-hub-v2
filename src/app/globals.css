@@ -681,6 +681,8 @@ em { color: var(--teal-dark); font-family: var(--font-display); font-weight: 400
 .indicator-meta span + span { padding-left: 18px; border-left: 1px solid var(--line-strong); }
 .indicator-columns, .admin-columns { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(300px, .85fr); gap: 14px; margin-top: 14px; }
 .admin-columns { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; }
+.admin-columns.admin-columns-section { grid-template-columns: minmax(0, 1fr); }
+.admin-columns.admin-columns-section:has(> #catalog) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .indicator-list, .admin-list { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
 .indicator-list li { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 22px; border-top: 1px solid var(--line); }
 .indicator-list li > span:first-child { display: grid; gap: 2px; min-width: 0; }
@@ -837,6 +839,7 @@ em { color: var(--teal-dark); font-family: var(--font-display); font-weight: 400
   .content-wrap { width: calc(100% - 40px); padding-top: 34px; }
   .metric-grid { grid-template-columns: repeat(2, 1fr); }
   .dashboard-columns, .detail-grid, .indicator-columns, .admin-columns, .management-columns, .management-stats-grid, .account-grid { grid-template-columns: 1fr; }
+  .admin-columns.admin-columns-section:has(> #catalog) { grid-template-columns: minmax(0, 1fr); }
   .management-metric-grid { grid-template-columns: repeat(2, 1fr); }
   .management-columns > .management-list-panel:first-child, .management-columns > .management-list-panel:last-child { grid-row: auto; grid-column: auto; }
   .admin-landing-grid { grid-template-columns: 1fr; }

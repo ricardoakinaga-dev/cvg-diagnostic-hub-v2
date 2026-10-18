@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { hospitalTimezone } from "@/lib/hospital-time";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DashboardRequest, DashboardService, DashboardView, Encounter, Notification, Patient, Priority, SearchResult, SessionResponse, SessionUser } from "@cvg/contracts";
 import { ApiClientError, apiFetch, createClientUniqueId, formatRelativeTime, getSafeErrorMessage } from "./api-client";
@@ -11,6 +12,7 @@ import { PatientDialog, type CreatedPatientPayload } from "./patient-dialog";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon, type IconName } from "./ui-icons";
 import { CommandCenterPanel } from "@/features/command-center/command-center-panel";
+import { RequestCreatedNotice, type CreatedRequest } from "./request-created-notice";
 
 type Request = DashboardRequest;
 type Service = DashboardService;
@@ -29,7 +31,7 @@ function searchStatusLabel(status: string): string {
 }
 
 function dashboardDateLabel(date = new Date()): string {
-  const parts = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: "America/Sao_Paulo" }).formatToParts(date);
+  const parts = new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", timeZone: hospitalTimezone() }).formatToParts(date);
   const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
   const day = parts.find((part) => part.type === "day")?.value ?? "";
   const month = parts.find((part) => part.type === "month")?.value ?? "";
@@ -81,21 +83,29 @@ export function Dashboard() {
 
   useEffect(() => {
     let active = true;
-    void apiFetch<SessionResponse>("/session/me")
-      .then((result) => { if (active) setUser(result.user); })
-      .catch((cause) => { if (active) setError(getSafeErrorMessage(cause, "Não foi possível atualizar a identificação da equipe.")); });
-    return () => { active = false; };
+    let version = 0;
+    const readIdentity = () => {
+      const current = ++version;
+      void apiFetch<SessionResponse>("/session/me")
+        .then((result) => { if (active && current === version) setUser(result.user); })
+        .catch((cause) => { if (active && current === version) setError(getSafeErrorMessage(cause, "Não foi possível atualizar a identificação da equipe.")); });
+    };
+    const refresh = () => { setUser(null); setError(null); readIdentity(); };
+    readIdentity();
+    window.addEventListener("cvg:realtime-resync", refresh);
+    return () => { active = false; version += 1; window.removeEventListener("cvg:realtime-resync", refresh); };
   }, []);
 
   if (!user && !error) return <DashboardSkeleton />;
   if (error) return <ErrorState page title="Identidade indisponível" message={error} onRetry={() => window.location.reload()} />;
-  if (user?.role === "ADMIN") return <TechnicalAdminDashboard displayName={user.displayName} />;
-  if (user?.role === "MANAGER") return <ManagementDashboard />;
-  return <ClinicalDashboard displayName={user?.displayName ?? "Equipe"} role={user?.role} />;
+  if (user?.role === "ADMIN") return <TechnicalAdminDashboard displayName={user.displayName} permissions={user.permissions ?? []} />;
+  if (user?.role === "MANAGER" || user?.role === "SUPERADMIN") return <ManagementDashboard />;
+  return <ClinicalDashboard displayName={user?.displayName ?? "Equipe"} role={user?.role} permissions={user?.permissions ?? []} />;
 }
 
-function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
+function TechnicalAdminDashboard({ displayName, permissions }: { displayName: string; permissions: NonNullable<SessionUser["permissions"]> }) {
   const firstName = displayName.split(" ")[0] ?? displayName;
+  const canAccessAdmin = permissions.some((permission) => ["user_role.manage", "user.view", "user.create", "user.update", "user.deactivate", "service.catalog.manage", "service.catalog.view", "service.catalog.create", "service.catalog.update", "service.catalog.deactivate", "reason_code.manage", "patient.data_export"].includes(permission));
   return (
     <div className="dashboard-page admin-landing">
       <div className="page-heading">
@@ -103,11 +113,12 @@ function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
       </div>
       <div className="admin-policy-banner" role="status"><strong>Perfil técnico</strong><p>Dados clínicos, pacientes e solicitações operacionais permanecem protegidos e disponíveis somente nos perfis assistenciais autorizados.</p></div>
       <div className="admin-landing-grid">
-        <Link href="/admin" className="panel admin-landing-card">
+        {canAccessAdmin && <Link href="/admin" className="panel admin-landing-card">
           <span className="strip-icon" aria-hidden="true"><Icon name="settings" size={16} /></span>
           <span><strong>Configuração e acesso</strong><small>Catálogo de serviços, políticas e usuários do Hub.</small></span>
           <span className="text-link">Abrir administração <Icon name="arrow-right" size={15} /></span>
-        </Link>
+        </Link>}
+        {permissions.includes("audit.view") && <Link href="/system#audit" className="panel admin-landing-card"><span className="strip-icon" aria-hidden="true"><Icon name="activity" size={16} /></span><span><strong>Auditoria</strong><small>Consultar ações registradas no seu escopo autorizado.</small></span><span className="text-link">Abrir auditoria <Icon name="arrow-right" size={15} /></span></Link>}
         <section className="panel admin-landing-card" aria-label="Escopo protegido">
           <span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span>
           <span><strong>Escopo protegido</strong><small>A separação entre operação clínica e administração técnica está ativa.</small></span>
@@ -118,8 +129,9 @@ function TechnicalAdminDashboard({ displayName }: { displayName: string }) {
   );
 }
 
-function ClinicalDashboard({ displayName, role }: { displayName: string; role?: string }) {
+function ClinicalDashboard({ displayName, role, permissions }: { displayName: string; role?: string; permissions: NonNullable<SessionUser["permissions"]> }) {
   const [showRequest, setShowRequest] = useState(false);
+  const [createdRequest, setCreatedRequest] = useState<CreatedRequest>();
   const [search, setSearch] = useState("");
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
   const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
@@ -193,7 +205,9 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
       : statsResource.data
     : null;
   const services = servicesResource.data ?? [];
-  const canCreateClinicalRequest = role === undefined || role === "VETERINARIAN" || role === "INPATIENT_TEAM";
+  const eligibleCreator = role !== undefined && ["SUPERADMIN", "VETERINARIAN", "INPATIENT_TEAM"].includes(role);
+  const canCreateClinicalRequest = eligibleCreator && permissions.includes("request.create");
+  const canCreatePatient = eligibleCreator && permissions.includes("patient.create");
   const userName = displayName.split(" ")[1] ?? displayName;
   const activeRequests = useMemo(() => (requestsResource.data ?? []).filter((request) => !["COMPLETED", "CANCELLED"].includes(request.aggregateStatus)), [requestsResource.data]);
   const initialLoading = [requestsResource, statsResource, notificationsResource, servicesResource].every((resource) => resource.status === "loading" && resource.data === null);
@@ -270,7 +284,8 @@ function ClinicalDashboard({ displayName, role }: { displayName: string; role?: 
         </section>
       </div>
       <section className="bottom-strip"><div><span className="strip-icon" aria-hidden="true"><Icon name="spark" size={16} /></span><div><strong>Visibilidade ponta a ponta</strong><p>Os estados são confirmados pelo servidor e auditados em uma única timeline.</p></div></div><span className="strip-status">Atualizado {stats ? formatRelativeTime(stats.updatedAt) : "indisponível"}</span></section>
-      {showRequest && <RequestDialog canCreatePatient={canCreateClinicalRequest} services={services} servicesError={servicesResource.error} onRetryServices={loadServices} onClose={() => setShowRequest(false)} onCreated={() => { setShowRequest(false); reloadAll(); }} />}
+      {createdRequest && <RequestCreatedNotice request={createdRequest} />}
+      {showRequest && canCreateClinicalRequest && <RequestDialog canCreatePatient={canCreatePatient} services={services} servicesError={servicesResource.error} onRetryServices={loadServices} onClose={() => setShowRequest(false)} onCreated={(request) => { setCreatedRequest(request); setShowRequest(false); reloadAll(); }} />}
     </div>
   );
 }
@@ -298,7 +313,7 @@ function NotificationRow({ notification }: { notification: Notification }) {
 
 function DashboardSkeleton() { return <div className="dashboard-page"><div className="skeleton-heading skeleton-block" /><div className="skeleton-search skeleton-block" /><div className="metric-grid">{[1, 2, 3, 4].map((item) => <div key={item} className="metric-card skeleton-card" />)}</div><div className="dashboard-columns"><div className="panel skeleton-panel" /><div className="panel skeleton-panel" /></div></div>; }
 
-export function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: () => void }) {
+export function RequestDialog({ canCreatePatient, services, servicesError, onRetryServices, onClose, onCreated }: { canCreatePatient: boolean; services: Service[]; servicesError: string | null; onRetryServices: () => Promise<void>; onClose: () => void; onCreated: (request: CreatedRequest) => void }) {
   const dialogRef = useRef<HTMLElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const [patients, setPatients] = useState<Patient[]>([]);
@@ -323,6 +338,7 @@ export function RequestDialog({ canCreatePatient, services, servicesError, onRet
   const [showPatientCreate, setShowPatientCreate] = useState(false);
   const [patientNotice, setPatientNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const submitIntent = useRef<{ body: string; key: string } | undefined>(undefined);
   useDialogFocus(dialogRef, onClose, closeButtonRef);
   useEffect(() => {
     const controller = new AbortController();
@@ -409,21 +425,18 @@ export function RequestDialog({ canCreatePatient, services, servicesError, onRet
       return;
     }
     try {
-      await apiFetch("/diagnostic-requests", {
+      const body = JSON.stringify({ patientId: currentPatientId, encounterId: currentEncounterId, priority, items: selected.map((serviceId) => ({ serviceId })), ...(duplicateWarning ? { overrideReason: overrideReason.trim() } : {}) });
+      if (submitIntent.current?.body !== body) submitIntent.current = { body, key: createClientUniqueId() };
+      const request = await apiFetch<CreatedRequest>("/diagnostic-requests", {
         method: "POST",
         headers: {
+          "idempotency-key": submitIntent.current.key,
           "x-correlation-id": `ui-${createClientUniqueId()}`,
           ...(duplicateWarning ? { "x-duplicate-override": "true" } : {})
         },
-        body: JSON.stringify({
-          patientId: currentPatientId,
-          encounterId: currentEncounterId,
-          priority,
-          items: selected.map((serviceId) => ({ serviceId })),
-          ...(duplicateWarning ? { overrideReason: overrideReason.trim() } : {})
-        })
+        body
       });
-      onCreated();
+      onCreated(request);
     } catch (cause) {
       if (cause instanceof ApiClientError && cause.code === "DUPLICATE_WARNING") {
         setDuplicateWarning(true);
@@ -467,6 +480,6 @@ export function RequestDialog({ canCreatePatient, services, servicesError, onRet
         {patientOptions.map((patient) => <option key={patient.id} value={patient.id}>{patient.displayName} · {patient.species} · {patient.externalId}</option>)}
       </select>
       {patientNotice && <div className="form-success" role="status">{patientNotice}</div>}<label>Atendimento<select aria-label="Atendimento" aria-describedby="request-encounter-help" value={encounterId} onChange={(event) => setEncounter(event.target.value)} disabled={patientsLoading || Boolean(patientsError) || !patientId || encountersLoading || encounters.length === 0} aria-busy={encountersLoading}><option value="">Selecione um atendimento…</option>{encounters.map((encounter) => <option key={encounter.id} value={encounter.id}>{encounterLabel(encounter)}</option>)}</select><small id="request-encounter-help" className="field-hint">Para um paciente novo, o tipo é definido em “Cadastrar paciente”; na internação, você informa ala e leito.</small>{encountersLoading && <small role="status">Carregando atendimentos…</small>}</label>{patientId && !encountersLoading && !encountersError && encounters.length === 0 && <p className="field-hint" role="status">Este paciente não tem atendimento aberto. <Link href={`/patients/${encodeURIComponent(patientId)}/diagnostics`}>Abra um novo atendimento na página do paciente.</Link></p>}{encountersError && <div className="form-alert" role="alert"><span>{encountersError}</span><button type="button" className="button button-ghost" onClick={() => void loadEncounters(patientId)} disabled={encountersLoading}>Tentar carregar atendimentos</button></div>}<fieldset><legend>Serviços</legend>{servicesError && <div className="form-alert" role="alert">{servicesError}<button type="button" className="button button-ghost" onClick={() => void onRetryServices()}>Tentar carregar serviços</button></div>}<div className="service-options">{services.map((service) => <label key={service.id} className={`service-option ${selected.includes(service.id) ? "selected" : ""}`}><input type="checkbox" checked={selected.includes(service.id)} onChange={() => setSelected((current) => current.includes(service.id) ? current.filter((id) => id !== service.id) : [...current, service.id])} /><span><strong>{service.name}</strong><small>{service.workflowType === "LABORATORY" ? "Laboratório" : service.workflowType === "ULTRASOUND" ? "Ultrassom" : "Radiologia"}</small></span><b aria-hidden="true"><Icon name="check" size={14} /></b></label>)}</div></fieldset>{duplicateWarning && <label>Motivo para prosseguir com a duplicidade<textarea aria-label="Motivo para prosseguir com a duplicidade" value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} rows={2} maxLength={500} placeholder="Explique a necessidade clínica ou operacional." /></label>}<div className="priority-picker"><span>Prioridade</span>{(["ROUTINE", "URGENT", "EMERGENCY"] as Priority[]).map((value) => <button key={value} type="button" className={priority === value ? "selected" : ""} onClick={() => setPriority(value)}>{value === "ROUTINE" ? "Rotina" : value === "URGENT" ? "Urgente" : "Emergência"}</button>)}</div>{error && <div className="form-alert" role="alert">{error}</div>}<div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><button type="button" className="button button-primary" onClick={() => void submit()} disabled={submitting || patientsLoading || Boolean(patientsError)}>{submitting ? "Confirmando…" : duplicateWarning ? "Confirmar duplicidade" : "Confirmar solicitação"}<Icon name="arrow-right" size={15} /></button></div></section></div>
-    {showPatientCreate && <PatientDialog nested onClose={() => setShowPatientCreate(false)} onCreated={onPatientCreated} />}
+    {showPatientCreate && canCreatePatient && <PatientDialog nested onClose={() => setShowPatientCreate(false)} onCreated={onPatientCreated} />}
   </>;
 }

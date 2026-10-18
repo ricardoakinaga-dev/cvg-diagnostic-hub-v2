@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import type { ItemState, OperationalContext, SessionRole, TimelineEvent } from "@cvg/contracts";
+import type { ItemState, Permission, OperationalContext, SessionRole, SessionUser, TimelineEvent } from "@cvg/contracts";
+import { DiagnosticPlanningControls } from "@/components/diagnostic-planning";
 import { apiFetch, formatRelativeTime, getSafeErrorMessage } from "@/components/api-client";
 import { Icon } from "@/components/ui-icons";
-import { canUseWorkflowAction, WorkflowAction, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
+import { canUseGrantedWorkflowAction, WorkflowAction, workflowActionForTransition, type WorkflowActionKind } from "@/components/workflow-action";
 import { eventLabel, eventStateLabel } from "@/components/request-detail";
 import { SampleLabelLink } from "@/components/sample-label";
 import { useDialogFocus } from "@/components/use-dialog-focus";
+import { useWorkflowPermissions } from "@/components/workflow-permissions";
+import { useDepartmentName } from "@/components/department-labels";
 import { Avatar, DepartmentIcon, PriorityIcon } from "./icons";
 import { StatePill, WorkItemKey } from "./properties";
-import { PRIORITY_LABELS, departmentLabel, formatDateTime, type WorkItem } from "./model";
+import { PRIORITY_LABELS, formatDateTime, type WorkItem } from "./model";
 
 const escalationLabels: Record<OperationalContext["escalationLevel"], string> = { NONE: "No prazo", WATCH: "Acompanhar", ATTENTION: "Atenção", URGENT: "Urgente" };
 
@@ -41,7 +44,9 @@ function Property({ icon, label, children }: { icon: Parameters<typeof Icon>[0][
  * interactive. Workflow commands reuse WorkflowAction, so every clinical rule
  * (reasons, accession, schedule window, drafts) is the same as the full page.
  */
-export function PeekOverview({ item, role, initialAction, onClose, onChanged, onRefresh, onMove }: { item: WorkItem; role: SessionRole; initialAction?: WorkflowActionKind; onClose: () => void; onChanged: () => void; onRefresh: () => void; onMove: (item: WorkItem, target: ItemState) => void }) {
+export function PeekOverview({ item, role, user, permissions: suppliedPermissions, initialAction, onClose, onChanged, onRefresh, onMove }: { item: WorkItem; role: SessionRole; user?: SessionUser; permissions?: readonly Permission[]; initialAction?: WorkflowActionKind; onClose: () => void; onChanged: () => void; onRefresh: () => void; onMove: (item: WorkItem, target: ItemState) => void }) {
+  const permissions = useWorkflowPermissions(suppliedPermissions);
+  const departmentLabel = useDepartmentName();
   const panelRef = useRef<HTMLElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[] | null>(null);
@@ -96,9 +101,9 @@ export function PeekOverview({ item, role, initialAction, onClose, onChanged, on
     } catch { /* clipboard is optional */ }
   }
 
-  const canAmend = !action && item.currentResultId && ["RESULT_AVAILABLE", "REVIEWED", "COMPLETED"].includes(item.status) && canUseWorkflowAction(role, "AMEND", item);
-  const canCancel = !action && workflowActionForTransition(item, "CANCELLED") === "CANCEL" && canUseWorkflowAction(role, "CANCEL", item);
-  const canReject = !action && workflowActionForTransition(item, "REJECTED") === "REJECT" && canUseWorkflowAction(role, "REJECT", item);
+  const canAmend = !action && item.currentResultId && ["RESULT_AVAILABLE", "REVIEWED", "COMPLETED"].includes(item.status) && canUseGrantedWorkflowAction(role, "AMEND", item, permissions);
+  const canCancel = !action && workflowActionForTransition(item, "CANCELLED") === "CANCEL" && canUseGrantedWorkflowAction(role, "CANCEL", item, permissions);
+  const canReject = !action && workflowActionForTransition(item, "REJECTED") === "REJECT" && canUseGrantedWorkflowAction(role, "REJECT", item, permissions);
 
   return <aside ref={panelRef} className="peek" role="dialog" aria-modal={mobile} aria-labelledby="peek-title">
     {mobile && <MobilePeekFocus panel={panelRef} heading={headingRef} opener={openerRef} onClose={onClose} />}
@@ -119,7 +124,7 @@ export function PeekOverview({ item, role, initialAction, onClose, onChanged, on
       {operation?.blockedBy && <div className="peek-callout" role="note"><Icon name="attention" size={15} /><span><strong>Bloqueado:</strong> {operation.blockedBy.label}</span></div>}
 
       <section className="peek-actions" aria-label="Ações do exame">
-        <WorkflowAction key={`${item.id}:${action ?? "context"}`} item={item} initialAction={action} role={role} onComplete={() => { setAction(undefined); onChanged(); }} onDraftCreated={onRefresh} />
+        <WorkflowAction key={`${item.id}:${action ?? "context"}`} item={item} initialAction={action} role={role} permissions={permissions} onComplete={() => { setAction(undefined); onChanged(); }} onDraftCreated={onRefresh} />
         {(canAmend || canCancel || canReject) && <div className="peek-secondary-actions">
           {canAmend && <button type="button" className="header-button" onClick={() => setAction("AMEND")}>Emendar resultado</button>}
           {canReject && <button type="button" className="header-button" onClick={() => setAction("REJECT")}>Rejeitar</button>}
@@ -130,7 +135,7 @@ export function PeekOverview({ item, role, initialAction, onClose, onChanged, on
       <section className="peek-section" aria-labelledby="peek-properties">
         <h3 id="peek-properties">Propriedades</h3>
         <dl className="peek-properties">
-          <Property icon="layers" label="Estado"><StatePill item={item} role={role} onMove={onMove} /></Property>
+          <Property icon="layers" label="Estado"><StatePill item={item} role={role} permissions={permissions} onMove={onMove} /></Property>
           <Property icon="analytics" label="Prioridade"><span className="cell-inline"><PriorityIcon priority={item.priority} />{PRIORITY_LABELS[item.priority]}</span></Property>
           <Property icon="paw" label="Paciente"><Link className="peek-link" href={`/patients/${item.patient.id}/diagnostics`}>{item.patient.displayName}</Link></Property>
           <Property icon="hash" label="Exame">{item.service.name}</Property>
@@ -146,6 +151,8 @@ export function PeekOverview({ item, role, initialAction, onClose, onChanged, on
           {item.currentResultId && <Property icon="check" label="Resultado"><Link className="peek-link" href={`/results/${item.currentResultId}`}>Abrir resultado <Icon name="external" size={12} /></Link></Property>}
         </dl>
       </section>
+
+      <DiagnosticPlanningControls key={`${user?.id ?? "reader"}:${item.id}:${item.version}`} item={item} user={user} onChanged={onRefresh} />
 
       <section className="peek-section" aria-labelledby="peek-activity">
         <h3 id="peek-activity">Atividade</h3>

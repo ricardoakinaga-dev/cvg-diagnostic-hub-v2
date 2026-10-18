@@ -1,0 +1,3979 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-11T22:52:14.259969+00:00",
+  "status": "PASS_LOCAL_TECHNICAL_PROOFS_WITH_EXPLICIT_INPUT_REUSE",
+  "candidate": {
+    "fingerprintSha256": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+    "fileCount": 1079,
+    "baseCommit": "a94e77f4443f700bbb073108594090d40efa4496",
+    "branch": "feat/local-superadmin-20261011",
+    "committed": false,
+    "deployed": false
+  },
+  "scope": "Local synthetic operational completeness checks only; no hospital service/database/configuration changed, no commit/push/deploy, no institutional signature.",
+  "postgresMonitoring": {
+    "result": "PASS_LOCAL_TECHNICAL_PROOF",
+    "observed": {
+      "capturedAt": "2026-10-11T22:18:17.573441+00:00",
+      "scope": "Local operational monitor implementation only; no deploy, real environment, installed database or application source change",
+      "status": "LOCAL_TECHNICAL_PROOF; institutional installation/routing/acceptance remain OPEN",
+      "files": [
+        {
+          "path": ".env.monitoring.example",
+          "bytes": 749,
+          "sha256": "810a8d98acdd5e6217fce5487d931b3219076b5832aa1b0ae2a9125a9c3b0321",
+          "baseBytes": 505,
+          "baseSha256": "05d1e73295488c1f6af0762e04deeb77d1cb525547cddaadb9d58cf336224fc7",
+          "newFile": false
+        },
+        {
+          "path": "deploy/monitoring/postgres-role.sql",
+          "bytes": 2663,
+          "sha256": "b9d59470cd399743782c3a4976ac3b669f1e5513e295da05d58439e81d65e654",
+          "baseBytes": null,
+          "baseSha256": null,
+          "newFile": true
+        },
+        {
+          "path": "deploy/observability/infrastructure-alerts.test.yml",
+          "bytes": 12762,
+          "sha256": "59f889aa71dbae4ef92268baabb293a0ee98ada6dcffbe9869921595e42ed92d",
+          "baseBytes": 9059,
+          "baseSha256": "5f675cf4b852fcf54cc13e8b2042d0d6bf44dc6af1e8bf6c6a4bf7df32a5936b",
+          "newFile": false
+        },
+        {
+          "path": "deploy/observability/infrastructure-alerts.yml",
+          "bytes": 6110,
+          "sha256": "a6cd588ad37c5b0aa97eaf28fa283229707f6792d43a186f06b5c7d424a16163",
+          "baseBytes": 4854,
+          "baseSha256": "4fff8c38e6793a1aa80a89a3d96dcc7ce119dbd8a354867f64e6ee345a3b23ec",
+          "newFile": false
+        },
+        {
+          "path": "docker-compose.monitoring-postgres.yml",
+          "bytes": 1932,
+          "sha256": "9cceb34801e1335ac5d7cd451dc4e16e560e430ac345a058bd0577c40e235c68",
+          "baseBytes": null,
+          "baseSha256": null,
+          "newFile": true
+        },
+        {
+          "path": "docker-compose.monitoring.yml",
+          "bytes": 3496,
+          "sha256": "5a842e3b0dcbd659d6287d877dece50dca5fa3bbe195cf3d641b2b3f3f5622e3",
+          "baseBytes": 3396,
+          "baseSha256": "e9d67a2aeae046354b55dd831300025fed09bd3b27caae1824e8977ba46cb533",
+          "newFile": false
+        },
+        {
+          "path": "docs/operations/BACKUP_RESTORE.md",
+          "bytes": 34279,
+          "sha256": "6dbc6f90d9b9f3aff7efbf2271c6722c04936bd317e55833475ed810113adcb6",
+          "baseBytes": 34181,
+          "baseSha256": "77da9a42083d788bc2da5b554104395c49c815104db88eb09798ee209f25e72f",
+          "newFile": false
+        },
+        {
+          "path": "docs/operations/MONITORING.md",
+          "bytes": 16891,
+          "sha256": "c5241a512251c4bcfb8879f27608deb41cb03a3925e85fe200ac395083487ce1",
+          "baseBytes": 11474,
+          "baseSha256": "2f09867374588e55076f7a4e55d2df3c3b205716e89a35450cb3cefafca3c27f",
+          "newFile": false
+        },
+        {
+          "path": "scripts/monitoring-config.mjs",
+          "bytes": 9979,
+          "sha256": "0e8083aa9242464def28b6e63f3ada5a67413f2d68fc37188cf04284501293c9",
+          "baseBytes": 8450,
+          "baseSha256": "19df8b5faa8cb63a5728e6d144d268d0175d0c2a27c610f4a70a8c244b576702",
+          "newFile": false
+        },
+        {
+          "path": "scripts/monitoring.test.mjs",
+          "bytes": 32586,
+          "sha256": "0711a379a73d1d303463ef903d1109a2573a99589144a5ec600cb08a87561a54",
+          "baseBytes": 18259,
+          "baseSha256": "2e16c4e5b743be1b5053714e27d594ce98c3dac4a391e7966fd3e41df5421a94",
+          "newFile": false
+        }
+      ],
+      "sourceFingerprint": "dd64c58c28f1fc180461ffd2e22eac351a0028d497dfbd3fe09c164d6c2ded4b",
+      "fingerprintAlgorithm": "SHA256 of ascending path records: <file sha256><two spaces><relative path><LF>; excludes all non-listed files and private temporary fixtures",
+      "baseCommit": "a94e77f4443f700bbb073108594090d40efa4496",
+      "treeCommitted": false,
+      "checks": {
+        "red": "2 targeted failures: absent PostgreSQL scrape job and absent PostgreSQL mTLS configuration",
+        "final": "12 PASS, 0 FAIL, 2 pre-existing optional delivery/NodeExporter tests SKIP, exit0; includes actual dedicated disposable PostgreSQL/exporter and official promtool/amtool configuration validation",
+        "rules": "15 application + 18 infrastructure rules parsed; positive/negative promtool tests PASS",
+        "compose": "2 Compose models + 5 YAML files PASS with synthetic environment and --env-file /dev/null; no compose up",
+        "syntaxLintDiff": "node --check, focused ESLint, git diff --check PASS",
+        "additionalRed": "Native existing role column SELECT, PUBLIC column SELECT and database CREATE passed the old provisioning preflight; clinical column read was genuinely possible before the preflight. All three are rejected after correction."
+      },
+      "liveScenarios": [
+        "three numeric collectors successful without pg_monitor/read_all_stats",
+        "metrics contain no synthetic clinical sentinel/table/query labels",
+        "mTLS refuses client without certificate",
+        "clinical SELECT/INSERT and elevated SET ROLE denied even when read-only switched off",
+        "other role SQL text redacted",
+        "PUBLIC clinical SELECT and pg_monitor membership make provisioning fail closed",
+        "safe SQL provisioning replay retains independent password",
+        "login revoked produces pg_up=0; restored login produces pg_up=1",
+        "clinical row count unchanged",
+        "credential files public or symlinked rejected at startup",
+        "all own containers/network removed in finally",
+        "clinical per-column SELECT granted directly and via PUBLIC is genuine read authority and is rejected by the preflight",
+        "existing CREATE on database is rejected by the preflight"
+      ],
+      "images": {
+        "postgresExporter": "quay.io/prometheuscommunity/postgres-exporter:v0.20.0@sha256:215b8299a47328078dabb751d2ffc1fd9a0aad3aa8c7daed36c567d2bd83a8a1",
+        "postgresTest": "postgres:16-alpine",
+        "promtool": "prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e",
+        "amtool": "prom/alertmanager:v0.34.1"
+      },
+      "evidence": [
+        {
+          "path": "/tmp/cvg-postgres-monitor-red-20261011.log",
+          "sha256": "25dc2a443e8885ce64c12478b77e06814b7e3f3f17dd70ca89fa9d8f26ddadc9",
+          "bytes": 1859
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-final-20261011.log",
+          "sha256": "2fc97cc1249acb02e2a1a423229df4a8431be083280e187b5238740c0d9959c2",
+          "bytes": 3919
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-final-20261011.exit",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-rules-20261011.log",
+          "sha256": "0b9d380c321368c3fa551e12b7f271e63d985713cbce054a6064d4ac2f748e6b",
+          "bytes": 1678
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-lint-20261011.log",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-compose-20261011.json",
+          "sha256": "c2366c3f45748d196cfe684f3b4dd31e33b074f51a9a63bd9dfecff20968a85b",
+          "bytes": 941
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-database-create-red-20261011.log",
+          "sha256": "30bd04642b0c8b9d6ac50f15a6aa21ba4af85aed7886fa98a58da77c5c04475b",
+          "bytes": 979
+        },
+        {
+          "path": "/tmp/cvg-postgres-monitor-column-authority-red-20261011.log",
+          "sha256": "2445e651caa0e39b8d1ec792cf0383788a555184a472079cfadc06cb107b1437",
+          "bytes": 1269
+        }
+      ],
+      "limits": [
+        "No hospital database or production environment inspected/provisioned",
+        "No staging deployment, remote CI, real endpoint UP or operator alert delivery claimed",
+        "No actual adopted HIS/LIS/PACS integration or institutional approval changed",
+        "Test containers/network were exclusive owned synthetic resources; downloaded pinned tool images remain reusable",
+        "No RPO/RTO assertion from this test"
+      ],
+      "previousLocalEvidenceSha256": "081923f4cc8f9c2d7dd9cd12329440001b4016630eea25bd28222d97abb5aa82"
+    },
+    "artifact": {
+      "path": "/tmp/cvg-postgres-monitor-evidence-20261011.json",
+      "sha256": "18bda91b10dd233c109d194c67405cd785a304d3e6ddba0000764b8720b53a61",
+      "bytes": 7766,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    }
+  },
+  "hospitalPlannerWorkload": {
+    "result": "PASS_SHORT_SYNTHETIC_HTTP_REGRESSION",
+    "observed": {
+      "schemaVersion": 1,
+      "profile": "HPL_OPERATIONAL_HTTP_V1",
+      "result": "PASS",
+      "executionMethod": "runHospitalPlannerPerf exported harness via a private diagnostic driver; same frozen production bundle/HTTP/disposable PG implementation as npm perf:hospital:planner",
+      "profileExitCode": 0,
+      "collectorExitCode": 0,
+      "workload": {
+        "journeys": 2,
+        "concurrency": 2,
+        "readRounds": 1,
+        "contentChars": 512
+      },
+      "journeysCompleted": 2,
+      "measuredRequests": 57,
+      "peakInFlightHttpRequests": 20,
+      "expectedGuards": 11,
+      "readP95Ms": 84.418743000002,
+      "writeP95Ms": 33.78724000000511,
+      "checks": {
+        "acknowledgedJourneys": true,
+        "uniqueTasks": true,
+        "uniquePlans": true,
+        "uniqueDocuments": true,
+        "frozenDocumentBytes": true,
+        "resourceBindings": true,
+        "noDiagnosticMutation": true,
+        "singleContendedReservation": true
+      },
+      "operationalCounts": {
+        "tasks": 4,
+        "plans": 2,
+        "documents": 2,
+        "resources": 3,
+        "schedules": 3
+      },
+      "projectedCounterCaution": "report.integrity.counts auditEvents/outbox are zero because PostgresStore.readState projects these append-only collections away; they are NOT persistent database counter measurements (src/server/store/postgres-store.ts:487). No claim of missing audit/delivery is made.",
+      "telemetry": {
+        "terminalType": "STOP",
+        "samples": 30,
+        "peakCgroupMemoryBytes": 3246301184,
+        "lastMemoryEvents": {
+          "low": 0,
+          "high": 0,
+          "max": 0,
+          "oom": 0,
+          "oom_kill": 0,
+          "oom_group_kill": 0
+        },
+        "nodeOOMKilled": false,
+        "pgOOMKilled": false
+      },
+      "cleanup": {
+        "networkCreated": true,
+        "postgresRemoved": true,
+        "nodeRemoved": true,
+        "networkRemoved": true
+      },
+      "sourceBridge": {
+        "schemaVersion": 1,
+        "profileSourceFingerprint": "698a5cc791f27a5fe2232dc4a25cd739aeb216e02a90cfa476adc72355159f55",
+        "sourceUnchangedAfterRun": true,
+        "rootManifestFile": "/tmp/cvg-hpl-operational-source-manifest-20261011.json",
+        "rootManifestFingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+        "rootManifestFiles": 1079,
+        "profileFiles": 948,
+        "commonComparedFiles": 948,
+        "notInRootManifest": [],
+        "sha256Differences": [],
+        "pass": true
+      },
+      "institutionalAcceptance": "OPEN; synthetic closed-loop two-journey proof does not establish hospital load/SLO or delivery/scanner/restore acceptance",
+      "priorAttempts": [
+        {
+          "path": "executor-setup-image-unavailable.json",
+          "result": "FAIL_SETUP_IMAGE_ID_UNAVAILABLE",
+          "productFailure": false
+        },
+        {
+          "path": "runtime-first-failure",
+          "result": "FAIL_BEFORE_JOURNEY",
+          "cause": "UNKNOWN: original driver retained stdout only; same symlink setup explains later independently reproduced failure but is not asserted as proven cause"
+        },
+        {
+          "path": "runtime-second-symlink-failure",
+          "result": "FAIL_SETUP_TURBOPACK_EXTERNAL_NODE_MODULES_SYMLINK",
+          "productFailure": false
+        }
+      ],
+      "executionDriverFile": "run-profile-executed.mts",
+      "executionDriverSha256": "2884a0c5385683b1f0b4992764cb5a922b399b4cf4485f25e3f90e438f88dc17",
+      "futureDriverNote": "run-profile.mts has a corrected unused error-redaction regex for future reuse; run-profile-executed.mts preserves the exact final PASS driver. No error occurred in the final execution.",
+      "verification": {
+        "checks": {
+          "runtimeExitZero": true,
+          "collectorExitZero": true,
+          "terminalTelemetryStop": true,
+          "hasTelemetrySamples": true,
+          "allMemoryLimitEventsZero": true,
+          "OOMKilledFalse": true,
+          "allResourcesRemoved": true,
+          "noPublishedPorts": true,
+          "appliedNodeBudget": true,
+          "appliedPostgresBudget": true,
+          "measuredSamplesWithinWindow": true,
+          "guardsAllPassed": true,
+          "reportPass": true,
+          "sourceBridgePass": true
+        },
+        "pass": true,
+        "privacyScope": "evidence artifacts excluding source copy; pattern scan for concrete session/CSRF/integration token values and credentialed PostgreSQL URLs, no headers/env/PHI requests inspected",
+        "privacyFindings": []
+      }
+    },
+    "artifact": {
+      "path": "/tmp/cvg-hpl-planner-load-proof-20261011/evidence-summary.json",
+      "sha256": "e93a79e0c18ef74d6fa3dc2d5c2298815b28c3aa3f7e7ceb30ae026d1bbbc409",
+      "bytes": 4138,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "report": {
+      "path": "/tmp/cvg-hpl-planner-load-proof-20261011/report.json",
+      "sha256": "eed507ddea1ec270d87725d9ce6802cd382ce336516a6002cbc94867e828b2e1",
+      "bytes": 180130,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "evidenceIndex": {
+      "path": "/tmp/cvg-hpl-planner-load-proof-20261011/evidence.sha256",
+      "sha256": "54d9d34f1c34f5347a77c75d40bf9b6a3635248fe1352a4d63871d6bc323f533",
+      "bytes": 2510,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "limits": [
+      "Two completed journeys and57measuredrequests are a short local regression, not institutional capacity, soak, targetSLO or pilot acceptance.",
+      "Projected auditEvents/outbox arrays are not SQL table counts; no absence-of-audit claim."
+    ]
+  },
+  "images": {
+    "build": {
+      "startedAt": "2026-10-11T22:37:11.093947+00:00",
+      "candidateFingerprintSha256": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+      "contextFingerprintSha256": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+      "contextProof": "/tmp/cvg-hpl-image-context-source-operational-final-20261011.json",
+      "status": "PASS",
+      "builder": {
+        "name": "cvg-hpl-image-proof-20261011",
+        "id": "c62d68e318b3c1e6a1910a5c293c324d3ef84d9f9cd389b6ba98c50063c981d1",
+        "memoryBytes": 8589934592,
+        "cpuLimit": 4
+      },
+      "scope": "Safe frozen local candidate app/ops image builds only, no pushes or deployments. SOURCE_REVISION=unknown because this working tree is uncommitted; baseCommit is not substituted for candidate revision. Config image IDs and BuildKit manifest digests identify local artifacts, not published registry release digests.",
+      "images": {
+        "runner": {
+          "target": "runner",
+          "tag": "cvg-hpl-proof-runner:20261011-2afa82c5b706",
+          "exitCode": 0,
+          "elapsedSeconds": 51.96,
+          "log": {
+            "path": "/tmp/cvg-hpl-operational-final-image-runner-20261011.log",
+            "sha256": "0719f7293f7e4f60b7bd061d9a7ddedce9a43170b9c72e0cd683aa9ba59a9fbe"
+          },
+          "sourceContextHashesUnchanged": true,
+          "imageId": "sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+          "repoDigests": [
+            "cvg-hpl-proof-runner@sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c"
+          ],
+          "sizeBytes": 1157800664,
+          "user": "node",
+          "labels": {
+            "org.cvg.candidate.committed": "false",
+            "org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+            "org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+            "org.cvg.hospital.timezone": "America/Sao_Paulo",
+            "org.opencontainers.image.revision": "unknown"
+          },
+          "buildKitMetadata": {
+            "buildx.build.provenance": {
+              "builder": {
+                "id": ""
+              },
+              "buildType": "https://mobyproject.org/buildkit@v1",
+              "materials": [
+                {
+                  "uri": "pkg:docker/mirror.gcr.io/docker/dockerfile@1.7",
+                  "digest": {
+                    "sha256": "a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e"
+                  }
+                },
+                {
+                  "uri": "pkg:docker/mirror.gcr.io/library/node@22-bookworm-slim?platform=linux%2Famd64",
+                  "digest": {
+                    "sha256": "c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392"
+                  }
+                }
+              ],
+              "invocation": {
+                "configSource": {
+                  "entryPoint": "Dockerfile"
+                },
+                "parameters": {
+                  "frontend": "gateway.v0",
+                  "args": {
+                    "build-arg:APP_TIMEZONE": "America/Sao_Paulo",
+                    "build-arg:BUILDKIT_SYNTAX": "mirror.gcr.io/docker/dockerfile:1.7",
+                    "build-arg:SOURCE_REVISION": "unknown",
+                    "cmdline": "mirror.gcr.io/docker/dockerfile:1.7",
+                    "context:node:22-bookworm-slim": "docker-image://mirror.gcr.io/library/node:22-bookworm-slim",
+                    "frontend.caps": "moby.buildkit.frontend.contexts+forward",
+                    "label:org.cvg.candidate.committed": "false",
+                    "label:org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+                    "label:org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+                    "source": "mirror.gcr.io/docker/dockerfile:1.7",
+                    "target": "runner"
+                  },
+                  "locals": [
+                    {
+                      "name": "context"
+                    },
+                    {
+                      "name": "dockerfile"
+                    }
+                  ],
+                  "root": {
+                    "configSource": {
+                      "path": "Dockerfile"
+                    },
+                    "request": {
+                      "args": {
+                        "build-arg:APP_TIMEZONE": "America/Sao_Paulo",
+                        "build-arg:BUILDKIT_SYNTAX": "mirror.gcr.io/docker/dockerfile:1.7",
+                        "build-arg:SOURCE_REVISION": "unknown",
+                        "cmdline": "mirror.gcr.io/docker/dockerfile:1.7",
+                        "context:node:22-bookworm-slim": "docker-image://mirror.gcr.io/library/node:22-bookworm-slim",
+                        "frontend.caps": "moby.buildkit.frontend.contexts+forward",
+                        "label:org.cvg.candidate.committed": "false",
+                        "label:org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+                        "label:org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+                        "source": "mirror.gcr.io/docker/dockerfile:1.7",
+                        "target": "runner"
+                      }
+                    }
+                  },
+                  "compatibilityVersion": 30
+                },
+                "environment": {
+                  "platform": "linux/amd64"
+                }
+              }
+            },
+            "buildx.build.ref": "cvg-hpl-image-proof-20261011/cvg-hpl-image-proof-202610110/ntrys0cvq6rcpe6v2eim7krfq",
+            "containerimage.descriptor": {
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "digest": "sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+              "size": 2765,
+              "annotations": {
+                "org.opencontainers.image.created": "2026-10-11T22:37:58Z"
+              },
+              "platform": {
+                "architecture": "amd64",
+                "os": "linux"
+              }
+            },
+            "containerimage.digest": "sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+            "image.name": "docker.io/library/cvg-hpl-proof-runner:20261011-2afa82c5b706"
+          }
+        },
+        "ops": {
+          "target": "ops",
+          "tag": "cvg-hpl-proof-ops:20261011-2afa82c5b706",
+          "exitCode": 0,
+          "elapsedSeconds": 9.16,
+          "log": {
+            "path": "/tmp/cvg-hpl-operational-final-image-ops-20261011.log",
+            "sha256": "d5d76f5d8a3f4f94ee8270eef8340adb698c9a3e2831bfb3b3da156aad261e9a"
+          },
+          "sourceContextHashesUnchanged": true,
+          "imageId": "sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+          "repoDigests": [
+            "cvg-hpl-proof-ops@sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd"
+          ],
+          "sizeBytes": 1606971062,
+          "user": "node",
+          "labels": {
+            "org.cvg.candidate.committed": "false",
+            "org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+            "org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+            "org.cvg.hospital.timezone": "America/Sao_Paulo",
+            "org.opencontainers.image.revision": "unknown"
+          },
+          "buildKitMetadata": {
+            "buildx.build.provenance": {
+              "builder": {
+                "id": ""
+              },
+              "buildType": "https://mobyproject.org/buildkit@v1",
+              "materials": [
+                {
+                  "uri": "pkg:docker/mirror.gcr.io/docker/dockerfile@1.7",
+                  "digest": {
+                    "sha256": "a57df69d0ea827fb7266491f2813635de6f17269be881f696fbfdf2d83dda33e"
+                  }
+                },
+                {
+                  "uri": "pkg:docker/mirror.gcr.io/library/node@22-bookworm-slim?platform=linux%2Famd64",
+                  "digest": {
+                    "sha256": "c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392"
+                  }
+                }
+              ],
+              "invocation": {
+                "configSource": {
+                  "entryPoint": "Dockerfile"
+                },
+                "parameters": {
+                  "frontend": "gateway.v0",
+                  "args": {
+                    "build-arg:APP_TIMEZONE": "America/Sao_Paulo",
+                    "build-arg:BUILDKIT_SYNTAX": "mirror.gcr.io/docker/dockerfile:1.7",
+                    "build-arg:SOURCE_REVISION": "unknown",
+                    "cmdline": "mirror.gcr.io/docker/dockerfile:1.7",
+                    "context:node:22-bookworm-slim": "docker-image://mirror.gcr.io/library/node:22-bookworm-slim",
+                    "frontend.caps": "moby.buildkit.frontend.contexts+forward",
+                    "label:org.cvg.candidate.committed": "false",
+                    "label:org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+                    "label:org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+                    "source": "mirror.gcr.io/docker/dockerfile:1.7",
+                    "target": "ops"
+                  },
+                  "locals": [
+                    {
+                      "name": "context"
+                    },
+                    {
+                      "name": "dockerfile"
+                    }
+                  ],
+                  "root": {
+                    "configSource": {
+                      "path": "Dockerfile"
+                    },
+                    "request": {
+                      "args": {
+                        "build-arg:APP_TIMEZONE": "America/Sao_Paulo",
+                        "build-arg:BUILDKIT_SYNTAX": "mirror.gcr.io/docker/dockerfile:1.7",
+                        "build-arg:SOURCE_REVISION": "unknown",
+                        "cmdline": "mirror.gcr.io/docker/dockerfile:1.7",
+                        "context:node:22-bookworm-slim": "docker-image://mirror.gcr.io/library/node:22-bookworm-slim",
+                        "frontend.caps": "moby.buildkit.frontend.contexts+forward",
+                        "label:org.cvg.candidate.committed": "false",
+                        "label:org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+                        "label:org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+                        "source": "mirror.gcr.io/docker/dockerfile:1.7",
+                        "target": "ops"
+                      }
+                    }
+                  },
+                  "compatibilityVersion": 30
+                },
+                "environment": {
+                  "platform": "linux/amd64"
+                }
+              }
+            },
+            "buildx.build.ref": "cvg-hpl-image-proof-20261011/cvg-hpl-image-proof-202610110/yu5owkodo0qg88n4co124lx5e",
+            "containerimage.descriptor": {
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "digest": "sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+              "size": 3717,
+              "annotations": {
+                "org.opencontainers.image.created": "2026-10-11T22:38:06Z"
+              },
+              "platform": {
+                "architecture": "amd64",
+                "os": "linux"
+              }
+            },
+            "containerimage.digest": "sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+            "image.name": "docker.io/library/cvg-hpl-proof-ops:20261011-2afa82c5b706"
+          }
+        }
+      },
+      "finishedAt": "2026-10-11T22:38:12.401124+00:00"
+    },
+    "buildArtifact": {
+      "path": "/tmp/cvg-hpl-operational-final-images-build-20261011.json",
+      "sha256": "45dcb998420f12ec24f4caf0cba60043c41b6841179d354b8f04def3a9b576c8",
+      "bytes": 11243,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "scan": {
+      "startedAt": "2026-10-11T22:39:05.041689+00:00",
+      "status": "PASS",
+      "scope": "Static local app/ops images only, explicitly authorized IDs from root build proof; no installed services, production env or registry push",
+      "buildProof": {
+        "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/build-proof.json",
+        "sha256": "45dcb998420f12ec24f4caf0cba60043c41b6841179d354b8f04def3a9b576c8",
+        "bytes": 11243
+      },
+      "sourceFingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+      "contextFingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+      "tool": {
+        "version": "0.70.0",
+        "binarySha256": "379d59f24a4a828c55de5f0b91b6805cc35d13580180b658820e648611256166",
+        "verification": {
+          "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/verified-download.json",
+          "sha256": "f0f59218ff2bb856e01d0c5c4437241e319343a0a1fdcf58189cda3b97c3ca99",
+          "bytes": 404
+        }
+      },
+      "database": {
+        "metadata": {
+          "Version": 2,
+          "NextUpdate": "2026-10-12T19:06:46.711696094Z",
+          "UpdatedAt": "2026-10-11T19:06:46.711696344Z",
+          "DownloadedAt": "2026-10-11T22:14:52.590265725Z"
+        },
+        "metadataSha256": "99c0d49fa53df018a6dcf211cad357f4788c51ce5ef0e570cd93d640c5f03b5d",
+        "dbSha256": "d4d6e55fc950134cc05f9e8eaf6d523b89ab6b8ddf12ce5205ca954e5e3e6114"
+      },
+      "criterion": {
+        "severity": [
+          "HIGH",
+          "CRITICAL"
+        ],
+        "ignoreUnfixed": true,
+        "exitCodeOnFinding": 1,
+        "scanners": [
+          "vuln",
+          "secret"
+        ],
+        "suppressions": "none",
+        "network": "offline-scan; no DB/Java DB update; version check and telemetry disabled (CLI restrictions; no separate network namespace enforcement)",
+        "resources": {
+          "GOMAXPROCS": 2,
+          "GOMEMLIMIT": "1536MiB",
+          "parallel": 2
+        }
+      },
+      "images": [
+        {
+          "target": "app",
+          "imageId": "sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+          "startedAt": "2026-10-11T22:39:05.956462+00:00",
+          "status": "PASS",
+          "saveExitCode": 0,
+          "saveLog": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.docker-save.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "archive": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.image.tar",
+            "sha256": "43c0866470106ec0ea56e2ee6ef9e9472fee18615b06da7e9b402d39ad0dc29d",
+            "bytes": 289498624
+          },
+          "identity": {
+            "dockerImageId": "sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+            "ociManifestSha256": "cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+            "configurationDigest": "sha256:ac2e7a5c8a81da0dd98dc60e99390336f32cc5d1e350824af940ca9915b37e97",
+            "sourceFingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+            "contextFingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+            "committed": false,
+            "sourceRevision": "unknown"
+          },
+          "command": [
+            "/tmp/cvg-hpl-trivy-0700-20261011/trivy",
+            "--config",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/trivy.yaml",
+            "--cache-dir",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/cache",
+            "--timeout",
+            "20m",
+            "image",
+            "--input",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.image.tar",
+            "--scanners",
+            "vuln,secret",
+            "--severity",
+            "HIGH,CRITICAL",
+            "--ignore-unfixed",
+            "--exit-code",
+            "1",
+            "--format",
+            "json",
+            "--output",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.trivy.json",
+            "--ignorefile",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/no-suppressions.trivyignore",
+            "--skip-db-update",
+            "--skip-java-db-update",
+            "--offline-scan",
+            "--skip-version-check",
+            "--disable-telemetry",
+            "--parallel",
+            "2",
+            "--no-progress"
+          ],
+          "scanExitCode": 0,
+          "scanLog": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.trivy.log",
+            "sha256": "ebf351087d288971ad3da54bf27ce409419c816c22aa9ee00749a490d309dcbf",
+            "bytes": 961
+          },
+          "scannerImageId": "sha256:ac2e7a5c8a81da0dd98dc60e99390336f32cc5d1e350824af940ca9915b37e97",
+          "json": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.trivy.json",
+            "sha256": "509a77322fabc1538b8c5e562cce5ee7202db61e62d3ce8aa8de20a4b011ec31",
+            "bytes": 438303
+          },
+          "vulnerabilities": [],
+          "secretFindingMetadata": [],
+          "vulnerabilityCount": 0,
+          "secretFindingCount": 0,
+          "sbomExitCode": 0,
+          "sbomLog": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.sbom-convert.log",
+            "sha256": "90bd450ea9289e1706d686dac71a9a40e257bed2f780720a55b68195a01fc242",
+            "bytes": 279
+          },
+          "sbom": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/app.sbom.cyclonedx.json",
+            "sha256": "5bb085e043c79300304611d54b21ef8d1efda14f79103e55c1d80d3d4352ee77",
+            "bytes": 286980
+          },
+          "finishedAt": "2026-10-11T22:39:16.112032+00:00"
+        },
+        {
+          "target": "ops",
+          "imageId": "sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+          "startedAt": "2026-10-11T22:39:16.112508+00:00",
+          "status": "PASS",
+          "saveExitCode": 0,
+          "saveLog": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.docker-save.log",
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "bytes": 0
+          },
+          "archive": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.image.tar",
+            "sha256": "1ce1d6340d26ec1ef89e579c15e058ed3a6afbb8142a7dc48c90d39d48e711ea",
+            "bytes": 432554496
+          },
+          "identity": {
+            "dockerImageId": "sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+            "ociManifestSha256": "b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+            "configurationDigest": "sha256:2ceec6adb20949846f972acf6dad572960d59e88f1ddcc6c768d154e844a4256",
+            "sourceFingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+            "contextFingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+            "committed": false,
+            "sourceRevision": "unknown"
+          },
+          "command": [
+            "/tmp/cvg-hpl-trivy-0700-20261011/trivy",
+            "--config",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/trivy.yaml",
+            "--cache-dir",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/cache",
+            "--timeout",
+            "20m",
+            "image",
+            "--input",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.image.tar",
+            "--scanners",
+            "vuln,secret",
+            "--severity",
+            "HIGH,CRITICAL",
+            "--ignore-unfixed",
+            "--exit-code",
+            "1",
+            "--format",
+            "json",
+            "--output",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.trivy.json",
+            "--ignorefile",
+            "/tmp/cvg-hpl-owned-image-scan-final-20261011/no-suppressions.trivyignore",
+            "--skip-db-update",
+            "--skip-java-db-update",
+            "--offline-scan",
+            "--skip-version-check",
+            "--disable-telemetry",
+            "--parallel",
+            "2",
+            "--no-progress"
+          ],
+          "scanExitCode": 0,
+          "scanLog": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.trivy.log",
+            "sha256": "e87c480986ae4a68b65d2003b2d43ca94465b65a106017ff4e8e2d00a9a7540a",
+            "bytes": 961
+          },
+          "scannerImageId": "sha256:2ceec6adb20949846f972acf6dad572960d59e88f1ddcc6c768d154e844a4256",
+          "json": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.trivy.json",
+            "sha256": "d33c822d7db769dc29f3092fecd73662d2d0faa6687a49580d8094708d569bda",
+            "bytes": 832364
+          },
+          "vulnerabilities": [],
+          "secretFindingMetadata": [],
+          "vulnerabilityCount": 0,
+          "secretFindingCount": 0,
+          "sbomExitCode": 0,
+          "sbomLog": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.sbom-convert.log",
+            "sha256": "5efe978051e0927991d21470062e8a5efc20890e26d256ca764f77a9fe506221",
+            "bytes": 279
+          },
+          "sbom": {
+            "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/ops.sbom.cyclonedx.json",
+            "sha256": "bca900764a4c6426cc35fd706cd4d1f790bf659e56799c4fe90d60f95bfda44f",
+            "bytes": 974102
+          },
+          "finishedAt": "2026-10-11T22:39:28.805468+00:00"
+        }
+      ],
+      "limits": [
+        "Local evidence only, not remote CI, deployment, institutional sign-off or monitoring target UP",
+        "SBOM is derived from the same JSON scan, not a second independent vulnerability scan",
+        "No secret matching values or snippets are included in the summary; raw artifacts remain private"
+      ],
+      "finishedAt": "2026-10-11T22:39:28.805757+00:00"
+    },
+    "scanArtifact": {
+      "path": "/tmp/cvg-hpl-owned-image-scan-final-20261011/scan-evidence.json",
+      "sha256": "145cd366d0354fffd99ef8523573a80bbc21ac4060279854441284519515b8ab",
+      "bytes": 9111,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "smoke": {
+      "startedAt": "2026-10-11T22:38:41.779716+00:00",
+      "status": "PASS",
+      "candidateFingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+      "committed": false,
+      "deployed": false,
+      "scope": "Local immutable app/ops images; owned isolated PostgreSQL and synthetic fixture only. Storage is a HEAD health probe, not real S3/MinIO or scanner integration/UAT. No live services, real environment files or clinical databases accessed.",
+      "checks": [
+        {
+          "name": "runner uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "runner labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "ops uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "ops labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-3237985b23-migrate exits zero without OOM",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-3237985b23-seed exits zero without OOM",
+          "status": "PASS"
+        },
+        {
+          "name": "app uses dynamically assigned loopback port",
+          "status": "PASS"
+        },
+        {
+          "name": "production image readiness reports PostgreSQL and S3 configuration",
+          "status": "PASS"
+        },
+        {
+          "name": "liveness passes",
+          "status": "PASS"
+        },
+        {
+          "name": "production login HTML stamps CSP nonce on every script",
+          "status": "PASS"
+        },
+        {
+          "name": "anonymous protected task API denies access",
+          "status": "PASS"
+        },
+        {
+          "name": "ordinary veterinarian can log in to the built image",
+          "status": "PASS"
+        },
+        {
+          "name": "ordinary veterinarian can read hospital task list",
+          "status": "PASS"
+        },
+        {
+          "name": "ordinary veterinarian is denied administration user list by scope-hiding contract",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-3237985b23-worker exits zero without OOM",
+          "status": "PASS"
+        },
+        {
+          "name": "operational image executes real worker and healthy heartbeat",
+          "status": "PASS"
+        },
+        {
+          "name": "worker logs truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "app remains running without OOM",
+          "status": "PASS"
+        }
+      ],
+      "containers": [
+        {
+          "name": "worker",
+          "id": "22c2b100327e19e57f126c50be56b461f5725322e9cd0c0f0ca0ab65d6930c60",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "app",
+          "id": "8e78e161a447a2776fd3dcf04f12eb7c2c9074a2d1726c42c221ef0fa7ca0404",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 1610612736,
+          "memorySwapBytes": 1610612736,
+          "nanoCpus": 2000000000
+        },
+        {
+          "name": "seed",
+          "id": "261178f9afa3a07474fd3c31f88adfdea0641661b0b4ed323274eb71cfa91287",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "migrate",
+          "id": "04d925b620d6f78401ff0b7b34ddf8127dbff87177d4a8c30a7bc2d575963696",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "storage-probe",
+          "id": "d783f5e4c46eaf10fba9d8d94ce8f2804529ee736abf8702a98021d1b0b741e2",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 134217728,
+          "memorySwapBytes": 134217728,
+          "nanoCpus": 250000000
+        },
+        {
+          "name": "pg",
+          "id": "c30225e26a0e8bab289eb020b52c4acb44776c02f1afe1c1aad948b9cc285e83",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        }
+      ],
+      "cleanup": {
+        "remainingOwnedContainerIds": [],
+        "remainingOwnedNetworkIds": []
+      },
+      "runner": {
+        "imageId": "sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c",
+        "repoDigests": [
+          "cvg-hpl-proof-runner@sha256:cb9a0adc31ac10abced7270dfbddd574f20794e5d6742ccbf096765e6fed563c"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+          "org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "ops": {
+        "imageId": "sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd",
+        "repoDigests": [
+          "cvg-hpl-proof-ops@sha256:b648c64bd8d385106f4e5f0827a2fd90b439c3f8423b93649fca7f36790f31dd"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "de9efceea85833aabe73b66b8c2fa857f46a0f14b4aa1c8824b2fe21670806e6",
+          "org.cvg.candidate.fingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "finishedAt": "2026-10-11T22:39:24.447502+00:00",
+      "log": {
+        "path": "/tmp/cvg-hpl-image-smoke-3237985b23.log",
+        "sha256": "d73282f948240646a87c93611bae813c627891829f66af7cd81a56aa67a14d21"
+      }
+    },
+    "smokeArtifact": {
+      "path": "/tmp/cvg-hpl-image-smoke-3237985b23.json",
+      "sha256": "836597fc575a6619e0c73688379fafb4882432de28106c1ba8c63b556efcaeab",
+      "bytes": 5925,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "meaning": "Docker IDs here are resolvable OCI manifest identifiers; configuration digests are separately preserved in scan identities. SOURCE_REVISION remains unknown for uncommitted source. No published release digest."
+  },
+  "inputReuse": {
+    "status": "PASS_EXPLICIT_INPUT_REUSE",
+    "previousOperationalFingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+    "currentFingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+    "testOnlyDelta": [
+      {
+        "path": "src/components/department-console.test.tsx",
+        "before": "b1a5a1eb4e4e255f1de1838544a4b6fb920f1910e822cf1c3689fa30ef2de733",
+        "after": "1f508014aebb7a36a42dc8849159c666cd53203bd7a10660947f69a4e633faac"
+      },
+      {
+        "path": "src/server/security/file-secrets.test.ts",
+        "before": "d110ccd900a28a2e3af974970031c77e12ddc421989f20721986dcd14f2965a6",
+        "after": "c96dc07c1d4d53215250fea71b663b72a46f54f4220ce2523f069b963162a37e"
+      }
+    ],
+    "profileRawSnapshotUnitTestDifferences": [
+      "src/components/department-console.test.tsx",
+      "src/server/security/file-secrets.test.ts"
+    ],
+    "productRuntimeDependenciesBrowserPerfAndMonitorUnchanged": true,
+    "browserInputProof": {
+      "path": "/tmp/cvg-hpl-operational-browser-reuse-inputs-20261011.json",
+      "sha256": "a239248d63404b7677235a7f98c3e44f7c597104bed37767aed2a5e0326fdeab",
+      "bytes": 2642,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "browserRelevantIncludedInputs": 513,
+    "browserNewExecutions": 0,
+    "previousEffectiveBrowserCoverage": {
+      "status": "PASS_AFTER_TEST_TRANSPORT_CORRECTION",
+      "viewports": [
+        "desktop",
+        "tablet",
+        "mobile"
+      ],
+      "uniqueJourneysCovered": 189,
+      "retries": 0,
+      "automaticFlakyRetries": 0,
+      "currentHomePreflightPassed": 3,
+      "effectiveProjects": [
+        {
+          "project": "chromium",
+          "status": "PASS",
+          "uniqueJourneysCovered": 63,
+          "unchangedJourneysReused": 60,
+          "currentFixtureJourneysPassed": 3,
+          "currentFixtureRun": "canonical-affected-transport-proof",
+          "reusedRun": "canonical-final-proof",
+          "homePreflightCurrentPassed": 1
+        },
+        {
+          "project": "tablet",
+          "status": "PASS",
+          "uniqueJourneysCovered": 63,
+          "unchangedJourneysReused": 0,
+          "currentFixtureJourneysPassed": 63,
+          "currentFixtureRun": "canonical-tablet-transport-proof",
+          "reusedRun": null,
+          "homePreflightCurrentPassed": 1
+        },
+        {
+          "project": "mobile",
+          "status": "PASS",
+          "uniqueJourneysCovered": 63,
+          "unchangedJourneysReused": 60,
+          "currentFixtureJourneysPassed": 3,
+          "currentFixtureRun": "canonical-affected-transport-proof",
+          "reusedRun": "canonical-final-proof",
+          "homePreflightCurrentPassed": 1
+        }
+      ],
+      "runs": [
+        {
+          "name": "canonical-final-proof",
+          "status": "FAIL",
+          "exitCode": 1,
+          "testsPassed": 187,
+          "testsFailed": 2,
+          "homePreflightPassed": 3,
+          "artifact": "test-results/canonical-20261011T211723Z-3709542",
+          "image": "mcr.microsoft.com/playwright:v1.55.1-noble@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c",
+          "memoryGiB": 8,
+          "memoryLimitBytes": 8589934592,
+          "cpuLimit": 4,
+          "sharedMemoryGb": 1,
+          "isolation": "One project per sequential disposable container.",
+          "retries": 0,
+          "flakyRetries": 0,
+          "baselinesUnchanged": true,
+          "projects": [
+            {
+              "project": "chromium",
+              "status": "PASS",
+              "testsPassed": 63,
+              "testsFailed": 0,
+              "homePreflightPassed": 1,
+              "exitCode": 0,
+              "baselinesUnchanged": true,
+              "containerState": {
+                "Status": "exited",
+                "Running": false,
+                "Paused": false,
+                "Restarting": false,
+                "OOMKilled": false,
+                "Dead": false,
+                "Pid": 0,
+                "ExitCode": 0,
+                "Error": "",
+                "StartedAt": "2026-10-11T21:17:24.706388861Z",
+                "FinishedAt": "2026-10-11T21:25:00.63779705Z"
+              },
+              "testCases": [
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login, dashboard, queue and notifications have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › account, management and administration surfaces have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login form has a keyboard-visible first field and named controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › mobile navigation exposes one current page and 44px keyboard targets",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › fills a structured hemogram and releases it in one board interaction",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › completes lab and radiology results with verified attachment, notification, review, amendment and void",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › requires critical acknowledgement before review",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+                  "title": "normal clinicians see shared and newly created exams, while each operational profile sees its authorized queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › authenticates and renders the Plane-style home",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the server-derived operational context without leaving the exam queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders a useful technical home for an administrator",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › lets an administrator configure a delegated manager scope",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › gives a manager scoped control, catalog and collaborator workflows",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › creates a contextual multi-service request through the UI",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps request actions inside the items panel",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps navigation usable on a narrow viewport",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the patient context without exposing an unscoped list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders the Patient Workspace as a responsive, server-derived snapshot",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › preserves the confirmed Patient Workspace snapshot when refresh is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps the dashboard useful when one resource is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-capacity-accessibility.spec.ts",
+                  "title": "hospital capacity excludes private drafts and retains accessible period and workload controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal clinician creates an interdepartmental plan, links existing work and closes it without closing its sources",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal manager creates adjacent shifts, assigns work and waits for the nominal recipient's own acceptance",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "operational checklist recurrence reserves real inventory, shares hospital time across devices and completes with evidence",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-metrics-capacity.spec.ts",
+                  "title": "clinical indicators show real capacity with the same selected interval and sector, separate units and an unknown legacy bed",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician opens server-authorized favorites and recents by keyboard, while a second identity retains its own private library",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician measures a mixed batch and reconciles success, a concurrent version conflict, protected active work and idempotent replay with persisted IDs",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the clinician planner filters and creation dialog retain accessible controls and keyboard focus",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "an operational task and its published conversation expose accessible names and landmarks",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the document library and structured draft preparation are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a document renders real headings, links and table semantics and exposes an accessible draft editor",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital metrics expose accessible period filters and named technical values",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital reports and the definition editor provide accessible controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "administrative department metadata and real team controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the access-group matrix and a real effective-access preview are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "institution settings and department capability controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "invitation preparation exposes named role, group, scope and expiry controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "disabled integrations retain accessible credential controls without claiming external success",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a standalone fragment invitation presents accessible password confirmation controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician opens the exact authorized document and resource found in the common search",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician follows search results to the authorized diagnostic item, checklist, recurrence, patient and encounter",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "a normal clinician can locate filtered new work, converse, persist a favorite and complete it",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "the recipient accepts a fragment-only invitation and receives the intended read-only account",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-saved-views.spec.ts",
+                  "title": "normal clinician reapplies a shared view in one selection on Home, queue and search with identical criteria and reload",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-timezone.spec.ts",
+                  "title": "hospital civil date and greeting agree across distinct browser timezones at midnight UTC",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "a failed older move preserves the newer reconciled examination state",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "failed exam loading never claims that the clinical workload is clear",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "opens an authorized request while the examination list is still pending",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "fullscreen examination context contains focus and restores its opener",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "desktop collapse preserves mobile sector links and query navigation closes the drawer",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "changing a clinical action inside context keeps the original focus destination",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "calendar exposes every examination on a busy day with valid grid relationships",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/realtime.spec.ts",
+                  "title": "realtime browser contract › reconciles an open home after a committed mutation from another page",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-exam-visibility.spec.ts",
+                  "title": "superadmin sees a newly registered routine examination in My work after refresh and a duplicate is still rejected",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-navigation.spec.ts",
+                  "title": "superadmin can navigate operations and administration with distinct access and catalog screens",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "recovers a collaborator with Gerar nova senha, revokes active access and forces a new personal password",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates in four interactions, changes department in two and enforces the generated-password lifecycle",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates a catalog exam using only its name and duplicates a numeric panel with the real template",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "registers a patient with three fields through the global shortcut and searches authorized records",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "keeps technical data in ADMIN System and revokes a real session with one click and confirmation",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "quick-add submits with Enter and moving to recollection requires a reason from the list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "exports a patient's records for the data subject as a downloaded file (PROD-502)",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/visual.spec.ts",
+                  "title": "visual baseline › dashboard remains stable across the configured viewports",
+                  "status": "PASS"
+                }
+              ],
+              "memoryPeakBytes": 7027023872,
+              "observedServerPorts": [
+                3100
+              ],
+              "oomKillEvents": 0,
+              "telemetry": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T211723Z-3709542/main/chromium/runtime-telemetry.jsonl",
+                "sha256": "1c3acf4cdf86c99bc8f5b33dfcc5095c34834aab2977175534c8f1481a923c5b",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              },
+              "log": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T211723Z-3709542/main/chromium/run.log",
+                "sha256": "7999017d61839a597ec299a883abccd3c77f40d4b2f7a757819619f589837075",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              }
+            },
+            {
+              "project": "tablet",
+              "status": "FAIL",
+              "testsPassed": 61,
+              "testsFailed": 2,
+              "homePreflightPassed": 1,
+              "exitCode": 1,
+              "baselinesUnchanged": true,
+              "containerState": {
+                "Status": "exited",
+                "Running": false,
+                "Paused": false,
+                "Restarting": false,
+                "OOMKilled": false,
+                "Dead": false,
+                "Pid": 0,
+                "ExitCode": 1,
+                "Error": "",
+                "StartedAt": "2026-10-11T21:25:01.210313265Z",
+                "FinishedAt": "2026-10-11T21:33:14.93369455Z"
+              },
+              "testCases": [
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login, dashboard, queue and notifications have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › account, management and administration surfaces have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login form has a keyboard-visible first field and named controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › mobile navigation exposes one current page and 44px keyboard targets",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › fills a structured hemogram and releases it in one board interaction",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › completes lab and radiology results with verified attachment, notification, review, amendment and void",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › requires critical acknowledgement before review",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+                  "title": "normal clinicians see shared and newly created exams, while each operational profile sees its authorized queue",
+                  "status": "FAIL"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › authenticates and renders the Plane-style home",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the server-derived operational context without leaving the exam queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders a useful technical home for an administrator",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › lets an administrator configure a delegated manager scope",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › gives a manager scoped control, catalog and collaborator workflows",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › creates a contextual multi-service request through the UI",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps request actions inside the items panel",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps navigation usable on a narrow viewport",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the patient context without exposing an unscoped list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders the Patient Workspace as a responsive, server-derived snapshot",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › preserves the confirmed Patient Workspace snapshot when refresh is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps the dashboard useful when one resource is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-capacity-accessibility.spec.ts",
+                  "title": "hospital capacity excludes private drafts and retains accessible period and workload controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal clinician creates an interdepartmental plan, links existing work and closes it without closing its sources",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal manager creates adjacent shifts, assigns work and waits for the nominal recipient's own acceptance",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "operational checklist recurrence reserves real inventory, shares hospital time across devices and completes with evidence",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-metrics-capacity.spec.ts",
+                  "title": "clinical indicators show real capacity with the same selected interval and sector, separate units and an unknown legacy bed",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician opens server-authorized favorites and recents by keyboard, while a second identity retains its own private library",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician measures a mixed batch and reconciles success, a concurrent version conflict, protected active work and idempotent replay with persisted IDs",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the clinician planner filters and creation dialog retain accessible controls and keyboard focus",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "an operational task and its published conversation expose accessible names and landmarks",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the document library and structured draft preparation are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a document renders real headings, links and table semantics and exposes an accessible draft editor",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital metrics expose accessible period filters and named technical values",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital reports and the definition editor provide accessible controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "administrative department metadata and real team controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the access-group matrix and a real effective-access preview are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "institution settings and department capability controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "invitation preparation exposes named role, group, scope and expiry controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "disabled integrations retain accessible credential controls without claiming external success",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a standalone fragment invitation presents accessible password confirmation controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician opens the exact authorized document and resource found in the common search",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician follows search results to the authorized diagnostic item, checklist, recurrence, patient and encounter",
+                  "status": "FAIL"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "a normal clinician can locate filtered new work, converse, persist a favorite and complete it",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "the recipient accepts a fragment-only invitation and receives the intended read-only account",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-saved-views.spec.ts",
+                  "title": "normal clinician reapplies a shared view in one selection on Home, queue and search with identical criteria and reload",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-timezone.spec.ts",
+                  "title": "hospital civil date and greeting agree across distinct browser timezones at midnight UTC",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "a failed older move preserves the newer reconciled examination state",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "failed exam loading never claims that the clinical workload is clear",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "opens an authorized request while the examination list is still pending",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "fullscreen examination context contains focus and restores its opener",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "desktop collapse preserves mobile sector links and query navigation closes the drawer",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "changing a clinical action inside context keeps the original focus destination",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "calendar exposes every examination on a busy day with valid grid relationships",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/realtime.spec.ts",
+                  "title": "realtime browser contract › reconciles an open home after a committed mutation from another page",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-exam-visibility.spec.ts",
+                  "title": "superadmin sees a newly registered routine examination in My work after refresh and a duplicate is still rejected",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-navigation.spec.ts",
+                  "title": "superadmin can navigate operations and administration with distinct access and catalog screens",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "recovers a collaborator with Gerar nova senha, revokes active access and forces a new personal password",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates in four interactions, changes department in two and enforces the generated-password lifecycle",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates a catalog exam using only its name and duplicates a numeric panel with the real template",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "registers a patient with three fields through the global shortcut and searches authorized records",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "keeps technical data in ADMIN System and revokes a real session with one click and confirmation",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "quick-add submits with Enter and moving to recollection requires a reason from the list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "exports a patient's records for the data subject as a downloaded file (PROD-502)",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/visual.spec.ts",
+                  "title": "visual baseline › dashboard remains stable across the configured viewports",
+                  "status": "PASS"
+                }
+              ],
+              "memoryPeakBytes": 5421981696,
+              "observedServerPorts": [
+                3101
+              ],
+              "oomKillEvents": 0,
+              "telemetry": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T211723Z-3709542/main/tablet/runtime-telemetry.jsonl",
+                "sha256": "139779d7711085f20d5d980552cef97075a98f3b7040ba2362b1e7e760e09ebd",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              },
+              "log": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T211723Z-3709542/main/tablet/run.log",
+                "sha256": "339849eed523aa1ea593a3342e671420ea11630e5606364f275450ba4429f88b",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              }
+            },
+            {
+              "project": "mobile",
+              "status": "PASS",
+              "testsPassed": 63,
+              "testsFailed": 0,
+              "homePreflightPassed": 1,
+              "exitCode": 0,
+              "baselinesUnchanged": true,
+              "containerState": {
+                "Status": "exited",
+                "Running": false,
+                "Paused": false,
+                "Restarting": false,
+                "OOMKilled": false,
+                "Dead": false,
+                "Pid": 0,
+                "ExitCode": 0,
+                "Error": "",
+                "StartedAt": "2026-10-11T21:33:15.586685045Z",
+                "FinishedAt": "2026-10-11T21:40:49.13095606Z"
+              },
+              "testCases": [
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login, dashboard, queue and notifications have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › account, management and administration surfaces have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login form has a keyboard-visible first field and named controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › mobile navigation exposes one current page and 44px keyboard targets",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › fills a structured hemogram and releases it in one board interaction",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › completes lab and radiology results with verified attachment, notification, review, amendment and void",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › requires critical acknowledgement before review",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+                  "title": "normal clinicians see shared and newly created exams, while each operational profile sees its authorized queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › authenticates and renders the Plane-style home",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the server-derived operational context without leaving the exam queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders a useful technical home for an administrator",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › lets an administrator configure a delegated manager scope",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › gives a manager scoped control, catalog and collaborator workflows",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › creates a contextual multi-service request through the UI",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps request actions inside the items panel",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps navigation usable on a narrow viewport",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the patient context without exposing an unscoped list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders the Patient Workspace as a responsive, server-derived snapshot",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › preserves the confirmed Patient Workspace snapshot when refresh is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps the dashboard useful when one resource is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-capacity-accessibility.spec.ts",
+                  "title": "hospital capacity excludes private drafts and retains accessible period and workload controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal clinician creates an interdepartmental plan, links existing work and closes it without closing its sources",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal manager creates adjacent shifts, assigns work and waits for the nominal recipient's own acceptance",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "operational checklist recurrence reserves real inventory, shares hospital time across devices and completes with evidence",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-metrics-capacity.spec.ts",
+                  "title": "clinical indicators show real capacity with the same selected interval and sector, separate units and an unknown legacy bed",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician opens server-authorized favorites and recents by keyboard, while a second identity retains its own private library",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician measures a mixed batch and reconciles success, a concurrent version conflict, protected active work and idempotent replay with persisted IDs",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the clinician planner filters and creation dialog retain accessible controls and keyboard focus",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "an operational task and its published conversation expose accessible names and landmarks",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the document library and structured draft preparation are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a document renders real headings, links and table semantics and exposes an accessible draft editor",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital metrics expose accessible period filters and named technical values",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital reports and the definition editor provide accessible controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "administrative department metadata and real team controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the access-group matrix and a real effective-access preview are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "institution settings and department capability controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "invitation preparation exposes named role, group, scope and expiry controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "disabled integrations retain accessible credential controls without claiming external success",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a standalone fragment invitation presents accessible password confirmation controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician opens the exact authorized document and resource found in the common search",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician follows search results to the authorized diagnostic item, checklist, recurrence, patient and encounter",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "a normal clinician can locate filtered new work, converse, persist a favorite and complete it",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "the recipient accepts a fragment-only invitation and receives the intended read-only account",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-saved-views.spec.ts",
+                  "title": "normal clinician reapplies a shared view in one selection on Home, queue and search with identical criteria and reload",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-timezone.spec.ts",
+                  "title": "hospital civil date and greeting agree across distinct browser timezones at midnight UTC",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "a failed older move preserves the newer reconciled examination state",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "failed exam loading never claims that the clinical workload is clear",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "opens an authorized request while the examination list is still pending",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "fullscreen examination context contains focus and restores its opener",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "desktop collapse preserves mobile sector links and query navigation closes the drawer",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "changing a clinical action inside context keeps the original focus destination",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "calendar exposes every examination on a busy day with valid grid relationships",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/realtime.spec.ts",
+                  "title": "realtime browser contract › reconciles an open home after a committed mutation from another page",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-exam-visibility.spec.ts",
+                  "title": "superadmin sees a newly registered routine examination in My work after refresh and a duplicate is still rejected",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-navigation.spec.ts",
+                  "title": "superadmin can navigate operations and administration with distinct access and catalog screens",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "recovers a collaborator with Gerar nova senha, revokes active access and forces a new personal password",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates in four interactions, changes department in two and enforces the generated-password lifecycle",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates a catalog exam using only its name and duplicates a numeric panel with the real template",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "registers a patient with three fields through the global shortcut and searches authorized records",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "keeps technical data in ADMIN System and revokes a real session with one click and confirmation",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "quick-add submits with Enter and moving to recollection requires a reason from the list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "exports a patient's records for the data subject as a downloaded file (PROD-502)",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/visual.spec.ts",
+                  "title": "visual baseline › dashboard remains stable across the configured viewports",
+                  "status": "PASS"
+                }
+              ],
+              "memoryPeakBytes": 5450596352,
+              "observedServerPorts": [
+                3102
+              ],
+              "oomKillEvents": 0,
+              "telemetry": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T211723Z-3709542/main/mobile/runtime-telemetry.jsonl",
+                "sha256": "3f4330ea18f82b8225d223f632474d6bd2db631bec22e62b4663fdf0b7669871",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              },
+              "log": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T211723Z-3709542/main/mobile/run.log",
+                "sha256": "e55a4467d813ed47c9861ba29c4ee837a432d395f0da154d2ac1ce25b9802880",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              }
+            }
+          ],
+          "sourcePatchSha256": "d95b512d73eac6073b0872816353da21f0251a2cde84224c4a0ac60d78b05801",
+          "log": {
+            "path": "/tmp/cvg-hpl-acceptance-canonical-final-proof-20261011.log",
+            "sha256": "757b391ae894a803113f6ef9f5d2f8915b3d108fdc6e7ffafb33a0a29d0bdeab",
+            "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+          },
+          "sourceCopyVerification": {
+            "checkedAt": "2026-10-11T21:17:43.509376Z",
+            "artifact": "test-results/canonical-20261011T211723Z-3709542",
+            "containerId": "ded5be7a2566b392ec7e8d6ffa04a9e20605bf2b4c4b7cce182fbeae47414427",
+            "sourceCopy": "/tmp/cvg-e2e-canonical.n03yr1",
+            "fileCount": 1073,
+            "fingerprintSha256": "890c97af05a96876f4fdb03d995b59436c1e1336427b756b8eff13f91be9b706",
+            "mismatches": [],
+            "meaning": "Raw hashes of every selected manifest input matched the actual isolated source copy before browser journeys; copy reused only by sequential task-owned containers."
+          },
+          "testedFingerprintSha256": "890c97af05a96876f4fdb03d995b59436c1e1336427b756b8eff13f91be9b706"
+        },
+        {
+          "name": "canonical-tablet-transport-proof",
+          "status": "PASS",
+          "exitCode": 0,
+          "testsPassed": 63,
+          "testsFailed": 0,
+          "homePreflightPassed": 1,
+          "artifact": "test-results/canonical-20261011T214110Z-3825883",
+          "image": "mcr.microsoft.com/playwright:v1.55.1-noble@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c",
+          "memoryGiB": 8,
+          "memoryLimitBytes": 8589934592,
+          "cpuLimit": 4,
+          "sharedMemoryGb": 1,
+          "isolation": "One project per sequential disposable container.",
+          "retries": 0,
+          "flakyRetries": 0,
+          "baselinesUnchanged": true,
+          "projects": [
+            {
+              "project": "tablet",
+              "status": "PASS",
+              "testsPassed": 63,
+              "testsFailed": 0,
+              "homePreflightPassed": 1,
+              "exitCode": 0,
+              "baselinesUnchanged": true,
+              "containerState": {
+                "Status": "exited",
+                "Running": false,
+                "Paused": false,
+                "Restarting": false,
+                "OOMKilled": false,
+                "Dead": false,
+                "Pid": 0,
+                "ExitCode": 0,
+                "Error": "",
+                "StartedAt": "2026-10-11T21:41:10.522118452Z",
+                "FinishedAt": "2026-10-11T21:48:47.591194492Z"
+              },
+              "testCases": [
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login, dashboard, queue and notifications have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › account, management and administration surfaces have no axe violations",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › login form has a keyboard-visible first field and named controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/accessibility.spec.ts",
+                  "title": "accessible operational surfaces › mobile navigation exposes one current page and 44px keyboard targets",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › fills a structured hemogram and releases it in one board interaction",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › completes lab and radiology results with verified attachment, notification, review, amendment and void",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-lifecycle.spec.ts",
+                  "title": "clinical result lifecycle › requires critical acknowledgement before review",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+                  "title": "normal clinicians see shared and newly created exams, while each operational profile sees its authorized queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › authenticates and renders the Plane-style home",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the server-derived operational context without leaving the exam queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders a useful technical home for an administrator",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › lets an administrator configure a delegated manager scope",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › gives a manager scoped control, catalog and collaborator workflows",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › creates a contextual multi-service request through the UI",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps request actions inside the items panel",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps navigation usable on a narrow viewport",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › opens the patient context without exposing an unscoped list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › renders the Patient Workspace as a responsive, server-derived snapshot",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › preserves the confirmed Patient Workspace snapshot when refresh is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/core-flows.spec.ts",
+                  "title": "operational hub journeys › keeps the dashboard useful when one resource is unavailable",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-capacity-accessibility.spec.ts",
+                  "title": "hospital capacity excludes private drafts and retains accessible period and workload controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal clinician creates an interdepartmental plan, links existing work and closes it without closing its sources",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "a normal manager creates adjacent shifts, assigns work and waits for the nominal recipient's own acceptance",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-continuity.spec.ts",
+                  "title": "operational checklist recurrence reserves real inventory, shares hospital time across devices and completes with evidence",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-metrics-capacity.spec.ts",
+                  "title": "clinical indicators show real capacity with the same selected interval and sector, separate units and an unknown legacy bed",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician opens server-authorized favorites and recents by keyboard, while a second identity retains its own private library",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-personal-batch-acceptance.spec.ts",
+                  "title": "normal clinician measures a mixed batch and reconciles success, a concurrent version conflict, protected active work and idempotent replay with persisted IDs",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the clinician planner filters and creation dialog retain accessible controls and keyboard focus",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "an operational task and its published conversation expose accessible names and landmarks",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the document library and structured draft preparation are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a document renders real headings, links and table semantics and exposes an accessible draft editor",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital metrics expose accessible period filters and named technical values",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "hospital reports and the definition editor provide accessible controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "administrative department metadata and real team controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "the access-group matrix and a real effective-access preview are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "institution settings and department capability controls are accessible",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "invitation preparation exposes named role, group, scope and expiry controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "disabled integrations retain accessible credential controls without claiming external success",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-accessibility.spec.ts",
+                  "title": "a standalone fragment invitation presents accessible password confirmation controls",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician opens the exact authorized document and resource found in the common search",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician follows search results to the authorized diagnostic item, checklist, recurrence, patient and encounter",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "a normal clinician can locate filtered new work, converse, persist a favorite and complete it",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner.spec.ts",
+                  "title": "the recipient accepts a fragment-only invitation and receives the intended read-only account",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-saved-views.spec.ts",
+                  "title": "normal clinician reapplies a shared view in one selection on Home, queue and search with identical criteria and reload",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-timezone.spec.ts",
+                  "title": "hospital civil date and greeting agree across distinct browser timezones at midnight UTC",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "a failed older move preserves the newer reconciled examination state",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "failed exam loading never claims that the clinical workload is clear",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "opens an authorized request while the examination list is still pending",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "fullscreen examination context contains focus and restores its opener",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "desktop collapse preserves mobile sector links and query navigation closes the drawer",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "changing a clinical action inside context keeps the original focus destination",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/plane-regressions.spec.ts",
+                  "title": "calendar exposes every examination on a busy day with valid grid relationships",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/realtime.spec.ts",
+                  "title": "realtime browser contract › reconciles an open home after a committed mutation from another page",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-exam-visibility.spec.ts",
+                  "title": "superadmin sees a newly registered routine examination in My work after refresh and a duplicate is still rejected",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/superadmin-navigation.spec.ts",
+                  "title": "superadmin can navigate operations and administration with distinct access and catalog screens",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "recovers a collaborator with Gerar nova senha, revokes active access and forces a new personal password",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates in four interactions, changes department in two and enforces the generated-password lifecycle",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "creates a catalog exam using only its name and duplicates a numeric panel with the real template",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "registers a patient with three fields through the global shortcut and searches authorized records",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "keeps technical data in ADMIN System and revokes a real session with one click and confirmation",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "quick-add submits with Enter and moving to recollection requires a reason from the list",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/ux-simplification.spec.ts",
+                  "title": "exports a patient's records for the data subject as a downloaded file (PROD-502)",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/visual.spec.ts",
+                  "title": "visual baseline › dashboard remains stable across the configured viewports",
+                  "status": "PASS"
+                }
+              ],
+              "memoryPeakBytes": 5683888128,
+              "observedServerPorts": [
+                3101
+              ],
+              "oomKillEvents": 0,
+              "telemetry": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T214110Z-3825883/main/tablet/runtime-telemetry.jsonl",
+                "sha256": "f05d485ef1d66e90b1674d8cfa031cb76ed244d8606c0828e369ba39d8296b27",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              },
+              "log": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T214110Z-3825883/main/tablet/run.log",
+                "sha256": "07dc147fe3870b683c9101203d87c34dfde79f103ae21eda61919d943174f0fd",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              }
+            }
+          ],
+          "sourcePatchSha256": "10504e928c1c98b1e0ac550465fad012a0a418486eef9f9baea0e77afd7c0bb6",
+          "log": {
+            "path": "/tmp/cvg-hpl-acceptance-canonical-tablet-transport-proof-20261011.log",
+            "sha256": "7dc3a1c7da846ff1d264bef7902c7085a2ee234086db8a0666d0b6a745cd3c7a",
+            "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+          },
+          "sourceCopyVerification": {
+            "checkedAt": "2026-10-11T21:41:10.690393Z",
+            "artifact": "test-results/canonical-20261011T214110Z-3825883",
+            "containerId": "dd67c3034dde78d38edec166d750a918bcc69c87c80961654a7ed09136a9effa",
+            "sourceCopy": "/tmp/cvg-e2e-canonical.YKTPrq",
+            "fileCount": 1074,
+            "fingerprintSha256": "5bb9e94a6ede3d3d715f55b355c2c9789a2e7f286272fcd1fee37cd1e212ce82",
+            "mismatches": [],
+            "browserJourneyOutputObservedAtVerification": false,
+            "meaning": "Raw hashes of every selected manifest input compared with the actual harness-owned isolated source mount. This copy is reused only by the selected sequential task-owned containers."
+          },
+          "testedFingerprintSha256": "5bb9e94a6ede3d3d715f55b355c2c9789a2e7f286272fcd1fee37cd1e212ce82"
+        },
+        {
+          "name": "canonical-affected-transport-proof",
+          "status": "PASS",
+          "exitCode": 0,
+          "testsPassed": 6,
+          "testsFailed": 0,
+          "homePreflightPassed": 2,
+          "artifact": "test-results/canonical-20261011T214849Z-3855638",
+          "image": "mcr.microsoft.com/playwright:v1.55.1-noble@sha256:2f29369043d81d6d69a815ceb80760f55e85f5020371ad06a4d996f18503ad1c",
+          "memoryGiB": 8,
+          "memoryLimitBytes": 8589934592,
+          "cpuLimit": 4,
+          "sharedMemoryGb": 1,
+          "isolation": "One project per sequential disposable container.",
+          "retries": 0,
+          "flakyRetries": 0,
+          "baselinesUnchanged": true,
+          "projects": [
+            {
+              "project": "chromium",
+              "status": "PASS",
+              "testsPassed": 3,
+              "testsFailed": 0,
+              "homePreflightPassed": 1,
+              "exitCode": 0,
+              "baselinesUnchanged": true,
+              "containerState": {
+                "Status": "exited",
+                "Running": false,
+                "Paused": false,
+                "Restarting": false,
+                "OOMKilled": false,
+                "Dead": false,
+                "Pid": 0,
+                "ExitCode": 0,
+                "Error": "",
+                "StartedAt": "2026-10-11T21:48:50.423910938Z",
+                "FinishedAt": "2026-10-11T21:50:18.140625956Z"
+              },
+              "testCases": [
+                {
+                  "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+                  "title": "normal clinicians see shared and newly created exams, while each operational profile sees its authorized queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician opens the exact authorized document and resource found in the common search",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician follows search results to the authorized diagnostic item, checklist, recurrence, patient and encounter",
+                  "status": "PASS"
+                }
+              ],
+              "memoryPeakBytes": 3480211456,
+              "observedServerPorts": [
+                3100
+              ],
+              "oomKillEvents": 0,
+              "telemetry": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T214849Z-3855638/main/chromium/runtime-telemetry.jsonl",
+                "sha256": "e4ae6d672e1d70b46e45dc3700f32d8ae6d9476a18ff817a4758c150e2ef40bb",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              },
+              "log": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T214849Z-3855638/main/chromium/run.log",
+                "sha256": "3abbf2a535cdc3634d46dd51e0c11d2edc7060fa0fd84e96b14cf6f497570946",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              }
+            },
+            {
+              "project": "mobile",
+              "status": "PASS",
+              "testsPassed": 3,
+              "testsFailed": 0,
+              "homePreflightPassed": 1,
+              "exitCode": 0,
+              "baselinesUnchanged": true,
+              "containerState": {
+                "Status": "exited",
+                "Running": false,
+                "Paused": false,
+                "Restarting": false,
+                "OOMKilled": false,
+                "Dead": false,
+                "Pid": 0,
+                "ExitCode": 0,
+                "Error": "",
+                "StartedAt": "2026-10-11T21:50:18.545683593Z",
+                "FinishedAt": "2026-10-11T21:51:49.262109795Z"
+              },
+              "testCases": [
+                {
+                  "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+                  "title": "normal clinicians see shared and newly created exams, while each operational profile sees its authorized queue",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician opens the exact authorized document and resource found in the common search",
+                  "status": "PASS"
+                },
+                {
+                  "spec": "tests/e2e/hospital-planner-search.spec.ts",
+                  "title": "normal clinician follows search results to the authorized diagnostic item, checklist, recurrence, patient and encounter",
+                  "status": "PASS"
+                }
+              ],
+              "memoryPeakBytes": 3399331840,
+              "observedServerPorts": [
+                3102
+              ],
+              "oomKillEvents": 0,
+              "telemetry": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T214849Z-3855638/main/mobile/runtime-telemetry.jsonl",
+                "sha256": "892efc27bedd28ad1ae4e8721595e2174b57f6087615fb3feda1c463cb222d47",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              },
+              "log": {
+                "path": "/home/rmakinaga/cvg-diagnostic-hub-v2/test-results/canonical-20261011T214849Z-3855638/main/mobile/run.log",
+                "sha256": "66fb8f774a6d83c5561a2d28e8f729bce5d55c13caf1705a0ad05849c251d164",
+                "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+              }
+            }
+          ],
+          "sourcePatchSha256": "10504e928c1c98b1e0ac550465fad012a0a418486eef9f9baea0e77afd7c0bb6",
+          "log": {
+            "path": "/tmp/cvg-hpl-acceptance-canonical-affected-transport-proof-20261011.log",
+            "sha256": "ab254eacd944e31c14fdc9f19e997a9a9041be3646204e1ff634a1b2599d3205",
+            "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+          },
+          "sourceCopyVerification": {
+            "checkedAt": "2026-10-11T21:48:50.574626Z",
+            "artifact": "test-results/canonical-20261011T214849Z-3855638",
+            "containerId": "3378674a32d793c1395876434a362e55f2221334fbe490dadc05148a230c827e",
+            "sourceCopy": "/tmp/cvg-e2e-canonical.QvpysN",
+            "fileCount": 1074,
+            "fingerprintSha256": "5bb9e94a6ede3d3d715f55b355c2c9789a2e7f286272fcd1fee37cd1e212ce82",
+            "mismatches": [],
+            "browserJourneyOutputObservedAtVerification": false,
+            "meaning": "Raw hashes of every selected manifest input compared with the actual harness-owned isolated source mount. This copy is reused only by the selected sequential task-owned containers."
+          },
+          "testedFingerprintSha256": "5bb9e94a6ede3d3d715f55b355c2c9789a2e7f286272fcd1fee37cd1e212ce82"
+        }
+      ],
+      "fixtureTransportEvidence": {
+        "capturedAt": "2026-10-11T21:37:52.372370+00:00",
+        "scope": "Only test GET observation transport in two E2E specs; product, fixtures, authorization, POSTs, CSRF, configs and dependencies unchanged.",
+        "status": "SOURCE_FROZEN_TYPES_LINT_DIFF_PASS_BROWSER_PENDING_ROOT",
+        "rootAuthorization": "Root permitted these two test specs and optional support/browser-request.ts only; no browser rerun while the initial frozen canonical remains active.",
+        "changes": [
+          {
+            "path": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+            "beforeSha256": "0f607d74a5e228bf00ffb24fa90abe3e14f9d0a243e0f6de55197d0eb9259f87",
+            "afterSha256": "c7096765c08ce4c0a1d0b5d51854ed44a88b0b11a72c348a4bea91e4f9e26bba",
+            "assertionsLiterallyUnchanged": true,
+            "onlyChanges": "Import plus two GET call transport substitutions; routes/fixtures/POSTs/assertions unchanged."
+          },
+          {
+            "path": "tests/e2e/hospital-planner-search.spec.ts",
+            "beforeSha256": "bd7982a129863c94af87939a7cad044c676bfa9468fa648d2db3c04e18677afd",
+            "afterSha256": "325445b6a44bca0d7d905199f284f98a229e8b65c98a3d234c56ad7952a74b1c",
+            "assertionsLiterallyUnchanged": true,
+            "onlyChanges": "Import plus two GET call transport substitutions; routes/fixtures/POSTs/assertions unchanged."
+          },
+          {
+            "path": "tests/e2e/support/browser-request.ts",
+            "beforeSha256": null,
+            "afterSha256": "c462b7ed486c6a79c4242b6f45a64938a84fbadb27b5046590da1fe7e588bbb2",
+            "onlyChanges": "New single-browser-GET helper with origin/API guard; status()/json() wrapper preserves existing assertion calls."
+          }
+        ],
+        "redObserved": [
+          {
+            "spec": "tests/e2e/clinical-team-exam-visibility.spec.ts",
+            "frozenLine": 29,
+            "project": "tablet",
+            "trace": {
+              "path": "/tmp/cvg-e2e-canonical.n03yr1/canonical-artifacts/main/tablet/test-results/clinical-team-exam-visibil-00174-e-sees-its-authorized-queue-tablet/trace.zip",
+              "sha256": "3d5ce9bb2b53318a4ec148d9314e25d173b1d9dc17560b1ec063e3c4a0f627b2"
+            },
+            "safeCalls": [
+              {
+                "part": "test.trace",
+                "callId": "pw:api@235",
+                "requestMethod": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "durationMs": 1125.1669999999867,
+                "errorFirstLine": "Error: apiRequestContext.get: read ECONNRESET",
+                "query": "limit=100"
+              },
+              {
+                "part": "0-trace.trace",
+                "callId": "call@1664",
+                "requestMethod": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "durationMs": 1123.4890000000014,
+                "errorFirstLine": "read ECONNRESET",
+                "query": "limit=100"
+              }
+            ],
+            "safeApiNetwork": [
+              {
+                "startedDateTime": "2026-10-11T21:27:42.505Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 45.05099999997765,
+                "timings": {
+                  "send": 3.3249999999970896,
+                  "wait": 40.15200000000186,
+                  "receive": 0.9059999999881256,
+                  "dns": 1.4879999999975553,
+                  "connect": 2.5049999999901047,
+                  "ssl": -1,
+                  "blocked": -1
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:27:46.842Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 10.419999999998254,
+                "timings": {
+                  "send": 0.6399999999994179,
+                  "wait": 9.974000000001979,
+                  "receive": 0.4459999999962747,
+                  "dns": -1,
+                  "connect": -1,
+                  "ssl": -1,
+                  "blocked": 0.47899999999208376
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:27:50.224Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 12.460999999995693,
+                "timings": {
+                  "send": 0.6480000000010477,
+                  "wait": 11.710999999995693,
+                  "receive": 0.75,
+                  "dns": -1,
+                  "connect": -1,
+                  "ssl": -1,
+                  "blocked": 0.5160000000032596
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:27:54.677Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 34.130999999993946,
+                "timings": {
+                  "send": 0.35199999999895226,
+                  "wait": 33.85000000000582,
+                  "receive": 0.28099999998812564,
+                  "dns": -1,
+                  "connect": -1,
+                  "ssl": -1,
+                  "blocked": 0.28100000000267755
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:28:00.115Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 47.73000000001048,
+                "timings": {
+                  "send": 0.32500000001164153,
+                  "wait": 47.3070000000007,
+                  "receive": 0.4230000000097789,
+                  "dns": -1,
+                  "connect": -1,
+                  "ssl": -1,
+                  "blocked": 0.2580000000016298
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:28:05.465Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 9.89199999999255,
+                "timings": {
+                  "send": 0.41300000000046566,
+                  "wait": 9.566999999980908,
+                  "receive": 0.32500000001164153,
+                  "dns": -1,
+                  "connect": -1,
+                  "ssl": -1,
+                  "blocked": 0.3319999999948777
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:28:10.043Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": 200,
+                "elapsedMs": 52.286000000021886,
+                "timings": {
+                  "send": 0.5049999999755528,
+                  "wait": 51.95000000001164,
+                  "receive": 0.33600000001024455,
+                  "dns": -1,
+                  "connect": -1,
+                  "ssl": -1,
+                  "blocked": 0.39400000000023283
+                }
+              },
+              {
+                "startedDateTime": "2026-10-11T21:28:15.874Z",
+                "method": "GET",
+                "urlPath": "/api/v1/diagnostic-requests",
+                "query": "limit=100",
+                "responseStatus": -1,
+                "elapsedMs": -1,
+                "timings": {
+                  "send": -1,
+                  "wait": -1,
+                  "receive": -1
+                }
+              }
+            ],
+            "assertionsReached": "The GET threw before status/body assertions and the subsequent visibility/deep-link assertions of this step.",
+            "secretsPrintedOrCopied": false
+          },
+          {
+            "spec": "tests/e2e/hospital-planner-search.spec.ts",
+            "frozenLine": 67,
+            "project": "tablet",
+            "trace": {
+              "path": "/tmp/cvg-e2e-canonical.n03yr1/canonical-artifacts/main/tablet/test-results/hospital-planner-search-no-a6d26-rence-patient-and-encounter-tablet/trace.zip",
+              "sha256": "da7a57c6df0bc9e01b0c605ff37579a058a6cb881a25606b342a3d925600c590"
+            },
+            "safeCalls": [
+              {
+                "part": "test.trace",
+                "callId": "pw:api@31",
+                "requestMethod": "GET",
+                "urlPath": "/api/v1/session/me",
+                "durationMs": 5.559000000008382,
+                "errorFirstLine": "Error: apiRequestContext.get: read ECONNRESET",
+                "query": ""
+              },
+              {
+                "part": "0-trace.trace",
+                "callId": "call@2951",
+                "requestMethod": "GET",
+                "urlPath": "/api/v1/session/me",
+                "durationMs": 3.897999999986496,
+                "errorFirstLine": "read ECONNRESET",
+                "query": ""
+              }
+            ],
+            "safeApiNetwork": [
+              {
+                "startedDateTime": "2026-10-11T21:31:05.059Z",
+                "method": "GET",
+                "urlPath": "/api/v1/session/me",
+                "query": "",
+                "responseStatus": -1,
+                "elapsedMs": -1,
+                "timings": {
+                  "send": -1,
+                  "wait": -1,
+                  "receive": -1
+                }
+              }
+            ],
+            "assertionsReached": "The GET threw before status/body assertions and the subsequent visibility/deep-link assertions of this step.",
+            "secretsPrintedOrCopied": false
+          }
+        ],
+        "originalRunningLogSnapshot": {
+          "path": "/tmp/cvg-hpl-acceptance-canonical-final-proof-20261011.log",
+          "sha256AtRead": "7985796831bab0d4a3d383640264abfb019e5a2b135980c02c431d5ecb171691",
+          "bytesAtRead": 6795202,
+          "capturedAt": "2026-10-11T21:37:52.372370+00:00",
+          "scope": "Growing parent-owned original canonical run; this is a byte snapshot digest, not a final runner verdict."
+        },
+        "runtimeTelemetry": {
+          "path": "/tmp/cvg-e2e-canonical.n03yr1/canonical-artifacts/main/tablet/runtime-telemetry.jsonl",
+          "sha256AtRead": "139779d7711085f20d5d980552cef97075a98f3b7040ba2362b1e7e760e09ebd",
+          "observations": [
+            {
+              "failureTime": "2026-10-11T21:28:16.996Z",
+              "observedAt": "2026-10-11T21:28:15.581Z",
+              "cgroup": {
+                "memoryCurrentBytes": 4425154560,
+                "memoryMaxBytes": 8589934592,
+                "memoryEvents": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                },
+                "memoryEventsLocal": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                }
+              },
+              "nextProcesses": [
+                {
+                  "pid": 381,
+                  "parentPid": 370,
+                  "category": "NEXT",
+                  "serverPorts": [
+                    3101
+                  ],
+                  "rssKiB": 2426804
+                }
+              ]
+            },
+            {
+              "failureTime": "2026-10-11T21:28:16.996Z",
+              "observedAt": "2026-10-11T21:28:17.583Z",
+              "cgroup": {
+                "memoryCurrentBytes": 4372185088,
+                "memoryMaxBytes": 8589934592,
+                "memoryEvents": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                },
+                "memoryEventsLocal": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                }
+              },
+              "nextProcesses": [
+                {
+                  "pid": 381,
+                  "parentPid": 370,
+                  "category": "NEXT",
+                  "serverPorts": [
+                    3101
+                  ],
+                  "rssKiB": 2413124
+                }
+              ]
+            },
+            {
+              "failureTime": "2026-10-11T21:31:05.062Z",
+              "observedAt": "2026-10-11T21:31:03.799Z",
+              "cgroup": {
+                "memoryCurrentBytes": 4598046720,
+                "memoryMaxBytes": 8589934592,
+                "memoryEvents": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                },
+                "memoryEventsLocal": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                }
+              },
+              "nextProcesses": [
+                {
+                  "pid": 381,
+                  "parentPid": 370,
+                  "category": "NEXT",
+                  "serverPorts": [
+                    3101
+                  ],
+                  "rssKiB": 3393388
+                }
+              ]
+            },
+            {
+              "failureTime": "2026-10-11T21:31:05.062Z",
+              "observedAt": "2026-10-11T21:31:05.801Z",
+              "cgroup": {
+                "memoryCurrentBytes": 4189949952,
+                "memoryMaxBytes": 8589934592,
+                "memoryEvents": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                },
+                "memoryEventsLocal": {
+                  "low": 0,
+                  "high": 0,
+                  "max": 0,
+                  "oom": 0,
+                  "oom_kill": 0,
+                  "oom_group_kill": 0
+                }
+              },
+              "nextProcesses": [
+                {
+                  "pid": 381,
+                  "parentPid": 370,
+                  "category": "NEXT",
+                  "serverPorts": [
+                    3101
+                  ],
+                  "rssKiB": 3393388
+                }
+              ]
+            }
+          ],
+          "scope": "Same Next PID381/port3101 around both failures; cgroup max/oom/oom_kill counters0. No OOM or process loss inferred for these failures."
+        },
+        "reason": {
+          "proven": "Two APIRequestContext GETs end readECONNRESET before receiving HTTP status/body; browser/server continue serving. No domain assertion failure is demonstrated at these failing steps.",
+          "inferenceOnly": "Shared Playwright Node HTTP agent keeps connections alive; prior successful API requests show no new DNS/connect. Socket/keepalive reuse is compatible with the reset but no socket identity, packet capture or root cause is proven.",
+          "firstFailureIdleSincePreviousApiResponseMs": 5778.714,
+          "localCodeEvidence": [
+            "node_modules/playwright-core/lib/server/utils/happyEyeballs.js:74",
+            "node_modules/playwright-core/lib/server/fetch.js:187",
+            "node_modules/next/dist/server/lib/start-server.js:244"
+          ],
+          "nextGuidesRead": [
+            "node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md",
+            "node_modules/next/dist/docs/01-app/02-guides/client-side-data-fetching/index.md",
+            "node_modules/next/dist/docs/01-app/01-getting-started/06-fetching-data.md"
+          ]
+        },
+        "replacement": "Each of four GET observations performs one fetch in the authenticated browser, same-origin credentials/cache no-store, returns actual status/body and leaves all asserts literal. Fetch/JSON errors propagate; no retry/poll/catch, no manual cookie/auth/CSRF headers.",
+        "focusedChecks": [
+          {
+            "check": "types",
+            "exitCode": 0,
+            "log": {
+              "path": "/tmp/cvg-hpl-browser-read-transport-types-20261011.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "exitArtifact": {
+              "path": "/tmp/cvg-hpl-browser-read-transport-types-20261011.exit",
+              "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+            }
+          },
+          {
+            "check": "lint",
+            "exitCode": 0,
+            "log": {
+              "path": "/tmp/cvg-hpl-browser-read-transport-lint-20261011.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "exitArtifact": {
+              "path": "/tmp/cvg-hpl-browser-read-transport-lint-20261011.exit",
+              "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+            }
+          },
+          {
+            "check": "diff",
+            "exitCode": 0,
+            "log": {
+              "path": "/tmp/cvg-hpl-browser-read-transport-diff-20261011.log",
+              "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            },
+            "exitArtifact": {
+              "path": "/tmp/cvg-hpl-browser-read-transport-diff-20261011.exit",
+              "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+            }
+          }
+        ],
+        "independentReview": {
+          "reviewer": "/root/fix_security",
+          "mode": "READ_ONLY",
+          "result": "NO_CONCRETE_FINDING",
+          "scope": "Only helper and two specs; peer confirmed same-origin guard, credentials, no retries, unchanged strict status/data and unchanged POST/CSRF. No browser/check executed by reviewer."
+        },
+        "browserRevalidation": "Not run by this agent; parent owns fulltablet and affected GET journeys in other viewports after the initial canonical finishes.",
+        "limits": [
+          "Original full run still uses its unchanged frozen source copy; this patch does not retroactively turn its failures into passes.",
+          "Actual packet/socket closure source remains unproven; no Next/product keepalive setting modified.",
+          "No docs, product, fixture data, dependency, live auth, runtime clinical API, database or installed container modified.",
+          "Original raw traces are not reprinted or copied; only path/digest and explicitly safe derived method/path/status/timing/error fields are recorded."
+        ]
+      },
+      "fixtureTransportEvidenceArtifact": {
+        "path": "/tmp/cvg-hpl-browser-get-transport-evidence-20261011.json",
+        "sha256": "536689c76cfe8bc3e1f469a2ad2b87b5340fe30453aab01aaba358662b581770",
+        "retention": "Temporary local evidence; observed result and digest retained here. Not published CI evidence."
+      },
+      "fixtureEvidenceCaptureMeaning": "Literal earlier frozen-source capture has browser pending at its timestamp; actual later browser results are in the runs/effectiveProjects fields above.",
+      "reusePolicy": "Full tablet project and all three journeys in the two changed specs on desktop/mobile passed separately with the final fixture snapshot. Only 60 byte-identical unaffected journeys per desktop/mobile are reused. Product, browser config/runtime, dependencies and all other test inputs are byte-identical; all final changed browser inputs were actually executed. This is not a single complete final-source PASS run, and the initial full FAIL remains recorded.",
+      "scopeLimit": "Synthetic application journeys. No real hospital UAT, target load, scanner transport or institutionally signed approval.",
+      "retainedInitialTraceArtifacts": [
+        {
+          "capturedPath": "/tmp/cvg-e2e-canonical.n03yr1/canonical-artifacts/main/tablet/test-results/clinical-team-exam-visibil-00174-e-sees-its-authorized-queue-tablet/trace.zip",
+          "retainedArtifact": {
+            "path": "test-results/canonical-20261011T211723Z-3709542/main/tablet/test-results/clinical-team-exam-visibil-00174-e-sees-its-authorized-queue-tablet/trace.zip",
+            "sha256": "3d5ce9bb2b53318a4ec148d9314e25d173b1d9dc17560b1ec063e3c4a0f627b2"
+          },
+          "meaning": "Exact trace bytes copied into the retained canonical artifact before the harness removed its temporary source directory. The literal capture path is historical and unchanged."
+        },
+        {
+          "capturedPath": "/tmp/cvg-e2e-canonical.n03yr1/canonical-artifacts/main/tablet/test-results/hospital-planner-search-no-a6d26-rence-patient-and-encounter-tablet/trace.zip",
+          "retainedArtifact": {
+            "path": "test-results/canonical-20261011T211723Z-3709542/main/tablet/test-results/hospital-planner-search-no-a6d26-rence-patient-and-encounter-tablet/trace.zip",
+            "sha256": "da7a57c6df0bc9e01b0c605ff37579a058a6cb881a25606b342a3d925600c590"
+          },
+          "meaning": "Exact trace bytes copied into the retained canonical artifact before the harness removed its temporary source directory. The literal capture path is historical and unchanged."
+        }
+      ]
+    },
+    "perfOriginalSnapshot": {
+      "schemaVersion": 1,
+      "profileSourceFingerprint": "698a5cc791f27a5fe2232dc4a25cd739aeb216e02a90cfa476adc72355159f55",
+      "sourceUnchangedAfterRun": true,
+      "rootManifestFile": "/tmp/cvg-hpl-operational-source-manifest-20261011.json",
+      "rootManifestFingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+      "rootManifestFiles": 1079,
+      "profileFiles": 948,
+      "commonComparedFiles": 948,
+      "notInRootManifest": [],
+      "sha256Differences": [],
+      "pass": true
+    },
+    "meaning": "No new browser or HTTP performance execution on the corrected raw unit-test snapshot. Reuse applies only to byte-identical relevant inputs; original snapshots/results remain identified. Public assets are outside earlier manifest/copy scope, qualified in prior proof."
+  },
+  "failedIntegratedAttempt": {
+    "environment": {
+      "startedAt": "2026-10-11T22:20:33.511667+00:00",
+      "name": "cvg-hpl-operational-g4-67a47a6ba8",
+      "status": "FAIL",
+      "scope": "Official combined unit/PostgreSQL coverage against disposable loopback Docker PostgreSQL; no hospital services or database.",
+      "candidateFingerprintSha256": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+      "postgres": {
+        "id": "f9fbfcbdeacb83d0515dbdeee24c6cdff75ea98000e037391b273242dabbd909",
+        "imageId": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "hostIp": "127.0.0.1",
+        "hostPort": "32776",
+        "memoryBytes": 536870912,
+        "memorySwapBytes": 536870912,
+        "nanoCpus": 1000000000
+      },
+      "elapsedSeconds": 632.01,
+      "command": "npm run test:coverage with explicit disposable admin URL and integration authorization",
+      "exitCode": 1,
+      "remainingDisposableDatabases": [],
+      "sourceHashesUnchanged": true,
+      "postgresFinalState": {
+        "Status": "running",
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "remainingOwnedContainerIds": [],
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-g4-20261011.log",
+        "sha256": "ad6a38190865d66dcd3c788d76f26e7355b287ece98022e6d3e7cdc4059a3dd3"
+      },
+      "finishedAt": "2026-10-11T22:31:07.828700+00:00"
+    },
+    "artifact": {
+      "path": "/tmp/cvg-hpl-operational-g4-environment-20261011.json",
+      "sha256": "60ac47a1625e4c5e4c3540b2147a1f89f7847294836c5aa1791d81cbd44ce514",
+      "bytes": 1249,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "unitPassed": 5113,
+    "unitFailed": 2,
+    "postgres": "NOT_EXECUTED_UNIT_FAILURE",
+    "history": "HOSPITAL_PLANNER_VALIDATION_HISTORY_2026-10-11.json:subsequentRuns:operational1079IntegratedFailureBeforeTestCorrections"
+  },
+  "unitTestCorrections": [
+    {
+      "path": "src/components/department-console.test.tsx",
+      "sha256": "1f508014aebb7a36a42dc8849159c666cd53203bd7a10660947f69a4e633faac",
+      "reason": "Separate users and departments responses; deterministic intermediate-loading RED, then wait for real form before authority/negative assertions. No timeout/assertion/product relaxation.",
+      "greenPassed": 19,
+      "redLog": {
+        "path": "/tmp/cvg-hpl-department-console-timing-red-20261011.log",
+        "sha256": "f04fed6ebbf97b71c8ca388610acd3c8634f8a22abe44539ba26dad3f6275ac1",
+        "bytes": 18801,
+        "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+      },
+      "greenLog": {
+        "path": "/tmp/cvg-hpl-department-console-group-green-20261011.log",
+        "sha256": "9b2cd10e14d3f8c939ebd87da76b0c9a7215b16b3d3567b6f9186b8ed119ae3b",
+        "bytes": 3542,
+        "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+      }
+    },
+    {
+      "path": "src/server/security/file-secrets.test.ts",
+      "sha256": "c96dc07c1d4d53215250fea71b663b72a46f54f4220ce2523f069b963162a37e",
+      "reason": "Separate reviewed external exporter secret consumer from app/ops loader inventory; unknown service/image/variable/shared-anchor secrets still rejected. Loader and allowlist unchanged.",
+      "greenPassed": 16,
+      "redLog": {
+        "path": "/tmp/cvg-hpl-file-secret-inventory-red-20261011.log",
+        "sha256": "a0e9502a674ce6dc20a1e4bb621d335de46937788e635a3ff4e9822ad8857e19",
+        "bytes": 1194,
+        "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+      },
+      "greenLog": {
+        "path": "/tmp/cvg-hpl-file-secret-inventory-green-20261011.log",
+        "sha256": "f5cbbedc55be4fea22e4ccfd50e96f9f5131aafed92f627dd15505edf083d6fc",
+        "bytes": 223,
+        "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+      }
+    }
+  ],
+  "g4": {
+    "environment": {
+      "startedAt": "2026-10-11T22:37:11.049812+00:00",
+      "name": "cvg-hpl-operational-final-g4-56ab243530",
+      "status": "PASS",
+      "scope": "Official combined unit/PostgreSQL coverage against disposable loopback Docker PostgreSQL; no hospital services or database.",
+      "candidateFingerprintSha256": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4",
+      "postgres": {
+        "id": "d1b18456f01a96aaf011ef278d429f6427c10ba1aca147894a620232d823d8ed",
+        "imageId": "sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "hostIp": "127.0.0.1",
+        "hostPort": "32779",
+        "memoryBytes": 536870912,
+        "memorySwapBytes": 536870912,
+        "nanoCpus": 1000000000
+      },
+      "elapsedSeconds": 866.0,
+      "command": "npm run test:coverage with explicit disposable admin URL and integration authorization",
+      "exitCode": 0,
+      "remainingDisposableDatabases": [],
+      "sourceHashesUnchanged": true,
+      "postgresFinalState": {
+        "Status": "running",
+        "ExitCode": 0,
+        "OOMKilled": false
+      },
+      "remainingOwnedContainerIds": [],
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-final-g4-20261011.log",
+        "sha256": "bff563c06a7bcaf6de850d785ccb76c31f3cb54ff05db400171ac177bce37519"
+      },
+      "finishedAt": "2026-10-11T22:51:40.138830+00:00"
+    },
+    "artifact": {
+      "path": "/tmp/cvg-hpl-operational-final-g4-environment-20261011.json",
+      "sha256": "3f5864ba4cbc6784ba5e335a04f9e68fd86b81ce71ed6f90494dcdfc9f7c4b50",
+      "bytes": 1260,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "unitPassed": 5119,
+    "postgresPassed": 141,
+    "combinedPassed": 5260,
+    "testFiles": 357
+  },
+  "institutionalAcceptance": "OPEN",
+  "release": "NOT_APPLIED",
+  "done": false,
+  "remaining": [
+    "HPL042 adoptedHIS installed-contract correlation, approved destination/mappings and native real sandbox exchange.",
+    "HPL051 named validator, approved clinical/catalog/resource content and UAT/usability evidence.",
+    "Institutional load/scanner/transport/observability/alert routing/recovery and explicit go-no-go.",
+    "Required remote CI for a committed candidate; no current candidate commit/push authorized in this goal."
+  ],
+  "imageScanBundle": {
+    "path": "/tmp/cvg-hpl-owned-image-scan-final-evidence-20261011.tar.gz",
+    "sha256": "f383cad31842bb573dee7859d961dfcc1c290c88158c996914cb240916a299b8",
+    "bytes": 195638,
+    "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+  },
+  "ownedBuilderCleanup": {
+    "observed": {
+      "observedAt": "2026-10-11T22:40:09.907607+00:00",
+      "scope": "Remove only own dedicated bounded BuildKit builder after final local image proofs; no global prune/default builder changes.",
+      "builder": "cvg-hpl-image-proof-20261011",
+      "containerId": "c62d68e318b3c1e6a1910a5c293c324d3ef84d9f9cd389b6ba98c50063c981d1",
+      "memoryBytes": 8589934592,
+      "cpuLimit": 4,
+      "resources": {
+        "memory.peak": "2153074688",
+        "memory.events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0",
+        "memory.max": "max",
+        "cpu.max": "max 100000"
+      },
+      "volumes": [
+        "buildx_buildkit_cvg-hpl-image-proof-202610110_state"
+      ],
+      "state": {
+        "Status": "running",
+        "OOMKilled": false
+      },
+      "removed": true,
+      "remainingOwnedContainers": [],
+      "remainingOwnedStateVolumes": []
+    },
+    "artifact": {
+      "path": "/tmp/cvg-hpl-operational-final-builder-cleanup-20261011.json",
+      "sha256": "3da7ed499bdcb3a772d1a46ad82c8ddf5bc713a78b55d300f23b1a0b52209fa5",
+      "bytes": 792,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "previousResourceCapture": {
+      "path": "/tmp/cvg-hpl-operational-builder-final-resources-20261011.json",
+      "sha256": "bcc85a5cac3315aadbfdba4d45e0d3386443ccb88aa3d2e174fc160fe24cec25",
+      "bytes": 489,
+      "retention": "Local transient artifact; observed result and digest preserved here. No published CI or release claim."
+    },
+    "meaning": "Resource captures describe each observed builder lifetime/cgroup, not an inferred combined peak. Final own builder/container/statevolumes removed; no global prune."
+  },
+  "priorSmokeAttempts": [
+    {
+      "startedAt": "2026-10-11T22:24:09.661367+00:00",
+      "status": "FAIL",
+      "candidateFingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+      "committed": false,
+      "deployed": false,
+      "scope": "Local immutable app/ops images; owned isolated PostgreSQL and synthetic fixture only. Storage is a HEAD health probe, not real S3/MinIO or scanner integration/UAT. No live services, real environment files or clinical databases accessed.",
+      "checks": [
+        {
+          "name": "runner uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "runner labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "ops uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "ops labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-2a491ba806-migrate exits zero without OOM",
+          "status": "PASS"
+        }
+      ],
+      "containers": [
+        {
+          "name": "seed",
+          "id": "56793e5f76ea83c82f6dcb81201a63540cbff72f99dee3546725396ffe9afe60",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 1,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "migrate",
+          "id": "65f7277548dc47285995186a2ce985595037d1226e93fcaf5a59bc22ac752099",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "storage-probe",
+          "id": "0d7f488be233738cf3a81098e7ae55ad57306f6f6c3759d124c02ac314ddce39",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 134217728,
+          "memorySwapBytes": 134217728,
+          "nanoCpus": 250000000
+        },
+        {
+          "name": "pg",
+          "id": "bbc0787b7c9d7f07aeea2142a8e032185de443de6d92f4bb520a1c2bce7d3707",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        }
+      ],
+      "cleanup": {
+        "remainingOwnedContainerIds": [],
+        "remainingOwnedNetworkIds": []
+      },
+      "runner": {
+        "imageId": "sha256:c7bee3ff4ff2efcc4f36dcbdf58528dfbc91f6f7fc9dd40ffb6c6689418648d7",
+        "repoDigests": [
+          "cvg-hpl-proof-runner@sha256:c7bee3ff4ff2efcc4f36dcbdf58528dfbc91f6f7fc9dd40ffb6c6689418648d7"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "5d7a865abd527902f17b69a1d2995771fff3cf322ab5ee7cb4c827bbddb15a7a",
+          "org.cvg.candidate.fingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "ops": {
+        "imageId": "sha256:01e0e739e01d6dfd4be214608f4cf5274dd4d52189263d64f99e07d5ec0c9645",
+        "repoDigests": [
+          "cvg-hpl-proof-ops@sha256:01e0e739e01d6dfd4be214608f4cf5274dd4d52189263d64f99e07d5ec0c9645"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "5d7a865abd527902f17b69a1d2995771fff3cf322ab5ee7cb4c827bbddb15a7a",
+          "org.cvg.candidate.fingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "failure": "job /cvg-hpl-image-smoke-2a491ba806-seed exits zero without OOM",
+      "finishedAt": "2026-10-11T22:24:15.901202+00:00",
+      "log": {
+        "path": "/tmp/cvg-hpl-image-smoke-2a491ba806.log",
+        "sha256": "edbfaa8d051503225a2aa660d28a3de98fd84799894682676850ebe2b93dc81f"
+      }
+    },
+    {
+      "startedAt": "2026-10-11T22:25:52.784795+00:00",
+      "status": "FAIL",
+      "candidateFingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+      "committed": false,
+      "deployed": false,
+      "scope": "Local immutable app/ops images; owned isolated PostgreSQL and synthetic fixture only. Storage is a HEAD health probe, not real S3/MinIO or scanner integration/UAT. No live services, real environment files or clinical databases accessed.",
+      "checks": [
+        {
+          "name": "runner uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "runner labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "ops uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "ops labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-a99a687dc8-migrate exits zero without OOM",
+          "status": "PASS"
+        }
+      ],
+      "containers": [
+        {
+          "name": "seed",
+          "id": "bbf12e5a362453093891c6832f57aa4a4f0de6448639a596ed5b574a18132bd9",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 1,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "migrate",
+          "id": "7efdf63403df431a357e81ffacf35c8793f55afb2b5bfc6c734ac2ffe5fcefcf",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "storage-probe",
+          "id": "0064a48bfe889eec1945be728f22cc213831306c62334bb78353434e0aeede40",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 134217728,
+          "memorySwapBytes": 134217728,
+          "nanoCpus": 250000000
+        },
+        {
+          "name": "pg",
+          "id": "2be6244ca6aa17976e0e839409c5d66cb46b3cf6d2a5045e31291774a160c131",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        }
+      ],
+      "cleanup": {
+        "remainingOwnedContainerIds": [],
+        "remainingOwnedNetworkIds": []
+      },
+      "runner": {
+        "imageId": "sha256:c7bee3ff4ff2efcc4f36dcbdf58528dfbc91f6f7fc9dd40ffb6c6689418648d7",
+        "repoDigests": [
+          "cvg-hpl-proof-runner@sha256:c7bee3ff4ff2efcc4f36dcbdf58528dfbc91f6f7fc9dd40ffb6c6689418648d7"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "5d7a865abd527902f17b69a1d2995771fff3cf322ab5ee7cb4c827bbddb15a7a",
+          "org.cvg.candidate.fingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "ops": {
+        "imageId": "sha256:01e0e739e01d6dfd4be214608f4cf5274dd4d52189263d64f99e07d5ec0c9645",
+        "repoDigests": [
+          "cvg-hpl-proof-ops@sha256:01e0e739e01d6dfd4be214608f4cf5274dd4d52189263d64f99e07d5ec0c9645"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "5d7a865abd527902f17b69a1d2995771fff3cf322ab5ee7cb4c827bbddb15a7a",
+          "org.cvg.candidate.fingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "failure": "job /cvg-hpl-image-smoke-a99a687dc8-seed exits zero without OOM",
+      "finishedAt": "2026-10-11T22:26:00.988907+00:00",
+      "log": {
+        "path": "/tmp/cvg-hpl-image-smoke-a99a687dc8.log",
+        "sha256": "139dbdc09691733edd0b30cad4f36605ece8f660554449b3ab7381fb0535dba4"
+      }
+    },
+    {
+      "startedAt": "2026-10-11T22:26:38.100046+00:00",
+      "status": "FAIL",
+      "candidateFingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+      "committed": false,
+      "deployed": false,
+      "scope": "Local immutable app/ops images; owned isolated PostgreSQL and synthetic fixture only. Storage is a HEAD health probe, not real S3/MinIO or scanner integration/UAT. No live services, real environment files or clinical databases accessed.",
+      "checks": [
+        {
+          "name": "runner uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "runner labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "ops uses unprivileged node and truthful unknown revision",
+          "status": "PASS"
+        },
+        {
+          "name": "ops labels identify exact uncommitted candidate",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-3a8e4c13d7-migrate exits zero without OOM",
+          "status": "PASS"
+        },
+        {
+          "name": "job /cvg-hpl-image-smoke-3a8e4c13d7-seed exits zero without OOM",
+          "status": "PASS"
+        },
+        {
+          "name": "app uses dynamically assigned loopback port",
+          "status": "PASS"
+        },
+        {
+          "name": "production image readiness reports PostgreSQL and S3 configuration",
+          "status": "PASS"
+        },
+        {
+          "name": "liveness passes",
+          "status": "PASS"
+        },
+        {
+          "name": "production login HTML stamps CSP nonce on every script",
+          "status": "PASS"
+        },
+        {
+          "name": "anonymous protected task API denies access",
+          "status": "PASS"
+        },
+        {
+          "name": "ordinary veterinarian can log in to the built image",
+          "status": "PASS"
+        },
+        {
+          "name": "ordinary veterinarian can read hospital task list",
+          "status": "PASS"
+        }
+      ],
+      "containers": [
+        {
+          "name": "app",
+          "id": "7c259f1b8c0ffccdab9029b0861af7e129367642a01a136d6ac1575b260dd03f",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 1610612736,
+          "memorySwapBytes": 1610612736,
+          "nanoCpus": 2000000000
+        },
+        {
+          "name": "seed",
+          "id": "95aae5b5fc2105836085209f6f67fb21fe2af65a313d2c3fecd44091bafb55f7",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "migrate",
+          "id": "0a47af8d852f1cb556fed5de2817ff36b3b4991db5b55ba41d4d070704c7d21f",
+          "state": {
+            "Status": "exited",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        },
+        {
+          "name": "storage-probe",
+          "id": "5c4adb7de2a8949353e0b549e54ba61e2fbca7ddc1649fbc0bd55de084c41599",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 134217728,
+          "memorySwapBytes": 134217728,
+          "nanoCpus": 250000000
+        },
+        {
+          "name": "pg",
+          "id": "16ed5e17a56b74134ec7a64f89f8aa9b8551a16979e4ebf6d2c6588a0fda86f3",
+          "state": {
+            "Status": "running",
+            "ExitCode": 0,
+            "OOMKilled": false
+          },
+          "memoryBytes": 536870912,
+          "memorySwapBytes": 536870912,
+          "nanoCpus": 1000000000
+        }
+      ],
+      "cleanup": {
+        "remainingOwnedContainerIds": [],
+        "remainingOwnedNetworkIds": []
+      },
+      "runner": {
+        "imageId": "sha256:c7bee3ff4ff2efcc4f36dcbdf58528dfbc91f6f7fc9dd40ffb6c6689418648d7",
+        "repoDigests": [
+          "cvg-hpl-proof-runner@sha256:c7bee3ff4ff2efcc4f36dcbdf58528dfbc91f6f7fc9dd40ffb6c6689418648d7"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "5d7a865abd527902f17b69a1d2995771fff3cf322ab5ee7cb4c827bbddb15a7a",
+          "org.cvg.candidate.fingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "ops": {
+        "imageId": "sha256:01e0e739e01d6dfd4be214608f4cf5274dd4d52189263d64f99e07d5ec0c9645",
+        "repoDigests": [
+          "cvg-hpl-proof-ops@sha256:01e0e739e01d6dfd4be214608f4cf5274dd4d52189263d64f99e07d5ec0c9645"
+        ],
+        "user": "node",
+        "labels": {
+          "org.cvg.candidate.committed": "false",
+          "org.cvg.candidate.context-fingerprint": "5d7a865abd527902f17b69a1d2995771fff3cf322ab5ee7cb4c827bbddb15a7a",
+          "org.cvg.candidate.fingerprint": "6e2e33173903ea7b71a140aefd90c3a814b2bb819d4617a61dbb0db6bcedb4d6",
+          "org.cvg.hospital.timezone": "America/Sao_Paulo",
+          "org.opencontainers.image.revision": "unknown"
+        }
+      },
+      "failure": "ordinary veterinarian is denied administration user list",
+      "finishedAt": "2026-10-11T22:26:47.933054+00:00",
+      "log": {
+        "path": "/tmp/cvg-hpl-image-smoke-3a8e4c13d7.log",
+        "sha256": "cc4d42ae5bf30b35abf6cd4249db8e141424fa33807ae746765bd9aaa42a023c"
+      }
+    }
+  ],
+  "finalReportChecks": {
+    "documentation": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-final-documentation-20261011.log",
+        "sha256": "37e5555270a622f2d0c1449d9d5be5aa70c0fec911b74b12a7c7fd8638e31102",
+        "bytes": 207,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "exitArtifact": {
+        "path": "/tmp/cvg-hpl-operational-final-documentation-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "command": "npm run validate:docs",
+      "requiredFiles": 89,
+      "scope": "Official required paths/local links/gate consistency/placeholders/merge-marker validation after final index and tracking edits."
+    },
+    "privacy": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-final-privacy-20261011.log",
+        "sha256": "cd4c716723642fa3675f5fa3f759352714474b804328e1de71779e123f30d282",
+        "bytes": 40,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "exitArtifact": {
+        "path": "/tmp/cvg-hpl-operational-final-privacy-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "command": "node /tmp/cvg-hpl-operational-final-privacy-candidate-20261011.mjs",
+      "scanned": 1234,
+      "findings": 0,
+      "evidence": {
+        "path": "/tmp/cvg-hpl-operational-final-privacy-candidate-20261011.json",
+        "sha256": "ec0ee3f81fe3ffdfd69c1ea3edd569039b21e4eea97f2b11b7f82a78b6c03607",
+        "bytes": 191156,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "scope": "Candidate tracked and untracked nonignored source/config/example/doc texts; excluded mutable data, credentials, real environments, symlinks, binary/generated output and third-party vendor",
+      "selfReferenceLimit": "Scan measured final source and report bytes before these numerical results/metadata were appended. This metadata and audit overlay are outside source fingerprint; no source/gate input changed."
+    },
+    "persistedCoverageGate": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-final-persisted-coverage-20261011.log",
+        "sha256": "85d92214729f3ff4c125600bc36392f750dd3eeb825247846496ff41fc8d0bdc",
+        "bytes": 233,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "exitArtifact": {
+        "path": "/tmp/cvg-hpl-operational-final-persisted-coverage-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "command": "COVERAGE_SUMMARY=docs/build/HOSPITAL_PLANNER_COVERAGE_2026-10-11.json npm run coverage:gate",
+      "existingExceptions": 20,
+      "newExceptions": 0,
+      "uncovered": [],
+      "stale": [],
+      "summary": "HOSPITAL_PLANNER_COVERAGE_2026-10-11.json"
+    },
+    "secretScan": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-final-secrets-20261011.log",
+        "sha256": "01e4220a4ae212c4d17d708b7bfb6dc55d13bde287e0e1ad7f9f61ff769afb9d",
+        "bytes": 205,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "exitArtifact": {
+        "path": "/tmp/cvg-hpl-operational-final-secrets-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "findings": 0,
+      "command": "npm run security:scan",
+      "scope": "Repository secret-format guard, plus final candidate privacy covers untracked files. Images scanned separately."
+    },
+    "workingTreeDiff": {
+      "status": "PASS",
+      "exitCode": 0,
+      "log": {
+        "path": "/tmp/cvg-hpl-operational-final-diff-20261011.log",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "exitArtifact": {
+        "path": "/tmp/cvg-hpl-operational-final-diff-20261011.exit",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2,
+        "retention": "Transient local artifact, observed result/digest preserved; not published CI."
+      },
+      "command": "git diff --check",
+      "scope": "All tracked working-tree diffs after final documentation changes."
+    }
+  },
+  "reportChecksCompletedAt": "2026-10-11T22:52:33.524567+00:00",
+  "operationalFinalIndependentReview": {
+    "observedAt": "2026-10-11T22:55:38.523122+00:00",
+    "status": "PASS_READ_ONLY_NO_MATERIAL_INCONSISTENCIES",
+    "reviewer": "fix_clinical",
+    "scope": "Permanent current source/validation/operational evidence/audit records; source/counts/coverage/image aliases, exact historical literal audit digests, failed histories, scope of browser/perf reuse and no new PHI/secret in summaries. No checks executed by reviewer.",
+    "findings": [],
+    "institutionalAcceptance": "OPEN",
+    "done": false
+  },
+  "postIndependentReviewReportChecks": {
+    "observedAt": "2026-10-11T22:56:05.963495+00:00",
+    "status": "PASS",
+    "checks": {
+      "documentation": {
+        "status": "PASS",
+        "exitCode": 0,
+        "requiredFiles": 89,
+        "log": {
+          "path": "/tmp/cvg-hpl-operational-review-documentation-20261011.log",
+          "sha256": "37e5555270a622f2d0c1449d9d5be5aa70c0fec911b74b12a7c7fd8638e31102",
+          "bytes": 207,
+          "retention": "Local transient artifact; observed outcome and digest retained, not published CI."
+        }
+      },
+      "privacy": {
+        "status": "PASS",
+        "exitCode": 0,
+        "scanned": 1234,
+        "findings": 0,
+        "log": {
+          "path": "/tmp/cvg-hpl-operational-review-privacy-20261011.log",
+          "sha256": "cd4c716723642fa3675f5fa3f759352714474b804328e1de71779e123f30d282",
+          "bytes": 40,
+          "retention": "Local transient artifact; observed outcome and digest retained, not published CI."
+        },
+        "evidence": {
+          "path": "/tmp/cvg-hpl-operational-review-privacy-candidate-20261011.json",
+          "sha256": "4c16e76ff994816c32fa04b0b2a762dae14e0bdd0b62b37f6e1fb33d7cda876b",
+          "bytes": 191156,
+          "retention": "Local transient artifact; observed outcome and digest retained, not published CI."
+        },
+        "selfReferenceLimit": "Read final reporting prose and reviewer metadata; only these numerical gate results were appended afterwards. Reports outside source fingerprint; tested code/config/tests unchanged."
+      }
+    },
+    "sourceHashesUnchanged": true,
+    "candidateFingerprint": "2afa82c5b706c9fc6469dfa4f4c2455ea43796da0c3f1aed08ce149c06f134d4"
+  },
+  "supersededCurrentCandidate": {
+    "recordedAt": "2026-10-11T23:19:56.957020+00:00",
+    "newCurrentRecord": "HOSPITAL_PLANNER_FUNCTIONAL_FOLLOWUP_2026-10-11.json",
+    "newFingerprintSha256": "673bc9e9c52f9ee6c90c46d49c67744baa0dc7a91342b123ba9a747a1bf9e84c",
+    "meaning": "This1079 operational record remains an exact dated historical source/image/profile capture; new032/036/047 product repairs require fresh global gates. Native monitor inputs may be reused only when separately byte-identical proven."
+  }
+}

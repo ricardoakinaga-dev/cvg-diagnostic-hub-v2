@@ -64,6 +64,7 @@ jobs:
         run: bash deploy/release/verify-ci.sh
       - name: Build application, operational, object storage and storage client images
         env:
+          APP_TIMEZONE: ${{ vars.APP_TIMEZONE || 'America/Sao_Paulo' }}
           PREFIX: ${{ steps.release.outputs.prefix }}
           TAG: ${{ steps.release.outputs.tag }}
           COMMIT: ${{ steps.release.outputs.commit }}
@@ -73,7 +74,7 @@ jobs:
           set -Eeuo pipefail
           labels=(--label "org.opencontainers.image.revision=$COMMIT" --label "org.opencontainers.image.source=$SOURCE" --label "org.opencontainers.image.created=$CREATED")
           # The running app and worker report the same commit (startup log, cvg_build_info), not only the label.
-          stamp=(--build-arg "SOURCE_REVISION=$COMMIT")
+          stamp=(--build-arg "SOURCE_REVISION=$COMMIT" --build-arg "APP_TIMEZONE=$APP_TIMEZONE")
           # Base images and the Dockerfile frontend come from Google's Docker Hub mirror: Docker Hub rate-limits and refuses
           # anonymous pulls from shared runner IPs (scripts/ci-docker-build.sh, same as CI).
           export DOCKER_HUB_MIRROR=mirror.gcr.io
@@ -91,7 +92,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit operational image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -99,7 +100,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-ops:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit object storage image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -107,7 +108,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-minio:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Audit storage client image for high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -115,7 +116,7 @@ jobs:
           image-ref: ${{ steps.release.outputs.prefix }}-mc:${{ steps.release.outputs.tag }}
           format: table
           exit-code: "1"
-          ignore-unfixed: true
+          ignore-unfixed: false
           severity: CRITICAL,HIGH
       - name: Generate the application image SBOM
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -159,6 +160,7 @@ jobs:
           fi
       - name: Push with the commit tag
         env:
+          APP_TIMEZONE: ${{ vars.APP_TIMEZONE || 'America/Sao_Paulo' }}
           PREFIX: ${{ steps.release.outputs.prefix }}
           TAG: ${{ steps.release.outputs.tag }}
           COMMIT: ${{ steps.release.outputs.commit }}
@@ -172,7 +174,7 @@ jobs:
           ops_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-ops:$TAG")"
           minio_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-minio:$TAG")"
           mc_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "$PREFIX-mc:$TAG")"
-          printf '{"commit":"%s","tag":"%s","app":"%s","ops":"%s","minio":"%s","mc":"%s"}\n' "$COMMIT" "$TAG" "$app_digest" "$ops_digest" "$minio_digest" "$mc_digest" > release/manifest.json
+          printf '{"commit":"%s","tag":"%s","timezone":"%s","app":"%s","ops":"%s","minio":"%s","mc":"%s"}\n' "$COMMIT" "$TAG" "$APP_TIMEZONE" "$app_digest" "$ops_digest" "$minio_digest" "$mc_digest" > release/manifest.json
           {
             echo "### Release $TAG"
             echo

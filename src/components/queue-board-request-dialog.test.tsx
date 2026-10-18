@@ -11,7 +11,7 @@ vi.mock("./dashboard", () => ({
     <span>{canCreatePatient ? "Cadastro disponível" : "Cadastro restrito"}</span>
     <button onClick={() => void onRetryServices()}>Recarregar serviços</button>
     <button onClick={onClose}>Fechar solicitação</button>
-    <button onClick={onCreated}>Solicitação criada</button>
+    <button onClick={() => onCreated({ id: "created", requestCode: "EX-created", priority: "ROUTINE", createdAt: "2026-10-11T12:00:00Z", patient: { id: "patient", displayName: "Thor", species: "Canino", externalId: "P-1" }, items: [] })}>Solicitação criada</button>
   </section>
 }));
 

@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-12T02:01:30.553135+00:00",
+  "status": "PILOT_OWNER_CONFIRMED_EXECUTION_AND_ACCEPTANCE_PENDING",
+  "owner": {
+    "reference": "Solicitante do projeto, usuário desta sessão",
+    "confirmation": "eu mesmo vou fazer isso",
+    "confirmationDate": "2026-10-12",
+    "responsibilities": [
+      "validar os fluxos hospitalares",
+      "registrar o aceite do piloto após os ensaios"
+    ],
+    "formalIdentityInSignedForm": "PENDING_AT_EXECUTION"
+  },
+  "systems": {
+    "HIS": "cvg-his-v4 instalado na VPS, informado pelo solicitante",
+    "LIS": "UNKNOWN",
+    "PACS": "UNKNOWN"
+  },
+  "candidateAtConfirmation": {
+    "publishedCommit": "ced60a6aaa8d12f0428f1da7fbb647a208c8d3e2",
+    "selectedSourceFingerprintSha256": "c78ea159e0a7a2a04f4b2bcb0b9631a5d835e22b53e8f989e320641aeb2f0cd5",
+    "sourceManifest": "../build/HOSPITAL_PLANNER_MUTATION_CI_SOURCE_MANIFEST_2026-10-12.json",
+    "meaning": "Capture of the published sources when responsibility was confirmed. This record changes only pilot planning documentation, not selected code/test inputs."
+  },
+  "pilotExecution": {
+    "status": "NOT_STARTED",
+    "resultsRecorded": false,
+    "signedAcceptanceRecorded": false,
+    "goNoGoRecorded": false,
+    "releaseApplied": false
+  },
+  "BLD-HPL-042": "PARTIAL_EXTERNAL_HOMOLOGATION",
+  "BLD-HPL-051": "OPEN",
+  "done": false,
+  "limits": [
+    "Responsabilidade de UAT confirmada; execução, resultados e aceite assinado permanecem pendentes.",
+    "Clinical content, integration mappings/endpoints, target infrastructure evidence and signed results are still recorded in the pilot package.",
+    "No credentials, patient identifiers or clinical data are stored in this record."
+  ]
+}

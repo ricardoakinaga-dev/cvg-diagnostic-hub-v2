@@ -1,6 +1,17 @@
-import type { StateStore } from "../src/server/domain/models";
-import type { ArchivedAttachmentKey } from "../src/server/storage/attachments-reconcile";
+import type { StateStore, StoreState } from "../src/server/domain/models";
+import type { ArchivedAttachmentKey, ReconcilableAttachment } from "../src/server/storage/attachments-reconcile";
 import type { RestorableAttachmentBytes } from "./attachment-bytes";
+
+/** Both native ledgers reference the same private bucket. Pending/quarantined
+ * bytes remain optional legitimate references; recovery never promotes them.
+ * uploadStatus here classifies recovery readiness only, not the persisted row. */
+export function activeAttachmentReferences(state: Pick<StoreState, "attachments" | "hospitalTaskAttachments">): (ReconcilableAttachment & RestorableAttachmentBytes)[] {
+  return [...state.attachments, ...state.hospitalTaskAttachments].map((attachment) => ({
+    id: attachment.id, storageKey: attachment.storageKey,
+    uploadStatus: attachment.uploadStatus === "FINALIZED" && attachment.scanStatus !== "CLEAN" ? "UPLOADED" : attachment.uploadStatus,
+    uploadClaimToken: attachment.uploadClaimToken, checksum: attachment.checksum, sizeBytes: attachment.sizeBytes
+  }));
+}
 
 /** Archived attachments remain part of the recovered clinical record until the archive rows themselves are purged. */
 export async function archivedAttachmentReferences(store: StateStore): Promise<(ArchivedAttachmentKey & RestorableAttachmentBytes)[]> {

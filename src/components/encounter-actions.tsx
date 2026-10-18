@@ -6,6 +6,7 @@ import { ActionButton } from "@cvg/ui";
 import { apiFetch, getSafeErrorMessage } from "./api-client";
 import { useDialogFocus } from "./use-dialog-focus";
 import { Icon } from "./ui-icons";
+import { HospitalNewAdmissionFields } from "./hospital-bed-picker";
 
 export const encounterTypeLabels: Record<Encounter["type"], string> = {
   OUTPATIENT: "Atendimento externo",
@@ -18,8 +19,7 @@ export function EncounterOpenDialog({ patientId, onClose, onOpened }: { patientI
   const dialogRef = useRef<HTMLElement>(null);
   const typeRef = useRef<HTMLSelectElement>(null);
   const [encounterType, setEncounterType] = useState<Encounter["type"]>("OUTPATIENT");
-  const [ward, setWard] = useState("");
-  const [bed, setBed] = useState("");
+  const [bedResourceId, setBedResourceId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useDialogFocus(dialogRef, onClose, typeRef);
@@ -27,6 +27,7 @@ export function EncounterOpenDialog({ patientId, onClose, onOpened }: { patientI
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
+    if (encounterType === "INPATIENT" && !bedResourceId) { setError("Selecione um leito cadastrado elegível para abrir a internação."); return; }
     setBusy(true);
     setError("");
     try {
@@ -34,7 +35,7 @@ export function EncounterOpenDialog({ patientId, onClose, onOpened }: { patientI
         method: "POST",
         body: JSON.stringify({
           encounterType,
-          ...(encounterType === "INPATIENT" ? { ward: ward.trim(), bed: bed.trim() } : {})
+          ...(encounterType === "INPATIENT" ? { bedResourceId } : {})
         })
       });
       onOpened(result);
@@ -53,7 +54,7 @@ export function EncounterOpenDialog({ patientId, onClose, onOpened }: { patientI
       </div>
       <form onSubmit={(event) => void submit(event)}>
         <label>Tipo de atendimento<select ref={typeRef} value={encounterType} onChange={(event) => setEncounterType(event.target.value as Encounter["type"])}>{(Object.keys(encounterTypeLabels) as Encounter["type"][]).map((type) => <option key={type} value={type}>{encounterTypeLabels[type]}</option>)}</select></label>
-        {encounterType === "INPATIENT" && <div className="patient-form-grid patient-admission-fields"><label>Ala ou unidade<input value={ward} onChange={(event) => setWard(event.target.value)} maxLength={100} required placeholder="Ex.: UTI 1" /></label><label>Leito<input value={bed} onChange={(event) => setBed(event.target.value)} maxLength={100} required placeholder="Ex.: Box 03" /></label></div>}
+        {encounterType === "INPATIENT" && <HospitalNewAdmissionFields patientId={patientId} value={bedResourceId} onChange={setBedResourceId} />}
         {error && <div className="form-alert" role="alert">{error}</div>}
         <div className="dialog-actions"><button type="button" className="button button-ghost" onClick={onClose}>Cancelar</button><ActionButton type="submit" state={busy ? "pending" : "idle"} icon={<Icon name="arrow-right" size={15} />}>{busy ? "Abrindo…" : "Abrir atendimento"}</ActionButton></div>
       </form>

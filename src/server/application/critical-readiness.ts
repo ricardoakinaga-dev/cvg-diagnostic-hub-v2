@@ -49,7 +49,7 @@ export function criticalResultReadiness(state: Pick<StoreState, "users">, enviro
     onCall: acknowledgers.filter((user) => normalizedDepartment(user) === departmentCode).length
   }));
   const departmentsWithoutOnCall = departments.filter((entry) => entry.onCall === 0).map((entry) => entry.departmentCode);
-  const administrators = active.filter((user) => user.role === ADMIN).length;
+  const administrators = active.filter((user) => user.role === ADMIN || user.role === "SUPERADMIN").length;
   const ready = policyStatus === "ACTIVE"
     && redundantChannel.status !== "MISSING"
     && acknowledgers.length > 0

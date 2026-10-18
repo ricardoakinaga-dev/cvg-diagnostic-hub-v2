@@ -1,13 +1,15 @@
 "use client";
 
 import Link from "next/link";
+import { formatHospitalDateTime } from "@/lib/hospital-time";
 import { useRef, useState } from "react";
-import { ITEM_STATES, type ItemState, type OperationalContext, type QueueItem, type SessionRole } from "@cvg/contracts";
+import { ITEM_STATES, type ItemState, type Permission, type OperationalContext, type QueueItem, type SessionRole } from "@cvg/contracts";
 import { ActionButton } from "@cvg/ui";
 import { formatRelativeTime, getSafeErrorMessage } from "./api-client";
 import { PriorityBadge, StatusBadge } from "./status-badge";
-import { actionLabel, canUseWorkflowAction, executeSimpleWorkflowAction, WorkflowAction, WorkflowInputError, workflowActionFor, workflowActionForTransition, type WorkflowActionKind } from "./workflow-action";
+import { actionLabel, canUseGrantedWorkflowAction, executeSimpleWorkflowAction, WorkflowAction, WorkflowInputError, workflowActionFor, workflowActionForTransition, type WorkflowActionKind } from "./workflow-action";
 import { QueueBoardQuickAdd } from "./queue-board-quick-add";
+import { useWorkflowPermissions } from "./workflow-permissions";
 import { useDialogFocus } from "./use-dialog-focus";
 
 export const queueColumnLabels: Record<ItemState, string> = {
@@ -19,10 +21,11 @@ const escalationLabels: Record<OperationalContext["escalationLevel"], string> = 
 
 function formatOptionalDate(value: string | null | undefined): string {
   if (!value || !Number.isFinite(Date.parse(value))) return "Não informado";
-  return new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value));
+  return formatHospitalDateTime(value);
 }
 
-export function QueueBoard({ items, role, departments, refreshing, onComplete }: { items: QueueItem[]; role: SessionRole; departments: string[]; refreshing: boolean; onComplete: () => void }) {
+export function QueueBoard({ items, role, permissions: suppliedPermissions, departments, refreshing, onComplete }: { items: QueueItem[]; role: SessionRole; permissions?: readonly Permission[]; departments: string[]; refreshing: boolean; onComplete: () => void }) {
+  const permissions = useWorkflowPermissions(suppliedPermissions);
   const [peek, setPeek] = useState<{ id: string; action?: WorkflowActionKind }>();
   const [pendingId, setPendingId] = useState<string>();
   const pendingRef = useRef(false);
@@ -37,7 +40,7 @@ export function QueueBoard({ items, role, departments, refreshing, onComplete }:
     if (pendingRef.current || refreshing) return;
     setError("");
     setNotice("");
-    if (!canUseWorkflowAction(role, action, item)) { setError("Seu perfil não permite esta ação."); return; }
+    if (!canUseGrantedWorkflowAction(role, action, item, permissions)) { setError("Seu perfil não permite esta ação."); return; }
     if (!directActions.includes(action)) {
       opener?.focus();
       setPeek({ id: item.id, action: action === "REVIEW_RESULT" || action === "EDIT_RESULT" ? undefined : action });
@@ -80,7 +83,7 @@ export function QueueBoard({ items, role, departments, refreshing, onComplete }:
         <div role="list" aria-label={`Exames: ${queueColumnLabels[state]}`}>
           {items.filter((item) => item.status === state).map((item) => {
             const primary = workflowActionFor(item);
-            const actions = ITEM_STATES.flatMap((target) => { const action = workflowActionForTransition(item, target); return action && canUseWorkflowAction(role, action, item) ? [{ target, action }] : []; });
+            const actions = ITEM_STATES.flatMap((target) => { const action = workflowActionForTransition(item, target); return action && canUseGrantedWorkflowAction(role, action, item, permissions) ? [{ target, action }] : []; });
             return <article key={item.id} role="listitem" className={`queue-card queue-board-card${item.overdue ? " queue-card-overdue" : ""}`} draggable={!refreshing && !pendingId && actions.length > 0} onClick={(event) => {
               if (event.target instanceof Element && event.target.closest("button, a, input, select, textarea, label")) return;
               event.currentTarget.querySelector<HTMLElement>("button")?.focus();
@@ -90,20 +93,21 @@ export function QueueBoard({ items, role, departments, refreshing, onComplete }:
               <div className="queue-board-card-signals"><PriorityBadge priority={item.priority} /><StatusBadge status={item.status} /></div>
               <p className={item.overdue ? "text-danger" : ""}>{item.overdue ? "Atrasado" : formatRelativeTime(item.dueAt)}</p>
               <p>{item.nextAction}</p>
-              {primary && canUseWorkflowAction(role, primary, item) && <ActionButton disabled={Boolean(pendingId) || refreshing} state={pendingId === item.id ? "pending" : "idle"} onClick={(event) => void run(item, primary, event.currentTarget)}>{actionLabel[primary]}</ActionButton>}
+              {primary && canUseGrantedWorkflowAction(role, primary, item, permissions) && <ActionButton disabled={Boolean(pendingId) || refreshing} state={pendingId === item.id ? "pending" : "idle"} onClick={(event) => void run(item, primary, event.currentTarget)}>{actionLabel[primary]}</ActionButton>}
+              {item.currentResultId && ["RESULT_AVAILABLE", "REVIEWED", "COMPLETED", "RESULT_VOIDED"].includes(item.status) && (!primary || !canUseGrantedWorkflowAction(role, primary, item, permissions)) && <button type="button" className="button button-ghost" onClick={(event) => { event.currentTarget.focus(); setPeek({ id: item.id }); }}>Abrir resultado</button>}
               {primary !== "RELEASE_RESULT" && actions.some(({ action }) => action === "RELEASE_RESULT") && <ActionButton disabled={Boolean(pendingId) || refreshing} state={pendingId === item.id ? "pending" : "idle"} onClick={() => void run(item, "RELEASE_RESULT")}>Liberar resultado</ActionButton>}
               <label className="queue-board-move"><span>Mover exame</span><select className="queue-board-move-select" aria-label={`Mover ${item.service.name} de ${item.patient.displayName}`} value="" disabled={Boolean(pendingId) || refreshing || actions.length === 0} onChange={(event) => move(item, event.target.value as ItemState, event.currentTarget)}><option value="">Escolha o estado…</option>{actions.map(({ target }) => <option key={target} value={target}>{queueColumnLabels[target]}</option>)}</select></label>
             </article>;
           })}
         </div>
-        {state === "REQUESTED" && ["MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardQuickAdd departments={role === "MANAGER" ? departments : []} refreshing={refreshing} onCreated={onComplete} disabled={refreshing || Boolean(pendingId)} />}
+        {state === "REQUESTED" && permissions.includes("request.create") && ["SUPERADMIN", "MANAGER", "VETERINARIAN", "VET", "INPATIENT_TEAM"].includes(role) && <QueueBoardQuickAdd departments={["MANAGER", "SUPERADMIN"].includes(role) ? departments : []} refreshing={refreshing} onCreated={onComplete} disabled={refreshing || Boolean(pendingId)} />}
       </section>)}
     </div>
-    {selected && <QueuePeek key={`${selected.id}:${peek?.action ?? "context"}`} item={selected} role={role} initialAction={peek?.action} onClose={closePeek} onComplete={() => { closePeek(); onComplete(); }} onDraftCreated={onComplete} />}
+    {selected && <QueuePeek key={`${selected.id}:${peek?.action ?? "context"}`} item={selected} role={role} permissions={permissions} initialAction={peek?.action} onClose={closePeek} onComplete={() => { closePeek(); onComplete(); }} onDraftCreated={onComplete} />}
   </>;
 }
 
-function QueuePeek({ item, role, initialAction, onClose, onComplete, onDraftCreated }: { item: QueueItem; role: SessionRole; initialAction?: WorkflowActionKind; onClose: () => void; onComplete: () => void; onDraftCreated: () => void }) {
+function QueuePeek({ item, role, permissions, initialAction, onClose, onComplete, onDraftCreated }: { item: QueueItem; role: SessionRole; permissions: readonly Permission[]; initialAction?: WorkflowActionKind; onClose: () => void; onComplete: () => void; onDraftCreated: () => void }) {
   const drawerRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const [action, setAction] = useState(initialAction);
@@ -114,8 +118,8 @@ function QueuePeek({ item, role, initialAction, onClose, onComplete, onDraftCrea
     <p>{item.patient.displayName} · {item.patient.species} · {item.patient.externalId}</p><p>{item.requestCode}</p>
     <StatusBadge status={item.status} /><PriorityBadge priority={item.priority} />
     <dl className="operation-context-list"><div><dt>Responsável atual</dt><dd>{operation.currentOwner.label}</dd></div><div><dt>Próxima ação</dt><dd>{operation.nextAction.label}</dd></div><div><dt>Bloqueado por</dt><dd>{operation.blockedBy?.label ?? "Sem bloqueio registrado"}</dd></div><div><dt>Aguardando desde</dt><dd>{formatOptionalDate(operation.waitingSince)}</dd></div><div><dt>Prazo esperado</dt><dd className={item.overdue ? "text-danger" : ""}>{formatOptionalDate(operation.expectedBy ?? item.dueAt)}</dd></div><div><dt>Escalonamento operacional</dt><dd><span className={`escalation-badge escalation-${operation.escalationLevel.toLowerCase()}`}>{escalationLabels[operation.escalationLevel]}</span></dd></div></dl>
-    <WorkflowAction key={action ?? "context"} item={item} initialAction={action} role={role} onComplete={onComplete} onDraftCreated={onDraftCreated} />
-    {!action && item.currentResultId && ["RESULT_AVAILABLE", "REVIEWED", "COMPLETED"].includes(item.status) && canUseWorkflowAction(role, "AMEND", item) && <button type="button" className="button button-ghost" onClick={() => setAction("AMEND")}>Emendar resultado</button>}
+    <WorkflowAction key={action ?? "context"} item={item} initialAction={action} role={role} permissions={permissions} onComplete={onComplete} onDraftCreated={onDraftCreated} />
+    {!action && item.currentResultId && ["RESULT_AVAILABLE", "REVIEWED", "COMPLETED"].includes(item.status) && canUseGrantedWorkflowAction(role, "AMEND", item, permissions) && <button type="button" className="button button-ghost" onClick={() => setAction("AMEND")}>Emendar resultado</button>}
     <Link className="button button-ghost" href={`/requests/${item.requestId}#${item.id}`}>Abrir workspace completo</Link>
   </aside></div>;
 }

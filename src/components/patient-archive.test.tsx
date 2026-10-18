@@ -14,13 +14,38 @@ const entry = {
 };
 
 describe("PatientArchive", () => {
+  it("continues with a cursor, retains the confirmed page on failure and deduplicates retried entries", async () => {
+    const older = { ...entry, requestId: "older", requestCode: "EX-OLDER" };
+    const fetch = vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValueOnce({ data: [entry], meta: { nextCursor: "cursor+/=", total: 2 } } as never).mockRejectedValueOnce(new Error("offline")).mockResolvedValueOnce({ data: [entry, older], meta: { total: 2 } } as never);
+    render(<PatientArchive patientId="patient-thor" />);
+    fireEvent.click(screen.getByRole("button", { name: "Expandir arquivo" }));
+    await screen.findByRole("link", { name: entry.requestCode });
+    fireEvent.click(screen.getByRole("button", { name: "Carregar mais exames arquivados" }));
+    await screen.findByRole("alert");
+    expect(screen.getByRole("link", { name: entry.requestCode })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect(await screen.findByRole("link", { name: "EX-OLDER" })).toBeInTheDocument();
+    expect(screen.getAllByRole("link")).toHaveLength(2);
+    expect(fetch).toHaveBeenLastCalledWith("/patients/patient-thor/archive?limit=50&cursor=cursor%2B%2F%3D");
+    expect(screen.queryByRole("button", { name: "Carregar mais exames arquivados" })).not.toBeInTheDocument();
+  });
+
+  it("does not reuse the previous patient's archive when the patient changes", async () => {
+    vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue({ data: [entry], meta: {} } as never);
+    const { rerender } = render(<PatientArchive patientId="patient-thor" />);
+    fireEvent.click(screen.getByRole("button", { name: "Expandir arquivo" }));
+    await screen.findByRole("link", { name: entry.requestCode });
+    rerender(<PatientArchive patientId="patient-mel" />);
+    expect(screen.queryByRole("link", { name: entry.requestCode })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expandir arquivo" })).toHaveAttribute("aria-expanded", "false");
+  });
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
   });
 
   it("stays collapsed and does not load anything until expanded", () => {
-    const fetch = vi.spyOn(apiClient, "apiFetch").mockResolvedValue([] as never);
+    const fetch = vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue({ data: [], meta: {} } as never);
     render(<PatientArchive patientId="patient-thor" />);
     expect(screen.getByRole("heading", { name: "Arquivo (exames com mais de 24 meses)" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Expandir arquivo" })).toHaveAttribute("aria-expanded", "false");
@@ -28,7 +53,7 @@ describe("PatientArchive", () => {
   });
 
   it("loads lazily on expand, lists the summaries with a link to the read-only page and does not reload", async () => {
-    const fetch = vi.spyOn(apiClient, "apiFetch").mockResolvedValue([entry] as never);
+    const fetch = vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue({ data: [entry], meta: {} } as never);
     render(<PatientArchive patientId="patient-thor" />);
     fireEvent.click(screen.getByRole("button", { name: "Expandir arquivo" }));
 
@@ -44,7 +69,7 @@ describe("PatientArchive", () => {
   });
 
   it("pluralizes attachments and tolerates an entry without services", async () => {
-    vi.spyOn(apiClient, "apiFetch").mockResolvedValue([{ ...entry, services: [], attachmentCount: 3 }] as never);
+    vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue({ data: [{ ...entry, services: [], attachmentCount: 3 }], meta: {} } as never);
     render(<PatientArchive patientId="patient-thor" />);
     fireEvent.click(screen.getByRole("button", { name: "Expandir arquivo" }));
     expect(await screen.findByText("Sem exames")).toBeInTheDocument();
@@ -52,14 +77,14 @@ describe("PatientArchive", () => {
   });
 
   it("explains an empty archive", async () => {
-    vi.spyOn(apiClient, "apiFetch").mockResolvedValue([] as never);
+    vi.spyOn(apiClient, "apiFetchWithMeta").mockResolvedValue({ data: [], meta: {} } as never);
     render(<PatientArchive patientId="patient-thor" />);
     fireEvent.click(screen.getByRole("button", { name: "Expandir arquivo" }));
     expect(await screen.findByText("Nenhum exame arquivado")).toBeInTheDocument();
   });
 
   it("shows a safe error and retries", async () => {
-    const fetch = vi.spyOn(apiClient, "apiFetch").mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce([entry] as never);
+    const fetch = vi.spyOn(apiClient, "apiFetchWithMeta").mockRejectedValueOnce(new Error("boom")).mockResolvedValueOnce({ data: [entry], meta: {} } as never);
     render(<PatientArchive patientId="patient-thor" />);
     fireEvent.click(screen.getByRole("button", { name: "Expandir arquivo" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Arquivo indisponível");

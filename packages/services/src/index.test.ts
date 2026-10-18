@@ -8,6 +8,10 @@ import {
 } from "./index";
 
 describe("shared browser service client", () => {
+  it.each(["INTAKE_REJECTION_POLICY_CHANGED", "INTAKE_REJECTION_POLICY_UNAVAILABLE"])("explains current triage policy recovery without exposing server text (%s)", (code) => {
+    const error = new ApiClientError(409, { error: { code, message: "private configuration detail" } });
+    expect(error.message).toMatch(/Atualize os motivos/); expect(error.message).not.toContain("private");
+  });
   it("normalizes known and unknown failures without exposing server details", () => {
     const known = new ApiClientError(403, {
       error: { code: "SCOPE_DENIED", correlationId: "corr-1", message: "internal detail" },

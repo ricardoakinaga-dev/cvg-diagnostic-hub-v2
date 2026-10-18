@@ -4,6 +4,9 @@ import { ITEM_STATES, PRIORITIES, ROLES } from "@cvg/contracts";
 import type { ItemState, Permission, Priority, RoleCode, WorkflowType } from "@cvg/contracts";
 import type { Admission, Attachment, AuditEvent, DiagnosticItem, DiagnosticRequest, DiagnosticService, Notification, Procedure, ProcedureSchedule, ReasonCode, Result, ResultVersion, Sample, StateStore, StoreState, User } from "../domain/models";
 import type { CommandMeta, NotificationAcknowledgeInput, CreateRequestInput, ReceiveSampleInput, RecollectionInput, ResultDraftInput, ReleaseInput, ReviewInput, AmendInput, ScheduleInput, CancelInput, RejectInput, VoidInput, AttachmentUploadInput, DiagnosticServiceCreateInput, DiagnosticServicePatchInput, ReasonCodeCreateInput, ReasonCodePatchInput, UserRoleUpdateInput, ManagedUserCreateInput, ManagedUserDeactivateInput, ManagedUser, ManagementOverview, DashboardIndicatorKey, DashboardIndicator, DashboardWindow, DashboardView, RequestListFilters, SearchResultType, SearchFilters, SearchResult, TimelineFilters, TimelineResult, RequestView, ResultView, ItemView, SampleCommandResult, ResultDraftCommandResult, ResultReleaseCommandResult, ReviewCommandResult, ItemCommandResult, ProcedureScheduleCommandResult, ProcedureRescheduleCommandResult, ProcedureExecutionCommandResult, AmendCommandResult, VoidCommandResult, PublicAttachment, AttachmentSessionResult, AttachmentFinalizationResult, PatientDiagnosticsResult, ReportView } from "./service-types";
+import { resultCapabilities } from "./result-capabilities";
+import { definitionForCommand, serviceWithDefinition, snapshotForResult } from "./exam-definition";
+import { assertApprovedLaboratoryReferences } from "./laboratory-reference-policy";
 import { canAccessResource, managerCanAccessDepartment, managerDepartmentCodes } from "../security/authorization";
 import { ApiError } from "../http/envelope";
 import { hashPassword } from "../security/password";
@@ -108,7 +111,10 @@ function normalizedResultContent(
   const template = service.workflowType === "LABORATORY" && service.resultSchema === "NUMERIC_PANEL"
     ? service.resultTemplate
     : undefined;
-  if (!template) return { ...content };
+  if (!template) {
+    if (options.requireStructured && service.workflowType === "LABORATORY" && service.resultSchema === "NUMERIC_PANEL") throw new ApiError("RESULT_RELEASE_BLOCKED", "Configure e publique o painel laboratorial antes de liberar o resultado.", 422);
+    return { ...content };
+  }
   if (template.status !== "ACTIVE") {
     throw new ApiError("RESULT_RELEASE_BLOCKED", "O painel laboratorial não está ativo para este serviço.", 422);
   }
@@ -124,6 +130,7 @@ function normalizedResultContent(
   if (!validation.ok) {
     throw new ApiError("VALIDATION_ERROR", "O resultado estruturado não corresponde ao painel configurado.", 422, { issues: validation.issues });
   }
+  if (!template.approval) for (const observation of validation.value.observations) observation.flag = "UNINTERPRETED";
   return validation.value as unknown as Record<string, unknown>;
 }
 
@@ -241,7 +248,9 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         if (previousVersion && previousVersion.status !== "VOIDED") {
           throw new ApiError("INVALID_STATE_TRANSITION", "Já existe um draft ou resultado para este item.", 409);
         }
-        const normalizedContent = normalizedResultContent(service, input.content);
+        const capture = definitionForCommand(originalState, item, previousVersion, currentActor.id, now(), input.correlationId ?? id("corr"));
+        originalState = capture.state;
+        const normalizedContent = normalizedResultContent(serviceWithDefinition(service, capture.snapshot), input.content);
         const versionId = id("result-version");
         const resultId = existingResult?.id ?? id("result");
         const version: ResultVersion = {
@@ -250,6 +259,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
           sequence: (previousVersion?.sequence ?? 0) + 1,
           status: "DRAFT",
           content: normalizedContent,
+          definitionSnapshot: capture.snapshot,
           narrative,
           conclusion: input.conclusion?.trim(),
           authorId: currentActor.id,
@@ -304,7 +314,9 @@ export function createResultService({ store, storage }: ApplicationServiceContex
           throw new ApiError("INVALID_STATE_TRANSITION", "Somente o draft atual e não liberado pode ser editado.", 409);
         }
         const narrative = requireText(input.narrative, "narrative", MAX_RESULT_NARRATIVE_LENGTH);
-        const updatedVersion: ResultVersion = { ...view.version, content: normalizedResultContent(view.service, input.content), narrative, conclusion: input.conclusion?.trim(), version: view.version.version + 1 };
+        const capture = definitionForCommand(originalState, view.item, view.version, currentActor.id, now(), input.correlationId ?? id("corr"));
+        originalState = capture.state;
+        const updatedVersion: ResultVersion = { ...view.version, definitionSnapshot: capture.snapshot, content: normalizedResultContent(serviceWithDefinition(view.service, capture.snapshot), input.content), narrative, conclusion: input.conclusion?.trim(), version: view.version.version + 1 };
         const updatedResult: Result = { ...result, version: result.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
         let nextState = { ...originalState, results: originalState.results.map((entry) => entry.id === result.id ? updatedResult : entry), resultVersions: originalState.resultVersions.map((entry) => entry.id === view.version.id ? updatedVersion : entry) };
@@ -332,7 +344,10 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         const previousVersion = findById(originalState.resultVersions, view.version.supersedesId);
         const historicalCorrection = Boolean(view.version.amendmentReason && previousVersion?.resultId === result.id && previousVersion.status === "SUPERSEDED");
         requireReceivedSample(originalState, view.item, historicalCorrection);
-        const normalizedReleaseContent = normalizedResultContent(view.service, view.version.content, { requireStructured: true });
+        const capture = definitionForCommand(originalState, view.item, view.version, currentActor.id, now(), input.correlationId ?? id("corr"));
+        originalState = capture.state;
+        const normalizedReleaseContent = normalizedResultContent(serviceWithDefinition(view.service, capture.snapshot), view.version.content, { requireStructured: true });
+        assertApprovedLaboratoryReferences(capture.snapshot.definition.resultTemplate, capture.snapshot, normalizedReleaseContent);
         const releaseCheckTime = Date.now();
         const blockedAttachments = originalState.attachments.filter((attachment) =>
           attachment.resultVersionId === view.version.id
@@ -382,7 +397,7 @@ export function createResultService({ store, storage }: ApplicationServiceContex
           ]
         };
         const releasedAt = now();
-        const releasedVersion: ResultVersion = { ...view.version, content: normalizedReleaseContent, status: "RELEASED", releasedAt, releasedBy: currentActor.id, critical: input.critical === true, version: view.version.version + 1 };
+        const releasedVersion: ResultVersion = { ...view.version, definitionSnapshot: capture.snapshot, content: normalizedReleaseContent, status: "RELEASED", releasedAt, releasedBy: currentActor.id, critical: input.critical === true, version: view.version.version + 1 };
         const releasedResult: Result = { ...result, lifecycleStatus: "RELEASED", currentVersionId: releasedVersion.id, version: result.version + 1 };
         const releasedItem = { ...view.item, status: transitionItem(view.item.status, "RESULT_AVAILABLE", view.item.workflowType), releasedAt, version: view.item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
@@ -424,8 +439,10 @@ export function createResultService({ store, storage }: ApplicationServiceContex
         if (!["RELEASED", "REVIEWED", "COMPLETED"].includes(view.version.status) || !["RESULT_AVAILABLE", "REVIEWED", "COMPLETED"].includes(view.item.status)) throw new ApiError("INVALID_STATE_TRANSITION", "Somente um resultado liberado pode ser emendado.", 409);
         const reason = requireText(input.reason, "reason", 500);
         const narrative = requireText(input.narrative, "narrative", MAX_RESULT_NARRATIVE_LENGTH);
+        const capture = definitionForCommand(originalState, view.item, view.version, currentActor.id, now(), input.correlationId ?? id("corr"));
+        originalState = capture.state;
         const supersededVersion = { ...view.version, status: "SUPERSEDED" as const, version: view.version.version + 1 };
-        const nextVersion: ResultVersion = { id: id("result-version"), resultId: result.id, sequence: view.version.sequence + 1, status: "DRAFT", content: normalizedResultContent(view.service, input.content), narrative, conclusion: input.conclusion?.trim(), authorId: currentActor.id, createdAt: now(), amendmentReason: reason, supersedesId: view.version.id, critical: input.critical === true, needsReReview: true, version: 1 };
+        const nextVersion: ResultVersion = { id: id("result-version"), resultId: result.id, sequence: view.version.sequence + 1, status: "DRAFT", definitionSnapshot: capture.snapshot, content: normalizedResultContent(serviceWithDefinition(view.service, capture.snapshot), input.content), narrative, conclusion: input.conclusion?.trim(), authorId: currentActor.id, createdAt: now(), amendmentReason: reason, supersedesId: view.version.id, critical: input.critical === true, needsReReview: true, version: 1 };
         const amendedResult = { ...result, currentVersionId: nextVersion.id, lifecycleStatus: "DRAFT" as const, needsReReview: true, version: result.version + 1 };
         const amendedItem = { ...view.item, status: transitionItem(view.item.status, "RESULT_VOIDED", view.item.workflowType), version: view.item.version + 1 };
         const correlationId = input.correlationId ?? id("corr");
@@ -533,14 +550,33 @@ export function createResultService({ store, storage }: ApplicationServiceContex
 
     // Audited reads answer from the current snapshot and record the access beside the write queue (D-061): opening
     // a result must not wait behind, nor delay, the clinical writes.
-    async getResult(actor: User, resultId: string): Promise<ResultView> {
+    async getResult(actor: User, resultId: string, options: { versionId?: string } = {}): Promise<ResultView> {
       const state = await store.readState();
       const currentActor = requireActiveUser(state, actor);
       const result = resultFor(state, resultId);
-      const view = resultView(state, result);
-      const eventType = requireCurrentResultRead(currentActor, view);
-      const response = { ...view, request: requestViewForActor(state, currentActor, view.request) };
-      await store.appendReadAudit(createAudit(eventType, currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id }));
+      const currentView = resultView(state, result);
+      const selected = options.versionId
+        ? visibleResultVersions(state, result.id).find((version) => version.id === options.versionId)
+        : undefined;
+      if (options.versionId && !selected) throw new ApiError("NOT_FOUND", "Versão não disponível.", 404);
+      const view = selected ? { ...currentView, version: selected } : currentView;
+      const resource = { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code };
+      const eventType = selected ? "ResultHistoryRead" : requireCurrentResultRead(currentActor, view);
+      if (selected) {
+        requirePermission(currentActor, "result.history.view", resource);
+        requirePermission(currentActor, "result.view", resource);
+      }
+      const definitionSnapshot = snapshotForResult(view.item, view.version);
+      const frozenService = serviceWithDefinition(view.service, definitionSnapshot);
+      const { resultTemplate: _unknownTemplate, ...unknownService } = frozenService;
+      const response = { ...view, version: definitionSnapshot ? { ...view.version, definitionSnapshot } : view.version, definitionProvenance: definitionSnapshot?.provenance ?? "UNKNOWN_LEGACY" as const, service: !definitionSnapshot && view.version.status !== "DRAFT" ? unknownService : frozenService, permissions: selected ? [] : resultCapabilities(currentActor, view), request: requestViewForActor(state, currentActor, view.request) };
+      await store.appendReadAudit(createAudit(eventType, currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id, historical: Boolean(selected) }));
+      // Audit persistence yields to other requests. Do not answer with clinical data after revocation.
+      const latestActor = requireActiveUser(await store.readState(), actor);
+      if (selected) {
+        requirePermission(latestActor, "result.history.view", resource);
+        requirePermission(latestActor, "result.view", resource);
+      } else requireCurrentResultRead(latestActor, view);
       return response;
     },
 
@@ -554,7 +590,9 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       const attachments = state.attachments
         .filter((attachment) => attachment.resultVersionId === view.version.id && attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED")
         .map(publicAttachment);
-      const response = { ...view, request: requestViewForActor(state, currentActor, view.request), attachments };
+      const definitionSnapshot = snapshotForResult(view.item, view.version);
+      const { resultTemplate: _unknownTemplate, ...unknownService } = view.service;
+      const response = { ...view, definitionProvenance: definitionSnapshot?.provenance ?? "UNKNOWN_LEGACY" as const, service: definitionSnapshot ? serviceWithDefinition(view.service, definitionSnapshot) : unknownService, request: requestViewForActor(state, currentActor, view.request), attachments };
       await store.appendReadAudit(createAudit("ReportRead", currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id, attachmentCount: attachments.length }));
       return response;
     },
@@ -565,9 +603,13 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       const result = resultFor(state, resultId);
       const view = resultView(state, result);
       requirePermission(currentActor, "result.history.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+      requirePermission(currentActor, "result.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
       const versions = visibleResultVersions(state, result.id);
       if (versions.length === 0) throw new ApiError("NOT_FOUND", "Resultado não disponível.", 404);
       await store.appendReadAudit(createAudit("ResultHistoryRead", currentActor.id, "Result", result.id, id("corr"), undefined, undefined, { versionCount: versions.length }));
+      const latestActor = requireActiveUser(await store.readState(), actor);
+      requirePermission(latestActor, "result.history.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+      requirePermission(latestActor, "result.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
       return versions;
     },
 

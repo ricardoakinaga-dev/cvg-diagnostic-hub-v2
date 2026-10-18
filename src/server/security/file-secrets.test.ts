@@ -11,6 +11,46 @@ const readFile = (file: string): string => {
   return content;
 };
 
+const exporterImage = "quay.io/prometheuscommunity/postgres-exporter:v0.20.0@sha256:215b8299a47328078dabb751d2ffc1fd9a0aad3aa8c7daed36c567d2bd83a8a1";
+const exporterSecretVariables = ["DATA_SOURCE_URI_FILE", "DATA_SOURCE_USER_FILE", "DATA_SOURCE_PASS_FILE"];
+
+function checkComposeSecretInventory(file: string, source: string): { application: string[]; vendor: string[] } {
+  // Keep shared environment anchors in the inventory; only the reviewed vendor
+  // service/image may consume its own three secret variables instead of our loader.
+  const blocks: { service?: string; lines: string[] }[] = [{ lines: [] }];
+  let inServices = false;
+  for (const line of source.split(/\r?\n/)) {
+    if (/^[^\s#]/.test(line)) {
+      inServices = /^services:\s*$/.test(line);
+      blocks.push({ lines: [] });
+    }
+    if (inServices && /^ {2}\S/.test(line)) {
+      const service = /^ {2}([\w.-]+):(?:[ \t]|$)/.exec(line);
+      blocks.push({ service: service?.[1], lines: [] });
+    }
+    blocks[blocks.length - 1].lines.push(line);
+  }
+  const inventory = { application: [] as string[], vendor: [] as string[] };
+  for (const block of blocks) {
+    const content = block.lines.join("\n");
+    const image = /^ {4}image:\s*(\S+)\s*$/m.exec(content)?.[1];
+    for (const match of content.matchAll(/^\s*([A-Z0-9_]+_FILE):\s*(?:"|')?\/run\/secrets\//gm)) {
+      const name = match[1];
+      if (file === "docker-compose.monitoring-postgres.yml" && block.service === "postgres-exporter" && image === exporterImage && exporterSecretVariables.includes(name)) {
+        inventory.vendor.push(name);
+      } else {
+        if (!(FILE_SECRET_VARIABLES as readonly string[]).includes(name)) throw new Error(`${file}/${block.service ?? "shared"}: ${name} is mounted as a secret but the loader does not know it`);
+        inventory.application.push(name);
+      }
+    }
+  }
+  return inventory;
+}
+
+function secretService(service: string, name: string, image = exporterImage): string {
+  return `services:\n  ${service}:\n    image: ${image}\n    environment:\n      ${name}: /run/secrets/private_file\n`;
+}
+
 describe("file secrets (PROD-302)", () => {
   beforeEach(() => files.clear());
 
@@ -40,6 +80,14 @@ describe("file secrets (PROD-302)", () => {
     loadFileSecrets(env, { readFile });
     expect(() => loadFileSecrets(env, { readFile })).not.toThrow();
     expect(env.SESSION_SECRET).toBe("same");
+  });
+
+  it("loads the one-time superadmin credential from a private file and rejects conflicting sources", () => {
+    files.set("/run/secrets/superadmin", "private-temporary-secret\n");
+    const env: Record<string, string | undefined> = { BOOTSTRAP_SUPERADMIN_PASSWORD_FILE: "/run/secrets/superadmin" };
+    expect(loadFileSecrets(env, { readFile }).loaded).toEqual(["BOOTSTRAP_SUPERADMIN_PASSWORD"]);
+    expect(env.BOOTSTRAP_SUPERADMIN_PASSWORD).toBe("private-temporary-secret");
+    expect(() => loadFileSecrets({ ...env, BOOTSTRAP_SUPERADMIN_PASSWORD: "different" }, { readFile })).toThrow("SECRET_CONFLICT:BOOTSTRAP_SUPERADMIN_PASSWORD");
   });
 
   it("refuses a missing or unreadable file instead of starting without the secret", () => {
@@ -122,11 +170,34 @@ describe("file secrets (PROD-302)", () => {
   it("lists every secret file the Compose files mount under /run/secrets", () => {
     const root = path.resolve(__dirname, "../../..");
     const mounted = new Set<string>();
+    const vendor = new Set<string>();
     for (const file of readdirSync(root).filter((entry) => /^docker-compose.*\.ya?ml$/.test(entry))) {
-      for (const match of readFileSync(path.join(root, file), "utf8").matchAll(/^\s*([A-Z0-9_]+_FILE):\s*(?:"|')?\/run\/secrets\//gm)) mounted.add(match[1]);
+      const inventory = checkComposeSecretInventory(file, readFileSync(path.join(root, file), "utf8"));
+      inventory.application.forEach((name) => mounted.add(name));
+      inventory.vendor.forEach((name) => vendor.add(name));
     }
     expect(mounted.size).toBeGreaterThan(10);
-    for (const name of mounted) expect(FILE_SECRET_VARIABLES, `${name} is mounted as a secret but the loader does not know it`).toContain(name);
+    expect([...vendor].sort()).toEqual([...exporterSecretVariables].sort());
+  });
+
+  it.each(exporterSecretVariables)("keeps %s at the reviewed external exporter boundary", (name) => {
+    expect(checkComposeSecretInventory("docker-compose.monitoring-postgres.yml", secretService("postgres-exporter", name))).toEqual({ application: [], vendor: [name] });
+    expect(FILE_SECRET_VARIABLES).not.toContain(name);
+    for (const service of ["app", "worker", "migrate", "bootstrap"]) {
+      expect(() => checkComposeSecretInventory("docker-compose.monitoring-postgres.yml", secretService(service, name))).toThrow(name);
+    }
+  });
+
+  it("rejects unknown application, ops and shared-anchor secrets without blanket vendor exemptions", () => {
+    for (const service of ["app", "worker", "migrate", "bootstrap", "postgres-exporter"]) {
+      expect(() => checkComposeSecretInventory("docker-compose.monitoring-postgres.yml", secretService(service, "UNKNOWN_PASSWORD_FILE"))).toThrow("UNKNOWN_PASSWORD_FILE");
+    }
+    expect(() => checkComposeSecretInventory("docker-compose.prod.yml", secretService("postgres-exporter", "DATA_SOURCE_PASS_FILE"))).toThrow("DATA_SOURCE_PASS_FILE");
+    expect(() => checkComposeSecretInventory("docker-compose.monitoring-postgres.yml", secretService("postgres-exporter", "DATA_SOURCE_PASS_FILE", "unreviewed/exporter:latest"))).toThrow("DATA_SOURCE_PASS_FILE");
+    const vendorThenApp = secretService("postgres-exporter", "DATA_SOURCE_PASS_FILE") + "  app: &application\n    environment:\n      DATA_SOURCE_PASS_FILE: /run/secrets/private_file\n";
+    expect(() => checkComposeSecretInventory("docker-compose.monitoring-postgres.yml", vendorThenApp)).toThrow(/\/app: DATA_SOURCE_PASS_FILE/);
+    expect(() => checkComposeSecretInventory("docker-compose.monitoring-postgres.yml", "x-environment: &shared\n  DATA_SOURCE_PASS_FILE: /run/secrets/private_file\n")).toThrow("DATA_SOURCE_PASS_FILE");
+    expect(checkComposeSecretInventory("docker-compose.prod.yml", secretService("app", "SESSION_SECRET_FILE"))).toEqual({ application: ["SESSION_SECRET_FILE"], vendor: [] });
   });
 });
 

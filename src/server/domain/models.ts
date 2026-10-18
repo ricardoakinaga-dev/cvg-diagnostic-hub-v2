@@ -1,4 +1,7 @@
-import type { ItemState, LaboratoryPanelTemplate, Priority, ResultVersionState, RoleCode, WorkflowType } from "@cvg/contracts";
+import type { DiagnosticPlanning } from "@cvg/contracts";
+import type { ExamDefinitionSnapshot, ItemState, LaboratoryPanelTemplate, Permission, Priority, ResultVersionState, RoleCode, ServiceAccessPolicy, WorkflowType } from "@cvg/contracts";
+export type { HospitalService } from "@cvg/contracts";
+export type { AccessGroup, Department, ExamDefinition, ExamDefinitionProvenance, ExamDefinitionSnapshot, ExamDefinitionVersion, PatientGrant } from "@cvg/contracts";
 
 export type Timestamp = string;
 
@@ -10,6 +13,8 @@ export interface Actor {
   patientIds?: ReadonlyArray<string>;
   serviceCodes?: ReadonlyArray<string>;
   active?: boolean;
+  /** Effective capabilities hydrated from current server policy; never persisted from a request. */
+  permissions?: ReadonlyArray<Permission>;
 }
 
 export interface ScopedResource {
@@ -27,6 +32,8 @@ export interface PasswordResetGrant {
 }
 
 export interface User extends Actor {
+  serviceAccessPolicy?: ServiceAccessPolicy;
+  accessGroupId?: string;
   email: string;
   displayName: string;
   passwordHash: string;
@@ -115,6 +122,7 @@ export interface Admission {
   departmentCode: string;
   ward: string;
   bed: string;
+  bedResourceId?: string;
   admittedAt: Timestamp;
   dischargedAt?: Timestamp;
   responsibleUserId?: string;
@@ -167,10 +175,11 @@ export interface DiagnosticRequest {
   version: number;
 }
 
-export interface DiagnosticItem {
+export interface DiagnosticItem extends DiagnosticPlanning {
   id: string;
   requestId: string;
   serviceId: string;
+  definitionSnapshot?: ExamDefinitionSnapshot;
   departmentCode: string;
   workflowType: WorkflowType;
   priority: Priority;
@@ -210,18 +219,7 @@ export interface Sample {
   version: number;
 }
 
-export interface ProcedureSchedule {
-  id: string;
-  procedureId: string;
-  startsAt: Timestamp;
-  endsAt: Timestamp;
-  resource: string;
-  status: "SCHEDULED" | "CANCELLED" | "COMPLETED";
-  reason?: string;
-  actorId: string;
-  createdAt: Timestamp;
-  version: number;
-}
+export type ProcedureSchedule = import("@cvg/contracts").HospitalSchedule;
 
 export interface Procedure {
   id: string;
@@ -249,6 +247,7 @@ export interface ResultVersion {
   sequence: number;
   status: ResultVersionState;
   content: Record<string, unknown>;
+  definitionSnapshot?: ExamDefinitionSnapshot;
   narrative: string;
   conclusion?: string;
   authorId: string;
@@ -421,6 +420,36 @@ export interface Attachment {
 }
 
 export interface StoreState {
+  hospitalIntegrationCredentials: import("@cvg/contracts").HospitalIntegrationCredential[];
+  hospitalIntegrationMessages: import("@cvg/contracts").HospitalIntegrationMessage[];
+  hospitalHisV4Deliveries: import("@cvg/contracts").HospitalHisV4Delivery[];
+  hospitalAiSuggestions: import("@cvg/contracts").HospitalAiSuggestion[];
+  hospitalDocuments: import("@cvg/contracts").HospitalDocument[];
+  hospitalTaskComments: import("@cvg/contracts").HospitalTaskComment[];
+  hospitalTaskAttachments: import("@cvg/contracts").HospitalTaskAttachment[];
+  workNotifications: import("@cvg/contracts").WorkNotification[];
+  workNotificationPreferences: import("@cvg/contracts").WorkNotificationPreference[];
+  workActivityPreferences: import("@cvg/contracts").WorkActivityPreference[];
+  hospitalReports: import("@cvg/contracts").HospitalReportDefinition[];
+  hospitalReportJobs: (import("@cvg/contracts").HospitalReportJob & { rows?: import("@cvg/contracts").HospitalMetricRow[] })[];
+  hospitalInstitutionSettings: import("@cvg/contracts").HospitalInstitutionSettings[];
+  hospitalUserInvitations: (import("@cvg/contracts").HospitalUserInvitation & { tokenHash: string })[];
+  departments: import("@cvg/contracts").Department[];
+  examDefinitions: import("@cvg/contracts").ExamDefinitionVersion[];
+  hospitalServices: import("@cvg/contracts").HospitalService[];
+  hospitalResources: import("@cvg/contracts").HospitalResource[];
+  hospitalPlans: import("@cvg/contracts").HospitalPlan[];
+  hospitalShifts: import("@cvg/contracts").HospitalShift[];
+  hospitalHandoffs: import("@cvg/contracts").HospitalHandoff[];
+  hospitalChecklistTemplates: import("@cvg/contracts").HospitalChecklistTemplate[];
+  hospitalRecurrences: import("@cvg/contracts").HospitalRecurrence[];
+  hospitalTaskTypes: import("@cvg/contracts").HospitalTaskType[];
+  hospitalTasks: import("@cvg/contracts").HospitalTask[];
+  hospitalTaskDependencies: import("@cvg/contracts").HospitalTaskDependency[];
+  hospitalIntakes: import("@cvg/contracts").HospitalIntake[];
+  savedPlannerViews: import("@cvg/contracts").SavedPlannerView[];
+  accessGroups: import("@cvg/contracts").AccessGroup[];
+  patientGrants: import("@cvg/contracts").PatientGrant[];
   users: User[];
   sessions: Session[];
   patients: Patient[];
@@ -526,10 +555,13 @@ export interface ClinicalArchiveQuery {
   readonly limit?: number;
   /** Skips this many requests of the same order first (paging a patient's archive); a non-negative integer. */
   readonly offset?: number;
+  readonly cursor?: { readonly updatedAt: string; readonly requestId: string };
 }
 
 export interface ClinicalArchiveEntry {
   requestId: string;
+  /** Immutable request update timestamp used by archive keyset pagination. */
+  updatedAt: Timestamp;
   requestCode: string;
   patientId: string;
   encounterId: string;

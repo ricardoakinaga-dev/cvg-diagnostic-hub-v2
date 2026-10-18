@@ -1,0 +1,137 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-10-11T20:25:29.937401+00:00",
+  "delivery": "BLD-HPL-011",
+  "status": "PASS",
+  "meaning": "Ensaio técnico sintético com pg_dump/restore oficiais; não equivale a recuperação do alvo hospitalar, RPO/RTO, offsite ou aceite do piloto.",
+  "summary": {
+    "status": "PASS",
+    "checks": 17,
+    "reportPath": "/tmp/cvg-hpl-full-db-restore-011-20261011/run-1791750049813-7dbeffbe/result.json",
+    "reportSha256": "733ecf9def717a6cc8262c06d209839017cbf4ad2d7c27afb2591352acaadeb9",
+    "evidenceBundle": "/tmp/cvg-hpl-full-db-restore-011-20261011/evidence-011-full-roundtrip-20261011.tar.gz",
+    "evidenceBundleSha256": "59d089ffc6747ca7e1d9f517c235dc75eedd1bf8293ea3d9bb27b50762f5720a",
+    "bundleSizeBytes": 95595,
+    "tables": 46,
+    "rows": 364,
+    "durableAuditEvents": 79,
+    "durableOutboxMessages": 47,
+    "objectsCaptured": 8,
+    "objectsSelectedVerified": 7,
+    "functions": 6,
+    "tableGrants": 322,
+    "profiles": 9,
+    "profileVariants": 27,
+    "preCaptureGroups": "native reduced grant group + native deactivated group, active accounts, restored rights remain denied",
+    "tableFingerprint": "5dc43d1d8db8aed242083b98a2f3af3f22ff15dfc53328bacd768adc46b41254",
+    "stateFingerprint": "597a51333c0b304a5a2e5639749039274fd7b453d1dd3e12a2293992abac3db9",
+    "elapsedLabSeconds": 6.956,
+    "cleanupVerification": "/tmp/cvg-hpl-full-db-restore-011-20261011/run-1791750049813-7dbeffbe/cleanup-verification.json",
+    "limits": [
+      "Synthetic same-cluster PostgreSQL recovery, not a production RPO/RTO or off-site destination drill.",
+      "S3 reconciliation listing is a private local synthetic endpoint; actual object bytes are isolated filesystem recovery.",
+      "No real HIS/LIS/PACS exchange, clinical institutional homologation, hospital account/data or production environment used.",
+      "No commit/deploy; supplementary execution driver and native binary transport exist only under /tmp."
+    ]
+  },
+  "checks": [
+    {
+      "name": "Native post-HPL fixture populated",
+      "status": "PASS",
+      "matrixVariants": 27,
+      "roles": 9,
+      "scenario": "tasks/plans/shifts/OFFERED handoff/checklist/recurrence/claim attachments/critical/archive/doc/saved view/invitation/report/HIS v4 receipt"
+    },
+    {
+      "name": "Official real pg_dump and manifest captured all synthetic objects",
+      "status": "PASS",
+      "databaseChecksum": "91fc010200364a12a8abdfe56d4d403ec7e833fcbf5cfef9928fac643a77dcb8",
+      "sizeBytes": 211060,
+      "objects": 8
+    },
+    {
+      "name": "Original disposable database schema and object directory destroyed after verified capture",
+      "status": "PASS"
+    },
+    {
+      "name": "Corrupted dump blocked by official manifest verifier before any target database mutation",
+      "status": "PASS"
+    },
+    {
+      "name": "Exact restored row fingerprints, function bodies, grants, sequences and migration ledger equal source",
+      "status": "PASS",
+      "tables": 46,
+      "rows": 364,
+      "fingerprint": "5dc43d1d8db8aed242083b98a2f3af3f22ff15dfc53328bacd768adc46b41254"
+    },
+    {
+      "name": "StoreState and all role/active/group/patient/None-selected scopes equal original",
+      "status": "PASS",
+      "stateFingerprint": "597a51333c0b304a5a2e5639749039274fd7b453d1dd3e12a2293992abac3db9",
+      "matrixVariants": 27,
+      "groups": 12
+    },
+    {
+      "name": "All 027 migrations replay as no-op without grant or snapshot proliferation",
+      "status": "PASS"
+    },
+    {
+      "name": "Official restore selection and reconciliation preserve finalized/claim/quarantine while excluding retained historical orphan",
+      "status": "PASS",
+      "selected": 7,
+      "excluded": 1,
+      "integrity": {
+        "ok": true,
+        "verifiedObjects": 7,
+        "failures": []
+      },
+      "counts": {
+        "active": 8,
+        "finalized": 4,
+        "pending": 4,
+        "archived": 0,
+        "objects": 7,
+        "expectedObjects": 4
+      }
+    },
+    {
+      "name": "Native restored reads dereference frozen documents, relations, private metadata and ready objects without confirming critical/handoff/invitation",
+      "status": "PASS"
+    },
+    {
+      "name": "Native pre-capture narrowed and inactivated groups stay restricted after restore while accounts remain active",
+      "status": "PASS"
+    },
+    {
+      "name": "27 restored profile variants preserve 270 effective scope decisions and native inactive/ADMIN/private target denials",
+      "status": "PASS"
+    },
+    {
+      "name": "Native task idempotency and HIS v4 signed delivery replay survive full DB restore without duplication",
+      "status": "PASS"
+    },
+    {
+      "name": "Captured pending export facts survive later completion; native cold archive export dereferences restored payload",
+      "status": "PASS"
+    },
+    {
+      "name": "Native group impact preview/save revocation denies download after object await, old export and command replay with no unauthorized audit",
+      "status": "PASS"
+    },
+    {
+      "name": "Cold restored report denies access revoked by another transaction during archived payload await",
+      "status": "PASS"
+    },
+    {
+      "name": "Recovered session authenticates with original synthetic key, fails after session secret rotation",
+      "status": "PASS"
+    },
+    {
+      "name": "Both privately generated disposable databases and original/restored object working directories cleaned",
+      "status": "PASS"
+    }
+  ],
+  "institutionalAcceptance": "OPEN",
+  "release": "NOT_APPLIED",
+  "evidenceRetention": "O resumo, as verificações e os digests ficam neste registro; logs, scripts de execução e pacote em /tmp são transitórios, sem publicação de CI."
+}
