@@ -585,16 +585,21 @@ export function createResultService({ store, storage }: ApplicationServiceContex
       const currentActor = requireActiveUser(state, actor);
       const result = resultFor(state, reportId);
       const view = resultView(state, result);
+      const resource = { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code };
       requireCurrentResultRead(currentActor, view);
-      requirePermission(currentActor, "attachment.view", { patientId: view.request.patientId, departmentCode: view.service.departmentCode, serviceCode: view.service.code });
+      requirePermission(currentActor, "attachment.view", resource);
       const attachments = state.attachments
         .filter((attachment) => attachment.resultVersionId === view.version.id && attachment.scanStatus === "CLEAN" && attachment.uploadStatus === "FINALIZED")
         .map(publicAttachment);
       const definitionSnapshot = snapshotForResult(view.item, view.version);
       const { resultTemplate: _unknownTemplate, ...unknownService } = view.service;
-      const response = { ...view, definitionProvenance: definitionSnapshot?.provenance ?? "UNKNOWN_LEGACY" as const, service: definitionSnapshot ? serviceWithDefinition(view.service, definitionSnapshot) : unknownService, request: requestViewForActor(state, currentActor, view.request), attachments };
       await store.appendReadAudit(createAudit("ReportRead", currentActor.id, "ResultVersion", view.version.id, id("corr"), undefined, undefined, { resultId: result.id, attachmentCount: attachments.length }));
-      return response;
+      // Audit persistence yields to other requests. Recheck both report permissions
+      // and project the original read snapshot with the actor's remaining scope.
+      const latestActor = requireActiveUser(await store.readState(), actor);
+      requireCurrentResultRead(latestActor, view);
+      requirePermission(latestActor, "attachment.view", resource);
+      return { ...view, definitionProvenance: definitionSnapshot?.provenance ?? "UNKNOWN_LEGACY" as const, service: definitionSnapshot ? serviceWithDefinition(view.service, definitionSnapshot) : unknownService, request: requestViewForActor(state, latestActor, view.request), attachments };
     },
 
     async listResultVersions(actor: User, resultId: string): Promise<ResultVersion[]> {

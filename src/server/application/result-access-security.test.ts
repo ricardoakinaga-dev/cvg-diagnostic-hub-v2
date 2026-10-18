@@ -3,6 +3,8 @@ import type { User } from "../domain/models";
 import { createDemoState, syntheticHemogramContent } from "../store/fixtures";
 import { MemoryStore } from "../store/memory-store";
 import { createApplicationService } from "./service";
+import { authenticateRequest, loginUser } from "../security/session";
+import type { RequestView } from "./service-types";
 
 function requiredUser(users: User[], email: string): User {
   const user = users.find((entry) => entry.email === email);
@@ -225,6 +227,105 @@ describe("clinical result access security", () => {
       await context.store.transaction((state) => ({ state: { ...state, users: state.users.map((user) => user.id === context.vet.id ? { ...user, patientIds: [] } : user) }, result: undefined }));
     };
     await expect(context.service.getResult(context.vet, released.result.id, { versionId: released.version.id })).rejects.toMatchObject({ status: 404 });
+  });
+
+  it.each([
+    "session revocation",
+    "user deactivation",
+    "patient scope removal",
+    "service scope removal",
+    "manager delegation removal",
+    "result permission removal",
+    "attachment permission removal",
+    "draft edit permission removal"
+  ] as const)("rejects a report after %s during its audit write", async (change) => {
+    const context = setup();
+    const { draft } = await createHemogramDraft(context);
+    const result = change === "draft edit permission removal" ? draft : await context.service.releaseResult(context.lab, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "report-race-release"
+    });
+    const user = change === "service scope removal" || change === "draft edit permission removal" ? context.lab
+      : change === "manager delegation removal" ? context.manager : context.vet;
+    const login = await loginUser(context.store, user.email, "result-security-password");
+    const actor = await authenticateRequest(context.store, new Request("http://localhost/api/v1/reports", {
+      headers: { cookie: `cvg_session=${login.sessionToken}` }
+    }));
+    // Every case begins with an authenticated actor who can read this exact report.
+    await expect(context.service.getReport(actor, result.result.id)).resolves.toMatchObject({ version: { id: result.version.id } });
+    const before = context.store.getState();
+    const append = context.store.appendReadAudit.bind(context.store);
+    context.store.appendReadAudit = async (event) => {
+      await append(event);
+      expect(event.eventType).toBe("ReportRead");
+      // Commit the racing change while getReport is awaiting audit persistence.
+      // Use the real store so the final authorization must read a newer snapshot.
+      await context.store.transaction((state) => ({
+        state: {
+          ...state,
+          sessions: state.sessions.map((session) => change === "session revocation" && session.id === actor.sessionId
+            ? { ...session, revokedAt: new Date().toISOString(), version: session.version + 1 } : session),
+          users: state.users.map((entry) => entry.id !== actor.id ? entry
+            : change === "user deactivation" ? { ...entry, active: false, version: entry.version + 1 }
+              : change === "patient scope removal" ? { ...entry, patientIds: [] }
+                : change === "service scope removal" ? { ...entry, serviceCodes: [] }
+                  : change === "manager delegation removal" ? { ...entry, managedDepartmentCodes: [] } : entry),
+          accessGroups: state.accessGroups.map((group) => group.id !== actor.accessGroupId ? group : {
+            ...group,
+            permissions: group.permissions.filter((permission) => !(
+              change === "result permission removal" && permission === "result.view"
+              || change === "attachment permission removal" && permission === "attachment.view"
+              || change === "draft edit permission removal" && permission === "result.draft.edit_own"
+            ))
+          })
+        },
+        result: undefined
+      }));
+    };
+
+    await expect(context.service.getReport(actor, result.result.id)).rejects.toMatchObject({
+      code: change === "session revocation" || change === "user deactivation" ? "UNAUTHENTICATED"
+        : change === "draft edit permission removal" ? "NOT_FOUND" : "SCOPE_DENIED",
+      status: change === "session revocation" || change === "user deactivation" ? 401 : 404
+    });
+    const after = context.store.getState();
+    expect(after.auditEvents).toHaveLength(before.auditEvents.length + 1);
+    expect(after.auditEvents.at(-1)).toMatchObject({ eventType: "ReportRead", actorId: actor.id, entityId: result.version.id });
+    expect(after.results).toEqual(before.results);
+    expect(after.resultVersions).toEqual(before.resultVersions);
+    expect(after.items).toEqual(before.items);
+    expect(after.notifications).toEqual(before.notifications);
+  });
+
+  it.each(["department scope", "item permission"] as const)("reprojects the report request after its %s narrows during the audit write", async (change) => {
+    const context = setup();
+    const { request, hemogramItem, draft } = await createManagerMultiSectorDraft(context);
+    const released = await context.service.releaseResult(context.manager, draft.result.id, {
+      expectedVersion: draft.result.version,
+      idempotencyKey: "report-projection-release"
+    });
+    const initialReport = await context.service.getReport(context.manager, released.result.id);
+    expect(initialReport.request.itemIds).toEqual(request.itemIds);
+    const append = context.store.appendReadAudit.bind(context.store);
+    context.store.appendReadAudit = async (event) => {
+      await append(event);
+      if (change === "department scope") await narrowManagerToLaboratory(context);
+      else await context.store.transaction((state) => ({
+        state: { ...state, accessGroups: state.accessGroups.map((group) => group.id === context.manager.accessGroupId
+          ? { ...group, permissions: group.permissions.filter((permission) => permission !== "item.view") } : group) },
+        result: undefined
+      }));
+    };
+
+    const report = await context.service.getReport(context.manager, released.result.id);
+
+    expect(report.version.id).toBe(released.version.id);
+    const visibleIds = change === "department scope" ? [hemogramItem.id] : [];
+    const projectedRequest = report.request as RequestView;
+    expect(projectedRequest.itemIds).toEqual(visibleIds);
+    expect(projectedRequest.items.map((item) => item.id)).toEqual(visibleIds);
+    expect(projectedRequest.samples.flatMap((sample) => sample.itemIds).every((itemId) => visibleIds.includes(itemId))).toBe(true);
+    if (change === "item permission") expect(projectedRequest.samples).toEqual([]);
   });
 
   it("audits permitted GET reads without creating the deliberate ResultViewed event", async () => {
